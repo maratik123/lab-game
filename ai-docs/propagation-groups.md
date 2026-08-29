@@ -24,5 +24,9 @@ Per-file sync groups behind `AGENTS.md` § *Propagation Rule*. **Editing any fil
 | `.claude/skills/ai-audit/SKILL.md` | `.claude/skills/ai-audit/reference.md` AND `checklist-m.md` AND `.claude/agents/learnings-escalation-audit.md` (Audit group) |
 | A case added to `.claude/skills/task/scripts/test-append-task-run.sh` | `ai-docs/task-run-schema.md` § *Cases* — the suite's AC6 asserts the two agree |
 | `ai-docs/agent-writing-style.md` § Patterns | `.claude/skills/ai-audit/checklist-m.md` — the audit checklist that enforces those patterns |
+| `.claude/skills/pr-ci-failed/SKILL.md` | `.claude/skills/main-ci-failed/SKILL.md` AND `.claude/skills/dependabot-pr/reference.md` (CI group — the failure-class taxonomy and the per-class reproducers must agree) |
+| `.claude/skills/main-ci-failed/SKILL.md` | See the *CI group* anchor row above |
+| `.github/workflows/ci.yml` (a job added, renamed, or removed) | The CI group's class tables AND `AGENTS.md` § *Build & Test* AND `ai-docs/claude-tools-hierarchy.md` — a class with no job, or a job with no class, is how a red run becomes unclassifiable |
+| `.claude/skills/pr-commented/SKILL.md` | `.claude/skills/pr-ci-failed/SKILL.md` (shared Step-5 self-review + Step-6 push/PR-body contract) |
 
-Groups are added here as their files land. The CI group (`/pr-ci-failed`, `/main-ci-failed`, `/pr-merged`, `/dependabot-pr`) arrives with those skills.
+Groups are added here as their files land. Every group the harness declares is now live.

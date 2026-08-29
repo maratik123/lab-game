@@ -440,6 +440,8 @@ escalation threshold of its own?
 
 ## Test-case registry
 
+**Environmental precondition:** the suite must run **on a branch**, not on a detached `HEAD`. The writer records `git branch --show-current`, and a detached checkout makes the branch unobtainable — the writer then correctly sets `incomplete: true`, which cases 1 and 20 assert against. CI checks out the branch explicitly for this reason (`.github/workflows/ci.yml`, Harness-guards job).
+
 `AC6` of `.claude/skills/task/scripts/test-append-task-run.sh` asserts that the number of cases the suite **actually ran** equals the number of rows below (lettered sub-cases share their parent's number and therefore one row). The coupling is deliberate: without it, a case added to the fixture (or silently dropped) is invisible, which is exactly the class of drift the telemetry corpus exists to detect. **Add a row here in the same commit that adds a case**, and never the other way round.
 
 The registry lives on this page rather than in a plan document because a plan is frozen history — this contract is live.

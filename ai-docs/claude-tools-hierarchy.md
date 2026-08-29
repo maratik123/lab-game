@@ -4,7 +4,7 @@ The live registry of the harness surface in this repository. **`AGENTS.md` § *P
 
 The harness is being ported from `graphite-gp` in phases; this page lists what exists **now**, not what is planned.
 
-Rules files, hooks and permissions landed in phase 1; the subagents and spec-driven skills in phase 2; the learning loop in phase 3.
+Rules files, hooks and permissions landed in phase 1; the subagents and spec-driven skills in phase 2; the learning loop in phase 3; CI and the PR skills in phase 4.
 
 ## Hooks — `.claude/settings.json`
 
@@ -61,10 +61,15 @@ Not ported from the source harness: `image-check` (verifies a golden *image* aga
 | `/reflect` | explicit | Launches `self-reflect`, then applies each finding per the user's per-finding routing consent. |
 | `/ai-audit` | explicit | Two phases: (1) `learnings-escalation-audit` fixes field drift; (2) the main session audits the whole instruction surface for dead references, format violations and size-cap breaches. Ships two shell guards — `check-citations.sh` and its regression test. |
 | `/triage` | explicit | Launches `triage-runner`; batched promotion of deferred rows to issues. Default threshold ≥3 unhandled rows. |
+| `/pr-commented` | explicit | One round of reviewer-comment response: classify each unresolved thread, bundle fixes into one commit, self-review, push, reply and resolve per category. |
+| `/pr-ci-failed` | model-invocable | One round of CI-failure response on the current PR: classify, reproduce locally, fix, self-review, push, re-read the PR body. |
+| `/main-ci-failed` | model-invocable | Same, for a red run on `main` — the fix lands on a NEW branch and a new PR; `main` is never modified directly. |
+| `/pr-merged` | explicit | After a merge: switch to `main`, pull, delete the merged branch's local progress files, delete the local branch. |
+| `/dependabot-pr` | explicit | One round of triage on a Dependabot **gomod** PR. Never auto-merges, never pushes to the bot branch; prints the merge command and pauses. |
 
 Built-in Claude Code commands (`/code-review`, `/simplify`, `/security-review`, `/init`) are **not** part of this harness and are not governed by this page. They overlap `self-review` / `project-review` in purpose but not in contract: the harness surfaces review against *this* project's spec, design and domain invariants, and gate the push; the built-ins review a diff on general principles and gate nothing. Use the harness surfaces inside a `/task` flow; the built-ins are fine ad hoc.
 
-The CI/PR skills (`/pr-commented`, `/pr-ci-failed`, `/main-ci-failed`, `/pr-merged`, `/dependabot-pr`) are not yet ported.
+The port is complete: every subagent and skill the source harness carried, minus the ones whose subject this project does not have (`image-check`, the design-system skill).
 
 ## Shell guards — `.claude/skills/**/scripts/`
 
@@ -74,9 +79,29 @@ The CI/PR skills (`/pr-commented`, `/pr-ci-failed`, `/main-ci-failed`, `/pr-merg
 | `ai-audit/scripts/test-check-citations.sh` | before editing the guard | Locks the content-addressed (never line-pinned) exclusion, and that the guard restores the tree it edits. |
 | `task/scripts/append-task-run.sh` | `/task` Step 12 sub-step 5a | Single writer of `ai-docs/metrics/task-runs.jsonl`. Degrades rather than halting Step 12. |
 | `task/scripts/test-append-task-run.sh` | before editing the writer | 20 cases; AC6 asserts the case count equals `ai-docs/task-run-schema.md` § *Cases* — add a row there in the same commit as a new case. |
+| `pr-merged/scripts/cleanup-progress.sh` | `/pr-merged` step 3 | Derives the merged PR's issue number from its body, finds the matching spec in `plans/done/`, and deletes only that branch's local progress files. |
 
 Both suites must pass `shellcheck -s bash` and run green before `git add` (`AGENTS.md` § *Build & Test*).
 
 ## Permissions
 
 `allow` covers the project's own toolchain (`go`, `gofmt`, `golangci-lint`, `git`, `gh`, `ast-index`, `psql`, `actionlint`, `shellcheck`) plus read-only text tools. `deny` covers `.idea/**`, `**/.env*` and `**/secrets*` — the bot token and the database DSN must be unreachable to both `Read` and `Edit`.
+
+## CI — `.github/workflows/ci.yml`
+
+| Job | Runs when | Gates |
+|---|---|---|
+| Format | `go` paths changed | `gofmt -l .` must be empty |
+| Build | `go` paths changed | `go build ./...`, `go vet ./...`, `go mod tidy` leaves no delta |
+| Test | `go` paths changed | `go test ./...` then `go test -race ./...` |
+| Lint | `go` paths changed | `golangci-lint run` at the pinned version |
+| Harness guards | `.claude/**`, `ai-docs/**`, `AGENTS.md`, `CLAUDE.md` changed | shellcheck on every script **and** every hook body; the citation guard; both guard suites; the 40k instruction-file cap (35k warns); every relative markdown link resolves |
+| Actionlint | `.github/workflows/**` changed | `actionlint` via reviewdog |
+
+**A filtered-out job is not a passing job.** `dorny/paths-filter` decides what runs; a new artefact class must be added to its filter in the same PR that introduces it, or its gate silently stops running.
+
+**No check is required at the merge button** — GitHub refuses rulesets on a private repository on the free plan (`AGENTS.md` § Permissions). CI reports; discipline enforces.
+
+## Dependabot — `.github/dependabot.yml`
+
+Weekly, two ecosystems: `gomod` (commit prefix `build`) and `github-actions` (prefix `ci`), 5 open PRs each. `/dependabot-pr` triages the `gomod` ones; a `github-actions` PR bails at preconditions as out of scope for v1.
