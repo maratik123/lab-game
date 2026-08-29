@@ -4,6 +4,8 @@ The live registry of the harness surface in this repository. **`AGENTS.md` § *P
 
 The harness is being ported from `graphite-gp` in phases; this page lists what exists **now**, not what is planned.
 
+Rules files, hooks and permissions landed in phase 1; the subagents and the spec-driven skills in phase 2.
+
 ## Hooks — `.claude/settings.json`
 
 | Event | Matcher | Hook | Contract |
@@ -28,11 +30,32 @@ Verification protocol for any hook change: [`hook-verification.md`](hook-verific
 
 ## Subagents — `.claude/agents/`
 
-None yet — they land with the spec-driven workflow phase.
+| Agent | Model | Spawned by | Contract |
+|---|---|---|---|
+| `spec-writer` | opus | `/interview`, `/task` Steps 1–5 | Drafts the spec one interview round at a time; asks 0–3 questions per round or returns `ready` / `unresolvable`. Never implements. |
+| `design` | opus | `/task` Step 6 | Produces the design document with decomposition and a `## Handoff plan`. Reads the binding-constraint file for anything it specifies. Writes no code. |
+| `design-review` | opus | `/task` Step 7 | Reviews a design against the checklist, issues GO / ITERATE / STOP. Loops with `design`. |
+| `code-writer` | sonnet, effort medium (pinned in frontmatter) | `/context-reset` group handoff | Implements a group's subtasks sequentially, gates and commits per subtask. **Never** pushes, opens a PR, runs self-review, or spawns anything. |
+| `self-review` | inherited | `/task` Step 10, `/bugfix` Step 6, `/project-review` | Reviews the implementation diff against spec and design; APPROVE / REJECT. The push gate. |
+| `review-findings` | inherited | `/project-review` | Walks the whole codebase (no diff, no spec) and writes a findings table into the progress file. |
+
+Not ported from the source harness: `image-check` (verifies a golden *image* against its drawing code — this project's goldens are text, and `code-writer` reads them itself), `self-reflect`, `self-improve`, `learnings-escalation-audit`, `triage-runner` (they arrive with the learning-loop phase).
 
 ## Skills — `.claude/skills/`
 
-None yet — they land with the spec-driven workflow phase. Built-in Claude Code commands (`/code-review`, `/simplify`, `/security-review`, `/init`) are **not** part of this harness and are not governed by this page; when the harness's own review surfaces land, this section records how the two relate.
+| Skill | Invocation | Contract |
+|---|---|---|
+| `/task` | explicit | The full workflow: interview → spec → design → design-review → implementation → verify → self-review → PR. Steps are strictly ordered; 6 / 7 / 10 cannot be skipped. Pre-authorises its own commits, push and `gh pr create`. |
+| `/interview` | explicit or via `/task` | Drives the spec-drafting rounds through `spec-writer`; never drafts the spec itself. |
+| `/context-reset` | at every design-defined group boundary, and on compaction recovery | The handoff protocol: spawns the group's implementor and re-validates state on return. |
+| `/project-review` | explicit | Whole-codebase review on the current branch: `review-findings` → fix loop → `self-review` until APPROVE, then commits. |
+| `/bugfix` | model-invocable on failure signals | Trace → root cause → failing test → fix. Analysis before code; the test is written before the fix. |
+| `/next` | explicit | Recommends one task to work on next, with runner-ups. |
+| `/verify-change` | explicit | Runs `go test ./...`, optionally filtered. |
+
+Built-in Claude Code commands (`/code-review`, `/simplify`, `/security-review`, `/init`) are **not** part of this harness and are not governed by this page. They overlap `self-review` / `project-review` in purpose but not in contract: the harness surfaces review against *this* project's spec, design and domain invariants, and gate the push; the built-ins review a diff on general principles and gate nothing. Use the harness surfaces inside a `/task` flow; the built-ins are fine ad hoc.
+
+The learning-loop skills (`/improve`, `/reflect`, `/ai-audit`, `/triage`) and the CI/PR skills (`/pr-commented`, `/pr-ci-failed`, `/main-ci-failed`, `/pr-merged`, `/dependabot-pr`) are not yet ported.
 
 ## Permissions
 
