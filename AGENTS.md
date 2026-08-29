@@ -91,14 +91,7 @@ Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-
 
 ## API Naming
 
-See [`ai-docs/go-api-naming.md`](ai-docs/go-api-naming.md) for the full rules. The short form:
-
-- No stutter: `raid.Session`, not `raid.RaidSession`; `ledger.Post`, not `ledger.PostPosting`.
-- Constructors `New…`; a `Must…` prefix is the **only** licence to panic, and only where the input is a compile-time constant.
-- Sentinel errors `ErrNotEnoughStamina`; error types `…Error`; wrap with `%w`, compare with `errors.Is`/`errors.As`.
-- Interfaces named for behaviour (`Poster`, `Notifier`), declared **by the consumer**, not shipped next to the implementation.
-- A function that skips a precondition check is `…Unchecked`, its doc comment states the precondition and the caller that guarantees it.
-- `ctx context.Context` is always the first parameter and is never stored in a struct.
+Full rules — including the **`…Unchecked` AXIOM** (a function skipping a precondition check carries the suffix, and its doc comment names both the precondition and the caller that guarantees it) — live in [`ai-docs/go-api-naming.md`](ai-docs/go-api-naming.md). The three that get violated most: no stutter (`raid.Session`, not `raid.RaidSession`); interfaces named for behaviour and declared **by the consumer**; `ctx context.Context` first and never stored in a struct.
 
 ## Code Style
 
@@ -110,7 +103,7 @@ Thin by design — this project grows its own style rules through the learning l
 - **Magic numbers:** a literal with semantic meaning becomes a named constant. **Balance constants are different and stronger: they belong in configuration, not in Go source** (`docs/DESIGN.md` §16.5 — stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice). A tuning value hard-coded in a `.go` file is a defect even when it is named.
 - **Determinism:** world generation, combat, and any PvP-trail replay are pure functions of `(seed, input)`. No `time.Now()`, no map-iteration order, and no un-seeded `math/rand` on those paths.
 - **Documentation:** every exported item carries a doc comment starting with its name; every package has a package comment. See [`ai-docs/doc-convention.md`](ai-docs/doc-convention.md).
-- **File size:** soft 500/800, hard 1000/1500 lines (excl./incl. `_test.go` content) — refactor before merge unless exempt (generated code, one long `switch`/state machine). Counter-rule — don't over-split: one-type-per-file is not a Go idiom.
+- **File size:** soft 500/800, hard 1000/1500 lines (excl./incl. tests); exemptions and the don't-over-split counter-rule are in `code-style.md`.
 
 See [`ai-docs/code-style.md`](ai-docs/code-style.md) for the canonical (growing) reference.
 
@@ -123,9 +116,7 @@ Project invariants that outrank convenience. Full detail: [`ai-docs/domain-invar
 
 > **AXIOM — A new mechanic declares its telemetry in the same PR that implements it** (`docs/DESIGN.md` §13.4). Events go in the event dictionary; a mechanic that moves balances additionally declares its **posting signature**, and the contract test checks actual postings against it. Telemetry never lags code.
 
-- **Never write to a chat that is not the intended one.** The testing environment carries `ALLOWED_CHAT_IDS`; sanitisation of a production snapshot is part of restore, not an afterthought (`docs/DESIGN.md` §12.5).
-- **Respect Telegram limits by construction**: honour `retry_after` on 429, exponential backoff on network errors, never a tight retry loop — flood bans attach to the bot id and survive token reissue.
-- **Scheduler tasks are idempotent and guard-checked** (`state`/`seq`), because a stale task firing late is normal operation, not an error (`docs/DESIGN.md` §3.5).
+Three more, each with its mechanics on that page: **never write to a chat that is not the intended one** (`ALLOWED_CHAT_IDS`, plus snapshot sanitisation as part of restore — §12.5); **respect Telegram limits by construction** (honour `retry_after`, back off exponentially, never a tight retry loop — a flood ban attaches to the bot id and survives token reissue); **scheduler tasks are idempotent and guard-checked** on `state`/`seq`, because a stale task firing late is normal operation, not an error (§3.5).
 
 ## Dependency Versions
 
@@ -137,12 +128,7 @@ Project invariants that outrank convenience. Full detail: [`ai-docs/domain-invar
 >
 > If your draft contains substrings like *"would add"*, *"introduce X as a dep"*, *"pull in X"*, *"avoid X as a dep"*, *"X is not currently a dependency"*, *"supports `--flag`"*, *"takes `--flag`"*, *"is committed"*, *"is tracked"*, *"is gitignored"*, *"there are no"*, *"still affects"*, *"is unfixed"* — **STOP**, run the relevant check, and either rewrite with the verified fact or drop the claim.
 
-When changing dependencies:
-
-- **Never hand-edit a version in `go.mod`.** Use `go get <module>@<version>` / `go get -u <module>`, then `go mod tidy`, then `go build ./...`.
-- After any dependency change, `git diff go.mod go.sum` **before staging** and confirm the delta is only the intended edges — `go mod tidy` also prunes and adds transitive lines.
-- Go pins exact versions by design; there are no ranges to loosen. A dependency bump is therefore always an explicit, reviewable diff.
-- Prefer the standard library. A new dependency needs a stated reason in the design document (`docs/DESIGN.md` §11 already fixes the load-bearing ones: `telego` low-level, `pgx`, a migration tool, a self-written Postgres scheduler).
+When changing dependencies: **never hand-edit a version in `go.mod`** — `go get <module>@<version>`, then `go mod tidy`, then `go build ./...`, then read `git diff go.mod go.sum` **before staging** (tidy also prunes and adds transitive lines). Prefer the standard library; a new dependency needs a stated reason in the design document (`docs/DESIGN.md` §11 already fixes the load-bearing ones).
 
 ## Workflow
 
@@ -163,6 +149,10 @@ When changing dependencies:
 - **Never** `git commit --no-verify` (or any hook-skip flag) — fix the hook.
 - **`gh … --body` vs the commit-block hook.** The commit-block hook matches `git[[:space:]]+commit`, so a `gh issue create` / `gh pr create` / `gh pr comment` invocation whose `--body` argument *contains* that substring is falsely blocked — use `--body-file <path>` instead of inlining the body.
 - **NEVER** batch a `git commit` / data-dependent `AskUserQuestion` in the same turn as the `Edit`/subagent call producing its inputs; verify with `git diff --cached --stat` first.
+- **Before every `git commit` during a PR task**, stage `ai-docs/learnings.md` with the related change — learnings are part of the deliverable and must be visible in the PR diff. **After a push**, a new learning entry gets its own commit.
+- **Delegation has FOUR phases, and failures land in the middle two** — fit (charter *and* environment), hand-off (leave the index CLEAN, or your staged work lands in the delegate's commit), while-it-runs (a delegate waiting on a long job is waiting, not stuck), and return (**a return summary is a claim, not a record** — verify every gate/PASS against the durable artefact). Read [`ai-docs/delegation-rules.md`](ai-docs/delegation-rules.md) before any spawn that commits, edits protected files, or runs long.
+- **No "too simple" step-skip in `/task`.** Steps 6 / 7 / 10 are MANDATORY; user authorisation is the only bypass.
+- **CI-fix commits get self-review too**, once the CI skills land.
 - **NEVER** `git reset --hard` — discards uncommitted work. The same hazard applies to `git checkout -- <file>` and `git restore <file>`: both restore the *whole* working-tree file to HEAD, silently dropping every uncommitted edit to it — safe **only** when you mean to discard the file's entire delta, **hazardous** when the file mixes an edit you keep with one you drop. To undo a test/injection edit on such a file, use a cp-backup (`cp f bak; …; cp bak f`) or a scratch file, then re-verify with `git diff --name-only <base>`. (`git checkout <branch>`/`-b` and `git restore --staged` are unaffected.)
 - Plan first. Tests before production code (TDD). Lint changed files.
 - Any file with ~50+ lines of substantial logic MUST have tests (`_test.go` beside it).
@@ -180,9 +170,12 @@ When changing dependencies:
 > | `gh pr create` immediately preceded the push (first push that opened the PR) | **Skip** the read — the body is what you just authored. The rule fires on the **next** push. |
 
 > **AXIOM — Every code-producing commit on a feature branch with an open (or about-to-be-opened) PR must pass a self-review before `git push`.**
-> The reviewing surfaces arrive with the harness skills; the obligation is a workspace rule, not a per-skill courtesy. An unnamed surface is covered when it **either** ships executable code (a hook body, a script, Go code) **or** changes an instruction-file rule that other surfaces must obey — "no `.go` diff" is never the test.
+> Named instances: `/task` Step 10, `/bugfix` Step 6, `/project-review` Step 5. The enumeration is a list of *named* instances, **never** the only covered surfaces — the obligation is a workspace rule, not a per-skill courtesy. Full matrix: [`.claude/agents/self-review.md` § When self-review applies](.claude/agents/self-review.md). An unnamed surface is covered when it **either** ships executable code (a hook body, a script, Go code) **or** changes an instruction-file rule that other surfaces must obey — "no `.go` diff" is never the test.
 >
 > APPROVE = push. REJECT = fix on the same branch and re-run; after 3 REJECTs in a row, surface and stop without pushing.
+
+> **AXIOM — `ai-docs/deferred/_inbox.jsonl` is written ONLY by `/task` Step 12 and (once it lands) `/triage`.**
+> A hand-edit hides rows from the parser and collides with future appends; one malformed line breaks the whole `jq` read. Row shape: [`ai-docs/templates/inbox-row.md`](ai-docs/templates/inbox-row.md).
 
 ## Propagation Rule
 
@@ -191,12 +184,13 @@ When changing dependencies:
 >
 > | If you edit... | You MUST also check / update... |
 > |---|---|
+> | Any `.claude/agents/*.md` or `.claude/skills/**` file in a declared sync group | Apply the same change to its siblings — the group table lives in [`ai-docs/propagation-groups.md`](ai-docs/propagation-groups.md). |
 > | `AGENTS.md` (rule add / exemption) | Run `grep -rni "<changed-keyword>" .claude/ AGENTS.md ai-docs/` and apply the same change to every match. |
 > | Any edit that changes a Tool/Subagent/Skill/Hook contract | Update [`ai-docs/claude-tools-hierarchy.md`](ai-docs/claude-tools-hierarchy.md) in the same PR. |
 > | A hook body in `.claude/settings.json` | Re-verify it fires per [`ai-docs/hook-verification.md`](ai-docs/hook-verification.md), and update the rule text in `AGENTS.md` that the hook backs. |
 > | Any other instruction file | Run the same grep — the Procedure below catches lingering references. |
 >
-> Per-skill and per-subagent sync groups are declared in this table as those files land.
+> Sync groups are declared in this table as their files land; the learning-loop and CI groups arrive with those skills.
 
 **Procedure:**
 1. Before closing the edit, `grep -rni "<changed-keyword>" .claude/ AGENTS.md ai-docs/` for any file referencing the same rule/terminology. **`-i` is not optional** — a sweep over prose is case-insensitive or it under-reports. Corollary: **a file you have already edited is not thereby done** — re-grep it whole, after the edit; one file holding both the fix and the surviving falsehood is the likeliest shape, not the least.
@@ -204,7 +198,7 @@ When changing dependencies:
 3. Rule exemptions must propagate to the checklists that enforce the rule.
 4. When the change propagates a **factual / policy claim** (a version, a CI-gate status, a "the repo does X" statement) rather than a rule keyword, the step-1 grep set is necessary but not sufficient — also sweep repo-root user-facing docs (`README.md`, `docs/**`) for the same claim. Completeness test: every LIVE doc must agree; history surfaces (`ai-docs/learnings.md`, `ai-docs/plans/done/**`) are left untouched.
 
-Do not refer to a skill as an "agent" or vice versa — the distinction matters for spawning.
+Do not refer to a skill as an "agent" or vice versa — the distinction matters for spawning. (`project-review` is a skill; `review-findings` and `self-review` are agents it spawns.)
 
 ## Communication
 
@@ -233,6 +227,13 @@ Interpret user phrasing literally and conservatively. When uncertain — ask, do
 | Path | Purpose |
 |------|---------|
 | [`ai-docs/context.md`](ai-docs/context.md) | Project context (orientation) — read on demand |
+| [`ai-docs/context-status.md`](ai-docs/context-status.md) | Per-task implementation log — read on demand |
+| [`ai-docs/plans/INDEX.md`](ai-docs/plans/INDEX.md) | Plan index — statuses and dependency order |
+| `ai-docs/plans/*.spec.md` / `*.design.md` | Active task spec + design; `*.progress.md` is local-only (gitignored) |
+| `ai-docs/plans/done/` | Completed plans (spec + design, implemented) |
+| [`ai-docs/deferred/_inbox.jsonl`](ai-docs/deferred/_inbox.jsonl) | Triage queue — rows from completed specs |
+| [`ai-docs/templates/progress-format.md`](ai-docs/templates/progress-format.md) | Canonical `.progress.md` format |
+| [`ai-docs/templates/inbox-row.md`](ai-docs/templates/inbox-row.md) | Canonical `_inbox.jsonl` row shape |
 | [`ai-docs/domain-invariants.md`](ai-docs/domain-invariants.md) | Ledger, telemetry, scheduler and Telegram-safety invariants — read before touching those paths |
 | [`ai-docs/key-decisions.md`](ai-docs/key-decisions.md) | Key design decisions with rationale |
 | [`ai-docs/code-style.md`](ai-docs/code-style.md) | Go code-style reference — read on demand |
@@ -244,6 +245,7 @@ Interpret user phrasing literally and conservatively. When uncertain — ask, do
 | [`ai-docs/hook-verification.md`](ai-docs/hook-verification.md) | The three MUSTs for proving a `settings.json` hook fires |
 | [`ai-docs/agent-writing-style.md`](ai-docs/agent-writing-style.md) | Binary-rule writing style for dual-model readability |
 | [`ai-docs/claude-tools-hierarchy.md`](ai-docs/claude-tools-hierarchy.md) | Project Tool/Subagent/Skill/Hook inventory |
+| [`ai-docs/propagation-groups.md`](ai-docs/propagation-groups.md) | Per-file sync groups for the Propagation Rule |
 | [`ai-docs/corrections-log.md`](ai-docs/corrections-log.md) | Learning-Log carve-outs + field glossary |
 | [`ai-docs/panic-index.md`](ai-docs/panic-index.md) | Every panicking call in production code, with its justification |
 | [`ai-docs/templates/learnings-entry.md`](ai-docs/templates/learnings-entry.md) | Canonical `learnings.md` entry skeleton — consult instead of the live log |
@@ -270,13 +272,13 @@ On **ANY** instruction violation, of any kind, write a new entry to `ai-docs/lea
 >
 > Writing a learning entry is **NOT** authorisation to escalate the rule into instruction files. Set `Escalated? no` and stop. Project-level escalation happens only when the user runs `/improve`, or explicitly asks ("escalate this", "add to AGENTS.md").
 >
-> **Two exceptions, both narrow.** (a) `/improve` + `/ai-audit` may update `Escalated?` / `Superseded by:` on **existing** entries alongside instruction-file edits — existing-entry updates only, never a NEW entry. (b) **In-flow capture during an implementation workflow**: a NEW entry MAY be appended in the same turn as an instruction-file edit when it records an in-task insight (not a pre-emptive escalation) and is marked `Escalated? no`. Full conditions: [`ai-docs/corrections-log.md`](ai-docs/corrections-log.md).
+> **Two narrow exceptions** — `/improve` + `/ai-audit` updating `Escalated?` / `Superseded by:` on **existing** entries, and in-flow capture of an in-task insight during `/task` Steps 8–12. Conditions and rationale: [`ai-docs/corrections-log.md`](ai-docs/corrections-log.md).
 
 ### Entry format
 
 **Copyable skeleton + a filled example: [`ai-docs/templates/learnings-entry.md`](ai-docs/templates/learnings-entry.md) — consult that template to inspect the format, NOT the live log.** For orientation, an entry is a `### YYYY-MM-DD — [category] — [short description]` heading followed by `**What happened:**`, `**Rule:**`, optional `**Kind:**`, `**Escalated?**`, and optional `**Superseded by:**`.
 
-`Kind:` defaults to `correction` when omitted. Write `Kind: validation` for entries that document a working protocol to keep doing (carrot signal); `Kind: correction` for a violation to stop doing (stick signal). `Escalated?` records **project-level** persistence only — user-local auto-memory and `settings.local.json` do **not** count → stay `no`.
+`Kind:` defaults to `correction` (a violation to stop doing); write `Kind: validation` for a working protocol to keep doing. `Escalated?` records **project-level** persistence only — user-local auto-memory and `settings.local.json` do **not** count → stay `no`.
 
 Categories: `code-style` | `process` | `architecture` | `testing` | `documentation` | `tooling` | `search` | `other`
 
