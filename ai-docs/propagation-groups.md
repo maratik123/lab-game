@@ -14,5 +14,15 @@ Per-file sync groups behind `AGENTS.md` § *Propagation Rule*. **Editing any fil
 | `.claude/skills/task/SKILL.md` verify list | `.claude/skills/task/reference.md` § *Step 9 — verify list (full)* — the SKILL names the gates, the reference details them; they must not drift |
 | A domain-invariant rule (ledger, telemetry, balance constants, chat safety, determinism) | `ai-docs/domain-invariants.md` AND `.claude/agents/self-review.md` § 4a AND `.claude/agents/review-findings.md` § 1a AND `.claude/agents/design.md` § Rules |
 | A gate command (adding, removing, or renaming one) | `AGENTS.md` § *Build & Test* AND every skill's `allowed-tools` line that grants it AND `.claude/skills/task/reference.md` § *Gate checklist* |
+| `.claude/skills/reflect/SKILL.md` | `.claude/agents/self-reflect.md` (Reflect group) |
+| `.claude/agents/self-reflect.md` | `.claude/skills/reflect/SKILL.md` (Reflect group) |
+| `.claude/skills/improve/SKILL.md` | `.claude/agents/self-improve.md` (Improve group) |
+| `.claude/agents/self-improve.md` | `.claude/skills/improve/SKILL.md` AND `ai-docs/improve-eval-contract.md` (Improve group) |
+| `.claude/skills/triage/SKILL.md` | `.claude/agents/triage-runner.md` AND `.claude/skills/next/SKILL.md` (Triage group) |
+| `.claude/agents/triage-runner.md` | `.claude/skills/triage/SKILL.md` AND `.claude/skills/next/SKILL.md` (Triage group) |
+| `.claude/skills/next/SKILL.md` | `.claude/skills/triage/SKILL.md` AND `.claude/agents/triage-runner.md` (Triage group) |
+| `.claude/skills/ai-audit/SKILL.md` | `.claude/skills/ai-audit/reference.md` AND `checklist-m.md` AND `.claude/agents/learnings-escalation-audit.md` (Audit group) |
+| A case added to `.claude/skills/task/scripts/test-append-task-run.sh` | `ai-docs/task-run-schema.md` § *Cases* — the suite's AC6 asserts the two agree |
+| `ai-docs/agent-writing-style.md` § Patterns | `.claude/skills/ai-audit/checklist-m.md` — the audit checklist that enforces those patterns |
 
-Groups are added here as their files land. The learning-loop group (`/improve` + `self-improve` + `learnings-escalation-audit`) and the CI group (`/pr-ci-failed`, `/main-ci-failed`, `/dependabot-pr`) arrive with those skills.
+Groups are added here as their files land. The CI group (`/pr-ci-failed`, `/main-ci-failed`, `/pr-merged`, `/dependabot-pr`) arrives with those skills.

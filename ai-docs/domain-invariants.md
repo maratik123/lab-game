@@ -23,7 +23,7 @@
 
 Items with identity (durability, enchantment) are **never** modelled as ledger kinds. They live in `items` + append-only `item_movements`, and the invariant is **chain continuity**: each movement's `from` equals the previous movement's `to`, so an instance has exactly one holder at any moment (§11).
 
-Holders of the item machine and accounts of the quantitative machine share **one address space** — player backpack, player chest, corpse #123, construction site, World. Death, looting, contribution and evaporation are the *same* "move under a document" operation with a different holder; there is no bespoke corpse code to write. A movement also posts the capacity kind (slots/weight) in the main ledger under the same document, and a cross-machine reconciliation ("instances held == slots consumed") catches drift.
+Holders of the item machine and accounts of the quantitative machine share **one address space** — player backpack, player chest, corpse 123, construction site, World. Death, looting, contribution and evaporation are the *same* "move under a document" operation with a different holder; there is no bespoke corpse code to write. A movement also posts the capacity kind (slots/weight) in the main ledger under the same document, and a cross-machine reconciliation ("instances held == slots consumed") catches drift.
 
 **Free consequence:** the movement chain is an item's provenance — "crafted by Вася, lost on node 12, picked up by the fishermen's chat" — which notifications and season stories can read without any extra code.
 

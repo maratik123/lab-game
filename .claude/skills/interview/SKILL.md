@@ -73,7 +73,7 @@ gh_issue:                          # present only when issue_ref resolves to a r
   comments:
     - author: "..."
       body: "..."
-  linked_issues: ["#42"]           # extracted from body / comments via #\d+ regex; may be empty
+  linked_issues: ["#<N>"]           # extracted from body / comments via #\d+ regex; may be empty
   linked_prs: ["#100"]             # same; may be empty
 task_description: |                # present only in free-text entry mode (mutually exclusive with gh_issue:)
   <user's free-text task description>
