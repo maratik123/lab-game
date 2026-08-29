@@ -1,0 +1,27 @@
+# Build output
+/bin/
+/dist/
+# `go build ./...` drops each cmd/ binary in the working directory
+/bot
+
+# Local environment — the bot token and DSN never enter the repository
+.env
+.env.*
+!.env.example
+
+# Gate logs (AGENTS.md § Build & Test — capture to a file, never pipe a gate)
+/gate.log
+*.gate.log
+
+# Harness local-only state (see AGENTS.md § Agent Docs)
+/ai-docs/plans/**/*.progress.md
+/ai-docs/pr-comments/
+/ai-docs/bugfix/trace-*.md
+/ai-docs/triage/*.progress.md
+
+# Per-machine / local settings
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# IDE
+/.idea/

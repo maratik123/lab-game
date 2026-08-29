@@ -1,0 +1,65 @@
+# golangci-lint configuration — the workspace lint gate.
+#
+# Posture (AGENTS.md § Code Style): strict by default. A finding is fixed, not
+# silenced; a `//nolint` needs a reason and is itself linted by `nolintlint`.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    # Correctness
+    - bodyclose          # Telegram Bot API responses must be closed
+    - contextcheck
+    - durationcheck
+    - errorlint          # %w wrapping, errors.Is/As over == and type asserts
+    - exhaustive         # every FSM state / enum switch is total (DESIGN §3.5)
+    - makezero
+    - nilerr
+    - noctx              # no outbound HTTP without a context
+    - rowserrcheck       # pgx/database-sql: rows.Err() checked
+    - sqlclosecheck      # pgx/database-sql: rows/stmts closed
+    - unconvert
+    - wastedassign
+    # Security
+    - gosec
+    # Style / clarity
+    - goconst
+    - gocritic
+    - misspell
+    - nolintlint
+    - predeclared
+    - revive             # incl. exported-symbol doc comments
+    - unparam
+    - whitespace
+
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+
+  exclusions:
+    rules:
+      # Test files may hard-code fixtures and skip a few production-only rules.
+      - path: _test\.go
+        linters:
+          - goconst
+          - gosec
+          - unparam
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/maratik123/lab-game
