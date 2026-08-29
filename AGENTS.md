@@ -187,7 +187,8 @@ When changing dependencies: **never hand-edit a version in `go.mod`** — `go ge
 > | Any `.claude/agents/*.md` or `.claude/skills/**` file in a declared sync group | Apply the same change to its siblings — the group table lives in [`ai-docs/propagation-groups.md`](ai-docs/propagation-groups.md). |
 > | `AGENTS.md` (rule add / exemption) | Run `grep -rni "<changed-keyword>" .claude/ AGENTS.md ai-docs/` and apply the same change to every match. |
 > | Any edit that changes a Tool/Subagent/Skill/Hook contract | Update [`ai-docs/claude-tools-hierarchy.md`](ai-docs/claude-tools-hierarchy.md) in the same PR. |
-> | A hook body in `.claude/settings.json` | Re-verify it fires per [`ai-docs/hook-verification.md`](ai-docs/hook-verification.md), and update the rule text in `AGENTS.md` that the hook backs. |
+> | `AGENTS.md` § *Learning Log* (boundary rules, entry format, `Kind:` / `Escalated?` semantics) | `.claude/agents/self-improve.md` AND `.claude/agents/learnings-escalation-audit.md` (Learning-Log group) |
+| A hook body in `.claude/settings.json` | Re-verify it fires per [`ai-docs/hook-verification.md`](ai-docs/hook-verification.md), and update the rule text in `AGENTS.md` that the hook backs. |
 > | Any other instruction file | Run the same grep — the Procedure below catches lingering references. |
 >
 > Sync groups are declared in this table as their files land; the learning-loop and CI groups arrive with those skills.
@@ -224,32 +225,17 @@ Interpret user phrasing literally and conservatively. When uncertain — ask, do
 
 ## Agent Docs
 
+Read on nearly every task:
+
 | Path | Purpose |
 |------|---------|
-| [`ai-docs/context.md`](ai-docs/context.md) | Project context (orientation) — read on demand |
-| [`ai-docs/context-status.md`](ai-docs/context-status.md) | Per-task implementation log — read on demand |
-| [`ai-docs/plans/INDEX.md`](ai-docs/plans/INDEX.md) | Plan index — statuses and dependency order |
-| `ai-docs/plans/*.spec.md` / `*.design.md` | Active task spec + design; `*.progress.md` is local-only (gitignored) |
-| `ai-docs/plans/done/` | Completed plans (spec + design, implemented) |
-| [`ai-docs/deferred/_inbox.jsonl`](ai-docs/deferred/_inbox.jsonl) | Triage queue — rows from completed specs |
-| [`ai-docs/templates/progress-format.md`](ai-docs/templates/progress-format.md) | Canonical `.progress.md` format |
-| [`ai-docs/templates/inbox-row.md`](ai-docs/templates/inbox-row.md) | Canonical `_inbox.jsonl` row shape |
-| [`ai-docs/domain-invariants.md`](ai-docs/domain-invariants.md) | Ledger, telemetry, scheduler and Telegram-safety invariants — read before touching those paths |
-| [`ai-docs/key-decisions.md`](ai-docs/key-decisions.md) | Key design decisions with rationale |
-| [`ai-docs/code-style.md`](ai-docs/code-style.md) | Go code-style reference — read on demand |
-| [`ai-docs/go-api-naming.md`](ai-docs/go-api-naming.md) | Naming rules incl. the `…Unchecked` contract |
-| [`ai-docs/doc-convention.md`](ai-docs/doc-convention.md) | godoc conventions — read on demand |
+| [`ai-docs/context.md`](ai-docs/context.md) | Project orientation |
+| [`ai-docs/domain-invariants.md`](ai-docs/domain-invariants.md) | Ledger, telemetry, scheduler and Telegram-safety invariants |
+| [`ai-docs/code-style.md`](ai-docs/code-style.md) | Go code-style reference |
 | [`ai-docs/go-test-conventions.md`](ai-docs/go-test-conventions.md) | Table tests, `-race`, golden logs, Postgres fixtures |
-| [`ai-docs/dependency-versions.md`](ai-docs/dependency-versions.md) | Live-lookup recipes for all five AXIOM categories |
-| [`ai-docs/delegation-rules.md`](ai-docs/delegation-rules.md) | The four-phase delegation lifecycle — read before any committing/long-running spawn |
-| [`ai-docs/hook-verification.md`](ai-docs/hook-verification.md) | The three MUSTs for proving a `settings.json` hook fires |
-| [`ai-docs/agent-writing-style.md`](ai-docs/agent-writing-style.md) | Binary-rule writing style for dual-model readability |
-| [`ai-docs/claude-tools-hierarchy.md`](ai-docs/claude-tools-hierarchy.md) | Project Tool/Subagent/Skill/Hook inventory |
-| [`ai-docs/propagation-groups.md`](ai-docs/propagation-groups.md) | Per-file sync groups for the Propagation Rule |
-| [`ai-docs/corrections-log.md`](ai-docs/corrections-log.md) | Learning-Log carve-outs + field glossary |
-| [`ai-docs/panic-index.md`](ai-docs/panic-index.md) | Every panicking call in production code, with its justification |
-| [`ai-docs/templates/learnings-entry.md`](ai-docs/templates/learnings-entry.md) | Canonical `learnings.md` entry skeleton — consult instead of the live log |
 | [`ai-docs/learnings.md`](ai-docs/learnings.md) | Corrections log — feed for `/improve` |
+
+**Every other page — key decisions, naming, doc convention, dependency recipes, delegation, hook verification, writing style, tool inventory, propagation groups, templates, plans, telemetry schema — is indexed in [`ai-docs/agent-docs-index.md`](ai-docs/agent-docs-index.md).**
 
 ## Learning Log
 

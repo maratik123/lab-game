@@ -52,7 +52,7 @@ Cite the section number, never a line number: the design document is edited, and
 
 - No comment that restates the code (`// increment i`).
 - No commented-out code — the history holds it.
-- No `TODO` without an issue reference: `// TODO(#42): …`. A `TODO` without an owner is a lie about future work.
+- No `TODO` without an issue reference: `// TODO(#<issue>): …`. A `TODO` without an owner is a lie about future work.
 - No stale comment: changing behaviour without updating the comment above it is the same defect class as a broken test.
 
 ## DOC-6 — Examples

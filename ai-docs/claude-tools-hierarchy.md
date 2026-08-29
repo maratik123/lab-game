@@ -4,7 +4,7 @@ The live registry of the harness surface in this repository. **`AGENTS.md` § *P
 
 The harness is being ported from `graphite-gp` in phases; this page lists what exists **now**, not what is planned.
 
-Rules files, hooks and permissions landed in phase 1; the subagents and the spec-driven skills in phase 2.
+Rules files, hooks and permissions landed in phase 1; the subagents and spec-driven skills in phase 2; the learning loop in phase 3.
 
 ## Hooks — `.claude/settings.json`
 
@@ -39,7 +39,12 @@ Verification protocol for any hook change: [`hook-verification.md`](hook-verific
 | `self-review` | inherited | `/task` Step 10, `/bugfix` Step 6, `/project-review` | Reviews the implementation diff against spec and design; APPROVE / REJECT. The push gate. |
 | `review-findings` | inherited | `/project-review` | Walks the whole codebase (no diff, no spec) and writes a findings table into the progress file. |
 
-Not ported from the source harness: `image-check` (verifies a golden *image* against its drawing code — this project's goldens are text, and `code-writer` reads them itself), `self-reflect`, `self-improve`, `learnings-escalation-audit`, `triage-runner` (they arrive with the learning-loop phase).
+| `self-improve` | opus | `/improve` | Reads `learnings.md` for repeating patterns, proposes instruction diffs, escalates to hooks at ≥3 occurrences. Re-verifies every factual claim it carries out of an entry. Writes no code. |
+| `self-reflect` | opus | `/reflect` | End-of-work retrospective: a structured good/bad list, each finding routed {learnings \| ticket \| none}. Assembles and yields; the parent performs every write. |
+| `learnings-escalation-audit` | opus | `/ai-audit` Phase 1 | Verifies every entry's `Escalated?` and `Superseded by:` still point at something real; fixes drift **only** in those two fields. |
+| `triage-runner` | opus | `/triage` | Promotes untracked `_inbox.jsonl` rows to issues, drains the queue, reconciles JSONL ↔ issue divergence. Mutation scope is `ai-docs/deferred/**` + `gh issue` only. |
+
+Not ported from the source harness: `image-check` (verifies a golden *image* against its drawing code — this project's goldens are text, and `code-writer` reads them itself).
 
 ## Skills — `.claude/skills/`
 
@@ -52,10 +57,25 @@ Not ported from the source harness: `image-check` (verifies a golden *image* aga
 | `/bugfix` | model-invocable on failure signals | Trace → root cause → failing test → fix. Analysis before code; the test is written before the fix. |
 | `/next` | explicit | Recommends one task to work on next, with runner-ups. |
 | `/verify-change` | explicit | Runs `go test ./...`, optionally filtered. |
+| `/improve` | explicit | Launches `self-improve`; the escalation path from the corrections log into instruction files and hooks. Run at ≥3 unescalated corrections or ≥2 validations. |
+| `/reflect` | explicit | Launches `self-reflect`, then applies each finding per the user's per-finding routing consent. |
+| `/ai-audit` | explicit | Two phases: (1) `learnings-escalation-audit` fixes field drift; (2) the main session audits the whole instruction surface for dead references, format violations and size-cap breaches. Ships two shell guards — `check-citations.sh` and its regression test. |
+| `/triage` | explicit | Launches `triage-runner`; batched promotion of deferred rows to issues. Default threshold ≥3 unhandled rows. |
 
 Built-in Claude Code commands (`/code-review`, `/simplify`, `/security-review`, `/init`) are **not** part of this harness and are not governed by this page. They overlap `self-review` / `project-review` in purpose but not in contract: the harness surfaces review against *this* project's spec, design and domain invariants, and gate the push; the built-ins review a diff on general principles and gate nothing. Use the harness surfaces inside a `/task` flow; the built-ins are fine ad hoc.
 
-The learning-loop skills (`/improve`, `/reflect`, `/ai-audit`, `/triage`) and the CI/PR skills (`/pr-commented`, `/pr-ci-failed`, `/main-ci-failed`, `/pr-merged`, `/dependabot-pr`) are not yet ported.
+The CI/PR skills (`/pr-commented`, `/pr-ci-failed`, `/main-ci-failed`, `/pr-merged`, `/dependabot-pr`) are not yet ported.
+
+## Shell guards — `.claude/skills/**/scripts/`
+
+| Script | Run by | Contract |
+|---|---|---|
+| `ai-audit/scripts/check-citations.sh` | `/ai-audit` Phase 2, or standalone | Every `#N` / learnings-date / memory-file citation must resolve **for its reader**: local refs resolve here, inherited ones name `graphite-gp` or `quartzite`. Exit 1 on any unresolvable citation. |
+| `ai-audit/scripts/test-check-citations.sh` | before editing the guard | Locks the content-addressed (never line-pinned) exclusion, and that the guard restores the tree it edits. |
+| `task/scripts/append-task-run.sh` | `/task` Step 12 sub-step 5a | Single writer of `ai-docs/metrics/task-runs.jsonl`. Degrades rather than halting Step 12. |
+| `task/scripts/test-append-task-run.sh` | before editing the writer | 20 cases; AC6 asserts the case count equals `ai-docs/task-run-schema.md` § *Cases* — add a row there in the same commit as a new case. |
+
+Both suites must pass `shellcheck -s bash` and run green before `git add` (`AGENTS.md` § *Build & Test*).
 
 ## Permissions
 

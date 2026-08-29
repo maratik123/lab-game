@@ -64,11 +64,11 @@ Activation sequence (bare-issue → matching deferred spec):
 
 ## ⚡ Third — bare-issue activation decision table (detail)
 
-The keyword trigger in `⚡ Second` ("activate", "start", "proceed") does NOT fire on a bare integer, so `/task 47` would otherwise enter the interview machinery and create a spurious `*.state.md` file even when `ai-docs/plans/deferred/2026-05-01-paint-style.spec.md` already carries `**Tracked in:** #47`. The `⚡ Third` preamble catches this case.
+The keyword trigger in `⚡ Second` ("activate", "start", "proceed") does NOT fire on a bare integer, so `/task <N>` would otherwise enter the interview machinery and create a spurious `*.state.md` file even when `ai-docs/plans/deferred/2026-05-01-paint-style.spec.md` already carries `**Tracked in:** #<N>`. The `⚡ Third` preamble catches this case.
 
 | If `$ARGUMENTS` resolves to... | Action |
 |---|---|
-| A bare issue number (`/task 47` or `/task #47`) AND a deferred spec exists with `**Tracked in:** #N` matching that number | Run `⚡ Third`'s activation sequence — do NOT launch the interview, do NOT create a state file. |
+| A bare issue number (`/task <N>` or `/task #<N>`) AND a deferred spec exists with a `**Tracked in:**` line matching that number | Run `⚡ Third`'s activation sequence — do NOT launch the interview, do NOT create a state file. |
 | A bare issue number AND no matching deferred spec | Fall through to the Steps 1–5 interview phase (the issue's body becomes the interview seed). |
 | Free text / keyword-triggered activation / empty args | Skip this phase; the active-task probe above (if applicable) or Steps 1–5 cover those entry modes. |
 

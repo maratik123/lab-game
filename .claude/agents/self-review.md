@@ -210,7 +210,7 @@ invokes `curl`/`wget`" (a heredoc blocks it; no HTTP call is made), a claim that
 cited `const fn` precedent that is not `const`. A reviewer that reads prose *as
 prose* assesses argument quality, not truth.
 
-Validated by [`ai-docs/learnings.md`](../../ai-docs/learnings.md) 2026-07-16 and
+Validated in **graphite-gp**'s `ai-docs/learnings.md`, 2026-07-16 and
 2026-07-17 (topic now at 2 occurrences) — *directing `self-review` to verify
 factual claims in prose caught every `major` on an all-prose diff, both times*.
 
@@ -228,7 +228,7 @@ thing it names?* (Sharper than the whole-function "would this pass if production
 were deleted" check — here the enclosing function still runs; it is one *clause*
 that is dead.)
 
-Validated by [`ai-docs/learnings.md`](../../ai-docs/learnings.md) 2026-07-23 —
+Validated in **graphite-gp**'s `ai-docs/learnings.md`, 2026-07-23 —
 a phase-4 width-check guard test asserted emptiness on a fixture that never met
 its pre-clause condition; deleting the soundness clause left all tests green,
 exposing zero coverage.
@@ -245,7 +245,7 @@ rule says *when* you may override a wave-through, this says *how to recognise*
 one worth overriding. (Note the qualifier — § *Patterns* 1 **in this file** is
 the prose-diff rule at `### 1.` above, a different rule.)
 
-Validated by [`ai-docs/learnings.md`](../../ai-docs/learnings.md) 2026-07-25 —
+Validated in **graphite-gp**'s `ai-docs/learnings.md`, 2026-07-25 —
 a `minor`-rated `[^|]*` fragment in a newly-added piped-gate hook let a
 `tee`-routed gate escape; overriding to fix-before-push was confirmed by two
 independent corpus runs.

@@ -176,4 +176,4 @@ The five new fields (`current_step`, `last_passed_gate`, `parent_skill`, `entry_
 
 *Default to* rating a hole in a guard's **primary case** as blocking, however small the diff and however safely it fails closed — a catch-net that misses the thing it exists to catch is not partial protection, it is the *appearance* of protection, and everyone downstream trusts a shipped guard immediately. *Prefer* fixing such a defect before the artifact ships over filing it as a follow-up.
 
-Validated by [`ai-docs/learnings.md`](../../ai-docs/learnings.md) 2026-07-25 — a `minor`-rated `[^|]*` fragment in a newly-added piped-gate hook let a `tee`-routed gate escape; overriding to fix-before-push was confirmed by two independent corpus runs.
+Validated in **graphite-gp**'s `ai-docs/learnings.md`, 2026-07-25 — a `minor`-rated `[^|]*` fragment in a newly-added piped-gate hook let a `tee`-routed gate escape; overriding to fix-before-push was confirmed by two independent corpus runs.

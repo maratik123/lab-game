@@ -3,7 +3,7 @@ name: task
 description: "Full task workflow from a user description OR a GitHub issue number: interview → spec → design → design-review → impl → verify → self-review. Steps are strictly ordered and cannot be skipped."
 disable-model-invocation: true
 argument-hint: "[issue-number | task description]"
-allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git rev-parse *) Bash(git checkout *) Bash(git branch *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(gh issue list *) Bash(gh issue view *) Bash(gh issue create *) Bash(gh issue comment *) Bash(gh pr create *) Bash(gh pr view *)
+allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git rev-parse *) Bash(git checkout *) Bash(git branch *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(gh issue list *) Bash(gh issue view *) Bash(gh issue create *) Bash(gh issue comment *) Bash(gh pr create *) Bash(gh pr view *) Bash(.claude/skills/task/scripts/append-task-run.sh *)
 ---
 
 Full workflow for a task. Steps execute **strictly in sequence** — proceeding to N+1 before N is complete is FORBIDDEN.
@@ -11,7 +11,7 @@ Full workflow for a task. Steps execute **strictly in sequence** — proceeding 
 > **Commit authorization.** The default rule "only commit when the user explicitly asks" does **not** apply inside this workflow. Commits at Step 8 (per subtask) and the commit + `git push` + `gh pr create` at Step 12 are pre-authorized by `/task` itself — perform them without an extra prompt. Pause to confirm only if the situation is ambiguous beyond the prescribed step (e.g., commits would touch main, files outside the task scope, or sensitive paths).
 
 The task may originate from either:
-- a **GitHub issue number** (e.g. `/task 42` or `/task #42`) — `/interview` reads the issue body during Steps 1–5
+- a **GitHub issue number** (e.g. `/task <N>` or `/task #<N>`) — `/interview` reads the issue body during Steps 1–5
 - a **user description** (e.g. `/task add foo to bar`) or empty (`/interview` interviews the user)
 
 > **⚡ Compaction recovery check — read FIRST on every invocation.**
@@ -83,7 +83,7 @@ If `$ARGUMENTS` contains words like "activate", "start", "proceed" **and** a mat
 > | Exactly one matching deferred spec | Move spec + design + progress into `ai-docs/plans/`, update INDEX.md, surface ACs for confirmation, jump to Step 6 |
 > | Multiple matches | Surface to user |
 >
-> A bare integer does NOT trigger the keyword preamble (`⚡ Second`), so `/task 47` would otherwise spin up a spurious interview state file even when a deferred spec already carries `**Tracked in:** #47`. See `reference.md` § ⚡ Third — bare-issue activation decision table (detail) for the full resolution recipe.
+> A bare integer does NOT trigger the keyword preamble (`⚡ Second`), so `/task <N>` would otherwise spin up a spurious interview state file even when a deferred spec already carries a matching `**Tracked in:**` line. See `reference.md` § ⚡ Third — bare-issue activation decision table (detail) for the full resolution recipe.
 
 Activation sequence (bare-issue → matching deferred spec): parse `$ARGUMENTS` (strip leading `#`), load `gh issue view <N> --json title,body,state,labels`, grep `ai-docs/plans/deferred/*.spec.md` for `**Tracked in:** #N`. **Zero matches** → fall through to Steps 1–5. **One match** → move the spec (and `*.design.md` / `*.progress.md` siblings if present) into `ai-docs/plans/`, update `INDEX.md`, surface the spec's ACs for user confirmation, do NOT re-run interview, do NOT create `*.state.md`, then jump to Step 6 (or RESUME if a `.progress.md` came along). **Multiple matches** → surface to user. Full sequence: `reference.md` § ⚡ Third — bare-issue activation sequence (full).
 
@@ -228,8 +228,9 @@ After all findings are resolved, run gates (`go build ./...`, `go test ./...`, `
    - Move spec/design files to `ai-docs/plans/done/`
    - Update dependency tree and **Suggested next steps**
 5. **Inbox propagation — parse the just-finalised spec (and its design if present) and append one JSON line per item to `ai-docs/deferred/_inbox.jsonl`** (row shape: [`ai-docs/templates/inbox-row.md`](../../../ai-docs/templates/inbox-row.md)). Apply the file-level dedupe rule against the thematic `.jsonl` files in `ai-docs/deferred/` (the `*.jsonl` siblings of `_inbox.jsonl`; dedupe over `.source_path` via `jq`); emit a `WARN:` line on unrecognised body shapes and continue. Full per-shape parser + dedupe rules in `reference.md` § Step 12 — inbox propagation (detail) and in [`inbox-propagation.md`](inbox-propagation.md). The Step 12 commit (sub-step 7 below) stages `_inbox.jsonl` alongside the existing artefacts.
+   - **Sub-step 5a — append the task-run telemetry record** — single writer, append-only; schema, field table and operating rules: [`ai-docs/task-run-schema.md`](../../../ai-docs/task-run-schema.md). Run that page's § *Precondition assertion* first, then `.claude/skills/task/scripts/append-task-run.sh ai-docs/plans/<spec-base>.progress.md`. Exit 0 (full **or** degraded) → continue; non-zero → hand-write the `fallback-required` fields per its § *Fallback recipe*, then continue. **Never halt Step 12 here.** Finally run its § *Step-12 verification block* and record both results in the PR body **Test plan**.
 6. `go build ./...` — ensures `go.sum` is refreshed and included if changed.
-7. Stage all changed files: implementation files from `## Files touched`, `context-status.md` (+ `context.md` if its summary changed), any repo-root doc the change touched, `ai-docs/learnings.md` (if modified), updated `INDEX.md`, `ai-docs/deferred/_inbox.jsonl` (rows appended in sub-step 5), and spec/design now in `done/`.
+7. Stage all changed files: implementation files from `## Files touched`, `context-status.md` (+ `context.md` if its summary changed), any repo-root doc the change touched, `ai-docs/learnings.md` (if modified), updated `INDEX.md`, `ai-docs/deferred/_inbox.jsonl` (rows appended in sub-step 5), `ai-docs/metrics/task-runs.jsonl` (record appended in sub-step 5a), and spec/design now in `done/`.
 8. Commit `feat(<package>): <imperative summary>` with a 1–3 line body and `N new tests; all M tests green.`
 9. `git push -u origin <branch>`
 10. `gh pr create` with title + body — body must include **Summary** / **Tracking** (`Closes #N` for full-resolve or `Refs #N` for partial; omit if `Tracked in: none`) / **Test plan** (one line per AC + the gate results by name). Full body template: `reference.md` § Step 12 — PR-body template (detail).
@@ -257,8 +258,8 @@ waves a clause through as "untestable on the fixture I used", check whether the 
 is genuinely unachievable or just needs a purpose-built fixture — the delegate's local
 fixture choice can silently narrow coverage below the approved spec.
 
-Earned in the **graphite-gp** harness (its `ai-docs/learnings.md` 2026-07-23 AC7
-fixture entry and 2026-07-24 whole-tree grep-clean entry, both past a design-review GO).
+Earned in the **graphite-gp** harness — its `ai-docs/learnings.md` 2026-07-23 AC7-fixture entry,
+and (graphite-gp again) its 2026-07-24 whole-tree grep-clean entry, both past a design-review GO.
 The delegate-skepticism half also lives in AGENTS.md § *Patterns* 1.
 
 ---
