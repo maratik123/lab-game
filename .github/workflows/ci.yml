@@ -83,7 +83,15 @@ jobs:
       - name: go mod tidy leaves no delta
         run: |
           go mod tidy
-          git diff --exit-code go.mod go.sum
+          # `git diff -- go.sum` exits 128 while the module has no dependencies
+          # and the file therefore does not exist. Ask git about worktree state
+          # instead, which also catches a go.sum that tidy has just created.
+          if [ -n "$(git status --porcelain -- go.mod go.sum)" ]; then
+            echo "::error::go mod tidy changed go.mod / go.sum — commit the result"
+            git --no-pager diff -- go.mod go.sum
+            git status --porcelain -- go.mod go.sum
+            exit 1
+          fi
 
   test:
     name: Test
@@ -119,9 +127,14 @@ jobs:
     if: needs.changes.outputs.harness == 'true'
     runs-on: ubuntu-latest
     steps:
+      # Check out the BRANCH, not the detached merge commit: the task-run writer
+      # records `git branch --show-current`, and on a detached HEAD it correctly
+      # degrades to `incomplete: true` — which its own suite asserts against.
+      # The guards must run in the environment the scripts really run in.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
       - name: shellcheck every harness script
         run: |
           set -euo pipefail
