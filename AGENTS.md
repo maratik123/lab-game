@@ -23,7 +23,7 @@
 
 Machine-enforced rules live in `.claude/settings.json` (allow/deny entries, hooks). Read that file for the authoritative list — duplicating it here lets the two sources drift.
 
-> **`origin` enforces NOTHING.** `maratik123/lab-game` is a **private repository on a free plan**, where GitHub refuses both branch protection and rulesets (`403: Upgrade to GitHub Pro or make this repository public`). There is no server-side gate: no required checks, no forced PR, no force-push block. Every `main`-protection rule below is therefore enforced by the local `PreToolUse` commit hook plus honour-system discipline — treat them as *harder* obligations, not softer ones, because nothing will catch a violation after the fact.
+> **`origin` enforces NOTHING.** `maratik123/lab-game` is a **private repository on a free plan**, where GitHub refuses both branch protection and rulesets (`403: Upgrade to GitHub Pro or make this repository public`). CI runs on every PR and every push to `main`, but **no check is required** and nothing blocks a merge or a force-push. Every `main`-protection rule below is therefore enforced by the local `PreToolUse` commit hook plus honour-system discipline — treat them as *harder* obligations, not softer ones, because a red check will not stop you.
 
 Honor-system rules (no machine check; still binding):
 
@@ -73,6 +73,8 @@ go run ./cmd/bot                                        # run the bot
 > | < 35,000 chars | OK. |
 
 > **A zero exit status is evidence about the LAST pipeline stage, not about your question.** Never pipe a gate whose exit code is load-bearing — `go test ./... | tail -6` reports `tail`'s status (always 0), so a RED gate records as green, and `tail -N` can truncate away the `FAIL` line you needed. Capture to a file and grep the saved log: `go test ./... > gate.log 2>&1 && echo GATE-GREEN || echo GATE-RED`, then `grep -E "^(FAIL|ok|---)" gate.log`. (`set -o pipefail` also works.) A `PreToolUse` hook blocks the `go test … | tail/head` form; the principle is broader than what the hook matches — the same silent-success shape covers a `jq` filter printing `null` from an error body, and a mutating flag (`rg -r`) rewriting output while exiting 0.
+
+**CI runs the same gates** (`.github/workflows/ci.yml`): Format · Build (build + vet + `go mod tidy` delta) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, both guard suites, the size cap, the link check) · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
 
 Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-index.md)); fall back to `rg <pattern> --type go [-l | -C 3]` when `ast-index` returns empty.
 
@@ -152,7 +154,7 @@ When changing dependencies: **never hand-edit a version in `go.mod`** — `go ge
 - **Before every `git commit` during a PR task**, stage `ai-docs/learnings.md` with the related change — learnings are part of the deliverable and must be visible in the PR diff. **After a push**, a new learning entry gets its own commit.
 - **Delegation has FOUR phases, and failures land in the middle two** — fit (charter *and* environment), hand-off (leave the index CLEAN, or your staged work lands in the delegate's commit), while-it-runs (a delegate waiting on a long job is waiting, not stuck), and return (**a return summary is a claim, not a record** — verify every gate/PASS against the durable artefact). Read [`ai-docs/delegation-rules.md`](ai-docs/delegation-rules.md) before any spawn that commits, edits protected files, or runs long.
 - **No "too simple" step-skip in `/task`.** Steps 6 / 7 / 10 are MANDATORY; user authorisation is the only bypass.
-- **CI-fix commits get self-review too**, once the CI skills land.
+- **CI-fix commits get self-review too** — `/pr-ci-failed` and `/main-ci-failed` each run it before their push.
 - **NEVER** `git reset --hard` — discards uncommitted work. The same hazard applies to `git checkout -- <file>` and `git restore <file>`: both restore the *whole* working-tree file to HEAD, silently dropping every uncommitted edit to it — safe **only** when you mean to discard the file's entire delta, **hazardous** when the file mixes an edit you keep with one you drop. To undo a test/injection edit on such a file, use a cp-backup (`cp f bak; …; cp bak f`) or a scratch file, then re-verify with `git diff --name-only <base>`. (`git checkout <branch>`/`-b` and `git restore --staged` are unaffected.)
 - Plan first. Tests before production code (TDD). Lint changed files.
 - Any file with ~50+ lines of substantial logic MUST have tests (`_test.go` beside it).

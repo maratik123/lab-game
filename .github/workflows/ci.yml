@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      harness: ${{ steps.filter.outputs.harness }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          # Any future Go or harness artefact must be added here in the same PR
+          # that introduces it, or its gate silently stops running.
+          filters: |
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.golangci.yml'
+              - '.github/workflows/**'
+            harness:
+              - '.claude/**'
+              - 'ai-docs/**'
+              - 'AGENTS.md'
+              - 'CLAUDE.md'
+            workflows:
+              - '.github/workflows/**'
+
+  format:
+    name: Format
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "::error::gofmt reports unformatted files:"
+            echo "$out"
+            exit 1
+          fi
+
+  build:
+    name: Build
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - name: go mod tidy leaves no delta
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+  test:
+    name: Test
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - name: go test -race
+        run: go test -race ./...
+
+  lint:
+    name: Lint
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.1
+
+  harness:
+    name: Harness guards
+    needs: changes
+    if: needs.changes.outputs.harness == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: shellcheck every harness script
+        run: |
+          set -euo pipefail
+          find .claude -name '*.sh' -print0 | xargs -0 -r shellcheck -s bash
+      - name: shellcheck every hook body in settings.json
+        run: |
+          set -euo pipefail
+          jq -r '.hooks[][].hooks[].command' .claude/settings.json > /tmp/bodies.txt
+          fail=0
+          while IFS= read -r body; do
+            printf '%s\n' "$body" | shellcheck -s bash - || fail=1
+          done < /tmp/bodies.txt
+          exit "$fail"
+      - name: citation namespaces resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .claude/skills/ai-audit/scripts/check-citations.sh
+      - name: guard regression suites
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash .claude/skills/ai-audit/scripts/test-check-citations.sh
+          bash .claude/skills/task/scripts/test-append-task-run.sh
+      - name: instruction files stay under the 40k hard cap
+        run: |
+          set -euo pipefail
+          status=0
+          while IFS= read -r f; do
+            n=$(wc -c < "$f")
+            if [ "$n" -ge 40000 ]; then
+              echo "::error file=$f::instruction file is $n bytes (hard cap 40000)"
+              status=1
+            elif [ "$n" -ge 35000 ]; then
+              echo "::warning file=$f::instruction file is $n bytes (early warning 35000)"
+            fi
+          done < <(find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md')
+          exit "$status"
+      - name: relative markdown links resolve
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re, sys
+          bad = []
+          for f in (p for p in pathlib.Path(".").rglob("*.md") if ".git/" not in str(p)):
+              for m in re.finditer(r'\[[^\]]*\]\(([^)#\s]+)(#[^)]*)?\)', f.read_text()):
+                  t = m.group(1)
+                  if t.startswith(("http://", "https://", "mailto:")) or "<" in t or t == "file.md":
+                      continue
+                  if not (f.parent / t).resolve().exists():
+                      bad.append(f"{f} -> {t}")
+          for b in bad:
+              print(f"::error::broken relative link {b}")
+          sys.exit(1 if bad else 0)
+          PY
+
+  actionlint:
+    name: Actionlint
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: reviewdog/action-actionlint@v1
+        with:
+          reporter: github-check
+          fail_level: error
