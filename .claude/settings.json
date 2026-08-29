@@ -1,0 +1,131 @@
+{
+  "extraKnownMarketplaces": {
+    "ast-index": {
+      "source": {
+        "source": "github",
+        "repo": "defendend/Claude-ast-index-search"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "ast-index@ast-index": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if command -v ast-index >/dev/null 2>&1; then if ast-index stats >/dev/null 2>&1; then ast-index update >/dev/null 2>&1 || true; echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"ast-index: index updated\"}}'; else ast-index rebuild >/dev/null 2>&1 || true; echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"ast-index: index rebuilt\"}}'; fi; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"ast-index: not found\"}}'; fi",
+            "timeout": 120,
+            "statusMessage": "Syncing ast-index..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"REQUIRED SESSION START to read rules from CLAUDE.md. Show user a summary of these rules\"}}'",
+            "timeout": 30,
+            "statusMessage": "Read session rules..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if echo \"$cmd\" | grep -qE '(^|[ ;&|`])git[[:space:]]+commit\\b'; then branch=$(git branch --show-current 2>/dev/null); if [ \"$branch\" = \"main\" ]; then printf 'BLOCKED: git commit on main is forbidden.\\n\\nRecovery (no commits yet on main):\\n  git checkout -b feat/YYYY-MM-DD-name\\n\\nRecovery (commits already on main, not yet pushed):\\n  git stash                                           # save uncommitted work\\n  git checkout -b feat/YYYY-MM-DD-name                 # branch carries the commits\\n  git checkout main                                    # back to main\\n  git reset --soft origin/main && git restore --staged .   # rewind without losing work\\n  git checkout feat/YYYY-MM-DD-name && git stash pop   # resume on feature branch\\n\\nNever use git reset --hard. Full procedure: AGENTS.md > Workflow > AXIOM 1.\\nNote: origin enforces nothing on this repo (private, free plan) -- this hook is the enforcement.\\n' >&2; exit 2; fi; fi",
+            "timeout": 10,
+            "statusMessage": "Checking branch before commit..."
+          },
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if echo \"$cmd\" | grep -qE '(^|[ ;&|`])git[[:space:]]+commit\\b'; then ast-index update >/dev/null 2>&1 || true; fi; exit 0",
+            "timeout": 30,
+            "statusMessage": "Refreshing ast-index..."
+          },
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if printf '%s' \"$cmd\" | grep -qE '(^|[ ;&|`(])(go[[:space:]]+(build|test|vet)|golangci-lint[[:space:]]+run|gofmt)\\b[^;]*\\|[[:space:]]*(tail|head)\\b' && ! printf '%s' \"$cmd\" | grep -qE '(^|[[:space:]])(--help|-h)([[:space:]]|$)' && ! printf '%s' \"$cmd\" | grep -qE '(^|[;&|[:space:]])set[[:space:]]+-o[[:space:]]+pipefail'; then printf 'BLOCKED: Go gate piped through tail/head without pipefail.\\n\\nBash reports the LAST pipeline stage exit status, so tail/head always exits 0 -- a RED gate gets recorded as green. tail -N can also truncate away the FAIL line you needed (AGENTS.md > Build & Test).\\n\\nUse instead:\\n  go test ./... > gate.log 2>&1 && echo GATE-GREEN || echo GATE-RED\\n  grep -E \"^(FAIL|ok|---)\" gate.log\\n\\nOr prefix with: set -o pipefail;\\n\\nThis hook matches COMMAND TEXT, not shell semantics -- a string that merely quotes such a pipeline also matches. Rephrase it or use the Write tool.\\n' >&2; exit 2; fi",
+            "timeout": 10,
+            "statusMessage": "Checking piped gate exit status..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; if [ -n \"$f\" ] && [ \"${f##*.}\" = \"go\" ] && [ -f \"$f\" ]; then gofmt -w \"$f\"; fi; } || true",
+            "timeout": 30,
+            "statusMessage": "Formatting Go..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in *_test.go) exit 0 ;; *.go) ;; *) exit 0 ;; esac; if [ -f \"$f\" ]; then hits=$(grep -nE '(^|[^[:alnum:]_.])(panic\\(|log\\.(Fatal|Panic)[a-z]*\\()' \"$f\" | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*//'); if [ -n \"$hits\" ]; then printf '\\n[panic-gate] panicking calls in production code (outside _test.go) in %s:\\n%s\\n[panic-gate] handlers, scheduler tasks and ledger writes must return errors instead -- a panic there drops a player action or leaves a session seq un-advanced. A startup failure in main may exit non-zero and needs no entry. Every survivor is justified in its doc comment AND listed in ai-docs/panic-index.md.\\n' \"$f\" \"$hits\" >&2; fi; fi; } || true",
+            "timeout": 10,
+            "statusMessage": "Checking for panicking calls..."
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // .tool_response.filePath // empty'); if [ -n \"$f\" ] && [ -f \"$f\" ] && grep -qE '(^|[^0-9])[0-9]{8,10}:[A-Za-z0-9_-]{35}([^A-Za-z0-9_-]|$)' \"$f\"; then printf 'SECRET LEAK: %s contains a string shaped like a live Telegram bot token.\\n\\nA token never enters a tracked file -- not a fixture, not an example, not a comment (AGENTS.md > Permissions). If this is real, rotate it through BotFather NOW; editing it out of the working tree does not unpublish a committed secret.\\nIf it is a synthetic fixture, make it obviously fake (e.g. 123:FAKE-TOKEN-FOR-TESTS).\\n' \"$f\" >&2; exit 2; fi; exit 0",
+            "timeout": 10,
+            "statusMessage": "Checking for leaked secrets..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if echo \"$cmd\" | grep -qE '(^|[ ;&|`])git[[:space:]]+push\\b' && ! echo \"$cmd\" | grep -qE 'gh[[:space:]]+pr[[:space:]]+create'; then branch=$(git branch --show-current 2>/dev/null); if [ -n \"$branch\" ] && [ \"$branch\" != \"main\" ]; then pr_json=$(gh pr view --json number,state,url 2>/dev/null); if [ -n \"$pr_json\" ]; then state=$(echo \"$pr_json\" | jq -r '.state // empty'); number=$(echo \"$pr_json\" | jq -r '.number // empty'); if [ \"$state\" = \"OPEN\" ]; then printf '\\n[pr-sync] open PR #%s on %s -- re-read the body with: gh pr view %s --json title,body -- and sync via gh pr edit if scope/names/ACs drifted (AGENTS.md > Workflow AXIOM 2). Exception: this push immediately preceded gh pr create.\\n' \"$number\" \"$branch\" \"$number\" >&2; fi; fi; fi; fi",
+            "timeout": 15,
+            "statusMessage": "Checking PR body sync..."
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Edit(./**)",
+      "Edit(.claude/**)",
+      "Bash(go *)",
+      "Bash(gofmt *)",
+      "Bash(golangci-lint *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(ast-index *)",
+      "Bash(psql *)",
+      "Bash(actionlint *)",
+      "Bash(shellcheck *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(jq *)",
+      "Bash(awk *)",
+      "Bash(sort *)",
+      "Bash(wc *)"
+    ],
+    "deny": [
+      "Read(.idea/**)",
+      "Edit(.idea/**)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Edit(**/.env)",
+      "Edit(**/.env.*)",
+      "Read(**/secrets*)",
+      "Read(**/.secrets*)",
+      "Edit(**/secrets*)",
+      "Edit(**/.secrets*)"
+    ]
+  }
+}

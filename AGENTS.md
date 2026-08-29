@@ -1,0 +1,295 @@
+# Go Agent Rules
+
+**CRITICALLY**
+1) **English for every durable artefact** — code, comments, commit messages, PR bodies, instruction files, specs, designs, `learnings.md`. **Russian for two surfaces only:** conversation with the product owner, and `docs/**` (the game-design corpus is Russian by decision — do not translate it).
+
+## Project
+
+**lab-game** — a Telegram bot game ("Лабиринты", working title): a group chat becomes a settlement in a shared, infinite hex maze; raids, instant auto-combat, stamina, extraction (backpacks / corpses / looting / rescue raids), asynchronous PvP by trails, seasonal world rotation. Go + Postgres, Telegram Bot API via long polling against a self-hosted `telegram-bot-api` instance.
+
+> **AXIOM — `docs/DESIGN.md` is DECISIONS; `docs/IDEAS.md` is NOT.**
+> The boundary between the two files is *designed / not designed*, **not** *MVP / post-MVP*. The test the corpus itself states: *"can an agent implement this without making design decisions?"*
+>
+> | Surface | Standing |
+> |---|---|
+> | `docs/DESIGN.md` | **Implement from it. Never redesign it** without an explicit user request. §14 is the MVP scope; §15 is the deferred backlog with reasons; §16 is the open-question list. |
+> | `docs/DESIGN.md` outside §14 | Still binding as a **constraint**: MVP code must not hard-wire assumptions that contradict designed post-MVP behaviour (the canonical example: a raid session is modelled for many participants even while raids are solo). |
+> | `docs/IDEAS.md` | **Never implement, never encode in a schema.** Directions without mechanics. A file promotes to `DESIGN.md` only through an explicit user decision. |
+> | An open question in §16 | Not a licence to decide it silently. Surface it; balance numbers go to config, never to code. |
+
+> Read [`ai-docs/context.md`](ai-docs/context.md) for orientation, architecture, and the standing decisions — on demand. The canonical spec is [`docs/DESIGN.md`](docs/DESIGN.md); its idea backlog is [`docs/IDEAS.md`](docs/IDEAS.md).
+
+## Permissions
+
+Machine-enforced rules live in `.claude/settings.json` (allow/deny entries, hooks). Read that file for the authoritative list — duplicating it here lets the two sources drift.
+
+> **`origin` enforces NOTHING.** `maratik123/lab-game` is a **private repository on a free plan**, where GitHub refuses both branch protection and rulesets (`403: Upgrade to GitHub Pro or make this repository public`). There is no server-side gate: no required checks, no forced PR, no force-push block. Every `main`-protection rule below is therefore enforced by the local `PreToolUse` commit hook plus honour-system discipline — treat them as *harder* obligations, not softer ones, because nothing will catch a violation after the fact.
+
+Honor-system rules (no machine check; still binding):
+
+- **DENY:** `git push --force` to feature branches — prefer `--force-with-lease`, and only after explicit user approval. Never force-push `main`.
+- **DENY:** `git push` to `main`. Every change reaches `main` through a merged PR.
+- **DENY:** files outside project root.
+- **DENY:** a real bot token, DSN, or `api_id`/`api_hash` in any tracked file — including a test fixture, an example, a commit message, and a PR body. Secrets live in `.env` (gitignored) and in the deploy environment. A leaked token is rotated through BotFather, not edited out of history.
+- **ASK:** any tool not allow-listed in `settings.json`; if denied — suggest an alternative.
+
+On session start: read `.gitignore`, treat matched paths as a read blacklist.
+
+## Build & Test
+
+```bash
+go build ./...                                          # whole module
+go test ./...                                           # all tests
+go test ./internal/raid/ -run TestName                  # filter
+go test -race ./...                                     # race gate (required for concurrent code)
+go vet ./...                                            # vet (also inside golangci-lint)
+golangci-lint run                                       # strict lint gate
+golangci-lint fmt                                       # apply formatters (gofmt + goimports)
+gofmt -l .                                              # format check only — empty output = clean
+go mod tidy && git diff --exit-code go.mod go.sum       # module hygiene gate
+actionlint .github/workflows/<file>.yml                 # required gate for any new/modified workflow file
+shellcheck <script>.sh                                  # required gate for any new/modified shell script
+go run ./cmd/bot                                        # run the bot
+```
+
+> **AXIOM — `actionlint` MUST pass before `git add` on any modified `.github/workflows/*.yml`; `shellcheck` MUST pass before `git add` on any modified `*.sh`.**
+> Required gates, **same status as `go build ./...` and `golangci-lint run`.** Never bypass.
+>
+> | If you see... | Action |
+> |---|---|
+> | `M .github/workflows/<name>.yml` in `git status` | Run `actionlint <file>` (pass every changed workflow file in one invocation) **before** `git add` |
+> | `M <any>.sh` in `git status` | Run `shellcheck <file>` **before** `git add` |
+> | Either tool reports an error | Fix it. **NEVER** bypass. |
+>
+> What `actionlint` catches that `go` cannot: runner-version mismatches, deprecated action versions, expression-syntax errors, shell-quoting issues. Harness scripts are executable code and get the same treatment as `.go` files.
+
+> **AXIOM — Every project instruction file Claude loads per invocation MUST stay below 40,000 chars.**
+> Harness-enforced soft cap; crossing it imposes measurable per-invocation cost on every subagent spawn, `/task`, and review pass. Project-side **35,000-char early warning** gives one full `/task` cycle of headroom. Applies to `AGENTS.md`, `CLAUDE.md`, every `.claude/skills/**/*.md`, every `.claude/agents/**.md`, every `.claude/rules/*.md`, and `ai-docs/{code-style,doc-convention,context,agent-writing-style,corrections-log}.md`.
+>
+> | If `wc -c <file>` reports... | Action |
+> |---|---|
+> | ≥ 40,000 chars | **`major`** — plan extraction/dedup for the next `/ai-audit` pass (extract verbose subsections into `ai-docs/<topic>.md` reference pages with anchored links). |
+> | 35,000–39,999 chars | **`minor`** — proactive extraction pass; don't let the next `/task` push it over 40k. |
+> | < 35,000 chars | OK. |
+
+> **A zero exit status is evidence about the LAST pipeline stage, not about your question.** Never pipe a gate whose exit code is load-bearing — `go test ./... | tail -6` reports `tail`'s status (always 0), so a RED gate records as green, and `tail -N` can truncate away the `FAIL` line you needed. Capture to a file and grep the saved log: `go test ./... > gate.log 2>&1 && echo GATE-GREEN || echo GATE-RED`, then `grep -E "^(FAIL|ok|---)" gate.log`. (`set -o pipefail` also works.) A `PreToolUse` hook blocks the `go test … | tail/head` form; the principle is broader than what the hook matches — the same silent-success shape covers a `jq` filter printing `null` from an error body, and a mutating flag (`rg -r`) rewriting output while exiting 0.
+
+Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-index.md)); fall back to `rg <pattern> --type go [-l | -C 3]` when `ast-index` returns empty.
+
+## API Stability
+
+> **AXIOM — No Go API-stability contract. Clean breaks, always. No compat shims.**
+> lab-game is an **application**, not a library — it is never imported by anyone outside this module and has **no** downstream clients. Exported Go API may be freely renamed, removed, or restructured at any time without deprecation layers or aliases.
+>
+> | If you're tempted to... | Do this instead |
+> |---|---|
+> | Keep `func OldName(...)` delegating to `NewName` "for compat" | **DELETE** it — call sites update directly |
+> | Keep both old and new APIs side-by-side temporarily | Pick one — old is gone |
+> | Add an interface solely to preserve an old signature | Remove the old signature |
+
+> **CARVE-OUT — data contracts are the opposite, and the asymmetry is the point.** The Postgres schema, the append-only `postings` / `item_movements` ledgers, the basis-document tables, the scheduler's `scheduled_tasks` payloads, and any persisted enum value are **live data that outlives every deploy**. They change by **forward migration**, never by redefinition: a posting written last season must still parse and still balance. A renamed state string, a re-numbered enum, or a repurposed column is a data-corruption bug wearing a refactor's clothes. Combat is the designed exception the other way (`docs/DESIGN.md` §4): `combat()` is a pure function whose internals may be rewritten wholesale — the **version of the combat system is part of every stored log and PvP-trail snapshot** precisely so that freedom stays safe.
+
+## API Naming
+
+See [`ai-docs/go-api-naming.md`](ai-docs/go-api-naming.md) for the full rules. The short form:
+
+- No stutter: `raid.Session`, not `raid.RaidSession`; `ledger.Post`, not `ledger.PostPosting`.
+- Constructors `New…`; a `Must…` prefix is the **only** licence to panic, and only where the input is a compile-time constant.
+- Sentinel errors `ErrNotEnoughStamina`; error types `…Error`; wrap with `%w`, compare with `errors.Is`/`errors.As`.
+- Interfaces named for behaviour (`Poster`, `Notifier`), declared **by the consumer**, not shipped next to the implementation.
+- A function that skips a precondition check is `…Unchecked`, its doc comment states the precondition and the caller that guarantees it.
+- `ctx context.Context` is always the first parameter and is never stored in a struct.
+
+## Code Style
+
+Thin by design — this project grows its own style rules through the learning loop (`/improve`). Start with:
+
+- **Source files:** Go only under `cmd/*` and `internal/*`; format via `golangci-lint fmt` or `gofmt -w`, never by hand.
+- **Linter posture:** strict `golangci-lint run` (config in `.golangci.yml`); no `//nolint` without a specific linter and a stated reason (`nolintlint` enforces both).
+- **Errors:** every returned error is handled or deliberately wrapped with `%w` and context (`fmt.Errorf("materialize node %s: %w", coord, err)`). Never `_ = err`. Never `panic` in production code — see the panic rule in *Go Test Conventions*.
+- **Magic numbers:** a literal with semantic meaning becomes a named constant. **Balance constants are different and stronger: they belong in configuration, not in Go source** (`docs/DESIGN.md` §16.5 — stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice). A tuning value hard-coded in a `.go` file is a defect even when it is named.
+- **Determinism:** world generation, combat, and any PvP-trail replay are pure functions of `(seed, input)`. No `time.Now()`, no map-iteration order, and no un-seeded `math/rand` on those paths.
+- **Documentation:** every exported item carries a doc comment starting with its name; every package has a package comment. See [`ai-docs/doc-convention.md`](ai-docs/doc-convention.md).
+- **File size:** soft 500/800, hard 1000/1500 lines (excl./incl. `_test.go` content) — refactor before merge unless exempt (generated code, one long `switch`/state machine). Counter-rule — don't over-split: one-type-per-file is not a Go idiom.
+
+See [`ai-docs/code-style.md`](ai-docs/code-style.md) for the canonical (growing) reference.
+
+## Domain Rules
+
+Project invariants that outrank convenience. Full detail: [`ai-docs/domain-invariants.md`](ai-docs/domain-invariants.md).
+
+> **AXIOM — Balances move only through the ledger, never by an ad-hoc UPDATE.**
+> Every change to stamina, resources, money, or items is a set of postings written by `store.Post` under exactly one basis document, and the postings in one transaction sum to zero per kind. Item instances move through `item_movements` with an unbroken holder chain. A handler that mutates a balance column directly is rejected in review, however small the change.
+
+> **AXIOM — A new mechanic declares its telemetry in the same PR that implements it** (`docs/DESIGN.md` §13.4). Events go in the event dictionary; a mechanic that moves balances additionally declares its **posting signature**, and the contract test checks actual postings against it. Telemetry never lags code.
+
+- **Never write to a chat that is not the intended one.** The testing environment carries `ALLOWED_CHAT_IDS`; sanitisation of a production snapshot is part of restore, not an afterthought (`docs/DESIGN.md` §12.5).
+- **Respect Telegram limits by construction**: honour `retry_after` on 429, exponential backoff on network errors, never a tight retry loop — flood bans attach to the bot id and survive token reissue.
+- **Scheduler tasks are idempotent and guard-checked** (`state`/`seq`), because a stale task firing late is normal operation, not an error (`docs/DESIGN.md` §3.5).
+
+## Dependency Versions
+
+> **AXIOM — Query live state BEFORE asserting any claim about an external dependency, this module's own dependency graph, an external tool's flags/behaviour, this repo's VCS state, or an upstream issue's status. Memory is stale — and so is any tool blind to the category you are asking about.**
+>
+> **Five categories, each with its own recipe — the command must reach the CATEGORY, or its exit 0 is about a different question than yours:** a module's published versions (`go list -m -versions <module>`, or `https://proxy.golang.org/<escaped-module>/@v/list`); whether `X` is a dependency here (`grep <module> go.mod` **AND** `go mod why -m <module>` for transitive reach — `go.mod` lists direct requirements only); an external tool's flag (`<tool> --help` or run it — **never** from memory); a file's **tracked / ignored / on-disk** status (category-matched `git` command — `git status` is **blind to ignored files**, so empty output is never proof of absence); an upstream issue's state (`gh issue view <N> --json state,comments` — the body is frozen, the **closing comment** carries the resolution).
+>
+> **Full per-category recipes: [`ai-docs/dependency-versions.md`](ai-docs/dependency-versions.md).**
+>
+> If your draft contains substrings like *"would add"*, *"introduce X as a dep"*, *"pull in X"*, *"avoid X as a dep"*, *"X is not currently a dependency"*, *"supports `--flag`"*, *"takes `--flag`"*, *"is committed"*, *"is tracked"*, *"is gitignored"*, *"there are no"*, *"still affects"*, *"is unfixed"* — **STOP**, run the relevant check, and either rewrite with the verified fact or drop the claim.
+
+When changing dependencies:
+
+- **Never hand-edit a version in `go.mod`.** Use `go get <module>@<version>` / `go get -u <module>`, then `go mod tidy`, then `go build ./...`.
+- After any dependency change, `git diff go.mod go.sum` **before staging** and confirm the delta is only the intended edges — `go mod tidy` also prunes and adds transitive lines.
+- Go pins exact versions by design; there are no ranges to loosen. A dependency bump is therefore always an explicit, reviewable diff.
+- Prefer the standard library. A new dependency needs a stated reason in the design document (`docs/DESIGN.md` §11 already fixes the load-bearing ones: `telego` low-level, `pgx`, a migration tool, a self-written Postgres scheduler).
+
+## Workflow
+
+> **AXIOM 1 — NEVER edit on local `main` when work is intended for a PR.**
+> Create a feature branch (`git checkout -b feat/...` or `chore/...`) **before** any file edit — not before commit, **before edit**.
+>
+> | If `git branch --show-current` returns... | Action |
+> |---|---|
+> | `main` AND you're about to make a PR-targeted edit | **STOP**. Run `git checkout -b <prefix>/<descriptive-name>` first. Only then edit. |
+> | A feature branch | Proceed with edits |
+> | `main` AND you've already made commits (recovery) | `git stash` → `git checkout -b <feature>` → `git checkout main && git reset --soft origin/main && git restore --staged .` → push feature branch → open PR. Pop stash on feature branch if needed. |
+>
+> The first action of any skill/workflow that produces commits is `git branch --show-current`; if `main`, switch **before** any `Edit`/`Write`. Before any `git push`, confirm again — if it is `main`, stop and apply recovery. **`origin` will not stop you** (§ Permissions) — this hook and this rule are the whole enforcement.
+
+- Merge PRs via merge commit (`gh pr merge --merge`); never squash/rebase-merge.
+- Run `go build ./...` before commit; run `go mod tidy` and check `git diff go.mod go.sum` whenever dependencies moved.
+- Stage explicitly; **never** `git add -A` / `git add .` — the working tree holds gitignored local state and gate logs.
+- **Never** `git commit --no-verify` (or any hook-skip flag) — fix the hook.
+- **`gh … --body` vs the commit-block hook.** The commit-block hook matches `git[[:space:]]+commit`, so a `gh issue create` / `gh pr create` / `gh pr comment` invocation whose `--body` argument *contains* that substring is falsely blocked — use `--body-file <path>` instead of inlining the body.
+- **NEVER** batch a `git commit` / data-dependent `AskUserQuestion` in the same turn as the `Edit`/subagent call producing its inputs; verify with `git diff --cached --stat` first.
+- **NEVER** `git reset --hard` — discards uncommitted work. The same hazard applies to `git checkout -- <file>` and `git restore <file>`: both restore the *whole* working-tree file to HEAD, silently dropping every uncommitted edit to it — safe **only** when you mean to discard the file's entire delta, **hazardous** when the file mixes an edit you keep with one you drop. To undo a test/injection edit on such a file, use a cp-backup (`cp f bak; …; cp bak f`) or a scratch file, then re-verify with `git diff --name-only <base>`. (`git checkout <branch>`/`-b` and `git restore --staged` are unaffected.)
+- Plan first. Tests before production code (TDD). Lint changed files.
+- Any file with ~50+ lines of substantial logic MUST have tests (`_test.go` beside it).
+- After generating/moving a markdown file with relative links, trace one link via `realpath` before committing.
+- **PR review comment resolution:** resolve only comments fixed by code; objections stay open for the reviewer.
+
+> **AXIOM 2 — Read the PR body via `gh pr view <N>` after EVERY `git push` to a feature branch with an open PR. Unconditional.**
+> The READ is mandatory even for a routine typo/format/nit push. The EDIT is conditional — only when the body contradicts the new commits.
+>
+> | After... | Required action |
+> |---|---|
+> | `git push` to a feature branch with an open PR | Run `gh pr view <N> --json title,body` immediately. Read the body. |
+> | The body still describes the diff accurately | No `gh pr edit` needed — read complete |
+> | The body contradicts the new commits (renames, scope drift, AC flips, cited counts) | Run `gh pr edit` to sync |
+> | `gh pr create` immediately preceded the push (first push that opened the PR) | **Skip** the read — the body is what you just authored. The rule fires on the **next** push. |
+
+> **AXIOM — Every code-producing commit on a feature branch with an open (or about-to-be-opened) PR must pass a self-review before `git push`.**
+> The reviewing surfaces arrive with the harness skills; the obligation is a workspace rule, not a per-skill courtesy. An unnamed surface is covered when it **either** ships executable code (a hook body, a script, Go code) **or** changes an instruction-file rule that other surfaces must obey — "no `.go` diff" is never the test.
+>
+> APPROVE = push. REJECT = fix on the same branch and re-run; after 3 REJECTs in a row, surface and stop without pushing.
+
+## Propagation Rule
+
+> **AXIOM — Edits to one instruction file MUST propagate to its sync-group siblings in the SAME PR.**
+> The Propagation Rule fires whenever you edit an instruction file. Sister files in the same sync group must receive the corresponding change before the PR is opened.
+>
+> | If you edit... | You MUST also check / update... |
+> |---|---|
+> | `AGENTS.md` (rule add / exemption) | Run `grep -rni "<changed-keyword>" .claude/ AGENTS.md ai-docs/` and apply the same change to every match. |
+> | Any edit that changes a Tool/Subagent/Skill/Hook contract | Update [`ai-docs/claude-tools-hierarchy.md`](ai-docs/claude-tools-hierarchy.md) in the same PR. |
+> | A hook body in `.claude/settings.json` | Re-verify it fires per [`ai-docs/hook-verification.md`](ai-docs/hook-verification.md), and update the rule text in `AGENTS.md` that the hook backs. |
+> | Any other instruction file | Run the same grep — the Procedure below catches lingering references. |
+>
+> Per-skill and per-subagent sync groups are declared in this table as those files land.
+
+**Procedure:**
+1. Before closing the edit, `grep -rni "<changed-keyword>" .claude/ AGENTS.md ai-docs/` for any file referencing the same rule/terminology. **`-i` is not optional** — a sweep over prose is case-insensitive or it under-reports. Corollary: **a file you have already edited is not thereby done** — re-grep it whole, after the edit; one file holding both the fix and the surviving falsehood is the likeliest shape, not the least.
+2. Apply the same change (or the corresponding enforcement adjustment) in every match.
+3. Rule exemptions must propagate to the checklists that enforce the rule.
+4. When the change propagates a **factual / policy claim** (a version, a CI-gate status, a "the repo does X" statement) rather than a rule keyword, the step-1 grep set is necessary but not sufficient — also sweep repo-root user-facing docs (`README.md`, `docs/**`) for the same claim. Completeness test: every LIVE doc must agree; history surfaces (`ai-docs/learnings.md`, `ai-docs/plans/done/**`) are left untouched.
+
+Do not refer to a skill as an "agent" or vice versa — the distinction matters for spawning.
+
+## Communication
+
+Interpret user phrasing literally and conservatively. When uncertain — ask, don't guess.
+
+- **"Submit / push to PR"** = `git push` the branch to remote so commits appear in the open PR. **NOT** `gh pr merge`. Only merge when the user explicitly says "merge".
+- **"wtf?" / "what?" / "huh?"** (or similar surprise/frustration) = the previous action was the opposite of what the user wanted. **Stop immediately**, do not retry, ask what was wrong before doing anything else.
+- **IDE files** (`.idea/`, `*.iml`, `.vscode/`, `*.swp`) — never add, remove, modify, stage, or `.gitignore` them unless the user explicitly asks.
+- **A verbal acknowledgement is not a fix.** When the user corrects a fact — especially one already written into a file — the correction is a **work item**, not a conversational beat. Reply **and**, in the same turn, `grep` the artefact for the wrong claim and edit it. Tell: any reply containing *"fair"*, *"good point"*, *"you're right"*, *"that closes it"* that is **not accompanied by an `Edit`** to whatever asserts the now-refuted thing.
+- **A recorded result is a claim, not a completion.** A sentence asserting your *own* work-state — "verified", "confirmed", "gate PASSed", "done" — written to any durable surface (a PR body, a progress log, a trace field) is a **timestamped claim**, not a standing fact. Re-run the underlying check *after the LAST edit of the turn*, immediately before recording — never record-then-edit. After fixing a claim-class defect, re-scan the **whole section**, not just the fixed line.
+- **A citation offered as authority is itself a claim — open it.** Before invoking an in-repo rule, table row, learnings entry, date, or `file:line` as the reason for an action *or an inaction*, resolve it and confirm it says what you are citing it for. Three failure shapes, all observed upstream: a **premise** attached to a correct rule (it propagates further than the rule); a **banded rule** where you quote a neighbouring row's action instead of the row your own measurement falls in — and that error is predictably self-serving, because the half-remembered row is the one that lets you skip work; and a **date or `file:line`** attached to supporting evidence, where a thematically *adjacent* entry makes the misattribution feel checked. Special force when the cited rule lives in the file you are editing. A reviewer's reading of a rule is an argument, not the rule: verify a **permissive** reading harder than a restrictive one.
+- **Deviating from user-approved scope requires an ask, not a notification.** *"I also did X — say the word if you'd rather I revert"* puts the burden of catching scope drift on the user. Ask **before** widening scope, even when the argument is compelling — and especially when the argument comes from a reviewer whose premise you have not run.
+
+## Patterns
+
+### 1. Verify an intermediary's claims — findings, retractions, premises, wave-throughs — as skeptically as each other
+
+*Default to* verifying a reviewer's *retraction*, *salvage suggestion*, and *"leave it / harmless / follow-up"* call with the same command you would run against its original finding. A retraction is an assertion; a proposed fix is a claim that the fix works; a "harmless" ruling is a claim about harm.
+
+**The asymmetry to resist.** A finding feels like a challenge and invites checking, while a withdrawal or a wave-through feels like *relief* and invites acceptance — which is exactly when an unverified claim slips through, because agreeing costs nothing in the moment. *Prefer* overriding a reviewer only in the direction of **more** verification: declining a suggested fix because you tested it and it fails is sound; accepting one because it sounds right is not.
+
+**Not only reviewers — any intermediary.** The same posture applies to a *delegate's* claims. *Default to* verifying a delegate's design-blocking STOP ("this primitive can't satisfy its AC") with a command — compile a reduced repro, read the cited code — before amending a design; it is a real finding, but a finding, not a fact. And *prefer* checking a delegate's "this AC clause is untestable on the fixture I used, so I generalised/skipped it": build the missing coverage rather than accepting a PARTIAL.
+
+## Agent Docs
+
+| Path | Purpose |
+|------|---------|
+| [`ai-docs/context.md`](ai-docs/context.md) | Project context (orientation) — read on demand |
+| [`ai-docs/domain-invariants.md`](ai-docs/domain-invariants.md) | Ledger, telemetry, scheduler and Telegram-safety invariants — read before touching those paths |
+| [`ai-docs/key-decisions.md`](ai-docs/key-decisions.md) | Key design decisions with rationale |
+| [`ai-docs/code-style.md`](ai-docs/code-style.md) | Go code-style reference — read on demand |
+| [`ai-docs/go-api-naming.md`](ai-docs/go-api-naming.md) | Naming rules incl. the `…Unchecked` contract |
+| [`ai-docs/doc-convention.md`](ai-docs/doc-convention.md) | godoc conventions — read on demand |
+| [`ai-docs/go-test-conventions.md`](ai-docs/go-test-conventions.md) | Table tests, `-race`, golden logs, Postgres fixtures |
+| [`ai-docs/dependency-versions.md`](ai-docs/dependency-versions.md) | Live-lookup recipes for all five AXIOM categories |
+| [`ai-docs/delegation-rules.md`](ai-docs/delegation-rules.md) | The four-phase delegation lifecycle — read before any committing/long-running spawn |
+| [`ai-docs/hook-verification.md`](ai-docs/hook-verification.md) | The three MUSTs for proving a `settings.json` hook fires |
+| [`ai-docs/agent-writing-style.md`](ai-docs/agent-writing-style.md) | Binary-rule writing style for dual-model readability |
+| [`ai-docs/claude-tools-hierarchy.md`](ai-docs/claude-tools-hierarchy.md) | Project Tool/Subagent/Skill/Hook inventory |
+| [`ai-docs/corrections-log.md`](ai-docs/corrections-log.md) | Learning-Log carve-outs + field glossary |
+| [`ai-docs/panic-index.md`](ai-docs/panic-index.md) | Every panicking call in production code, with its justification |
+| [`ai-docs/templates/learnings-entry.md`](ai-docs/templates/learnings-entry.md) | Canonical `learnings.md` entry skeleton — consult instead of the live log |
+| [`ai-docs/learnings.md`](ai-docs/learnings.md) | Corrections log — feed for `/improve` |
+
+## Learning Log
+
+On **ANY** instruction violation, of any kind, write a new entry to `ai-docs/learnings.md` — there is no "obvious", "minor", "trivial", "already-known", or "duplicate" disposition. The history (including recurrences and superseded entries) is the artefact `/improve` audits to decide escalation fan-out. See [`ai-docs/corrections-log.md`](ai-docs/corrections-log.md) for the enumerated skip-reasons that are explicitly disallowed. **Read the two boundary rules below before you write.**
+
+### Boundary rule 1 — `ai-docs/learnings.md` is APPEND-ONLY
+
+> **NEVER** edit, rewrite, reorder, summarise, or delete an existing entry in `ai-docs/learnings.md`. Only append new entries at the end. This applies even when:
+> - a newer correction supersedes an older one — write a NEW entry that says so, leave the old one intact
+> - an entry turns out to be wrong, redundant, or poorly worded — write a NEW entry that corrects it
+> - you are tempted to "tidy up" or "consolidate" the file
+>
+> The history of corrections (including superseded and wrong ones) is itself the artefact `/improve` audits. Editing past entries destroys that history.
+>
+> **Exception — `Escalated?` and `Superseded by:` fields, subagent-driven only.** Both fields MAY be updated in-place by the `self-improve` subagent (`/improve`) and the `learnings-escalation-audit` subagent (`/ai-audit` Phase 1). All other lines of an entry remain immutable.
+
+### Boundary rule 2 — writing to `learnings.md` triggers NO other rule-file edits in the same turn
+
+> When you write to `ai-docs/learnings.md`, you **MUST NOT** also edit `AGENTS.md`, `CLAUDE.md`, `.claude/**`, `ai-docs/code-style.md`, or `ai-docs/doc-convention.md` in the same conversation turn.
+>
+> Writing a learning entry is **NOT** authorisation to escalate the rule into instruction files. Set `Escalated? no` and stop. Project-level escalation happens only when the user runs `/improve`, or explicitly asks ("escalate this", "add to AGENTS.md").
+>
+> **Two exceptions, both narrow.** (a) `/improve` + `/ai-audit` may update `Escalated?` / `Superseded by:` on **existing** entries alongside instruction-file edits — existing-entry updates only, never a NEW entry. (b) **In-flow capture during an implementation workflow**: a NEW entry MAY be appended in the same turn as an instruction-file edit when it records an in-task insight (not a pre-emptive escalation) and is marked `Escalated? no`. Full conditions: [`ai-docs/corrections-log.md`](ai-docs/corrections-log.md).
+
+### Entry format
+
+**Copyable skeleton + a filled example: [`ai-docs/templates/learnings-entry.md`](ai-docs/templates/learnings-entry.md) — consult that template to inspect the format, NOT the live log.** For orientation, an entry is a `### YYYY-MM-DD — [category] — [short description]` heading followed by `**What happened:**`, `**Rule:**`, optional `**Kind:**`, `**Escalated?**`, and optional `**Superseded by:**`.
+
+`Kind:` defaults to `correction` when omitted. Write `Kind: validation` for entries that document a working protocol to keep doing (carrot signal); `Kind: correction` for a violation to stop doing (stick signal). `Escalated?` records **project-level** persistence only — user-local auto-memory and `settings.local.json` do **not** count → stay `no`.
+
+Categories: `code-style` | `process` | `architecture` | `testing` | `documentation` | `tooling` | `search` | `other`
+
+Run `/improve` when **≥3 unescalated correction entries**, **≥2 unescalated validation entries**, or a stale-validation flag from `/ai-audit` accumulates.
+
+## Go Test Conventions
+
+- **Table-driven subtests** are the default shape: a `[]struct{name string; …}` slice, `t.Run(tc.name, …)`, `t.Parallel()` where the test is independent. Test names describe behaviour: `returns_error_when_stamina_exhausted`.
+- **`go test -race ./...` is a required gate for any change touching goroutines, the scheduler, or shared state.** A race is a defect, never a flake.
+- **No `panic` / `log.Fatal` in production code.** A `PostToolUse` hook flags them on write; every surviving instance is justified in a doc comment **and** recorded in [`ai-docs/panic-index.md`](ai-docs/panic-index.md). `main` may exit non-zero; libraries return errors.
+- **Determinism is testable, so test it exactly.** Generation, combat, and trail replays take an explicit seed: assert exact outputs, and keep the golden log of a combat in the repository (`combat()` is a pure function by design — `docs/DESIGN.md` §4 — so a snapshot test is free and the freedom to rewrite combat depends on it).
+- **Postgres is tested against Postgres**, not a mock: the ledger's invariants (zero-sum per kind, the `CHECK` constraints, the capture order under concurrency) are database behaviour. Concurrency stress tests run under `-race`.
+- **Assert on behaviour, transitions, errors, and edge cases** — for the raid FSM that means every edge, including the timer edges whose guard fails (a stale task firing late is expected traffic, `docs/DESIGN.md` §3.5).
+- A search miss on a construct that SHOULD exist is a **search-method failure first** ([`.claude/rules/ast-index.md`](.claude/rules/ast-index.md) → *Negative results are NOT evidence*).
+
+Detail and worked examples: [`ai-docs/go-test-conventions.md`](ai-docs/go-test-conventions.md).

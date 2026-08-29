@@ -1,0 +1,62 @@
+# Code style — lab-game
+
+The canonical, growing reference behind `AGENTS.md` § *Code Style*. Rules land here through the learning loop (`/improve`); the file is expected to start thin.
+
+## Source files
+
+Go only, under `cmd/<binary>/` (process entry points) and `internal/<package>/` (everything else). Nothing is exported for outside consumers — this module has none (`AGENTS.md` § API Stability), so `internal/` is the default home and `pkg/` is not used.
+
+## Linter posture
+
+`golangci-lint run` with `.golangci.yml`, strict. A finding is fixed, not silenced.
+
+- `//nolint:<linter> // <reason>` — both parts mandatory (`nolintlint` enforces them). A bare `//nolint` fails the gate.
+- A rule that keeps firing on correct code is a config bug: change `.golangci.yml` in a reviewed diff, never scatter suppressions.
+- Enabled beyond the defaults, and why (KD-16): `exhaustive` (FSM/enum switches must be total), `rowserrcheck` + `sqlclosecheck` (a forgotten `rows.Err()` reads as an empty result, i.e. silent data loss), `errorlint`, `nilerr`, `bodyclose`, `noctx`, `contextcheck`, `gosec`, `revive`.
+
+## Errors
+
+- Wrap with context and `%w`: `fmt.Errorf("materialize node %s: %w", coord, err)`. The prefix names the operation, not the error.
+- Never discard: `_ = err` is a defect. If an error genuinely cannot be acted on, say why in a comment on the line that drops it.
+- Sentinels are `var ErrNoStamina = errors.New("no stamina")`; compare with `errors.Is`, never `==` on a wrapped error, never string matching.
+- A domain rejection is not an infrastructure failure: distinguish "the player cannot afford this" (an expected outcome the handler renders) from "the database is unreachable" (a retry/alert path).
+- No `panic` in production code — see [`go-test-conventions.md`](go-test-conventions.md) and [`panic-index.md`](panic-index.md).
+
+## Context
+
+`ctx context.Context` is the first parameter of anything that touches the database, the network, or the scheduler. Never store a context in a struct. Never pass `context.Background()` from inside a request path — thread the caller's.
+
+## Concurrency
+
+- The bot is a stateless handler over Postgres; **state lives in the database, not in memory** (KD-7/KD-8). A goroutine holding game state between updates is a design error, not an optimisation.
+- Every goroutine has an owner that can stop it and a documented exit condition.
+- `go test -race` is a required gate for any change that adds a goroutine or shared state.
+
+## Database access
+
+- One transaction per game operation, with its basis document and postings inside it ([`domain-invariants.md`](domain-invariants.md)).
+- Balance `UPDATE`s go through `store.Post`, which owns the capture order; a handler that locks accounts by hand can deadlock and will be rejected in review.
+- Always check `rows.Err()` after iterating (`rowserrcheck` enforces it); always close what you open (`sqlclosecheck`).
+- Queries are parameterised. String-built SQL is a `gosec` finding and a security bug.
+
+## Magic numbers vs balance constants
+
+Two different rules, and conflating them is the common mistake:
+
+| Kind of value | Where it belongs |
+|---|---|
+| A structural constant (chunk size in cells, the number of edges of a hex, a protocol limit) | A named Go constant next to the code that owns it |
+| A **balance** value (stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice) | **Configuration**, per `docs/DESIGN.md` §16.5 — never a Go literal, never a Go constant |
+| A test fixture value | Inline in the test, named only when it aids reading |
+
+## Determinism
+
+Generation, combat and replay take an explicit seed and are pure: no `time.Now()`, no `math/rand` global, no dependence on map-iteration order. When output order matters, sort explicitly — Go randomises map iteration deliberately, and a test that passes today because of a lucky order is a future flake.
+
+## Naming and shape
+
+See [`go-api-naming.md`](go-api-naming.md). In short: no stutter, consumer-declared interfaces, `New…` constructors, `Err…` sentinels, `…Unchecked` for precondition-skipping variants.
+
+## File size
+
+Soft 500 / hard 1000 lines excluding `_test.go` content (800 / 1500 including it). Refactor before merge unless the file is generated or is one long `switch`/state machine. Counter-rule: do not over-split — one type per file is not a Go idiom, and a package of ten 40-line files is harder to read than one 400-line file.
