@@ -109,7 +109,22 @@ Never proceed silently when any blocker is open. The `blocked` label is the proj
 
 ### Steps 1–5: Spec creation (delegated to `/interview`)
 
-`/task` does not duplicate the interview workflow. Treat Steps 1–5 as a single delegated phase. If a saved spec already exists under `ai-docs/plans/`, confirm with the user and skip to Step 6. Otherwise invoke `Skill(skill="interview", args="$ARGUMENTS")` — the interview handles entry-mode detection, scope confirmation, clarifying-question rounds, tracking-issue resolution, spec writing, and the cross-link comment. Spec-only runs move the spec to `ai-docs/plans/deferred/` and stop. **Before Step 6:** confirm the spec exists at `ai-docs/plans/YYYY-MM-DD-name.spec.md` and the user has approved its `## Acceptance Criteria`. Full delegation narrative: `reference.md` § Steps 1–5 — spec creation delegation (detail).
+`/task` does not duplicate the interview workflow. Treat Steps 1–5 as a single delegated phase. If a saved spec already exists under `ai-docs/plans/`, confirm with the user and skip to Step 6. Otherwise invoke `Skill(skill="interview", args="$ARGUMENTS")` — the interview handles entry-mode detection, scope confirmation, clarifying-question rounds, tracking-issue resolution, spec writing, and the cross-link comment.
+
+> **AXIOM — the `args` hand-off contract (binding at this call site).** `args` is the user's task text, byte-for-byte — restating, summarising, or "clarifying" it is FORBIDDEN. If the orchestrator has done reconnaissance it wants to pass along, `args` takes exactly this three-section shape and nothing else:
+>
+> ```
+> ## TASK (verbatim)
+> <the user's text, byte-for-byte, fenced>
+> ## RECON (unverified claims)
+> READ: <files opened + commands run>
+> NOT READ: <what was not opened, or the sampling rule used>
+> <findings as claims — no verdicts on applicability, no instructions, no reading directives>
+> ## DELTA
+> <every constraint present in this hand-off but absent from TASK, one line each, with its source — or the literal line `DELTA: none`>
+> ```
+>
+> Bare text (no section headers) = TASK alone, always legal. A hand-off that restates the task in its own words, plants instructions inside RECON, omits `NOT READ:`, or omits the DELTA line is **malformed — the interview returns it without starting work** (`interview/SKILL.md` Step 1). Scope comes from TASK alone; RECON is claims with issue-body standing; DELTA makes every orchestrator-added constraint a visible line instead of an ambient assumption. Spec-only runs move the spec to `ai-docs/plans/deferred/` and stop. **Before Step 6:** confirm the spec exists at `ai-docs/plans/YYYY-MM-DD-name.spec.md` and the user has approved its `## Acceptance Criteria`. Full delegation narrative: `reference.md` § Steps 1–5 — spec creation delegation (detail).
 
 ### Step 6: Design Subagent
 
@@ -151,7 +166,8 @@ If implementation (Step 8) reveals a necessary deviation from the design, **or**
   ```bash
   git checkout -b feat/YYYY-MM-DD-name
   ```
-  Use the same date-name as the spec file. Record the branch name in the progress file.
+  Use the same date-name as the spec file. Record the branch name in the progress file. Create the in-flight marker: `date -u +%FT%TZ > ai-docs/plans/.task-inflight` (gitignored; Stop-hook contract — see § In-flight marker).
+- **Visibility from the first group return (binding).** When the FIRST Step-8 group returns and its subtask commits are in: `git push -u origin <branch>` and `gh pr create --draft` (title = spec title; body = one line + `Tracked in:` ref; the full body lands at Step 12). Every subsequent group return and every Step-11 fix round pushes. A run that publishes nothing until Step 12 is invisible and un-judgeable from outside for its whole life — and CI, the one reviewer with a clean context and a hard verdict, never runs.
 - **Before every `git commit` in this step:** run `git branch --show-current` and confirm it is NOT `main`. If it is — stop immediately, do not commit, apply the recovery procedure in AGENTS.md.
 - **Before every `git commit` in this step:** check `git status` for `ai-docs/learnings.md`. If modified or untracked, stage it together with the related code changes — learnings are part of the task deliverable and must be visible in the PR diff. **After every push** (CI fix, reviewer-comment fix, self-review fix): if a learning entry was written *after* the last code commit landed, give it its own commit on the feature branch in the same turn — do not leave `learnings.md` as an unstaged working-tree change waiting to be bundled with the next code change. Order: write learning → `git add ai-docs/learnings.md` → commit → push.
 - Create `ai-docs/plans/YYYY-MM-DD-name.progress.md` at start using the canonical schema at [`ai-docs/templates/progress-format.md`](../../../ai-docs/templates/progress-format.md). Required: `**Branch:**`, `**base_commit:**`, `**Last build:**`, `**current_step:**`, `**last_passed_gate:**`, `**entry_args:**`, plus a `## Decisions log` h2 section. For `/task` flows also include `**Issue:**` / `**Spec:**`. Record `**entry_args:**` (original `$ARGUMENTS` — bare ref, keyword phrase, free text, or `(none)`) ONCE and **read-only thereafter**; on lost-arguments re-entry it is the canonical entry reference. Full header template + write-once rule: `reference.md` § Step 8 — progress-file creation template (detail).
@@ -187,7 +203,11 @@ Then proceed to Step 10.
 
 ### Step 10: Self-review loop (max 3 rounds)
 
-Spawn the `self-review` Subagent with the spec, design, and progress paths (per `.claude/agents/self-review.md`).
+Spawn the `self-review` Subagent with **exactly**: the spec path, the design path, the progress-file path, and the commit range — nothing else (the agent's *Spawn prompt contract* makes anything beyond this list a `major` finding against the orchestrator).
+
+> **Cap arithmetic (binding).** The round cap is an absolute integer; the charter value is 3. A user's raise sets it to an explicit number; a multiplicative raise ("x2", "x3") applies to the CHARTER value, never to a previously raised one — raises do not compound. The turn that applies a raise MUST echo `cap: N (was M)`.
+>
+> **Re-litigation tripwire (binding).** After each round, compute from the `## Review register` + the round's table: `share = rows re-opening or citing an earlier round ÷ rows raised this round`. If `share ≥ 50%`, or if any register row reaches its SECOND re-opening, the loop STOPS regardless of remaining cap — surface the register state to the user via `AskUserQuestion`. A loop feeding on its own prior rounds is not converging; continuing it is a user decision, never an orchestrator one.
 
 **On APPROVE:** proceed to Step 12. The progress file is gitignored and **stays in the working tree** — `/pr-commented` extends it across reviewer rounds, `/pr-merged` deletes it post-merge. Do NOT `rm` it here. **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 10 — self-review APPROVE (Round N)`; append a `## Decisions log` bullet recording the round count (one line, prefixed `Step 10:`).
 
@@ -210,9 +230,12 @@ Spawn the `self-review` Subagent with the spec, design, and progress paths (per 
 
 For each `⬜ Open` finding in the latest `## Self-Review (Round N)` section of the progress file: **fix** (mark `✅ Fixed`), **design-amend** (trigger the Design Amendment recipe per the table above, mark `✅ Fixed (design amended)`), **spec-amend** (trigger the Spec Amendment recipe per the table above, mark `✅ Fixed (spec amended)`), or **object** (`nit`/`minor` autonomously; `major`/`blocker` only after user approval — mark `⚠️ Objected: <reason>`). See `reference.md` § Step 11 — review-fix narrative for the full procedure including the unconditional PR-body re-read and review-thread-resolution recipe.
 
-After all findings are resolved, run gates (`go build ./...`, `go test ./...`, `golangci-lint run`) and:
+> **A reviewer-emitted Spec/Design Amendment trigger has exactly two exits (binding):** executed (the recipe runs), or **surfaced to the user with the reviewer's wording quoted verbatim** and the user's answer recorded in the register row. Closing one in-thread — "decided not to", reasoning in a commit message, a fix that routes around the amendment — is not an exit; it is the orchestrator overruling the review machinery it is supposed to route.
+
+After all findings are resolved, run gates (`go build ./...`, `go test ./...`, `golangci-lint run`) **and the fix-round measurement pass (binding):** execute the `verifying command` of every register row this round touched, plus every AC whose measurement the touched files could move (at minimum: every AC the design lists a verification command for over a file in this round's diff), quoting outputs into the register. Fix rounds feed the very prose files the size/count ACs measure — re-measure them each round. Then:
 
 1. Update `.progress.md`.
+1a. `git push` the fix-round commits — the Step-8 draft PR tracks every round; an unpushed fix round is invisible work.
 2. **PR body sync (unconditional).** `gh pr view <N> --json title,body`, re-read, then `gh pr edit` only if the body contradicts the new commits. Never skip the read.
 3. **Resolve fixed review threads (unconditional).** GraphQL recipe per `reference.md` and AGENTS.md § *Workflow* (PR review comment resolution).
 4. **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 11 — review fixes complete (Round N)`; rewrite `**last_passed_gate:**` to `golangci-lint run | <ISO-8601 UTC timestamp> | <commit SHA from git rev-parse HEAD>`; append a `## Decisions log` bullet recording any `⚠️ Objected` rationale or Design-Amendment trigger (one line, prefixed `Step 11:`; omit if none).
@@ -232,16 +255,21 @@ After all findings are resolved, run gates (`go build ./...`, `go test ./...`, `
 6. `go build ./...` — ensures `go.sum` is refreshed and included if changed.
 7. Stage all changed files: implementation files from `## Files touched`, `context-status.md` (+ `context.md` if its summary changed), any repo-root doc the change touched, `ai-docs/learnings.md` (if modified), updated `INDEX.md`, `ai-docs/deferred/_inbox.jsonl` (rows appended in sub-step 5), `ai-docs/metrics/task-runs.jsonl` (record appended in sub-step 5a), and spec/design now in `done/`.
 8. Commit `feat(<package>): <imperative summary>` with a 1–3 line body and `N new tests; all M tests green.`
-9. `git push -u origin <branch>`
-10. `gh pr create` with title + body — body must include **Summary** / **Tracking** (`Closes #N` for full-resolve or `Refs #N` for partial; omit if `Tracked in: none`) / **Test plan** (one line per AC + the gate results by name). Full body template: `reference.md` § Step 12 — PR-body template (detail).
+9. `git push` (the branch has tracked `origin` since the first Step-8 group return).
+10. `gh pr ready <N>` to flip the Step-8 draft to ready, then `gh pr edit` with the full title + body — body must include **Summary** / **Tracking** (`Closes #N` for full-resolve or `Refs #N` for partial; omit if `Tracked in: none`) / **Test plan** (one line per AC + the gate results by name). Full body template: `reference.md` § Step 12 — PR-body template (detail).
 11. Post the PR URL to the user.
 12. **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 12 — PR opened (PR #<N>)`; append a `## Decisions log` bullet recording the PR number and the spec/design `done/` move (one line, prefixed `Step 12:`).
+13. Remove the in-flight marker: `rm -f ai-docs/plans/.task-inflight`. (The Stop hook blocks ending a turn while the marker exists unless the turn handed control to the user — see § *In-flight marker* below.)
 
 After the PR is created, the unconditional PR-body re-read rule (AGENTS.md *Workflow*) applies to any subsequent push on this branch: `gh pr view <N>` first, then `gh pr edit` only if the body now contradicts the diff.
 
 **Reviewer comments arrive after Step 12** — run `/pr-commented` (one round per invocation, re-invocable). Do not re-enter `/task` for routine reviewer feedback; architectural-rework requests are the exception (`/pr-commented` bails → fresh `/task` design-review cycle).
 
 ---
+
+## In-flight marker (Stop-hook contract)
+
+`ai-docs/plans/.task-inflight` (gitignored) exists from Step 8 entry to Step 12 item 13. The `Stop` hook blocks ending a turn while it exists, unless the turn appended a hand-back line `handback: <ISO-8601 UTC> <reason ≤ 10 words>` to the marker — do that only when the turn genuinely hands control to the user (an `AskUserQuestion`, a surfaced blocker, a user stop); the next orchestrator turn deletes the token line. Full contract: `reference.md` § In-flight marker. The rule it enforces: **naming the next step is not performing it** — a turn inside an active `/task` either advances the flow with tool calls or explicitly hands back.
 
 ## Patterns
 

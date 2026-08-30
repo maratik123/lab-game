@@ -305,3 +305,14 @@ The Step 12 sub-step 5 parser specification lives in a dedicated reference file:
 | Step 11 | `major`/`blocker` objections confirmed by user? Design change → Design Amendment triggered? `gh pr view <N>` re-read after every push (unconditional) — `gh pr edit` only if body contradicts new commits? |
 | Design Amendment | User approved the amendment? Design review returned GO before resuming? |
 | Step 12 | Branch ≠ main? INDEX.md ✅? spec/design moved to done/? `_inbox.jsonl` parsed and appended (or warning logged for unrecognised shape) and staged? `go.sum` refreshed? PR body references the tracking issue (`Closes #N` or `Refs #N`)? PR created and URL posted? |
+
+## In-flight marker — full contract (Stop hook)
+
+`ai-docs/plans/.task-inflight` (gitignored, untracked) exists exactly while a `/task` run is between Step 8 entry and Step 12 completion. The `Stop` hook in `.claude/settings.json` blocks ending a turn while the marker exists, unless the marker's tail carries a hand-back token.
+
+- **Create** at Step 8 entry: `date -u +%FT%TZ > ai-docs/plans/.task-inflight`. **Remove** at Step 12 item 13 (`rm -f`), or when the user aborts the task.
+- **Hand-back token** — append in the SAME turn that legitimately ends with control at the user (an `AskUserQuestion` posted, a blocker surfaced for direction, an explicit user stop):
+  `echo "handback: $(date -u +%FT%TZ) <reason, ≤ 10 words>" >> ai-docs/plans/.task-inflight`
+  The hook reads only the last 3 lines, so stale tokens do not accumulate influence; the next orchestrator turn deletes the token line and resumes.
+- **Hook mechanics:** fail-open when the marker is absent; respects `stop_hook_active` (never re-blocks its own continuation); on block, the stderr message restates this contract, so a session that has never read this page still gets the recipe at the moment it needs it.
+- **What it enforces:** naming the next step is not performing it. Inside an active `/task` a turn has exactly two legal shapes — advance the flow with tool calls, or hand back explicitly. The announce-and-idle third shape was written into `learnings.md` three times in one session and violated three times; a rule that failed as text ships here as a gate.

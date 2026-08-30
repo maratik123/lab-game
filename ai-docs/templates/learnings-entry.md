@@ -8,6 +8,7 @@
 ### YYYY-MM-DD — [category] — [short description]
 **What happened:** [quote or paraphrase]
 **Rule:** [what to do instead, or what to keep doing]
+**at:** [commit SHA | `main`]    (REQUIRED whenever the entry contains a numeric claim — a count, a ratio, a byte size, a percentage; names the tree state the number was measured against. No `at:`, no number: a figure measured mid-task over a corpus the task itself is mutating describes nothing durable)
 **Kind:** correction | validation    (optional; defaults to `correction` when omitted)
 **Escalated?** no | AGENTS.md | skill:[name] | hook | settings | agent:[name] | rules:[name] | doc-convention | code-style (comma-separate multiple)
 **Superseded by:** [ref] — [one-line reason]    (optional; omitted when not applicable)

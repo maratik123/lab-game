@@ -15,6 +15,8 @@
 
 # Harness local-only state (see AGENTS.md § Agent Docs)
 /ai-docs/plans/**/*.progress.md
+# /task in-flight marker (Stop-hook contract, .claude/skills/task/SKILL.md)
+/ai-docs/plans/.task-inflight
 /ai-docs/pr-comments/
 /ai-docs/bugfix/trace-*.md
 /ai-docs/triage/*.progress.md

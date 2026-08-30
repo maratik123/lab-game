@@ -52,10 +52,24 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 |----|--------|
 | AC1 | PASS / FAIL / NOT_TESTED |
 
+## Review register
+
+| id | raised | severity | status | verifying command |
+|----|--------|----------|--------|-------------------|
+| R1-3 | round 1 | major | fixed@a1b2c3d | `go test ./internal/foo -run TestBar` |
+| R1-7 | round 1 | minor | accepted@1 — [one-line reason] | `wc -c ai-docs/x.md` |
+
 ## Files touched
 
 - `internal/<pkg>/<file>.go` — what changed
 ```
+
+### `## Review register` semantics
+
+- **id** `R<round>-<n>` is permanent; a finding keeps its id across rounds. A later finding that restates an earlier one is not a new row — it is the old row re-opened (`status: open 🔁@<round>`).
+- **status vocabulary:** `open` · `fixed@<sha>` · `accepted@<round> — <one-line reason>` · `superseded→<id>`. `accepted` means a reviewer examined the item and ruled it not-a-defect or inherent; it is the durable form of "Recorded, not raised".
+- **verifying command** is the command whose output settles the row (the failing command for a defect; the measuring command for a threshold). Required for every `blocker`/`major` row.
+- The register is the **only** cross-round memory the loop has. A per-round findings table documents a round; the register is what the next round is scoped by.
 
 ## Required vs optional fields
 
@@ -78,6 +92,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | `**parent_skill:**` | Set at creation when a nested skill owns this file | Immutable after creation |
 | `**entry_args:**` | `/task` at Step 8 (initial flow); preserved through nested skills | Immutable after creation — read-only thereafter; routes the active-task probe on re-entry after compaction |
 | `## Decisions log` | Every non-trivial decision, append-only | Append-only — never edit or remove prior entries; the audit trail across steps |
+| `## Review register` | Reviewer (new rows + `accepted@N`), fixer (`fixed@<sha>`) | **Append rows, update only the `status` cell of existing rows; never rewrite or delete a row.** One row per finding across ALL rounds — the cross-round memory of the loop |
 | `## Subtasks`, `## Key discoveries`, `## AC Status`, `## Files touched` | Per-subtask updates | Updated in-place as work progresses |
 
 ## Lifecycle (process)

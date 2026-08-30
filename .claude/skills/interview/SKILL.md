@@ -97,7 +97,13 @@ The `gh_issue:` / `task_description:` blocks are the durable home for the spec-w
 
 ### Step 1: Detect entry mode
 
-Inspect `$ARGUMENTS`:
+Inspect `$ARGUMENTS`. **First, apply the hand-off contract** (defined at the `/task` call site, `.claude/skills/task/SKILL.md` Steps 1–5):
+
+- **Bare text** (no `## TASK` / `## RECON` / `## DELTA` headers) — the whole of `$ARGUMENTS` is the task description. Always legal.
+- **Sectioned hand-off** — `## TASK (verbatim)` is the task description; `## RECON (unverified claims)` is carried into the spec-writer prompt as the `recon` field, verbatim, and is NEVER merged into `issue_body`; `## DELTA` lines are constraints the ORCHESTRATOR added — surface them to the user for confirmation in round 1 (they are not the user's words until confirmed).
+- **Malformed hand-off** — sectioned but missing `NOT READ:` inside RECON, missing the DELTA section, carrying instructions or applicability verdicts inside RECON, or restating TASK in changed words: **STOP. Return it to the caller naming the violated clause; do not start the round loop.** A malformed hand-off processed anyway is how a compression step's inventions become the task.
+
+Then detect entry mode:
 
 - **Issue ref** — matches `^#?\d+$`: load `gh issue view <N> --json title,body,state,labels,comments` once. Record `tracking_issue = <N>`. Extract `#\d+` references from the body + comments → `linked_issues` / `linked_prs` (split on whether the referenced number is an issue or a PR; cheap heuristic — running `gh pr view <M>` once per match is acceptable, or treating ambiguous refs as `linked_issues` is acceptable until a downstream consumer needs the precise split).
 - **Free text / empty**: use as task description, or ask "What do you want to plan?" if empty. `tracking_issue` is unset until Step 5.
@@ -126,7 +132,9 @@ Agent(
 
     issue_ref: <#N | "free-text">
     issue_body: |
-      <verbatim from gh issue view, OR the user's free-text task description>
+      <verbatim from gh issue view, OR the TASK section / bare text of the hand-off>
+    recon: |
+      <the RECON section verbatim, when present; omit the field otherwise>
     round: 1
     round_cap: 4
     questions_per_round_cap: 3
@@ -135,6 +143,8 @@ Agent(
   """
 )
 ```
+
+`issue_body` and `recon` never mix: the first is the task, the second is claims.
 
 Capture the returned `agentId` into the state file's `agent_id`. If the harness does not return a usable `agentId`, leave it null — rounds 2+ will use the cold-spawn fallback.
 

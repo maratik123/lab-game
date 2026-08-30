@@ -93,6 +93,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); marker=ai-docs/plans/.task-inflight; [ -f \"$marker\" ] || exit 0; printf '%s' \"$input\" | grep -q '\"stop_hook_active\"[[:space:]]*:[[:space:]]*true' && exit 0; tail -n 3 \"$marker\" | grep -q '^handback: ' && exit 0; echo 'BLOCKED: /task is in-flight (ai-docs/plans/.task-inflight exists) and this turn neither advanced the flow nor handed control back. Either take the next determined action now (naming it is not performing it), or hand back explicitly: post the blocking question to the user AND append \"handback: <ISO-8601 UTC> <reason>\" to ai-docs/plans/.task-inflight in this same turn. If the task is complete, remove the marker (Step 12 item 13).' >&2; exit 2",
+            "timeout": 10,
+            "statusMessage": "Checking /task in-flight state..."
+          }
+        ]
+      }
     ]
   },
   "permissions": {
