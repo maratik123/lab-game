@@ -37,10 +37,11 @@ The design document defines the blocks; **the Go package layout is not yet decid
 | Notifications | Outbound queue with a rate limiter; the notification budget is a design obligation | §1, §13.3 |
 | Observability | `events` log (product) + Prometheus metrics and canaries (health) | §13 |
 
-## Status (2026-08-29)
+## Status (2026-08-30)
 
 - **Design:** finalized in `docs/DESIGN.md`; open questions live in its §16 (loot split in a group, all balance numbers, the game's name, player↔chat membership).
 - **Code:** none yet beyond the `cmd/bot` scaffold. MVP scope is `docs/DESIGN.md` §14.
+- **Gates:** one entry point — `make verify` runs the whole gate list, and CI invokes the same sub-targets, so hook, CI and a local run cannot disagree. Format gate is `golangci-lint fmt -d` (gofumpt included); file size is gated at 1000 / 1500 lines. Per-task detail: [`context-status.md`](context-status.md).
 - **Harness:** being ported from the `graphite-gp` project (which in turn evolved it from `quartzite`), adapted to Go and to this domain.
 - **Repository:** `maratik123/lab-game`, private, default branch `main`. No server-side branch protection — see `AGENTS.md` § Permissions.
 
