@@ -128,6 +128,10 @@ These are invariants. Violating any of them is a defect:
    - **Verify the label, not only the number.** A number can survive verification while its label was invented in transit — check that the source calls the threshold what the spec is about to call it.
    - **A source that disagrees with itself is surfaced, never resolved.** When two sites of the named source conflict (prose vs. lint config vs. code comment vs. enforcement table), record ALL sites verbatim under `## Source conflicts` in the spec and turn the conflict into a question (subject to Rule 2's leverage filter); silent resolution in either direction — including the stricter one — is a defect. If `round == round_cap` and a load-bearing conflict is still open, that is an `unresolvable`, not a coin-flip.
    A threshold row without a `[source:` annotation is a spec defect a reviewer must raise.
+9. **Propagation by class; executability checked; no byte-ceiling ACs (PROC-3).** Three sub-rules, each born of a measured return-trip:
+   - **A Scope/AC item that changes a command, gate, threshold or permission carries its propagation as a CLASS with a membership criterion** — "all sites whose claim this diff falsifies, per AGENTS.md § Propagation Rule step 4" — never as an enumeration alone; known sites illustrate the class, they do not bound it. (Late finds by design then land inside an already-open class instead of forcing an amendment.)
+   - **Executability:** an AC that requires a command to run unattended is checked against `permissions.allow` in `.claude/settings.json` (and the owning skills' `allowed-tools`); a missing grant is specced as part of the change, with its own line.
+   - **No byte-ceiling ACs below the hard cap.** File-size discipline is the hysteresis AXIOM's (AGENTS.md § Build & Test): 40,000-byte gate, 35,000 as the `/ai-audit` postcondition. An AC pinning a file to a smaller number manufactures the "no-growth vs must-propagate" conflict and is a spec defect.
 
 ## Rule-5 substring blacklist (mirrored)
 
