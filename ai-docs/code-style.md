@@ -13,7 +13,7 @@ Go only, under `cmd/<binary>/` (process entry points) and `internal/<package>/` 
 - `//nolint:<linter> // <reason>` — both parts mandatory (`nolintlint` enforces them). A bare `//nolint` fails the gate.
 - A rule that keeps firing on correct code is a config bug: change `.golangci.yml` in a reviewed diff, never scatter suppressions.
 - Enabled beyond the defaults, and why (KD-16): `exhaustive` (FSM/enum switches must be total), `rowserrcheck` + `sqlclosecheck` (a forgotten `rows.Err()` reads as an empty result, i.e. silent data loss), `errorlint`, `nilerr`, `bodyclose`, `noctx`, `contextcheck`, `gosec`, `revive`, `asciicheck` (identifiers stay ASCII; it checks identifiers only, so the Russian `docs/**` corpus is untouched).
-- **The format gate is `golangci-lint fmt -d`**, not `gofmt -l .`. It runs every formatter `.golangci.yml` enables — `gofmt`, `goimports` and `gofumpt` — and exits non-zero when any of them would rewrite a file, printing the diff and changing nothing. `golangci-lint fmt` (no `-d`) is the apply form; plain `gofmt` is strictly weaker and accepts files this gate rejects.
+- **The format gate is `golangci-lint fmt -d`.** It runs every formatter `.golangci.yml` enables — `gofmt`, `goimports` and `gofumpt` — and exits non-zero when any of them would rewrite a file, printing the diff and changing nothing. `golangci-lint fmt` (no `-d`) is the apply form; plain `gofmt` is strictly weaker and accepts files this gate rejects.
 - `make verify` runs every gate of `AGENTS.md` § *Build & Test* in one go, from the same sub-targets CI invokes — so a local run and a CI run cannot disagree about what a gate's command is.
 
 ## Errors
