@@ -115,6 +115,13 @@ jobs:
     needs: changes
     if: needs.changes.outputs.harness == 'true'
     runs-on: ubuntu-latest
+    # The citation guard resolves `#N` against this repository's pull requests,
+    # so it needs more than the workflow-level `contents: read`. Without it the
+    # GraphQL call is refused, the high-water mark comes back empty, and every
+    # `#N` reads as unresolvable — a red job that says nothing about citations.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       # Check out the BRANCH, not the detached merge commit: the task-run writer
       # records `git branch --show-current`, and on a detached HEAD it correctly
