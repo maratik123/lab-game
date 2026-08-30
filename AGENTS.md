@@ -69,7 +69,7 @@ go run ./cmd/bot                                        # run the bot
 > | If `wc -c <file>` reports... | Action |
 > |---|---|
 > | ≥ 40,000 chars | **`major`** — plan extraction/dedup for the next `/ai-audit` pass (extract verbose subsections into `ai-docs/<topic>.md` reference pages with anchored links). |
-> | 35,000–39,999 chars | **`minor`** — proactive extraction pass; don't let the next `/task` push it over 40k. |
+> | 35,000–39,999 chars | **`minor`** — extraction pass **owned by the next `/ai-audit` run**; NOT a criterion of any `/task`. |
 > | < 35,000 chars | OK. |
 
 > **A zero exit status is evidence about the LAST pipeline stage, not about your question.** Never pipe a gate whose exit code is load-bearing — `go test ./... | tail -6` reports `tail`'s status (always 0), so a RED gate records as green, and `tail -N` can truncate away the `FAIL` line you needed. Capture to a file and grep the saved log: `go test ./... > gate.log 2>&1 && echo GATE-GREEN || echo GATE-RED`, then `grep -E "^(FAIL|ok|---)" gate.log`. (`set -o pipefail` also works.) A `PreToolUse` hook blocks the `go test … | tail/head` form; the principle is broader than what the hook matches — the same silent-success shape covers a `jq` filter printing `null` from an error body, and a mutating flag (`rg -r`) rewriting output while exiting 0.
@@ -213,6 +213,8 @@ Interpret user phrasing literally and conservatively. When uncertain — ask, do
 - **A verbal acknowledgement is not a fix.** When the user corrects a fact — especially one already written into a file — the correction is a **work item**, not a conversational beat. Reply **and**, in the same turn, `grep` the artefact for the wrong claim and edit it. Tell: any reply containing *"fair"*, *"good point"*, *"you're right"*, *"that closes it"* that is **not accompanied by an `Edit`** to whatever asserts the now-refuted thing.
 - **A recorded result is a claim, not a completion.** A sentence asserting your *own* work-state — "verified", "confirmed", "gate PASSed", "done" — written to any durable surface (a PR body, a progress log, a trace field) is a **timestamped claim**, not a standing fact. Re-run the underlying check *after the LAST edit of the turn*, immediately before recording — never record-then-edit. After fixing a claim-class defect, re-scan the **whole section**, not just the fixed line.
 - **A citation offered as authority is itself a claim — open it.** Before invoking an in-repo rule, table row, learnings entry, date, or `file:line` as the reason for an action *or an inaction*, resolve it and confirm it says what you are citing it for. Three failure shapes, all observed upstream: a **premise** attached to a correct rule (it propagates further than the rule); a **banded rule** where you quote a neighbouring row's action instead of the row your own measurement falls in — and that error is predictably self-serving, because the half-remembered row is the one that lets you skip work; and a **date or `file:line`** attached to supporting evidence, where a thematically *adjacent* entry makes the misattribution feel checked. Special force when the cited rule lives in the file you are editing. A reviewer's reading of a rule is an argument, not the rule: verify a **permissive** reading harder than a restrictive one.
+- **A bound is not a target; a limit that is not a gate is a limit.** "Never weaker" (`>=`) authorises staying put, not movement. Tightening a rule nobody asked to tighten is unapproved scope exactly as loosening one is.
+- **A correction propagates to every delegate that received the original — in the same turn.** When the user narrows, reverses, or carves out a prior instruction, the acknowledging turn also `SendMessage`s the correction verbatim to every live delegate that received the original; the reply names the delegates messaged or states `no live recipients`.
 - **Deviating from user-approved scope requires an ask, not a notification.** *"I also did X — say the word if you'd rather I revert"* puts the burden of catching scope drift on the user. Ask **before** widening scope, even when the argument is compelling — and especially when the argument comes from a reviewer whose premise you have not run.
 
 ## Patterns
@@ -241,7 +243,9 @@ Read on nearly every task:
 
 ## Learning Log
 
-On **ANY** instruction violation, of any kind, write a new entry to `ai-docs/learnings.md` — there is no "obvious", "minor", "trivial", "already-known", or "duplicate" disposition. The history (including recurrences and superseded entries) is the artefact `/improve` audits to decide escalation fan-out. See [`ai-docs/corrections-log.md`](ai-docs/corrections-log.md) for the enumerated skip-reasons that are explicitly disallowed. **Read the two boundary rules below before you write.**
+On **ANY** instruction violation, write a new entry to `ai-docs/learnings.md` — there is no "obvious", "minor", "trivial", "already-known", or "duplicate" disposition. The history (including recurrences and superseded entries) is the artefact `/improve` audits to decide escalation fan-out. See [`ai-docs/corrections-log.md`](ai-docs/corrections-log.md) for the enumerated skip-reasons that are explicitly disallowed. **Read the two boundary rules below before you write.**
+
+**Two logs, one genre each.** `ai-docs/learnings.md` holds **conduct corrections and validations**. A harness diagnosis (a gap or defect in an instruction file, addressed to `/improve`) goes to [`ai-docs/harness-gaps.md`](ai-docs/harness-gaps.md) — same skeleton plus a required `target:` field. An entry about **another entry** belongs in neither: use the original's `Superseded by:` field (Boundary rule 1's exception). `/improve` reads both. Misfiled genre = violation.
 
 ### Boundary rule 1 — `ai-docs/learnings.md` is APPEND-ONLY
 
@@ -259,6 +263,8 @@ On **ANY** instruction violation, of any kind, write a new entry to `ai-docs/lea
 > When you write to `ai-docs/learnings.md`, you **MUST NOT** also edit `AGENTS.md`, `CLAUDE.md`, `.claude/**`, `ai-docs/code-style.md`, or `ai-docs/doc-convention.md` in the same conversation turn.
 >
 > Writing a learning entry is **NOT** authorisation to escalate the rule into instruction files. Set `Escalated? no` and stop. Project-level escalation happens only when the user runs `/improve`, or explicitly asks ("escalate this", "add to AGENTS.md").
+>
+> **Carve-out:** appending to `ai-docs/harness-gaps.md` is NOT an instruction-file edit — it is the designated parking surface for harness diagnoses. Appending to both logs in one turn is legal; editing an instruction file in that turn is still not.
 >
 > **Two narrow exceptions** — `/improve` + `/ai-audit` updating `Escalated?` / `Superseded by:` on **existing** entries, and in-flow capture of an in-task insight during `/task` Steps 8–12. Conditions and rationale: [`ai-docs/corrections-log.md`](ai-docs/corrections-log.md).
 
