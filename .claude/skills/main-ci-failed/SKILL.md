@@ -151,7 +151,7 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 
 | Class | CI job | Signal in the log |
 |---|---|---|
-| `fmt` | Format | `gofmt reports unformatted files` followed by a path list |
+| `fmt` | Format | a unified diff per file, each headed `diff <path>.orig <path>` |
 | `build` | Build | a compile error from `go build ./...`, or a `go vet` finding |
 | `tidy` | Build | `go mod tidy` left a delta |
 | `test` | Test | `--- FAIL:` / `FAIL	github.com/...` |
@@ -165,7 +165,7 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 
 | Class | Local reproducer |
 |---|---|
-| `fmt` | `gofmt -l .` (empty output = clean) |
+| `fmt` | `make fmt-check` — i.e. `golangci-lint fmt -d`, no diff = clean |
 | `build` | `go build ./...` then `go vet ./...` |
 | `tidy` | `go mod tidy && git diff --exit-code go.mod go.sum` |
 | `test` | `go test ./... -run <TestName>`, then the full suite |
@@ -260,7 +260,7 @@ If **APPROVE** → Step 6.
 
 Run gates **before** commit (same set as `/pr-ci-failed` Step 6):
 
-- `go build ./...`, `go test ./...`, `gofmt -l .`, `golangci-lint run`.
+- `go build ./...`, `go test ./...`, `golangci-lint fmt -d`, `golangci-lint run`.
 - `go vet ./...` — only if public API or any `pub` doc changed.
 - `actionlint <changed-workflow-file>` — only if any `.github/workflows/*.yml` was modified.
 
@@ -312,7 +312,7 @@ Capture the commit SHA; update the progress file.
    
    ## Test plan
    
-   - [x] `go build ./...` / `go test ./...` / `gofmt -l .` / `golangci-lint run` clean
+   - [x] `go build ./...` / `go test ./...` / `golangci-lint fmt -d` / `golangci-lint run` clean
    - [x] `go vet ./...` clean (if API changed)
    - [x] `actionlint` clean on touched workflows (if applicable)
    - [x] `self-review` APPROVE round <R>
@@ -387,7 +387,7 @@ After the new PR merges, /pr-merged will clean up ai-docs/main-ci/<run-id>.progr
 | Step 3 | Local reproducer ran; PASS or NO-REPRODUCE explicitly recorded |
 | Step 4 | Branch is now `fix/main-ci-<run-id>` (verified); fix applied (inline mechanical) OR delegated to `code-writer` (substantive lint/build) OR delegated to `/bugfix` (test/build); `actionlint` clean if any workflow YAML touched |
 | Step 5 | `self-review` APPROVE (≤ 3 attempts) |
-| Step 6 | All Go gates clean (`go build` / `go test` / `gofmt -l` / `golangci-lint run` / `go vet`); branch is NOT main (re-verified); single commit; staged explicitly |
+| Step 6 | All Go gates clean (`go build` / `go test` / `golangci-lint fmt -d` / `golangci-lint run` / `go vet`); branch is NOT main (re-verified); single commit; staged explicitly |
 | Step 7 | `git push -u origin <branch>` succeeded; `gh pr create` opened the new PR; PR body contains `**Tracked in run:** <run-id>` |
 | Step 9 | Progress file closed for this round; summary printed |
 

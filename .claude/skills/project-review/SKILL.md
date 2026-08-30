@@ -103,7 +103,7 @@ After every 3 fixes (or when all findings in a subtask are resolved):
 1. `go build ./...` — PASS
 2. `go test ./...` — all green
 3. `golangci-lint run` — clean
-4. `gofmt -l .` — clean
+4. `golangci-lint fmt -d` — clean
 5. `go vet ./...` — clean (broken intra-doc links denied; add `--all-features` if the workspace later grows feature-gated modules)
 6. **Doc convention conformance.** For every changed `pub` item, verify it conforms to [`ai-docs/doc-convention.md`](../../../ai-docs/doc-convention.md) (summary tense, `# Parameters` on fns with ≥1 non-receiver arg, strict section order, `# Errors` / `# Panics` / `# Safety` where applicable). Methods inside `impl Trait for Type {}` blocks are exempt; the trait *definition* is not. Mechanical heading scan on changed files: `rg '^\s*///\s*#\s*(Parameters|Returns|Type parameters|Lifetimes|Errors|Panics|Safety|Examples|See also)\b' <file>`.
 7. Update progress file: `**Last build:** PASS`

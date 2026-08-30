@@ -157,7 +157,7 @@ Classify the failure into exactly one class:
 
 | Class | CI job | Signal in the log |
 |---|---|---|
-| `fmt` | Format | `gofmt reports unformatted files` followed by a path list |
+| `fmt` | Format | a unified diff per file, each headed `diff <path>.orig <path>` |
 | `build` | Build | a compile error from `go build ./...`, or a `go vet` finding |
 | `tidy` | Build | `go mod tidy` left a delta — `git diff --exit-code go.mod go.sum` failed |
 | `test` | Test | `--- FAIL:` / `FAIL	github.com/...` |
@@ -171,13 +171,13 @@ Classify the failure into exactly one class:
 
 | Class | Local reproducer |
 |---|---|
-| `fmt` | `gofmt -l .` (empty output = clean) |
+| `fmt` | `make fmt-check` — i.e. `golangci-lint fmt -d`, no diff = clean |
 | `build` | `go build ./...` then `go vet ./...` |
 | `tidy` | `go mod tidy && git diff --exit-code go.mod go.sum` |
 | `test` | `go test ./... -run <TestName>`, then the full `go test ./...` |
 | `race` | `go test -race ./... -run <TestName>` |
 | `lint` | `golangci-lint run` |
-| `harness` | the failing guard itself: `shellcheck -s bash <script>`, `bash .claude/skills/ai-audit/scripts/check-citations.sh`, `bash .claude/skills/task/scripts/test-append-task-run.sh`, or `wc -c <file>` |
+| `harness` | the failing guard itself: `shellcheck -s bash <script>`, `bash .claude/skills/ai-audit/scripts/check-citations.sh`, `bash .claude/skills/task/scripts/test-append-task-run.sh`, `bash .claude/skills/ai-audit/scripts/test-piped-gate-guard.sh`, or `wc -c <file>` |
 | `actionlint` | `actionlint .github/workflows/<file>.yml` |
 | `other` | Pause; print log excerpt + the classifier's top-2 candidate classes; surface to user. |
 
@@ -268,7 +268,7 @@ Run gates **before** commit:
 
 - `go build ./...` — refreshes `go.sum`.
 - `go test ./...` — full suite (or `go test ./... <name>` if the fix is scoped to one test and `go test ./...` would dwarf the change).
-- `gofmt -l .`.
+- `golangci-lint fmt -d`.
 - `golangci-lint run`.
 - `go vet ./...` — only if public API or any `pub` doc changed.
 - `actionlint <changed-workflow-file>` — only if any `.github/workflows/*.yml` was modified.
@@ -354,7 +354,7 @@ Re-invoke /pr-ci-failed after the next CI run if it turns red again.
 | Step 3 | Local reproducer ran; PASS or NO-REPRODUCE explicitly recorded |
 | Step 4 | Fix applied (inline mechanical) OR delegated to `code-writer` (substantive lint/build) OR delegated to `/bugfix` (test/build); `actionlint` clean if any workflow YAML touched |
 | Step 5 | `self-review` APPROVE (≤ 3 attempts) |
-| Step 6 | `go build ./...` / `go test ./...` / `gofmt -l .` / `golangci-lint run` / `go vet ./...` clean if API changed; single commit; staged explicitly |
+| Step 6 | `go build ./...` / `go test ./...` / `golangci-lint fmt -d` / `golangci-lint run` / `go vet ./...` clean if API changed; single commit; staged explicitly |
 | Step 7 | `git push` succeeded; `gh pr view` read; `gh pr edit` ran iff body contradicts diff |
 | Step 9 | Progress file closed for this round; summary printed |
 

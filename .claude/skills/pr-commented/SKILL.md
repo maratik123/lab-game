@@ -201,7 +201,7 @@ Trivial fixes (typo, rename, single-call rewrite, comment fix, test addition, do
 - **Orchestrator: stage explicitly by name (never `git add -A` / `git add .`) and re-confirm the gates before the single commit:**
   - `go build ./...` — refreshes `go.sum`.
   - `go test ./...` — full suite.
-  - `gofmt -l .`.
+  - `golangci-lint fmt -d`.
   - `golangci-lint run`.
   - `go vet ./...` — only if public API changed.
   - `actionlint <changed-workflow-file>` — only if any `.github/workflows/*.yml` was modified.
@@ -322,7 +322,7 @@ Re-invoke /pr-commented after the reviewer responds to the open threads.
 | Step 0 | All four sources fetched; resolved threads kept for context |
 | Step 2 | Every thread has a category; `objection` rows have user confirmation; pause-triggered threads resolved |
 | Step 3 | No fix touches `*.design.md`; no fix > 5 files / > ~30 lines |
-| Step 4 | Fix edits authored by `code-writer` (Mode B, no commit); `go build ./...` / `go test ./...` / `gofmt -l .` / `golangci-lint run` / `go vet ./...` clean if API changed; `actionlint` clean if workflows changed; single commit orchestrator-owned; staged explicitly |
+| Step 4 | Fix edits authored by `code-writer` (Mode B, no commit); `go build ./...` / `go test ./...` / `golangci-lint fmt -d` / `golangci-lint run` / `go vet ./...` clean if API changed; `actionlint` clean if workflows changed; single commit orchestrator-owned; staged explicitly |
 | Step 5 | `self-review` APPROVE (≤ 3 attempts) |
 | Step 6 | `git push` succeeded; `gh pr view` read; per-thread replies posted; only `fix` / `already-fixed` / uncontroversial `defer` resolved; `objection` / `clarify` unresolved |
 | Step 7 | Progress file closed for this round; summary printed |
