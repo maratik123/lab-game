@@ -203,11 +203,12 @@ Verify both spec and design (with GO verdict) exist AND that **every note / mino
 6. `go vet ./...` — clean
 7. `go mod tidy` then `git diff --exit-code go.mod go.sum` — only when dependencies moved; a non-empty diff means the change was not what you thought
 8. **actionlint / shellcheck gate** — `actionlint <file>` on every created or modified `.github/workflows/*.yml`, `shellcheck <file>` on every created or modified `*.sh`. Skip only when none were touched. See AGENTS.md § *Build & Test*.
-9. **Panic-index sync** — see `## Step 9 — panic-index sync (detail)` below.
-10. **Domain-invariant sweep** — see `## Step 9 — domain-invariant sweep` below.
-11. For each AC — confirm covered by test or manual verification. For a **measurable** AC (one naming a command or a scope), run **that AC's own command over that AC's own stated scope** and treat the result as authoritative — not `design-review`'s operative reading, not a delegate's "flagged, left as-is". See § *Patterns* 1 in [`SKILL.md`](SKILL.md#1-step-9s-per-ac-sweep-is-load-bearing-not-ceremonial).
-12. Show a `| # | Criterion | Test / Verification | Status |` summary table.
-13. On ALL PASS → proceed to Step 9.5.
+9. **`make file-limits`** — clean. CI's Lint job runs it, and no other gate on this list covers it: `golangci-lint run` stays green on a file that breaks the 1000 / 1500-line limit, so skipping this one records `ALL PASS` on a tree CI will reject. Running `make verify` discharges items 1–8 and this one together.
+10. **Panic-index sync** — see `## Step 9 — panic-index sync (detail)` below.
+11. **Domain-invariant sweep** — see `## Step 9 — domain-invariant sweep` below.
+12. For each AC — confirm covered by test or manual verification. For a **measurable** AC (one naming a command or a scope), run **that AC's own command over that AC's own stated scope** and treat the result as authoritative — not `design-review`'s operative reading, not a delegate's "flagged, left as-is". See § *Patterns* 1 in [`SKILL.md`](SKILL.md#1-step-9s-per-ac-sweep-is-load-bearing-not-ceremonial).
+13. Show a `| # | Criterion | Test / Verification | Status |` summary table.
+14. On ALL PASS → proceed to Step 9.5.
 
 ## Every-group handoff (rationale)
 
@@ -299,7 +300,7 @@ The Step 12 sub-step 5 parser specification lives in a dedicated reference file:
 | Step 8 | Design doc with GO? Test Design section present? **Every note / minor / recommendation from the GO verdict written back into the design doc?** |
 | Step 8 start | Feature branch created? Run `git branch --show-current` before every `git commit` — must not be `main`. `base_commit` + `branch` recorded in progress file? |
 | Each subtask | `go build ./...` ✅? Tests run? `.progress.md` updated? |
-| Step 9 | `go build ./...` ✅? `go test ./...` green? `go test -race ./...` green when the change touches goroutines / the scheduler / shared state? `golangci-lint fmt -d` clean? `golangci-lint run` clean? `go vet ./...` clean? `go mod tidy` leaves `go.mod`/`go.sum` unchanged (only if deps moved)? `actionlint` clean on every changed workflow and `shellcheck` clean on every changed script (skip if none)? Any new `panic(` / `log.Fatal*` / `Must…` outside `_test.go` → `ai-docs/panic-index.md` updated and staged? Domain-invariant sweep run, every hit resolved or justified in the decisions log? All ACs covered? |
+| Step 9 | `go build ./...` ✅? `go test ./...` green? `go test -race ./...` green when the change touches goroutines / the scheduler / shared state? `golangci-lint fmt -d` clean? `golangci-lint run` clean? `go vet ./...` clean? `go mod tidy` leaves `go.mod`/`go.sum` unchanged (only if deps moved)? `make file-limits` clean (no other gate here covers it — `golangci-lint run` stays green on an over-limit file)? `actionlint` clean on every changed workflow and `shellcheck` clean on every changed script (skip if none)? Any new `panic(` / `log.Fatal*` / `Must…` outside `_test.go` → `ai-docs/panic-index.md` updated and staged? Domain-invariant sweep run, every hit resolved or justified in the decisions log? All ACs covered? |
 | Step 9.5 | context-status.md entry appended + context.md summary/README.md updated? (spec/design NOT moved yet — happens at Step 12) |
 | Step 10 | Self-review APPROVE? (Progress file persists in working tree — gitignored — until `/pr-merged`. Do NOT `rm` it here.) |
 | Step 11 | `major`/`blocker` objections confirmed by user? Design change → Design Amendment triggered? `gh pr view <N>` re-read after every push (unconditional) — `gh pr edit` only if body contradicts new commits? |

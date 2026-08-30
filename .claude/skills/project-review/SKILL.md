@@ -3,7 +3,7 @@ name: project-review
 description: "Whole-codebase review on the current branch (or branch given as argument). Reads all source files and done plans, runs fix loop and self-review loop until APPROVE, then commits."
 disable-model-invocation: true
 argument-hint: "[branch-name]"
-allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(gofmt *) Bash(golangci-lint *) Bash(git diff *) Bash(git rev-parse *) Bash(git checkout *) Bash(git branch *) Bash(git log *) Bash(git add *) Bash(git commit *)
+allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(gofmt *) Bash(golangci-lint *) Bash(git diff *) Bash(git rev-parse *) Bash(git checkout *) Bash(git branch *) Bash(git log *) Bash(git add *) Bash(git commit *) Bash(make *)
 ---
 
 Whole-codebase review workflow. Steps execute **strictly in sequence**.

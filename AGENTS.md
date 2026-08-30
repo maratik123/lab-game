@@ -38,6 +38,7 @@ On session start: read `.gitignore`, treat matched paths as a read blacklist.
 ## Build & Test
 
 ```bash
+make verify                                             # every gate below, in one run
 go build ./...                                          # whole module
 go test ./...                                           # all tests
 go test ./internal/raid/ -run TestName                  # filter
