@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; if [ -n \"$f\" ] && [ \"${f##*.}\" = \"go\" ] && [ -f \"$f\" ]; then gofmt -w \"$f\"; fi; } || true",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; if [ -n \"$f\" ] && [ \"${f##*.}\" = \"go\" ] && [ -f \"$f\" ]; then golangci-lint fmt \"$f\"; fi; } || true",
             "timeout": 30,
             "statusMessage": "Formatting Go..."
           },
@@ -114,6 +114,7 @@
       "Bash(go *)",
       "Bash(gofmt *)",
       "Bash(golangci-lint *)",
+      "Bash(make *)",
       "Bash(git *)",
       "Bash(gh *)",
       "Bash(ast-index *)",
