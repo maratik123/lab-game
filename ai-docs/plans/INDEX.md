@@ -4,7 +4,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 
 | Plan | Status | Tracked in | Depends on |
 |---|---|---|---|
-| — | — | — | — |
+| [2026-08-30 — mechanical code-style gates](done/2026-08-30-mechanical-code-style-gates.spec.md) | ✅ implemented (0 Go tests; gates verified by fixture) | none (PR #6) | — |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 
