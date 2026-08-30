@@ -26,6 +26,7 @@ linters:
     # Security
     - gosec
     # Style / clarity
+    - asciicheck         # identifiers stay ASCII; the Russian docs/** corpus is untouched
     - goconst
     - gocritic
     - misspell
@@ -59,6 +60,7 @@ formatters:
   enable:
     - gofmt
     - goimports
+    - gofumpt
   settings:
     goimports:
       local-prefixes:

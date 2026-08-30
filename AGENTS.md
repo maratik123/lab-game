@@ -38,14 +38,15 @@ On session start: read `.gitignore`, treat matched paths as a read blacklist.
 ## Build & Test
 
 ```bash
+make verify                                             # every gate below, in one run
 go build ./...                                          # whole module
 go test ./...                                           # all tests
 go test ./internal/raid/ -run TestName                  # filter
 go test -race ./...                                     # race gate (required for concurrent code)
 go vet ./...                                            # vet (also inside golangci-lint)
 golangci-lint run                                       # strict lint gate
-golangci-lint fmt                                       # apply formatters (gofmt + goimports)
-gofmt -l .                                              # format check only — empty output = clean
+golangci-lint fmt                                       # apply every enabled formatter
+golangci-lint fmt -d                                    # format check — non-zero exit = dirty
 go mod tidy && git diff --exit-code go.mod go.sum       # module hygiene gate
 actionlint .github/workflows/<file>.yml                 # required gate for any new/modified workflow file
 shellcheck <script>.sh                                  # required gate for any new/modified shell script
@@ -74,7 +75,7 @@ go run ./cmd/bot                                        # run the bot
 
 > **A zero exit status is evidence about the LAST pipeline stage, not about your question.** Never pipe a gate whose exit code is load-bearing — `go test ./... | tail -6` reports `tail`'s status (always 0), so a RED gate records as green, and `tail -N` can truncate away the `FAIL` line you needed. Capture to a file and grep the saved log: `go test ./... > gate.log 2>&1 && echo GATE-GREEN || echo GATE-RED`, then `grep -E "^(FAIL|ok|---)" gate.log`. (`set -o pipefail` also works.) A `PreToolUse` hook blocks the `go test … | tail/head` form; the principle is broader than what the hook matches — the same silent-success shape covers a `jq` filter printing `null` from an error body, and a mutating flag (`rg -r`) rewriting output while exiting 0.
 
-**CI runs the same gates** (`.github/workflows/ci.yml`): Format · Build (build + vet + `go mod tidy` delta) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, both guard suites, the size cap, the link check) · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
+**CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the size cap, the link check) · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
 
 Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-index.md)); fall back to `rg <pattern> --type go [-l | -C 3]` when `ast-index` returns empty.
 
@@ -99,13 +100,13 @@ Full rules — including the **`…Unchecked` AXIOM** (a function skipping a pre
 
 Thin by design — this project grows its own style rules through the learning loop (`/improve`). Start with:
 
-- **Source files:** Go only under `cmd/*` and `internal/*`; format via `golangci-lint fmt` or `gofmt -w`, never by hand.
+- **Source files:** Go only under `cmd/*` and `internal/*`; format via `golangci-lint fmt`, never by hand.
 - **Linter posture:** strict `golangci-lint run` (config in `.golangci.yml`); no `//nolint` without a specific linter and a stated reason (`nolintlint` enforces both).
 - **Errors:** every returned error is handled or deliberately wrapped with `%w` and context (`fmt.Errorf("materialize node %s: %w", coord, err)`). Never `_ = err`. Never `panic` in production code — see the panic rule in *Go Test Conventions*.
 - **Magic numbers:** a literal with semantic meaning becomes a named constant. **Balance constants are different and stronger: they belong in configuration, not in Go source** (`docs/DESIGN.md` §16.5 — stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice). A tuning value hard-coded in a `.go` file is a defect even when it is named.
 - **Determinism:** world generation, combat, and any PvP-trail replay are pure functions of `(seed, input)`. No `time.Now()`, no map-iteration order, and no un-seeded `math/rand` on those paths.
 - **Documentation:** every exported item carries a doc comment starting with its name; every package has a package comment. See [`ai-docs/doc-convention.md`](ai-docs/doc-convention.md).
-- **File size:** soft 500/800, hard 1000/1500 lines (excl./incl. tests); exemptions and the don't-over-split counter-rule are in `code-style.md`.
+- **File size:** soft 500/800; hard 1000, and 1500 for `_test.go` — both gated; exemptions and the don't-over-split counter-rule are in `code-style.md`.
 
 See [`ai-docs/code-style.md`](ai-docs/code-style.md) for the canonical (growing) reference.
 

@@ -2,7 +2,7 @@
 name: main-ci-failed
 description: "Address a CI-failure round on the main branch (post-merge red build). Identifies the failing run on the current main commit (or an explicit run-id via $ARGUMENTS), fetches the failing-step log, classifies (fmt / build / tidy / test / race / lint / harness / actionlint / other), reproduces locally, applies the fix on a NEW feature branch (main is never modified directly), runs self-review, pushes the new branch, and opens a new PR. Re-invocable per round. Downstream of /pr-merged in v1 (manual invocation); auto-invoke is deferred."
 disable-model-invocation: false
-allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git rev-parse *) Bash(git branch *) Bash(git checkout *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git fetch *) Bash(git merge-base *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr create *) Bash(gh pr edit *) Bash(gh pr comment *) Bash(gh issue create *) Bash(gh run view *) Bash(gh run list *) Bash(gh api *)
+allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git rev-parse *) Bash(git branch *) Bash(git checkout *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git fetch *) Bash(git merge-base *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr create *) Bash(gh pr edit *) Bash(gh pr comment *) Bash(gh issue create *) Bash(gh run view *) Bash(gh run list *) Bash(gh api *) Bash(make *)
 ---
 
 > **CI exists** (`.github/workflows/ci.yml`): Format · Build · Test · Lint · Harness guards · Actionlint, each `paths-filter`-gated. This skill acts on a red run on `main`. Note that `origin` enforces **no** required checks (private repo on a free plan — `AGENTS.md` § Permissions), so a red main is caught by watching, not by a blocked merge.
@@ -151,12 +151,12 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 
 | Class | CI job | Signal in the log |
 |---|---|---|
-| `fmt` | Format | `gofmt reports unformatted files` followed by a path list |
+| `fmt` | Format | a unified diff per file, each headed `diff <path>.orig <path>` |
 | `build` | Build | a compile error from `go build ./...`, or a `go vet` finding |
 | `tidy` | Build | `go mod tidy` left a delta |
 | `test` | Test | `--- FAIL:` / `FAIL	github.com/...` |
 | `race` | Test | `WARNING: DATA RACE` |
-| `lint` | Lint | a `golangci-lint` finding with its linter name in brackets |
+| `lint` | Lint | a `golangci-lint` finding with its linter name in brackets, or `<path>: N lines exceeds hard limit M` from the `file-limits` gate |
 | `harness` | Harness guards | shellcheck finding, RED citation, guard-suite failure, size-cap breach, broken link |
 | `actionlint` | Actionlint | actionlint exit code != 0 |
 | `other` | — | None of the above — pause and surface |
@@ -165,12 +165,12 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 
 | Class | Local reproducer |
 |---|---|
-| `fmt` | `gofmt -l .` (empty output = clean) |
+| `fmt` | `golangci-lint fmt -d` — no diff = clean |
 | `build` | `go build ./...` then `go vet ./...` |
 | `tidy` | `go mod tidy && git diff --exit-code go.mod go.sum` |
 | `test` | `go test ./... -run <TestName>`, then the full suite |
 | `race` | `go test -race ./... -run <TestName>` |
-| `lint` | `golangci-lint run` |
+| `lint` | `golangci-lint run`; if that is clean the failure is the file-size gate — `awk` over `*.go`, hard 1000 / 1500 for `_test.go` |
 | `harness` | the failing guard itself (`shellcheck`, `check-citations.sh`, a guard suite, `wc -c`) |
 | `actionlint` | `actionlint .github/workflows/<file>.yml` |
 | `other` | Pause; print log excerpt + classifier candidates; surface to user. |
@@ -260,7 +260,7 @@ If **APPROVE** → Step 6.
 
 Run gates **before** commit (same set as `/pr-ci-failed` Step 6):
 
-- `go build ./...`, `go test ./...`, `gofmt -l .`, `golangci-lint run`.
+- `go build ./...`, `go test ./...`, `golangci-lint fmt -d`, `golangci-lint run`.
 - `go vet ./...` — only if public API or any `pub` doc changed.
 - `actionlint <changed-workflow-file>` — only if any `.github/workflows/*.yml` was modified.
 
@@ -312,7 +312,7 @@ Capture the commit SHA; update the progress file.
    
    ## Test plan
    
-   - [x] `go build ./...` / `go test ./...` / `gofmt -l .` / `golangci-lint run` clean
+   - [x] `go build ./...` / `go test ./...` / `golangci-lint fmt -d` / `golangci-lint run` clean
    - [x] `go vet ./...` clean (if API changed)
    - [x] `actionlint` clean on touched workflows (if applicable)
    - [x] `self-review` APPROVE round <R>
@@ -387,7 +387,7 @@ After the new PR merges, /pr-merged will clean up ai-docs/main-ci/<run-id>.progr
 | Step 3 | Local reproducer ran; PASS or NO-REPRODUCE explicitly recorded |
 | Step 4 | Branch is now `fix/main-ci-<run-id>` (verified); fix applied (inline mechanical) OR delegated to `code-writer` (substantive lint/build) OR delegated to `/bugfix` (test/build); `actionlint` clean if any workflow YAML touched |
 | Step 5 | `self-review` APPROVE (≤ 3 attempts) |
-| Step 6 | All Go gates clean (`go build` / `go test` / `gofmt -l` / `golangci-lint run` / `go vet`); branch is NOT main (re-verified); single commit; staged explicitly |
+| Step 6 | All Go gates clean (`go build` / `go test` / `golangci-lint fmt -d` / `golangci-lint run` / `go vet`); branch is NOT main (re-verified); single commit; staged explicitly |
 | Step 7 | `git push -u origin <branch>` succeeded; `gh pr create` opened the new PR; PR body contains `**Tracked in run:** <run-id>` |
 | Step 9 | Progress file closed for this round; summary printed |
 

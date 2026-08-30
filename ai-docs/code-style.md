@@ -12,7 +12,9 @@ Go only, under `cmd/<binary>/` (process entry points) and `internal/<package>/` 
 
 - `//nolint:<linter> // <reason>` — both parts mandatory (`nolintlint` enforces them). A bare `//nolint` fails the gate.
 - A rule that keeps firing on correct code is a config bug: change `.golangci.yml` in a reviewed diff, never scatter suppressions.
-- Enabled beyond the defaults, and why (KD-16): `exhaustive` (FSM/enum switches must be total), `rowserrcheck` + `sqlclosecheck` (a forgotten `rows.Err()` reads as an empty result, i.e. silent data loss), `errorlint`, `nilerr`, `bodyclose`, `noctx`, `contextcheck`, `gosec`, `revive`.
+- Enabled beyond the defaults, and why (KD-16): `exhaustive` (FSM/enum switches must be total), `rowserrcheck` + `sqlclosecheck` (a forgotten `rows.Err()` reads as an empty result, i.e. silent data loss), `errorlint`, `nilerr`, `bodyclose`, `noctx`, `contextcheck`, `gosec`, `revive`, `asciicheck` (identifiers stay ASCII; it checks identifiers only, so the Russian `docs/**` corpus is untouched).
+- **The format gate is `golangci-lint fmt -d`.** It runs every formatter `.golangci.yml` enables — `gofmt`, `goimports` and `gofumpt` — and exits non-zero when any of them would rewrite a file, printing the diff and changing nothing. `golangci-lint fmt` (no `-d`) is the apply form; plain `gofmt` is strictly weaker and accepts files this gate rejects.
+- `make verify` runs every gate of `AGENTS.md` § *Build & Test* in one go, from the same sub-targets CI invokes — so a local run and a CI run cannot disagree about what a gate's command is. Two gates CI reaches by another route, deliberately, and the `Makefile` header names both with their reasons: `actionlint`, because the binary is not preinstalled on `ubuntu-latest`, so CI uses `reviewdog/action-actionlint` while `make actionlint` is the local path; and the `shellcheck` sweep over `.claude/**`, which stays an inline step of the Harness-guards job so the harness guards stay outside the Makefile. Everything else goes through `make` on both sides.
 
 ## Errors
 
@@ -59,4 +61,15 @@ See [`go-api-naming.md`](go-api-naming.md). In short: no stutter, consumer-decla
 
 ## File size
 
-Soft 500 / hard 1000 lines excluding `_test.go` content (800 / 1500 including it). Refactor before merge unless the file is generated or is one long `switch`/state machine. Counter-rule: do not over-split — one type per file is not a Go idiom, and a package of ten 40-line files is harder to read than one 400-line file.
+Four bands on one axis, and only the top two are gated:
+
+| Lines | What it means | Enforced by |
+|---|---|---|
+| 500 | Reasonable limit — the size a split is carried back to | Prose: author and reviewer |
+| 800 | Soft: plan the split now | Prose: author and reviewer |
+| 1000 | **Hard**, for a non-test `.go` file | Gated — `make file-limits` |
+| 1500 | **Hard**, for a `_test.go` file | Gated — `make file-limits` |
+
+Counting is raw lines, comments and blanks included; a `_test.go` file is governed by 1500 and never by 1000. Refactor before merge. Counter-rule: do not over-split — one type per file is not a Go idiom, and a package of ten 40-line files is harder to read than one 400-line file.
+
+**The two hard bands have no per-file escape, deliberately.** There is no `//nolint` channel and no magic comment: an inline escape hatch on a hard limit is the thing that turns a hard limit soft. A generated tree, or a file that genuinely cannot be divided, is exempted by adding a path prune to the `file-limits` recipe in `Makefile`, in a reviewed diff — the same posture § *Linter posture* states for lint, one gate over.

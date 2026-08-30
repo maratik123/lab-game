@@ -3,7 +3,7 @@ name: ai-audit
 description: "Two-phase instruction audit. Phase 1 (subagent) verifies every learnings.md `Escalated?` claim points to a rule that actually exists AND that every `Superseded by:` reference resolves to a real later entry or merged PR; fixes drift in either field. Phase 2 (main session) reads all instruction files (AGENTS.md, ai-docs/*, .claude/skills/**, .claude/agents/**, hooks in settings.json) against official Claude Code docs and proposes fixes for inconsistencies, dead references, format violations, and refactor candidates."
 disable-model-invocation: true
 argument-hint: "[scope: 'phase1' | 'phase2' | omit for both]"
-allowed-tools: Bash(rg *) Bash(grep *) Bash(find *) Bash(realpath *) Bash(jq *) Bash(awk *) Bash(shellcheck *) Bash(wc *) Bash(basename *) Bash(git branch *) Bash(git status *) Bash(git checkout *) Bash(git rev-parse *) Bash(git diff *) Bash(git add *) Bash(git commit *) Bash(comm *) Bash(.claude/skills/ai-audit/scripts/check-citations.sh) Bash(.claude/skills/ai-audit/scripts/test-check-citations.sh)
+allowed-tools: Bash(rg *) Bash(grep *) Bash(find *) Bash(realpath *) Bash(jq *) Bash(awk *) Bash(shellcheck *) Bash(wc *) Bash(basename *) Bash(git branch *) Bash(git status *) Bash(git checkout *) Bash(git rev-parse *) Bash(git diff *) Bash(git add *) Bash(git commit *) Bash(comm *) Bash(.claude/skills/ai-audit/scripts/check-citations.sh) Bash(.claude/skills/ai-audit/scripts/test-check-citations.sh) Bash(.claude/skills/ai-audit/scripts/test-piped-gate-guard.sh)
 ---
 
 # AI Audit

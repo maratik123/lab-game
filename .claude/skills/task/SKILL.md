@@ -3,7 +3,7 @@ name: task
 description: "Full task workflow from a user description OR a GitHub issue number: interview → spec → design → design-review → impl → verify → self-review. Steps are strictly ordered and cannot be skipped."
 disable-model-invocation: true
 argument-hint: "[issue-number | task description]"
-allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git rev-parse *) Bash(git checkout *) Bash(git branch *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(gh issue list *) Bash(gh issue view *) Bash(gh issue create *) Bash(gh issue comment *) Bash(gh pr create *) Bash(gh pr view *) Bash(.claude/skills/task/scripts/append-task-run.sh *)
+allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git rev-parse *) Bash(git checkout *) Bash(git branch *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(gh issue list *) Bash(gh issue view *) Bash(gh issue create *) Bash(gh issue comment *) Bash(gh pr create *) Bash(gh pr view *) Bash(.claude/skills/task/scripts/append-task-run.sh *) Bash(make *)
 ---
 
 Full workflow for a task. Steps execute **strictly in sequence** — proceeding to N+1 before N is complete is FORBIDDEN.
@@ -185,7 +185,7 @@ If implementation (Step 8) reveals a necessary deviation from the design, **or**
 
 ### Step 9: Verify
 
-Run the full verify list in `reference.md` § Step 9 — verify list (full): `go build ./...`, `go test ./...`, `go test -race ./...` (when the change touches goroutines / the scheduler / shared state), `gofmt -l .`, `golangci-lint run`, `go vet ./...`, `go mod tidy` + `git diff --exit-code go.mod go.sum` (only if dependencies moved), `actionlint` (only if workflows changed), `shellcheck` (only if a shell script changed), panic-index sync (see `reference.md` § Step 9 — panic-index sync (detail)), domain-invariant sweep (see `reference.md` § Step 9 — domain-invariant sweep), then per-AC coverage check and a `| # | Criterion | Test / Verification | Status |` summary table. On ALL PASS → Step 9.5.
+Run the full verify list in `reference.md` § Step 9 — verify list (full): `go build ./...`, `go test ./...`, `go test -race ./...` (when the change touches goroutines / the scheduler / shared state), `golangci-lint fmt -d`, `golangci-lint run`, `go vet ./...`, `go mod tidy` + `git diff --exit-code go.mod go.sum` (only if dependencies moved), `actionlint` (only if workflows changed), `shellcheck` (only if a shell script changed), panic-index sync (see `reference.md` § Step 9 — panic-index sync (detail)), domain-invariant sweep (see `reference.md` § Step 9 — domain-invariant sweep), then per-AC coverage check and a `| # | Criterion | Test / Verification | Status |` summary table. On ALL PASS → Step 9.5.
 
 **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 9 — Verify (ALL PASS)`; rewrite `**last_passed_gate:**` to `golangci-lint run | <ISO-8601 UTC timestamp> | <commit SHA from git rev-parse HEAD>`; append a `## Decisions log` bullet recording any panic-index addition and any posting-signature / event-dictionary addition (one line, prefixed `Step 9:`; omit if none).
 

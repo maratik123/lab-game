@@ -2,7 +2,7 @@
 name: context-reset
 description: "Handoff protocol for large tasks (>=5 subtasks) AND compaction-recovery re-entry. Prevents context degradation and compaction-related quality loss."
 when_to_use: "Activate at the start of every design-defined group per the design's ## Handoff plan, when a summary/compaction block appears at the top of context, or when noticing yourself rushing, simplifying, or skipping steps."
-allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(git status) Bash(git rev-parse *) Bash(git branch *) Bash(git diff *) Bash(git add *) Bash(git commit *)
+allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(git status) Bash(git rev-parse *) Bash(git branch *) Bash(git diff *) Bash(git add *) Bash(git commit *) Bash(make *)
 ---
 
 > **⚡ Compaction recovery check — read FIRST on every invocation.**

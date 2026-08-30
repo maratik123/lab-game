@@ -2,7 +2,7 @@
 name: dependabot-pr
 description: "Drive one round of working with an open Dependabot gomod PR. Classifies (diff-scope × CI-state), routes to a terminal action: print-merge-command-and-pause, delegate to /pr-ci-failed (with EXIT-between-Step-3-and-Step-4 carve-out), @dependabot rebase, @dependabot recreate, bail-with-issue, or pause-for-user. Re-invocable per round; never auto-merges and never pushes to the bot branch."
 disable-model-invocation: true
-allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git rev-parse *) Bash(git branch *) Bash(git checkout *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git fetch *) Bash(git merge-base *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr create *) Bash(gh pr edit *) Bash(gh pr comment *) Bash(gh issue create *) Bash(gh run view *) Bash(gh run list *) Bash(gh api *)
+allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git rev-parse *) Bash(git branch *) Bash(git checkout *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git fetch *) Bash(git merge-base *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr create *) Bash(gh pr edit *) Bash(gh pr comment *) Bash(gh issue create *) Bash(gh run view *) Bash(gh run list *) Bash(gh api *) Bash(make *)
 ---
 
 > **Dependabot is configured** (`.github/dependabot.yml`: `gomod` + `github-actions`, weekly). This skill triages the `gomod` PRs; a `github-actions` PR bails at preconditions as out of scope for v1.

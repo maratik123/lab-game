@@ -2,7 +2,7 @@
 name: pr-commented
 description: "Address one round of reviewer comments on the current branch's open PR. Reads unresolved review threads, auto-classifies each (fix / objection / clarify / already-fixed / defer / ignore-bot), bundles fixes into a single commit, runs self-review, pushes, then replies and resolves per category. Re-invocable for each subsequent round. Runs downstream of /task Step 12; does NOT replace /task."
 disable-model-invocation: true
-allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git rev-parse *) Bash(git branch *) Bash(git checkout *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git fetch *) Bash(git merge-base *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr create *) Bash(gh pr edit *) Bash(gh pr comment *) Bash(gh issue create *) Bash(gh run view *) Bash(gh run list *) Bash(gh api *)
+allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git rev-parse *) Bash(git branch *) Bash(git checkout *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git fetch *) Bash(git merge-base *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr create *) Bash(gh pr edit *) Bash(gh pr comment *) Bash(gh issue create *) Bash(gh run view *) Bash(gh run list *) Bash(gh api *) Bash(make *)
 ---
 
 > **Commit authorisation.** The default rule "only commit when the user explicitly asks" does **not** apply inside this workflow. The single Step-4 commit, the Step-6 `git push`, and the Step-6 per-thread replies / resolutions / issue-creations are pre-authorised by `/pr-commented` itself — perform them without an extra prompt. Pause to confirm only when Step 2 cannot confidently classify a thread, or when a precondition fails.
@@ -201,7 +201,7 @@ Trivial fixes (typo, rename, single-call rewrite, comment fix, test addition, do
 - **Orchestrator: stage explicitly by name (never `git add -A` / `git add .`) and re-confirm the gates before the single commit:**
   - `go build ./...` — refreshes `go.sum`.
   - `go test ./...` — full suite.
-  - `gofmt -l .`.
+  - `golangci-lint fmt -d`.
   - `golangci-lint run`.
   - `go vet ./...` — only if public API changed.
   - `actionlint <changed-workflow-file>` — only if any `.github/workflows/*.yml` was modified.
@@ -322,7 +322,7 @@ Re-invoke /pr-commented after the reviewer responds to the open threads.
 | Step 0 | All four sources fetched; resolved threads kept for context |
 | Step 2 | Every thread has a category; `objection` rows have user confirmation; pause-triggered threads resolved |
 | Step 3 | No fix touches `*.design.md`; no fix > 5 files / > ~30 lines |
-| Step 4 | Fix edits authored by `code-writer` (Mode B, no commit); `go build ./...` / `go test ./...` / `gofmt -l .` / `golangci-lint run` / `go vet ./...` clean if API changed; `actionlint` clean if workflows changed; single commit orchestrator-owned; staged explicitly |
+| Step 4 | Fix edits authored by `code-writer` (Mode B, no commit); `go build ./...` / `go test ./...` / `golangci-lint fmt -d` / `golangci-lint run` / `go vet ./...` clean if API changed; `actionlint` clean if workflows changed; single commit orchestrator-owned; staged explicitly |
 | Step 5 | `self-review` APPROVE (≤ 3 attempts) |
 | Step 6 | `git push` succeeded; `gh pr view` read; per-thread replies posted; only `fix` / `already-fixed` / uncontroversial `defer` resolved; `objection` / `clarify` unresolved |
 | Step 7 | Progress file closed for this round; summary printed |
