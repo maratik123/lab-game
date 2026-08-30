@@ -162,7 +162,7 @@ Classify the failure into exactly one class:
 | `tidy` | Build | `go mod tidy` left a delta — `git diff --exit-code go.mod go.sum` failed |
 | `test` | Test | `--- FAIL:` / `FAIL	github.com/...` |
 | `race` | Test | `WARNING: DATA RACE` under `go test -race` |
-| `lint` | Lint | a `golangci-lint` finding with its linter name in brackets |
+| `lint` | Lint | a `golangci-lint` finding with its linter name in brackets, or `<path>: N lines exceeds hard limit M` from the `file-limits` gate |
 | `harness` | Harness guards | a shellcheck finding, a RED citation, a guard-suite failure, a size-cap breach, or a broken link |
 | `actionlint` | Actionlint | actionlint exit code != 0 (workflow YAML check) |
 | `other` | — | None of the above — pause and surface the log excerpt to the user |
@@ -171,12 +171,12 @@ Classify the failure into exactly one class:
 
 | Class | Local reproducer |
 |---|---|
-| `fmt` | `make fmt-check` — i.e. `golangci-lint fmt -d`, no diff = clean |
+| `fmt` | `golangci-lint fmt -d` — no diff = clean |
 | `build` | `go build ./...` then `go vet ./...` |
 | `tidy` | `go mod tidy && git diff --exit-code go.mod go.sum` |
 | `test` | `go test ./... -run <TestName>`, then the full `go test ./...` |
 | `race` | `go test -race ./... -run <TestName>` |
-| `lint` | `golangci-lint run` |
+| `lint` | `golangci-lint run`; if that is clean the failure is the file-size gate — `awk` over `*.go`, hard 1000 / 1500 for `_test.go` |
 | `harness` | the failing guard itself: `shellcheck -s bash <script>`, `bash .claude/skills/ai-audit/scripts/check-citations.sh`, `bash .claude/skills/task/scripts/test-append-task-run.sh`, `bash .claude/skills/ai-audit/scripts/test-piped-gate-guard.sh`, or `wc -c <file>` |
 | `actionlint` | `actionlint .github/workflows/<file>.yml` |
 | `other` | Pause; print log excerpt + the classifier's top-2 candidate classes; surface to user. |

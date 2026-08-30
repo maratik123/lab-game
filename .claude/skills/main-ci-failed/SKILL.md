@@ -156,7 +156,7 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 | `tidy` | Build | `go mod tidy` left a delta |
 | `test` | Test | `--- FAIL:` / `FAIL	github.com/...` |
 | `race` | Test | `WARNING: DATA RACE` |
-| `lint` | Lint | a `golangci-lint` finding with its linter name in brackets |
+| `lint` | Lint | a `golangci-lint` finding with its linter name in brackets, or `<path>: N lines exceeds hard limit M` from the `file-limits` gate |
 | `harness` | Harness guards | shellcheck finding, RED citation, guard-suite failure, size-cap breach, broken link |
 | `actionlint` | Actionlint | actionlint exit code != 0 |
 | `other` | — | None of the above — pause and surface |
@@ -165,12 +165,12 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 
 | Class | Local reproducer |
 |---|---|
-| `fmt` | `make fmt-check` — i.e. `golangci-lint fmt -d`, no diff = clean |
+| `fmt` | `golangci-lint fmt -d` — no diff = clean |
 | `build` | `go build ./...` then `go vet ./...` |
 | `tidy` | `go mod tidy && git diff --exit-code go.mod go.sum` |
 | `test` | `go test ./... -run <TestName>`, then the full suite |
 | `race` | `go test -race ./... -run <TestName>` |
-| `lint` | `golangci-lint run` |
+| `lint` | `golangci-lint run`; if that is clean the failure is the file-size gate — `awk` over `*.go`, hard 1000 / 1500 for `_test.go` |
 | `harness` | the failing guard itself (`shellcheck`, `check-citations.sh`, a guard suite, `wc -c`) |
 | `actionlint` | `actionlint .github/workflows/<file>.yml` |
 | `other` | Pause; print log excerpt + classifier candidates; surface to user. |

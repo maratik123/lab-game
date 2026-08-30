@@ -18,8 +18,9 @@
 #
 # Known false positive, asserted deliberately: `make -n verify` piped into
 # head is BLOCKED. `make` is matched as a class, not by target enumeration,
-# because any flag between `make` and the target defeats an anchored
-# enumeration and every target in this project's Makefile is a gate (KD-16). A
+# because an anchored enumeration binds only when a target name follows `make`
+# immediately: five leaking shapes put a flag in between, and bare `make` names
+# no target at all. Every target in this project's Makefile is a gate (KD-16). A
 # dry run executes nothing, so the cost is a loud refusal rather than a green
 # record of a red gate. It is a fixture below so that a later "fix" which
 # quietly un-blocks it fails this suite.
