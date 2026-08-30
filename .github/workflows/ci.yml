@@ -40,6 +40,7 @@ jobs:
               - 'go.mod'
               - 'go.sum'
               - '.golangci.yml'
+              - 'Makefile'
               - '.github/workflows/**'
             harness:
               - '.claude/**'
@@ -59,14 +60,11 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: gofmt
-        run: |
-          out=$(gofmt -l .)
-          if [ -n "$out" ]; then
-            echo "::error::gofmt reports unformatted files:"
-            echo "$out"
-            exit 1
-          fi
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.1
+          install-only: true
+      - run: make fmt-check
 
   build:
     name: Build
@@ -78,20 +76,9 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go build ./...
-      - run: go vet ./...
-      - name: go mod tidy leaves no delta
-        run: |
-          go mod tidy
-          # `git diff -- go.sum` exits 128 while the module has no dependencies
-          # and the file therefore does not exist. Ask git about worktree state
-          # instead, which also catches a go.sum that tidy has just created.
-          if [ -n "$(git status --porcelain -- go.mod go.sum)" ]; then
-            echo "::error::go mod tidy changed go.mod / go.sum — commit the result"
-            git --no-pager diff -- go.mod go.sum
-            git status --porcelain -- go.mod go.sum
-            exit 1
-          fi
+      - run: make build
+      - run: make vet
+      - run: make tidy-check
 
   test:
     name: Test
@@ -103,9 +90,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - run: go test ./...
-      - name: go test -race
-        run: go test -race ./...
+      - run: make test
+      - run: make test-race
 
   lint:
     name: Lint
@@ -120,6 +106,9 @@ jobs:
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.1
+          install-only: true
+      - run: make lint
+      - run: make file-limits
 
   harness:
     name: Harness guards

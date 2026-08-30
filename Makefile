@@ -49,6 +49,10 @@ test:
 test-race:
 	go test -race ./...
 
+# `git diff -- go.sum` exits 128 while the module has no dependencies and the
+# file therefore does not exist, so ask git about worktree state instead — that
+# also catches a go.sum that tidy has just created. (Moved here from
+# .github/workflows/ci.yml, which now reaches this gate through make.)
 tidy-check:
 	go mod tidy
 	test -z "$$(git status --porcelain -- go.mod go.sum)" \
