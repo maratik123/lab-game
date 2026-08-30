@@ -64,14 +64,14 @@ go run ./cmd/bot                                        # run the bot
 >
 > What `actionlint` catches that `go` cannot: runner-version mismatches, deprecated action versions, expression-syntax errors, shell-quoting issues. Harness scripts are executable code and get the same treatment as `.go` files.
 
-> **AXIOM — Every project instruction file Claude loads per invocation MUST stay below 40,000 chars.**
-> Harness-enforced soft cap; crossing it imposes measurable per-invocation cost on every subagent spawn, `/task`, and review pass. Project-side **35,000-char early warning** gives one full `/task` cycle of headroom. Applies to `AGENTS.md`, `CLAUDE.md`, every `.claude/skills/**/*.md`, every `.claude/agents/**.md`, every `.claude/rules/*.md`, and `ai-docs/{code-style,doc-convention,context,agent-writing-style,corrections-log}.md`.
+> **AXIOM — instruction files live under a 40,000-byte hard cap, with hysteresis.**
+> Measured by `wc -c` (bytes; character counts under-count multibyte punctuation). Applies to `AGENTS.md`, `CLAUDE.md`, every `.claude/skills/**/*.md`, every `.claude/agents/**.md`, every `.claude/rules/*.md`, and `ai-docs/{code-style,doc-convention,context,agent-writing-style,corrections-log}.md`.
 >
-> | If `wc -c <file>` reports... | Action |
+> | State | Meaning |
 > |---|---|
-> | ≥ 40,000 chars | **`major`** — plan extraction/dedup for the next `/ai-audit` pass (extract verbose subsections into `ai-docs/<topic>.md` reference pages with anchored links). |
-> | 35,000–39,999 chars | **`minor`** — extraction pass **owned by the next `/ai-audit` run**; NOT a criterion of any `/task`. |
-> | < 35,000 chars | OK. |
+> | ≥ 40,000 bytes | **Gate.** The growing flow stops; the next `/ai-audit` run owns an extraction pass whose single postcondition is the file landing **below 35,000** — restoring the growth budget. CI is red on this. |
+> | 35,000–39,999 bytes | **Normal working range.** No flow reports it, no task constrains itself by it, no AC names a byte ceiling below the hard cap. |
+> | < 35,000 bytes | Post-`/ai-audit` state; full growth budget. |
 
 > **A zero exit status is evidence about the LAST pipeline stage, not about your question.** Never pipe a gate whose exit code is load-bearing — `go test ./... | tail -6` reports `tail`'s status (always 0), so a RED gate records as green, and `tail -N` can truncate away the `FAIL` line you needed. Capture to a file and grep the saved log: `go test ./... > gate.log 2>&1 && echo GATE-GREEN || echo GATE-RED`, then `grep -E "^(FAIL|ok|---)" gate.log`. (`set -o pipefail` also works.) A `PreToolUse` hook blocks the `go test … | tail/head` form; the principle is broader than what the hook matches — the same silent-success shape covers a `jq` filter printing `null` from an error body, and a mutating flag (`rg -r`) rewriting output while exiting 0.
 
@@ -173,6 +173,7 @@ When changing dependencies: **never hand-edit a version in `go.mod`** — `go ge
 > | `gh pr create` immediately preceded the push (first push that opened the PR) | **Skip** the read — the body is what you just authored. The rule fires on the **next** push. |
 
 > **AXIOM — Every code-producing commit on a feature branch with an open (or about-to-be-opened) PR must pass a self-review before `git push`.**
+> **Carve-out — Step-8 branch pushes are visibility, not presentation.** During `/task` Step 8 the branch is pushed from the first group return onward with **no PR existing yet**; self-review gates **PR creation** (Step 12, after APPROVE), and CI on the PR is the FINAL gate — it confirms the locally-green tree is green in the reference environment, it does not hunt defects the loop should have found.
 > Named instances: `/task` Step 10, `/bugfix` Step 6, `/project-review` Step 5. The enumeration is a list of *named* instances, **never** the only covered surfaces — the obligation is a workspace rule, not a per-skill courtesy. Full matrix: [`.claude/agents/self-review.md` § When self-review applies](.claude/agents/self-review.md). An unnamed surface is covered when it **either** ships executable code (a hook body, a script, Go code) **or** changes an instruction-file rule that other surfaces must obey — "no `.go` diff" is never the test.
 >
 > APPROVE = push. REJECT = fix on the same branch and re-run; after 3 REJECTs in a row, surface and stop without pushing.

@@ -163,10 +163,8 @@ jobs:
           while IFS= read -r f; do
             n=$(wc -c < "$f")
             if [ "$n" -ge 40000 ]; then
-              echo "::error file=$f::instruction file is $n bytes (hard cap 40000)"
+              echo "::error file=$f::instruction file is $n bytes (hard cap 40000) — run /ai-audit: its extraction pass must land the file below 35000. If this PR did not grow the file, the debt predates it — run /ai-audit before merging anyway."
               status=1
-            elif [ "$n" -ge 35000 ]; then
-              echo "::warning file=$f::instruction file is $n bytes (early warning 35000)"
             fi
           done < <(find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md')
           exit "$status"

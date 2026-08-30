@@ -317,3 +317,30 @@ The Step 12 sub-step 5 parser specification lives in a dedicated reference file:
   The hook reads only the last 3 lines, so stale tokens do not accumulate influence; the next orchestrator turn deletes the token line and resumes.
 - **Hook mechanics:** fail-open when the marker is absent; respects `stop_hook_active` (never re-blocks its own continuation); on block, the stderr message restates this contract, so a session that has never read this page still gets the recipe at the moment it needs it.
 - **What it enforces:** naming the next step is not performing it. Inside an active `/task` a turn has exactly two legal shapes — advance the flow with tool calls, or hand back explicitly. The announce-and-idle third shape was written into `learnings.md` three times in one session and violated three times; a rule that failed as text ships here as a gate.
+
+
+## Subagent-owned writes — temptation table (SKILL.md § Design Amendment AXIOM)
+
+| If the orchestrator is tempted to... | Do this instead |
+|---|---|
+| `Edit` a `*.design.md` to apply a self-review finding | Spawn `design` Subagent with the finding text |
+| `Write` a `*.design.md` because the Subagent's text output didn't land on disk | Re-spawn the `design` Subagent; do NOT transcribe its text |
+| `Edit` a `*.spec.md` to apply a user tweak after `interview` returned `ready` | Spawn `spec-writer` with the tweak as a synthetic round |
+| `Edit` a `done/*.spec.md` during `/pr-commented` Spec Amendment | Same — route through `spec-writer` |
+
+## Amendment-route rule — rationale (SKILL.md § Design Amendment AXIOM)
+
+The obligation to route a spec/design change through its amendment recipe used to live at named POINTS: Step 11's fix-diff detection table, and the reviewer's literal "Amendment trigger" wording. Observed gaps, one per phase the points missed:
+
+1. Session `ec78f817`: a reviewer-emitted spec-amendment trigger was closed in-thread — fixed by the two-exits rule at Step 11.
+2. First post-forge run, DESIGN phase: the design agent raised genuine scope questions (propagation breadth; a `settings.json` permission) surfaced to the user BARE — correct questions, no route attached, so the user's "yes" had no defined next step.
+
+The generalisation keys on the QUESTION'S SUBJECT, not the phase or the originator: if a "yes" changes Scope / an AC / a KD / a standing constraint, the question names its route; the answer authorises the change, and the route runs regardless. Detection is deliberately coarse — ask "what is this question ABOUT?", never "who asked" or "which step".
+
+## Reviewer reuse — contract (SKILL.md Step 10)
+
+A WARM reviewer (resumed agent) carries its prior rounds in context. That memory is an asset for exactly one job: re-verifying the fixes of its OWN earlier findings against the fix diff. For anything else it is anchoring — a warm round judging a new group's diff or an amended artefact re-derives nothing and sees what it expects. Rule: warm resume is legal only when the round's whole scope is fix-verification of that reviewer's own register rows; a round containing ANY new material spawns cold. The register (not the reviewer's memory) is the loop's durable cross-round state, so a cold spawn loses nothing the harness relies on.
+
+## In-flight marker — handback vocabulary addendum
+
+`awaiting delegate return` is a LEGAL handback reason: a turn that spawned a background delegate and ends while it runs has genuinely handed the wheel — not to the user, but out of the orchestrator's hands; the task-notification resumes it. Measured in the first post-forge run: the hook fired once, on exactly this shape, and the token resolved it at the cost of one line. That is the intended failure direction (loud + cheap), not a defect.
