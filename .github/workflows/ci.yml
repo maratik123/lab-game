@@ -148,6 +148,7 @@ jobs:
           set -euo pipefail
           bash .claude/skills/ai-audit/scripts/test-check-citations.sh
           bash .claude/skills/task/scripts/test-append-task-run.sh
+          bash .claude/skills/ai-audit/scripts/test-piped-gate-guard.sh
       - name: instruction files stay under the 40k hard cap
         run: |
           set -euo pipefail
