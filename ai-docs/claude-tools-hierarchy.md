@@ -14,13 +14,13 @@ Rules files, hooks and permissions landed in phase 1; the subagents and spec-dri
 | `SessionStart` | — | rules reminder | Injects the instruction to read `CLAUDE.md` (→ `AGENTS.md`) and summarise the rules. |
 | `PreToolUse` | `Bash` | main-branch commit guard | **Blocks (exit 2)** any `git commit` while `git branch --show-current` is `main`, printing the recovery procedure. The only enforcement of AXIOM 1 — `origin` has none. |
 | `PreToolUse` | `Bash` | ast-index refresh | Updates the index before a commit. Advisory, never blocks. |
-| `PreToolUse` | `Bash` | piped-gate guard | **Blocks (exit 2)** `go build/test/vet` / `golangci-lint run` / `gofmt` piped into `tail`/`head` without `set -o pipefail`. Matches command *text*, so a quoted example also matches — fails closed by design. |
-| `PostToolUse` | `Write\|Edit` | gofmt | Formats a written `.go` file in place. |
+| `PreToolUse` | `Bash` | piped-gate guard | **Blocks (exit 2)** `go build/test/vet` / `golangci-lint run` / `golangci-lint fmt` / `gofmt` / `make` (matched as a class — every target of the `Makefile` is a gate) piped into `tail`/`head` without `set -o pipefail`. Matches command *text*, so a quoted example also matches — fails closed by design, and `make -n verify` piped into `head` is a known, accepted false positive. Regression suite: `ai-audit/scripts/test-piped-gate-guard.sh`. |
+| `PostToolUse` | `Write\|Edit` | `golangci-lint fmt` | Formats a written `.go` file in place, path-scoped to that file — so it applies every formatter `.golangci.yml` enables (`gofumpt` included) and rewrites no sibling. Keeps the hook from re-introducing what the format gate rejects. |
 | `PostToolUse` | `Write\|Edit` | panic-gate | **Warns** on `panic(` / `log.Fatal*` / `log.Panic*` in a non-`_test.go` file; points at `ai-docs/panic-index.md`. |
 | `PostToolUse` | `Write\|Edit` | secret-gate | **Blocks (exit 2)** when a written file contains a string shaped like a live Telegram bot token (`\d{8,10}:[A-Za-z0-9_-]{35}`). |
 | `PostToolUse` | `Bash` | PR-body sync | After a `git push` on a branch with an open PR, reminds to re-read the PR body (AXIOM 2). Advisory. |
 
-Verification protocol for any hook change: [`hook-verification.md`](hook-verification.md). All nine bodies pass `shellcheck -s bash`; the blocking ones were exercised against real commands (including innocent ones containing the matched substring) on 2026-08-29.
+Verification protocol for any hook change: [`hook-verification.md`](hook-verification.md). All **ten** bodies pass `shellcheck -s bash` — ten, not the nine this line claimed until 2026-08-30: `jq -r '.hooks[][].hooks[].command' .claude/settings.json` yields `SessionStart` 2 · `PreToolUse` 3 · `PostToolUse` 4 · `Stop` 1. The blocking ones were exercised against real commands, including innocent ones containing the matched substring. The two bodies changed on **2026-08-30** — the `Write\|Edit` formatter and the piped-gate guard — were re-verified against all three MUSTs on that date; the guard's MUST 2 is the 26-fixture matrix its regression suite now runs in CI, and MUST 3 confirmed in-session that an edited `.claude/settings.json` is live and the load-bearing `tool_input` field populated.
 
 ## Rules — `.claude/rules/`
 
@@ -59,7 +59,7 @@ Not ported from the source harness: `image-check` (verifies a golden *image* aga
 | `/verify-change` | explicit | Runs `go test ./...`, optionally filtered. |
 | `/improve` | explicit | Launches `self-improve`; the escalation path from the corrections log into instruction files and hooks. Run at ≥3 unescalated corrections or ≥2 validations. |
 | `/reflect` | explicit | Launches `self-reflect`, then applies each finding per the user's per-finding routing consent. |
-| `/ai-audit` | explicit | Two phases: (1) `learnings-escalation-audit` fixes field drift; (2) the main session audits the whole instruction surface for dead references, format violations and size-cap breaches. Ships two shell guards — `check-citations.sh` and its regression test. |
+| `/ai-audit` | explicit | Two phases: (1) `learnings-escalation-audit` fixes field drift; (2) the main session audits the whole instruction surface for dead references, format violations and size-cap breaches. Ships three shell guards — `check-citations.sh`, its regression test, and `test-piped-gate-guard.sh`, the piped-gate hook's regression suite. |
 | `/triage` | explicit | Launches `triage-runner`; batched promotion of deferred rows to issues. Default threshold ≥3 unhandled rows. |
 | `/pr-commented` | explicit | One round of reviewer-comment response: classify each unresolved thread, bundle fixes into one commit, self-review, push, reply and resolve per category. |
 | `/pr-ci-failed` | model-invocable | One round of CI-failure response on the current PR: classify, reproduce locally, fix, self-review, push, re-read the PR body. |
@@ -77,25 +77,26 @@ The port is complete: every subagent and skill the source harness carried, minus
 |---|---|---|
 | `ai-audit/scripts/check-citations.sh` | `/ai-audit` Phase 2, or standalone | Every `#N` / learnings-date / memory-file citation must resolve **for its reader**: local refs resolve here, inherited ones name `graphite-gp` or `quartzite`. Exit 1 on any unresolvable citation. |
 | `ai-audit/scripts/test-check-citations.sh` | before editing the guard | Locks the content-addressed (never line-pinned) exclusion, and that the guard restores the tree it edits. |
+| `ai-audit/scripts/test-piped-gate-guard.sh` | before editing the piped-gate hook, and by CI's Harness-guards job | 26 fixtures through the hook body **extracted from `.claude/settings.json`**, never a retyped regex: 15 must-block, 10 must-allow, plus the known false positive asserted as blocked. Fails when a regex edit breaks either direction. |
 | `task/scripts/append-task-run.sh` | `/task` Step 12 sub-step 5a | Single writer of `ai-docs/metrics/task-runs.jsonl`. Degrades rather than halting Step 12. |
 | `task/scripts/test-append-task-run.sh` | before editing the writer | 20 cases; AC6 asserts the case count equals `ai-docs/task-run-schema.md` § *Cases* — add a row there in the same commit as a new case. |
 | `pr-merged/scripts/cleanup-progress.sh` | `/pr-merged` step 3 | Derives the merged PR's issue number from its body, finds the matching spec in `plans/done/`, and deletes only that branch's local progress files. |
 
-Both suites must pass `shellcheck -s bash` and run green before `git add` (`AGENTS.md` § *Build & Test*).
+All three regression suites must pass `shellcheck -s bash` and run green before `git add` (`AGENTS.md` § *Build & Test*).
 
 ## Permissions
 
-`allow` covers the project's own toolchain (`go`, `gofmt`, `golangci-lint`, `git`, `gh`, `ast-index`, `psql`, `actionlint`, `shellcheck`) plus read-only text tools. `deny` covers `.idea/**`, `**/.env*` and `**/secrets*` — the bot token and the database DSN must be unreachable to both `Read` and `Edit`.
+`allow` covers the project's own toolchain (`go`, `gofmt`, `golangci-lint`, `make`, `git`, `gh`, `ast-index`, `psql`, `actionlint`, `shellcheck`) plus read-only text tools. `deny` covers `.idea/**`, `**/.env*` and `**/secrets*` — the bot token and the database DSN must be unreachable to both `Read` and `Edit`.
 
 ## CI — `.github/workflows/ci.yml`
 
 | Job | Runs when | Gates |
 |---|---|---|
-| Format | `go` paths changed | `gofmt -l .` must be empty |
-| Build | `go` paths changed | `go build ./...`, `go vet ./...`, `go mod tidy` leaves no delta |
-| Test | `go` paths changed | `go test ./...` then `go test -race ./...` |
-| Lint | `go` paths changed | `golangci-lint run` at the pinned version |
-| Harness guards | `.claude/**`, `ai-docs/**`, `AGENTS.md`, `CLAUDE.md` changed | shellcheck on every script **and** every hook body; the citation guard; both guard suites; the 40k instruction-file cap (35k warns); every relative markdown link resolves |
+| Format | `go` paths changed | `make fmt-check` — `golangci-lint fmt -d` prints no diff |
+| Build | `go` paths changed | `make build`, `make vet`, `make tidy-check` (`go mod tidy` leaves no delta) |
+| Test | `go` paths changed | `make test` then `make test-race` |
+| Lint | `go` paths changed | `make lint` at the pinned `golangci-lint` version, then `make file-limits` (hard 1000 / 1500 line limits) |
+| Harness guards | `.claude/**`, `ai-docs/**`, `AGENTS.md`, `CLAUDE.md` changed | shellcheck on every script **and** every hook body; the citation guard; all three guard suites; the 40k instruction-file cap (35k warns); every relative markdown link resolves |
 | Actionlint | `.github/workflows/**` changed | `actionlint` via reviewdog |
 
 **A filtered-out job is not a passing job.** `dorny/paths-filter` decides what runs; a new artefact class must be added to its filter in the same PR that introduces it, or its gate silently stops running.
