@@ -168,7 +168,7 @@ Based on the confirmed trace — find the single point of failure.
 - [ ] Only after a red test → Edit
 
 **Test must:**
-- Be in `#[cfg(test)]` module or `tests/` directory
+- Be in a `_test.go` file beside the code under test — same package, or `<pkg>_test` for a black-box test (`AGENTS.md` § *Workflow*; `ai-docs/go-test-conventions.md`)
 - Verify an invariant (comment out the fix → test must fail)
 - Be named as a behavior description: `returns_error_when_input_empty`
 
