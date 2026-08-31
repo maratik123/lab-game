@@ -40,3 +40,17 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **at:** 77696ee
 **Kind:** correction
 **Escalated?** no
+
+### 2026-08-31 — process — followed a skill's restated ordering instead of opening the contract it cited
+**What happened:** Running `/improve`, I took `.claude/skills/improve/SKILL.md` item 6 at its word — "apply the approved proposals to the working tree first, then dispatch the clean-context reproducers" — and applied three proposals before any baseline. That same item points at `self-improve.md § Step 6` for the eval contract, and the canonical page it leads to (`ai-docs/improve-eval-contract.md` § *The RED baseline*) fixes the opposite sequence: baseline batch first, because the pre-change state "is obtained by not having applied anything yet". I opened the contract only after applying, when I went looking for how to run the baseline. Recovered by cp-backing-up the applied files and restoring HEAD for the baseline window, so no proposal reached history unevaluated.
+**Rule:** A pointer to a canonical source is an instruction to open it, and it outranks the pointing document's own summary of what it says. When one instruction file both restates a procedure and names another as canonical for it, the restatement is the stale copy by default — read the named source before the first irreversible step, not when the restatement runs out. Tell: any step whose cost is asymmetric (applying is cheap, un-applying mid-flow is not) is the step that must be preceded by the read.
+**at:** bd89550
+**Kind:** correction
+**Escalated?** no
+
+### 2026-08-31 — testing — a control that comes back uniformly clean is a claim about the instrument first
+**What happened:** Four eval baselines dispatched against the pre-change tree — one proposal probed in four different scenario shapes — all came back GREEN, which under the contract meant no proposal could commit. The available reading was "the model already does this, the rules are unnecessary". Instead of taking it, I looked for a channel that could produce that result independent of the rules, and found one: `AGENTS.md` § *Agent Docs* heads its table "Read on nearly every task" and lists `ai-docs/learnings.md`, so the pre-change tree instructs every baseline agent to read the correction the rule was derived from. The confirming detail was a date — a baseline answer asserted "this host carried a 2022 selection", and `eselect iptables list` prints no dates; that fact exists only in the source entry.
+**Rule:** When a control, a negative test, or a baseline comes back clean across every variation you try, spend the next step on the instrument rather than on the conclusion — a uniformly clean control and a genuinely absent effect look identical from the result alone, and only one of them is worth acting on. Look for a specific in the output that could only have come from the channel you meant to close; a date, a count, or a proper noun the subject had no other way to know is the cheapest such probe. Same shape as the pipeline-exit-status axiom one level up: the run answered a different question than the one asked.
+**at:** bd89550
+**Kind:** validation
+**Escalated?** no
