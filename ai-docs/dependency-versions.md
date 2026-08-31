@@ -13,6 +13,7 @@ Recipes behind the AXIOM in `AGENTS.md` § *Dependency Versions*. **Every claim 
 | Tool behaviour | "Does `<tool>` support `--flag`?" | `<tool> --help` or run it. **Never** from memory |
 | VCS state | "Is this file tracked / ignored / committed?" | `git ls-files --error-unmatch <path>` (tracked), `git check-ignore -v <path>` (ignored), `git log -1 -- <path>` (committed). `git status` is **blind to ignored files** — empty output is never proof of absence |
 | Upstream issue | "Is this bug fixed?" | `gh issue view <N> --json state,comments` — the body is frozen at filing time; the **closing comment** carries the resolution |
+| System selection state | "Which implementation will this host actually use?" | `eselect <module> list` — the `*` marks the live choice; run `eselect modules list` first, to see which modules exist on this host. A package's install-time default describes a *fresh* system, never one that already chose |
 
 ## Changing a dependency
 
