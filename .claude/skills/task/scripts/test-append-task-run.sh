@@ -117,13 +117,13 @@ _Updated: 2026-07-31 00:00_
 
 ## Files touched
 
-- \`crates/gp-core/src/a.rs\` — added a thing
-- \`crates/gp-core/src/b.rs\` — changed a thing
-- \`crates/gp-core/src/c.rs\` — removed a thing
+- \`internal/world/a.go\` — added a thing
+- \`internal/world/b.go\` — changed a thing
+- \`internal/world/c.go\` — removed a thing
 
 ## Decisions log
 
-- **Step 11**: accepted the ⚠️ Objected rationale on src/b.rs:20; later 🔁 Re-opened in Round 2
+- **Step 11**: accepted the ⚠️ Objected rationale on src/b.go:20; later 🔁 Re-opened in Round 2
 
 ## AC Status
 
@@ -137,17 +137,17 @@ _Updated: 2026-07-31 00:00_
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/a.rs:10 | blocker | Description | ✅ Fixed |
-| 2 | src/b.rs:20 | major | Description | ⚠️ Objected: out of scope |
-| 3 | src/c.rs:30 | major | Description | ✅ Fixed |
-| 4 | src/d.rs:40 | nit | Description | ✅ Fixed |
-# This row is the Step-11 fix whose line delta shifts src/g.rs:70 -> :73 between
+| 1 | src/a.go:10 | blocker | Description | ✅ Fixed |
+| 2 | src/b.go:20 | major | Description | ⚠️ Objected: out of scope |
+| 3 | src/c.go:30 | major | Description | ✅ Fixed |
+| 4 | src/d.go:40 | nit | Description | ✅ Fixed |
+# This row is the Step-11 fix whose line delta shifts src/g.go:70 -> :73 between
 # R1 and R2. It exists to instantiate key drift. Deleting it makes case 14 pass
 # for the wrong reason and removes the only scenario findings_first_seen
 # measures. If case 14 is red, the defect is in the parser or the gate -
 # not in this row. See ai-docs/task-run-schema.md.
-| 5 | src/g.rs:15 | minor | Description | ✅ Fixed |
-| 6 | src/g.rs:70 | minor | Missing doc comment | ⬜ Open |
+| 5 | src/g.go:15 | minor | Description | ✅ Fixed |
+| 6 | src/g.go:70 | minor | Missing doc comment | ⬜ Open |
 
 ## Self-Review (Round 2)
 
@@ -155,10 +155,10 @@ _Updated: 2026-07-31 00:00_
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/b.rs:20 | major | Description | ⬜ Open 🔁 Re-opened |
-| 2 | src/e.rs:50 | major | Description | ⬜ Open |
-| 3 | src/f.rs:60 | minor | Description | ⚠️ Objected: nit-level |
-| 4 | src/g.rs:73 | minor | Missing doc comment | ⬜ Open |
+| 1 | src/b.go:20 | major | Description | ⬜ Open 🔁 Re-opened |
+| 2 | src/e.go:50 | major | Description | ⬜ Open |
+| 3 | src/f.go:60 | minor | Description | ⚠️ Objected: nit-level |
+| 4 | src/g.go:73 | minor | Missing doc comment | ⬜ Open |
 
 ## Self-Review (Round 3)
 
@@ -171,8 +171,8 @@ _Updated: 2026-07-31 00:00_
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | f.rs:1 | major | decoy | ⚠️ Objected: x |
-| 2 | f.rs:2 | minor | decoy | ⬜ Open 🔁 Re-opened |
+| 1 | f.go:1 | major | decoy | ⚠️ Objected: x |
+| 2 | f.go:2 | minor | decoy | ⬜ Open 🔁 Re-opened |
 EOF
 
 f2="$tmp/f2-does-not-exist.progress.md"   # deliberately never created
@@ -187,7 +187,7 @@ cat > "$f3" <<EOF
 
 ## Files touched
 
-- \`crates/gp-core/src/a.rs\` — added a thing
+- \`internal/world/a.go\` — added a thing
 EOF
 
 # Three degradation paths fire at once: URL-form Issue, a verdict-less section,
@@ -205,14 +205,14 @@ cat > "$f4" <<'EOF'
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/a.rs:10 | critical | Unknown severity | ⬜ Open |
-| 2 | src/b.rs:2
+| 1 | src/a.go:10 | critical | Unknown severity | ⬜ Open |
+| 2 | src/b.go:2
 
 ## Self-Review (Round 2)
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/a.rs:10 | major | No verdict line above | ⬜ Open |
+| 1 | src/a.go:10 | major | No verdict line above | ⬜ Open |
 EOF
 
 f5="$tmp/f5.progress.md"
@@ -225,7 +225,7 @@ cat > "$f5" <<EOF
 
 ## Files touched
 
-- \`crates/gp-core/src/a.rs\` — added a thing
+- \`internal/world/a.go\` — added a thing
 
 ## Self-Review (Round 1)
 
@@ -233,7 +233,7 @@ cat > "$f5" <<EOF
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/a.rs:10 | major | Description | ⬜ Open |
+| 1 | src/a.go:10 | major | Description | ⬜ Open |
 
 ## Self-Review (Round 2)
 
@@ -241,7 +241,7 @@ cat > "$f5" <<EOF
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/a.rs:10 | major | Description | ⬜ Open |
+| 1 | src/a.go:10 | major | Description | ⬜ Open |
 
 ## Self-Review (Round 3)
 
@@ -249,7 +249,7 @@ cat > "$f5" <<EOF
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/a.rs:10 | major | Description | ⬜ Open |
+| 1 | src/a.go:10 | major | Description | ⬜ Open |
 EOF
 
 # F6 — a literal `|` inside a `Finding` cell shifts every later column right by
@@ -270,7 +270,7 @@ cat > "$f6" <<EOF
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/a.rs:1 | major | uses \`a | b\` here | ⚠️ Objected: x |
+| 1 | src/a.go:1 | major | uses \`a | b\` here | ⚠️ Objected: x |
 EOF
 
 # F7 — an unbucketed severity cell, ISOLATED: everything else in this fixture
@@ -288,7 +288,7 @@ cat > "$f7" <<EOF
 
 ## Files touched
 
-- \`crates/gp-core/src/a.rs\` — added a thing
+- \`internal/world/a.go\` — added a thing
 
 ## Self-Review (Round 1)
 
@@ -296,7 +296,7 @@ cat > "$f7" <<EOF
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/a.rs:10 | critical | Unknown severity | ⬜ Open |
+| 1 | src/a.go:10 | critical | Unknown severity | ⬜ Open |
 EOF
 
 # F8 — a verdict-less Self-Review section, ISOLATED the same way: clean
@@ -313,7 +313,7 @@ cat > "$f8" <<EOF
 
 ## Files touched
 
-- \`crates/gp-core/src/a.rs\` — added a thing
+- \`internal/world/a.go\` — added a thing
 
 ## Self-Review (Round 1)
 
@@ -321,13 +321,13 @@ cat > "$f8" <<EOF
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/a.rs:10 | major | Description | ⬜ Open |
+| 1 | src/a.go:10 | major | Description | ⬜ Open |
 
 ## Self-Review (Round 2)
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/a.rs:10 | major | No verdict line above | ⬜ Open |
+| 1 | src/a.go:10 | major | No verdict line above | ⬜ Open |
 EOF
 
 # F9 — GFM makes a row's TRAILING pipe optional; the row matcher
@@ -351,8 +351,8 @@ cat > "$f9" <<EOF
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/z.rs:99 | major | Do the thing | ⚠️ Objected: reason
-| 2 | src/y.rs:5 | minor | Another finding | ⬜ Open 🔁 Re-opened
+| 1 | src/z.go:99 | major | Do the thing | ⚠️ Objected: reason
+| 2 | src/y.go:5 | minor | Another finding | ⬜ Open 🔁 Re-opened
 EOF
 
 # F10 — an escaped pipe walked through EVERY non-final cell.
@@ -385,16 +385,16 @@ cat > "$f10" <<EOF
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1\\|x | src/a.rs:1 | blocker | plain finding | ⚠️ Objected: reason |
-| 2 | src/b\\|c.rs:2 | major | plain finding | ⚠️ Objected: reason |
-| 3 | src/d.rs:3 | major | uses a \\| b here | ⚠️ Objected: reason |
-| 4 | src/e.rs:4 | minor | plain finding | ⚠️ Objected: use a \\| b |
-| 5 | src/f.rs:5 | nit | uses p \\| q | ⬜ Open 🔁 Re-opened for r \\| s |
-| 6 | src/g.rs:6 | ma\\|jor | plain finding | ⬜ Open |
+| 1\\|x | src/a.go:1 | blocker | plain finding | ⚠️ Objected: reason |
+| 2 | src/b\\|c.go:2 | major | plain finding | ⚠️ Objected: reason |
+| 3 | src/d.go:3 | major | uses a \\| b here | ⚠️ Objected: reason |
+| 4 | src/e.go:4 | minor | plain finding | ⚠️ Objected: use a \\| b |
+| 5 | src/f.go:5 | nit | uses p \\| q | ⬜ Open 🔁 Re-opened for r \\| s |
+| 6 | src/g.go:6 | ma\\|jor | plain finding | ⬜ Open |
 
 ## Files touched
 
-- \`src/a.rs\` — a
+- \`src/a.go\` — a
 EOF
 
 # --- Case 1: F1 happy path (AC9) ---------------------------------------------
@@ -412,7 +412,7 @@ assert_jq "case 1: findings_first_seen"        "$l1" '.findings_first_seen == {"
 assert_jq "case 1: objections == 2"            "$l1" '.objections == 2'
 assert_jq "case 1: objections_reopened == 1"   "$l1" '.objections_reopened == 1'
 assert_jq "case 1: files_touched (3 paths)"    "$l1" \
-  '.files_touched == ["crates/gp-core/src/a.rs","crates/gp-core/src/b.rs","crates/gp-core/src/c.rs"]'
+  '.files_touched == ["internal/world/a.go","internal/world/b.go","internal/world/c.go"]'
 assert_jq "case 1: incomplete == false"        "$l1" '.incomplete == false'
 assert_jq "case 1: issue == 42"                "$l1" '.issue == 42'
 assert_jq "case 1: spec_base from basename"    "$l1" '.spec_base == "f1"'
@@ -455,7 +455,7 @@ assert_jq "case 2: objections bounded to 2"         "$l1" '.objections == 2'
 assert_jq "case 2: objections_reopened bounded to 1" "$l1" '.objections_reopened == 1'
 
 # --- Case 3: F1 carry-forward (AC9's explicit clause) -------------------------
-# `src/b.rs:20` appears in R1 (objected) and R2 (re-opened): counted TWICE in
+# `src/b.go:20` appears in R1 (objected) and R2 (re-opened): counted TWICE in
 # `findings`, ONCE in `findings_first_seen`. Without this pair the two fields are
 # indistinguishable on any fixture whose rows are all unique.
 assert_jq "case 3: carry-forward counted twice in findings"      "$l1" '.findings.major == 4'
@@ -680,8 +680,8 @@ assert_jq "case 12e: unobtainable branch -> incomplete == true from branch alone
   '.incomplete == true'
 
 # --- Case 14: F1 key drift — the over-count asserted as EXPECTED (AC9a) --------
-# `src/g.rs:70` (R1) and `src/g.rs:73` (R2) are ONE finding: same file, same
-# `Finding` text, at a line number the `src/g.rs:15` fix above them shifted. Under
+# `src/g.go:70` (R1) and `src/g.go:73` (R2) are ONE finding: same file, same
+# `Finding` text, at a line number the `src/g.go:15` fix above them shifted. Under
 # the shipped `File:line` identity key they are two different keys, so the row
 # receives NO de-duplication and is counted twice in BOTH counters.
 #
@@ -807,12 +807,12 @@ cat > "$f11" <<EOF
 
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
-| 1 | src/w.rs:1 | major | prose naming ⚠️ Objected, ends in a backslash \\\\| ✅ Fixed |
-| 2 | src/v.rs:2 | minor | a \\\\ mid-cell, then a real \\| escape | ⚠️ Objected: r |
+| 1 | src/w.go:1 | major | prose naming ⚠️ Objected, ends in a backslash \\\\| ✅ Fixed |
+| 2 | src/v.go:2 | minor | a \\\\ mid-cell, then a real \\| escape | ⚠️ Objected: r |
 
 ## Files touched
 
-- \`src/w.rs\` — w
+- \`src/w.go\` — w
 EOF
 
 t20="$tmp/out20.jsonl"

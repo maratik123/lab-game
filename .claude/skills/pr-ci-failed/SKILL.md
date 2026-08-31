@@ -228,7 +228,7 @@ Root-cause the failure from the log + reproducer output. Three paths:
     Author the concrete edits (reason them out — not a transcribed diff), stay within the failing surface (no scope expansion), then re-run the reproducer until GREEN plus:
       golangci-lint run
       golangci-lint fmt
-      RUSTDOCFLAGS=\"-D warnings\" go vet ./...   (doc class)
+      go vet ./...   (doc class)
     Return WITHOUT committing: the edits (file:line + one-liner each) and gate results.
   ")
   ```
@@ -270,7 +270,7 @@ Run gates **before** commit:
 - `go test ./...` — full suite (or `go test ./... <name>` if the fix is scoped to one test and `go test ./...` would dwarf the change).
 - `golangci-lint fmt -d`.
 - `golangci-lint run`.
-- `go vet ./...` — only if public API or any `pub` doc changed.
+- `go vet ./...` — only if the exported API or any doc comment changed.
 - `actionlint <changed-workflow-file>` — only if any `.github/workflows/*.yml` was modified.
 
 Commit message format:

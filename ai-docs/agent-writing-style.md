@@ -146,20 +146,20 @@ The canonical cross-link target — every callout body ends with a `See ... § C
 
 When adding the callout to a new code-side skill, pick the variant matching the skill's durable-state shape; copy the live full body from a sibling that already uses that variant; do not invent a 4th variant without first updating this section and the cross-link target.
 
-### 8. 40k char-cap on instruction files
+### 8. 40k byte-cap on instruction files, with hysteresis
 
 Source-of-truth AXIOM lives in `AGENTS.md § Build & Test`. Pattern 8 is the
 style-guide-side restatement so the rule is discoverable from the writing
 conventions reference and audit-able via `/ai-audit` Phase 2 Checklist M.
 
-> **AXIOM — Every covered instruction file MUST stay below 40,000 chars at every commit boundary.**
-> The harness applies a soft cap on per-invocation instruction-file load; crossing 40,000 chars imposes measurable per-invocation cost on every Subagent spawn and Skill invocation. The 35,000-char early-warning band gives one full `/task` cycle of headroom before the harness warning starts firing.
+> **AXIOM — Every covered instruction file stays under 40,000 bytes, and the band below the cap is a working range, not a warning.**
+> Measured by `wc -c` — **bytes, not characters**: a character count under-counts multibyte punctuation (every `—`, `§`, `≥` in these files is 2–3 bytes), so a char-based reading silently reports a file as smaller than the gate sees it. The harness applies a soft cap on per-invocation instruction-file load; crossing 40,000 bytes imposes measurable per-invocation cost on every Subagent spawn and Skill invocation.
 >
 > | If `wc -c <file>` reports... | Action |
 > |---|---|
-> | `≥ 40,000` chars | **`major`** — plan extraction / dedup for the next `/ai-audit` pass; extract verbose subsections into `ai-docs/<topic>.md` reference pages with anchored links from the source file. |
-> | `35,000–39,999` chars | **`minor`** — proactive extraction pass; do not let the next `/task` push it over 40,000. |
-> | `< 35,000` chars | OK. |
+> | `≥ 40,000` bytes | **Gate.** The growing flow stops; the next `/ai-audit` run owns an extraction pass whose single postcondition is the file landing **below 35,000** — restoring the growth budget. CI is red on this. Extract verbose subsections into `ai-docs/<topic>.md` reference pages with anchored links from the source file. |
+> | `35,000–39,999` bytes | **Normal working range.** No flow reports it, no task constrains itself by it, no AC names a byte ceiling below the hard cap. |
+> | `< 35,000` bytes | Post-`/ai-audit` state; full growth budget. |
 
 **Covered file set** (enumerate verbatim; no glob-as-the-entire-list per Pattern 4):
 
@@ -176,15 +176,16 @@ conventions reference and audit-able via `/ai-audit` Phase 2 Checklist M.
 
 **Per-commit invariant.** The cap binds at every commit boundary on a
 feature branch — not just at merge time. A commit that introduces a
-transient violation (e.g., adds 4,000 chars to a 38,000-char file, then a
+transient violation (e.g., adds 4,000 bytes to a 38,000-byte file, then a
 later commit on the same branch extracts the content back out) is still a
 violation. Stage the extraction in the same commit as the addition, or
 sequence the extraction commit first.
 
 **Extraction model.** The canonical extraction pattern for `AGENTS.md`:
 verbose subsections moved into `ai-docs/<topic>.md` reference pages with
-anchored links from the source file. Apply the same model when any covered
-file crosses 35,000 chars.
+anchored links from the source file. Apply the same model when a covered
+file reaches the 40,000-byte gate — the extraction's postcondition is
+landing it below 35,000, not merely back under the cap.
 
 ## Writing checklist
 

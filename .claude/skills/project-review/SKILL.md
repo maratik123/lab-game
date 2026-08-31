@@ -90,7 +90,7 @@ After every 3 fixes (or when all findings in a subtask are resolved):
 2. `go test ./...` — all green
 3. `golangci-lint run` — clean
 4. `golangci-lint fmt`
-5. `go vet ./...` — clean (broken intra-doc links denied; add `--all-features` if the workspace later grows feature-gated modules)
+5. `go vet ./...` — clean
 6. Update `## Files touched` and mark subtask `[x]` in progress file
 7. **Write progress at this phase boundary** before further tool calls: rewrite `**current_step:**` to `Phase 2 — fix loop (after N fixes)`; rewrite `**last_passed_gate:**` to `golangci-lint run | <ISO-8601 UTC timestamp> | <commit SHA from git rev-parse HEAD>`; append a `## Decisions log` bullet for any `⚠️ Objected` finding rationale beyond the inline reason (one line, prefixed `Phase 2:`; omit if no decisions).
 
@@ -104,8 +104,8 @@ After every 3 fixes (or when all findings in a subtask are resolved):
 2. `go test ./...` — all green
 3. `golangci-lint run` — clean
 4. `golangci-lint fmt -d` — clean
-5. `go vet ./...` — clean (broken intra-doc links denied; add `--all-features` if the workspace later grows feature-gated modules)
-6. **Doc convention conformance.** For every changed `pub` item, verify it conforms to [`ai-docs/doc-convention.md`](../../../ai-docs/doc-convention.md) (summary tense, `# Parameters` on fns with ≥1 non-receiver arg, strict section order, `# Errors` / `# Panics` / `# Safety` where applicable). Methods inside `impl Trait for Type {}` blocks are exempt; the trait *definition* is not. Mechanical heading scan on changed files: `rg '^\s*///\s*#\s*(Parameters|Returns|Type parameters|Lifetimes|Errors|Panics|Safety|Examples|See also)\b' <file>`.
+5. `go vet ./...` — clean
+6. **Doc convention conformance.** For every changed exported item, verify it conforms to [`ai-docs/doc-convention.md`](../../../ai-docs/doc-convention.md): summary starts with the identifier and reads third-person (DOC-1); every package has exactly one package comment (DOC-2); the contract sections that apply are present and ordered — preconditions · returns · sentinel errors named · concurrency safety (DOC-3); design citations are by section, never by line (DOC-4); no restating comment, no commented-out code, no `TODO` without an issue reference, no stale comment (DOC-5). Mechanical scan on changed files: `rg '^\s*//\s*(TODO|FIXME)' <file>` and `rg 'docs/DESIGN\.md:[0-9]' <file>` (line-number citations).
 7. Update progress file: `**Last build:** PASS`
 8. **Write progress at this phase boundary** before further tool calls: rewrite `**current_step:**` to `Phase 3 — final verify (PASS)`; rewrite `**last_passed_gate:**` to `go vet ./... | <ISO-8601 UTC timestamp> | <commit SHA from git rev-parse HEAD>`; append a `## Decisions log` bullet recording any doc-convention finding fixed in this pass (one line, prefixed `Phase 3:`; omit if none).
 

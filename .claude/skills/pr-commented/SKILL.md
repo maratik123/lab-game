@@ -192,7 +192,7 @@ Trivial fixes (typo, rename, single-call rewrite, comment fix, test addition, do
       go test ./...
       golangci-lint run
       golangci-lint fmt
-      RUSTDOCFLAGS=\"-D warnings\" go vet ./...   (only if public API changed)
+      go vet ./...   (only if the exported API or any doc comment changed)
       actionlint <changed-workflow-file>                             (only if a .github/workflows/*.yml changed)
     Return WITHOUT committing: per-thread edits (file:line + one-liner each) and gate results.
   ")
@@ -203,7 +203,7 @@ Trivial fixes (typo, rename, single-call rewrite, comment fix, test addition, do
   - `go test ./...` — full suite.
   - `golangci-lint fmt -d`.
   - `golangci-lint run`.
-  - `go vet ./...` — only if public API changed.
+  - `go vet ./...` — only if the exported API or any doc comment changed.
   - `actionlint <changed-workflow-file>` — only if any `.github/workflows/*.yml` was modified.
 - Commit message format:
 

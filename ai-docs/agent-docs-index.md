@@ -18,7 +18,7 @@ The full map of `ai-docs/**` and the harness's supporting pages. `AGENTS.md` § 
 | [`ai-docs/go-api-naming.md`](go-api-naming.md) | Naming rules incl. the `…Unchecked` contract |
 | [`ai-docs/doc-convention.md`](doc-convention.md) | godoc conventions — read on demand |
 | [`ai-docs/go-test-conventions.md`](go-test-conventions.md) | Table tests, `-race`, golden logs, Postgres fixtures |
-| [`ai-docs/dependency-versions.md`](dependency-versions.md) | Live-lookup recipes for all five AXIOM categories |
+| [`ai-docs/dependency-versions.md`](dependency-versions.md) | Live-lookup recipes for all six AXIOM categories |
 | [`ai-docs/delegation-rules.md`](delegation-rules.md) | The four-phase delegation lifecycle — read before any committing/long-running spawn |
 | [`ai-docs/hook-verification.md`](hook-verification.md) | The three MUSTs for proving a `settings.json` hook fires |
 | [`ai-docs/agent-writing-style.md`](agent-writing-style.md) | Binary-rule writing style for dual-model readability |
@@ -31,5 +31,7 @@ The full map of `ai-docs/**` and the harness's supporting pages. `AGENTS.md` § 
 | [`ai-docs/panic-index.md`](panic-index.md) | Every panicking call in production code, with its justification |
 | [`ai-docs/templates/learnings-entry.md`](templates/learnings-entry.md) | Canonical `learnings.md` entry skeleton — consult instead of the live log |
 | [`ai-docs/learnings.md`](learnings.md) | Corrections log — feed for `/improve` |
+| [`ai-docs/harness-gaps.md`](harness-gaps.md) | Harness diagnoses — the second learning log, addressed to `/improve` (see AGENTS.md § *Learning Log*) |
+| [`ai-docs/harness-restart-metrics.md`](harness-restart-metrics.md) | Restart/recovery measurements behind the harness's flow decisions |
 
 **Reading order for a newcomer to this repo:** `context.md` → `docs/DESIGN.md` §0–§3 → `domain-invariants.md` → `key-decisions.md`. Everything else is read when the task touches it.

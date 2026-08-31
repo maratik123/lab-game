@@ -41,10 +41,11 @@ Skip if `$ARGUMENTS` is `phase2`.
 Spawn the subagent in a clean context. The subagent reads `.claude/agents/learnings-escalation-audit.md` for full instructions.
 
 ```
-Agent(subagent_type="general-purpose", prompt="
+Agent(subagent_type="learnings-escalation-audit", prompt="
   Read .claude/agents/learnings-escalation-audit.md and follow it exactly.
   Working directory: <CLAUDE_PROJECT_DIR>
-  Report back: (a) entries audited, (b) mismatches found, (c) fixes applied, (d) entries that need user judgment.
+  Current branch: <branch> (do NOT switch branches, do NOT commit — this skill bundles the commit at Step 3).
+  Report back: (a) entries audited, (b) mismatches found, (c) fixes applied, (d) entries that need user judgment, (e) any stale-validation flags.
 ")
 ```
 
@@ -112,7 +113,7 @@ For each item below, when a violation is found record: file path, line number (w
 | L | Learning-Log field coherence — every Entry-format field covered in all four mandatory locations | [`reference.md` § Checklist L — Learning-Log field coherence](reference.md#checklist-l--learning-log-field-coherence) |
 | M | `agent-writing-style.md` conformance — 11 sub-checks (Patterns 1–7 + Anti-patterns + Sub-checks 9/10 + Cross-shape verbs) over the audited corpus | [`checklist-m.md`](checklist-m.md) |
 | N | Bidirectional `## Patterns` ↔ `Kind: validation` coherence — every promoted carrot round-trips both ways | [`reference.md` § Checklist N — Bidirectional `## Patterns` ↔ `Kind: validation` coherence](reference.md#checklist-n--bidirectional--patterns--kind-validation-coherence) |
-| O | Embedded-name clash scan — project-defined Tool / Subagent / Skill / Hook names MUST NOT clash with embedded names in `claude-tools-hierarchy.md` §§1a/1b/2a/3a/3b | [`reference.md` § Checklist O — Embedded-name clash scan](reference.md#checklist-o--embedded-name-clash-scan) |
+| O | Embedded-name clash scan — project-defined Subagent / Skill / Hook-event names MUST NOT clash with the harness's embedded names (read from the session's agent-type + skill listings, NOT from any file in this repo; an empty embedded list is `inconclusive`, never `pass`) | [`reference.md` § Checklist O — Embedded-name clash scan](reference.md#checklist-o--embedded-name-clash-scan) |
 | P | Cross-repo citation resolvability — every cited `#N` (bare or `PR #N`) / `learnings.md` date / memory file resolves for its reader; run `scripts/check-citations.sh`, then `scripts/test-check-citations.sh` (the guard's own regression test — it must stay 4/4; it covers the **check-(2)** exclusion, verifying that one is content-addressed rather than line-pinned. Check (1)'s two `file:line` pins remain uncovered — see `reference.md` § Checklist P) | [`reference.md` § Checklist P — Cross-repo citation resolvability](reference.md#checklist-p--cross-repo-citation-resolvability) |
 
 The audited corpus for Checklist M is enumerated in [`checklist-m.md` § audited corpus](checklist-m.md#checklist-m--audited-corpus).

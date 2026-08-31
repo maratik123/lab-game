@@ -86,7 +86,7 @@ Stated per field, in words, because the unit is not inferable from the number:
   Two rows in consecutive rounds are "the same finding" iff their `File:line`
   cells are identical once leading and trailing whitespace is stripped
   (`gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)`). Cell **padding** therefore
-  does not drift the key — `\| src/a.rs:9 \|` and `\|src/a.rs:9\|` are the same
+  does not drift the key — `\| src/a.go:9 \|` and `\|src/a.go:9\|` are the same
   finding. Nothing else is normalised: the path and line number are compared
   byte-for-byte, which is why a line-number shift *does* drift the key.
 - **Known bias, direction fixed: `findings_first_seen` is biased upward.** If a
@@ -475,8 +475,9 @@ The registry lives on this page rather than in a plan document because a plan is
 ## Hosted blocks for `/task` Step 12 sub-step 5a
 
 `.claude/skills/task/SKILL.md` carries one-line pointers to the three blocks
-below rather than the blocks themselves — that file is close to the 35,000-char
-instruction-file warning band and this page is not in the capped set.
+below rather than the blocks themselves — that file sits in the upper part of
+the 40,000-byte instruction-file cap's range and this page is not in the
+capped set, so the blocks live here where they cost nothing.
 
 ### Precondition assertion — untracked corpus files
 

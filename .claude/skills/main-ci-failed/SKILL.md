@@ -223,7 +223,7 @@ Now root-cause the failure from the log + reproducer output. Three paths:
     Author the concrete edits (reason them out — not a transcribed diff), stay within the failing surface (no scope expansion), then re-run the reproducer until GREEN plus:
       golangci-lint run
       golangci-lint fmt
-      RUSTDOCFLAGS=\"-D warnings\" go vet ./...   (doc class)
+      go vet ./...   (doc class)
     Return WITHOUT committing: the edits (file:line + one-liner each) and gate results.
   ")
   ```
@@ -261,7 +261,7 @@ If **APPROVE** → Step 6.
 Run gates **before** commit (same set as `/pr-ci-failed` Step 6):
 
 - `go build ./...`, `go test ./...`, `golangci-lint fmt -d`, `golangci-lint run`.
-- `go vet ./...` — only if public API or any `pub` doc changed.
+- `go vet ./...` — only if the exported API or any doc comment changed.
 - `actionlint <changed-workflow-file>` — only if any `.github/workflows/*.yml` was modified.
 
 Confirm again that `git branch --show-current` is NOT `main`. If it is — STOP, do not commit, apply the AGENTS.md recovery procedure (`git stash` → switch to `fix/main-ci-<run-id>` → `git stash pop`).
