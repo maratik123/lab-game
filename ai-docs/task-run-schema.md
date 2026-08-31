@@ -86,7 +86,7 @@ Stated per field, in words, because the unit is not inferable from the number:
   Two rows in consecutive rounds are "the same finding" iff their `File:line`
   cells are identical once leading and trailing whitespace is stripped
   (`gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)`). Cell **padding** therefore
-  does not drift the key — `\| src/a.rs:9 \|` and `\|src/a.rs:9\|` are the same
+  does not drift the key — `\| src/a.go:9 \|` and `\|src/a.go:9\|` are the same
   finding. Nothing else is normalised: the path and line number are compared
   byte-for-byte, which is why a line-number shift *does* drift the key.
 - **Known bias, direction fixed: `findings_first_seen` is biased upward.** If a
