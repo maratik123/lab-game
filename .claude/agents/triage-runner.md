@@ -288,7 +288,7 @@ This mirrors the `/pr-merged` `scripts/cleanup-progress.sh` mechanic for `/task`
 
 ## Anti-patterns
 
-- **Do NOT** write to any file outside `ai-docs/deferred/**` or `ai-docs/triage/triage-YYYY-MM-DD.progress.md` (this explicitly excludes `ai-docs/learnings.md`, `AGENTS.md`, `.claude/**`, source files, `Cargo.toml`). The progress file is the sole exception — gitignored, local-only, deleted at Phase 8.
+- **Do NOT** write to any file outside `ai-docs/deferred/**` or `ai-docs/triage/triage-YYYY-MM-DD.progress.md` (this explicitly excludes `ai-docs/learnings.md`, `AGENTS.md`, `.claude/**`, source files, `go.mod` / `go.sum`). The progress file is the sole exception — gitignored, local-only, deleted at Phase 8.
 - **Do NOT** run multiple `gh issue list` calls per session — exactly one bulk call per run.
 - **Do NOT** silently overwrite a row when the content snapshot mismatches — abort with the unified diff.
 - **Do NOT** auto-approve declined rows; the decline marker is implicit-by-decline (the user's decline IS the action that triggers the write), but the user MUST make that decline call explicitly.

@@ -55,7 +55,7 @@ Per the official docs:
 ## Checklist H — Documentation conformance pointers
 
 - `ai-docs/doc-convention.md` is referenced by `review-findings.md` and `self-review.md`. Confirm the relative paths resolve.
-- The canonical rustdoc section order is `ai-docs/doc-convention.md § DOC-2 — Section order (strict)` (its sole authoritative home — AGENTS.md carries no duplicate order list). Confirm any file that restates the order agrees with DOC-2 exactly.
+- The canonical godoc contract-section order is `ai-docs/doc-convention.md § DOC-3 — Contract sections` (its sole authoritative home — AGENTS.md carries no duplicate order list). Confirm any file that restates the order agrees with DOC-3 exactly. The Review sync group (`self-review.md` § *Doc convention conformance*, `review-findings.md` § 6, `project-review/SKILL.md` step 6) is where restatements live; a Rust-flavoured restatement (`pub` items, `///` comments, `# Parameters` / `# Panics` / `# Safety` headings, `impl Trait for Type` exemptions) is import residue, not a convention — this project is Go and DOC-1…DOC-6 are its only sections.
 
 ## Checklist I — File-size & structure (instruction files)
 
@@ -105,7 +105,7 @@ The Exception-body locations used by the `Escalated?` / `Superseded by:` rows do
 
 ## Checklist M — `agent-writing-style.md` conformance
 
-**Split out to [`checklist-m.md`](checklist-m.md)** — 11 sub-checks (Patterns 1–7 + Anti-patterns + Sub-checks 9/10 + Cross-shape verbs) over the audited corpus, plus the corpus enumeration. Moved because this page crossed the 35,000-char early-warning band and Checklist M was a third of it; the checks themselves are unchanged.
+**Split out to [`checklist-m.md`](checklist-m.md)** — 11 sub-checks (Patterns 1–7 + Anti-patterns + Sub-checks 9/10 + Cross-shape verbs) over the audited corpus, plus the corpus enumeration. Moved because this page had grown past 35,000 bytes and Checklist M was a third of it; the checks themselves are unchanged. (The split predates the hysteresis AXIOM, under which that band is a normal working range, not a trigger.)
 
 ## Checklist N — Bidirectional `## Patterns` ↔ `Kind: validation` coherence
 
@@ -131,51 +131,58 @@ Severity `major` — dead-reference class. The bidirectional shape mirrors Check
 
 ## Checklist O — Embedded-name clash scan
 
-Enforces the [AGENTS.md `## Propagation Rule` clash-rename AXIOM](../../../AGENTS.md#propagation-rule). Project-defined Tool / Subagent / Skill / Hook names MUST NOT clash with embedded (Anthropic-shipped or marketplace-plugin) names enumerated in [`ai-docs/claude-tools-hierarchy.md`](../../../ai-docs/claude-tools-hierarchy.md) §§1a + 1b + 2a + 3a + 3b. Any match → `major` finding with rename recommendation (project side renames; the embedded name is never renamed).
+Project-defined Subagent / Skill / Hook-event names MUST NOT clash with the **embedded** names the harness ships (Anthropic built-in agent types and skills, marketplace-plugin skills, harness hook events). A clash makes it ambiguous which definition a name resolves to at dispatch time. Any match → `major` finding with a rename recommendation; the project side renames, never the embedded name.
 
-**Recipe.** Enumerate two sorted lists and intersect them; empty intersection passes.
+> **The embedded inventory is NOT in this repository — do not look for it here.**
+> [`ai-docs/claude-tools-hierarchy.md`](../../../ai-docs/claude-tools-hierarchy.md) is the **project** inventory (this repo's own hooks, rules, Subagents, Skills, shell guards). Intersecting project names against it would match *everything*, not nothing. The embedded inventory is **session state**: the `Available agent types for the Agent tool` block and the `The following skills are available` block the harness injects into the orchestrator's context, plus the hook-event table the Step 2.1 `claude-code-guide` spawn returns.
 
-1. **Project names** — collect every name the project DEFINES across the four axes. Hook **matcher** values are NOT project-defined (they reference embedded Tool names) and are excluded:
+> **AXIOM — an empty embedded list is `inconclusive`, NEVER `pass`.**
+> `comm -12` against an empty right-hand side is empty for every possible left-hand side, so the check reports "baseline holds" on any tree whatsoever. Count the embedded list before trusting the intersection.
+>
+> | If the embedded list has... | Action |
+> |---|---|
+> | 0 entries | **STOP** — report Checklist O as `inconclusive` and say the listings were unavailable. Never record a pass. |
+> | ≥ 1 entry | Proceed to the intersection |
+
+**Recipe.**
+
+1. **Project names** — every name the project DEFINES. Hook **matcher** values are NOT project-defined (they reference embedded Tool names) and are excluded:
    - Subagent names: `awk 'FNR==1{f=0} /^---$/{f=!f; next} f && /^name:/{print $2}' .claude/agents/*.md` — the `FNR==1{f=0}` reset is load-bearing: it scopes the in-frontmatter flag to each file. Without it, a file with an odd number of `---` delimiters leaks state into the next file in the glob, silently dropping `name:` matches.
    - Skill names: `awk 'FNR==1{f=0} /^---$/{f=!f; next} f && /^name:/{print $2}' .claude/skills/*/SKILL.md` — same `FNR==1` per-file reset rationale.
-   - Hook event names (top-level `hooks.<Event>` keys): `jq -r '.hooks | keys[]' .claude/settings.json`. Event names like `SessionStart` / `PreToolUse` / `PostToolUse` are themselves harness-defined; they appear in §4 of `claude-tools-hierarchy.md` (which is NOT in the embedded-name corpus below). Including them in `project-names.txt` is intentional — if a future PR introduces a project-defined hook event, the scan catches a collision with §4's enumerated event set.
    - Sort + dedupe → `project-names.txt`.
-2. **Embedded names** — extract names from the FIRST column (the Tool / Subagent / Skill column) of `ai-docs/claude-tools-hierarchy.md` §§1a + 1b + 2a + 3a + 3b table rows. Restricting to the first column avoids false-positives from parameter columns (which also backtick token names like `file_path`). Namespaced names like `ast-index:initialize-rust` count as ONE token; do NOT split on `:`:
-   ```bash
-   awk '
-     /^### 1a\.|^### 1b\.|^### 2a\.|^### 3a\.|^### 3b\./ { in_embed=1; next }
-     /^### / { in_embed=0 }
-     /^## /  { in_embed=0 }
-     in_embed && /^\| `/ {
-       line=$0; sub(/^\| /, "", line)
-       first_cell = line; sub(/ \|.*/, "", first_cell)
-       n = split(first_cell, parts, "`")
-       for (i = 2; i <= n; i += 2)
-         if (parts[i] ~ /^[A-Za-z]/) print parts[i]
-     }
-   ' ai-docs/claude-tools-hierarchy.md | sort -u > embedded-names.txt
-   ```
+   - **Hook event keys are NOT project names.** `jq -r '.hooks | keys[]' .claude/settings.json` returns `SessionStart` / `PreToolUse` / … — harness event names the project *references*, and matching them is correct, not a clash. Feeding them into `project-names.txt` manufactures a false positive per configured event. They get the inverse check instead (step 4).
+2. **Embedded names** — transcribe the agent-type and skill listings from session context, **minus** the project's own entries (registered project Subagents and Skills appear in those same listings, so they must be subtracted or every project name self-matches). Add the hook event names from the Step 2.1 `hooks-guide` table. Namespaced names like `ast-index:initialize-rust` count as ONE token; do NOT split on `:`. Sort + dedupe → `embedded-names.txt`.
 3. **Intersection** — `comm -12 <(sort -u project-names.txt) <(sort -u embedded-names.txt)` MUST return empty.
+4. **Hook-event validity (the inverse check).** Every `hooks.<Event>` key MUST appear in the embedded hook-event set from the Step 2.1 `hooks-guide` table. A key that does not is a hook that never fires — silent, since the harness ignores an unknown event rather than erroring. Severity `major`: `comm -23 <(jq -r '.hooks|keys[]' .claude/settings.json | sort -u) <(sort -u embedded-events.txt)` MUST return empty.
 
 | Trigger | Action |
 |---|---|
-| `comm -12` output is empty | no flag — clash-scan baseline holds |
-| `comm -12` output is non-empty | `major` finding per name: *"Project-defined `<name>` clashes with embedded `<name>` enumerated at `claude-tools-hierarchy.md` §§<sections>. Rename the project side."* |
+| `embedded-names.txt` is empty | `inconclusive` — the instrument measured nothing; do not record a pass |
+| `comm -12` output is empty (and the embedded list is non-empty) | no flag — clash-scan baseline holds |
+| `comm -12` output is non-empty | `major` finding per name: *"Project-defined `<name>` clashes with embedded `<name>`. Rename the project side."* |
 
-Severity `major` — the clash makes ambiguous which name resolves at dispatch time. False positives are exceedingly unlikely (the embedded inventory is a closed set in §§1a/1b/2a/3a/3b); when one is suspected, re-grep the canonical doc to confirm the token still appears.
+**Cross-axis clashes are reportable but not automatically defects.** A project *Subagent* sharing a name with an embedded *Skill* dispatches through different tools (`Agent(subagent_type=…)` vs `Skill(skill=…)`) and resolves unambiguously today. Report it at `minor` with the axis named, and let the owner decide; reserve `major` for a same-axis collision, where dispatch is genuinely ambiguous.
 
 ## Step 2.6 sub-step 4 — Cross-reference re-verification (anchor-aware)
 
-For every relative link the audit touched in any `.claude/agents/*.md` or `.claude/skills/**/SKILL.md`, confirm the target file exists AND the anchor (if present) matches a heading slug. Use this anchor-aware check rather than naive `realpath -m` (which mistakes `#anchor` for part of the path):
+For every relative link the audit touched in any `.claude/agents/*.md` or `.claude/skills/**/SKILL.md`, confirm the target file exists AND the anchor (if present) matches a heading slug. Use this anchor-aware check rather than naive `realpath -m` (which mistakes `#anchor` for part of the path).
+
+> **Strip fenced blocks AND inline-code spans before matching, or the page audits its own examples.** A recipe that documents link syntax contains link syntax — in fences *and* in backticked prose. Without both strips, this very section reports its own illustrative `file.md` and `reference.md#anchor` as broken. That is why CI's link check carries a hard-coded `file.md` exclusion; stripping code spans is the general form of the same fix.
+
+> **The pattern must match SAME-DIRECTORY links, not just `../` ones.** A `../`-anchored matcher (`\(\.\./…\)`) is the shape this recipe shipped with, and it is blind to `](reference.md#anchor)` — the dominant form inside a skill directory, where the thin-`SKILL.md` + `reference.md` layout puts almost every link. Measured on `.claude/skills/ai-audit/SKILL.md`: the `../` form matches **2 of 21** links. Match the markdown link syntax and filter by scheme instead.
 
 ```bash
 for f in <changed-files>; do
-  grep -oE '\(\.\./[./]*[^)#]+(#[^)]*)?\)' "$f" | sort -u | while read ref; do
-    path_with_anchor=$(echo "$ref" | tr -d '()')
+  # strip fenced code blocks first, then filter schemes and <placeholder> targets
+  awk '/^```/{fence=!fence; next} !fence' "$f" \
+    | sed 's/`[^`]*`//g' \
+    | grep -oE '\]\([^)]+\)' | sed 's/^](//; s/)$//' \
+    | grep -vE '^(https?|mailto):' | grep -vF '<' | sort -u | while read -r path_with_anchor; do
     path=${path_with_anchor%%#*}
     anchor=${path_with_anchor#*#}; [ "$anchor" = "$path_with_anchor" ] && anchor=""
     src_dir=$(dirname "$f")
-    abs=$(realpath -m "$src_dir/$path")
+    # empty path = same-file anchor, e.g. ](#some-heading)
+    if [ -z "$path" ]; then abs=$f; else abs=$(realpath -m "$src_dir/$path"); fi
     [ -e "$abs" ] || { echo "FILE MISSING: $f -> $path"; continue; }
     [ -z "$anchor" ] && continue
     # heading-slug match (GitHub algorithm): lowercase, strip to alnum/underscore/hyphen/space, spaces->hyphens; keep '_' and consecutive hyphens (GitHub does NOT drop underscores or collapse '--', so an em-dash heading like `A — B` slugs to `a--b`)

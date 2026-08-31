@@ -936,7 +936,7 @@ replay case looks like:
   work should expect this divergence and either tighten the grouping rule or
   accept both forms.
 - **The methodology-fit limitation is real but bounded.** Rules whose
-  enforcement is in shell-command form (clippy invocations, CI workflow
+  enforcement is in shell-command form (`golangci-lint` invocations, CI workflow
   gates) aren't replayable — `review-findings` / `self-review` review source
   code, not shell commands. Document such rules as out-of-scope for replay.
 - **Replay surfaces audit byproducts.** Every run produces additional

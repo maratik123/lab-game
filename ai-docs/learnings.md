@@ -32,7 +32,7 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **Rule:** A package manager's install-time default is a claim about a *fresh* system, never about *this* one. Where a Gentoo package has an `eselect` module (iptables, kernel, python, java-vm, editor), read the current selection with `eselect <mod> list` before asserting what an `emerge` leaves behind. Generalises the AGENTS.md § Dependency Versions axiom to a sixth category: a system-wide alternatives/selection state.
 **at:** 77696ee
 **Kind:** correction
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-08-31 — process — a verification that answers an adjacent question launders a wrong list as a checked one
 **What happened:** Before handing over a 50-symbol kernel config list, I grepped `Kconfig` for each symbol's existence and reported "все 50 символов существуют", which read as validation of the list. Existence was the wrong question: roughly half the list was unnecessary, and `IP_NF_NAT` depends on `IP_NF_IPTABLES_LEGACY` and would have been silently dropped by `make olddefconfig` — so the list was both bloated and partly inert, under a green check.

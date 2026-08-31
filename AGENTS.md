@@ -229,6 +229,8 @@ Interpret user phrasing literally and conservatively. When uncertain — ask, do
 
 **Not only reviewers — any intermediary.** The same posture applies to a *delegate's* claims. *Default to* verifying a delegate's design-blocking STOP ("this primitive can't satisfy its AC") with a command — compile a reduced repro, read the cited code — before amending a design; it is a real finding, but a finding, not a fact. And *prefer* checking a delegate's "this AC clause is untestable on the fixture I used, so I generalised/skipped it": build the missing coverage rather than accepting a PARTIAL.
 
+Validated in the sibling **graphite-gp** project (`ai-docs/learnings.md`, 2026-07-16 — *treating a reviewer's retractions and suggestions as skeptically as its findings*, `Kind: validation`, escalated there to `AGENTS.md`; this harness was adapted from that project, which is where the pattern was earned). Six `self-review` rounds in which the reviewer withdrew a finding built on an unrun premise, offered a salvage anchor that false-positived on the prose it was written to spare, and waved through a false claim as a "harmless lay gloss" that compiling refuted — every override went toward *more* verification. The delegate half is the same log's 2026-07-23 pair: a design-blocking `code-writer` STOP whose premise verification confirmed, and a Step-9 per-AC sweep that refused a delegate's "untestable judgment call" wave-through and built the missing fixture instead.
+
 ## Agent Docs
 
 Read on nearly every task:

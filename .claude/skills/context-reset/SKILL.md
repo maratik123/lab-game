@@ -76,7 +76,7 @@ Three callout variants address the three structurally-different probe shapes:
 - **Variant B** — `/bugfix`, `/interview`. Probe is a fixed-glob (`ai-docs/bugfix/trace-*.md` or `<spec_path>.state.md`); when a single in-flight artefact exists the callout reads it and applies a per-skill resume rule (skip-Step-1 for `/bugfix` on a confirmed trace; resume from the recorded `round:` for `/interview`).
 - **Variant C** — `/context-reset` itself. No own durable surface; routes to whichever parent skill (`/task` / `/project-review` / `/pr-commented`) is active. The callout above this section is Variant C.
 
-The variant-distinguishing phrases that the char-cap / variant-identity audit greps for are kept in one canonical place, so the audit's expected hit-count of 1 per skill is preserved.
+The variant-distinguishing phrases that the byte-cap / variant-identity audit greps for are kept in one canonical place, so the audit's expected hit-count of 1 per skill is preserved.
 
 ### Why the callout cross-links here
 
