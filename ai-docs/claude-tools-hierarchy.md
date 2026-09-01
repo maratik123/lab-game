@@ -34,17 +34,19 @@ The two advisory bodies changed on **2026-09-01** — panic-gate and PR-body syn
 
 | Agent | Model | Spawned by | Contract |
 |---|---|---|---|
-| `spec-writer` | opus | `/interview`, `/task` Steps 1–5 | Drafts the spec one interview round at a time; asks 0–3 questions per round or returns `ready` / `unresolvable`. Never implements. |
-| `design` | opus | `/task` Step 6 | Produces the design document with decomposition and a `## Handoff plan`. Reads the binding-constraint file for anything it specifies. Writes no code. |
-| `design-review` | opus | `/task` Step 7 | Reviews a design against the checklist, issues GO / ITERATE / STOP. Loops with `design`. |
+| `spec-writer` | inherit | `/interview`, `/task` Steps 1–5 | Drafts the spec one interview round at a time; asks 0–3 questions per round or returns `ready` / `unresolvable`. Never implements. |
+| `design` | inherit | `/task` Step 6 | Produces the design document with decomposition and a `## Handoff plan`. Reads the binding-constraint file for anything it specifies. Writes no code. |
+| `design-review` | inherit | `/task` Step 7 | Reviews a design against the checklist, issues GO / ITERATE / STOP. Loops with `design`. |
 | `code-writer` | sonnet, effort medium (pinned in frontmatter) | `/context-reset` group handoff | Implements a group's subtasks sequentially, gates and commits per subtask. **Never** pushes, opens a PR, runs self-review, or spawns anything. |
-| `self-review` | inherited | `/task` Step 10, `/bugfix` Step 6, `/project-review` | Reviews the implementation diff against spec and design; APPROVE / REJECT. The push gate. |
-| `review-findings` | inherited | `/project-review` | Walks the whole codebase (no diff, no spec) and writes a findings table into the progress file. |
+| `self-review` | inherit | `/task` Step 10, `/bugfix` Step 6, `/project-review` | Reviews the implementation diff against spec and design; APPROVE / REJECT. The push gate. |
+| `review-findings` | inherit | `/project-review` | Walks the whole codebase (no diff, no spec) and writes a findings table into the progress file. |
 
-| `self-improve` | opus | `/improve` | Reads `learnings.md` for repeating patterns, proposes instruction diffs, escalates to hooks at ≥3 occurrences. Re-verifies every factual claim it carries out of an entry. Writes no code. |
-| `self-reflect` | opus | `/reflect` | End-of-work retrospective: a structured good/bad list, each finding routed {learnings \| ticket \| none}. Assembles and yields; the parent performs every write. |
+| `self-improve` | inherit | `/improve` | Reads `learnings.md` for repeating patterns, proposes instruction diffs, escalates to hooks at ≥3 occurrences. Re-verifies every factual claim it carries out of an entry. Writes no code. |
+| `self-reflect` | inherit | `/reflect` | End-of-work retrospective: a structured good/bad list, each finding routed {learnings \| ticket \| none}. Assembles and yields; the parent performs every write. |
 | `learnings-escalation-audit` | opus | `/ai-audit` Phase 1 | Verifies every entry's `Escalated?` and `Superseded by:` still point at something real; fixes drift **only** in those two fields. |
 | `triage-runner` | opus | `/triage` | Promotes untracked `_inbox.jsonl` rows to issues, drains the queue, reconciles JSONL ↔ issue divergence. Mutation scope is `ai-docs/deferred/**` + `gh issue` only. |
+
+Model column: `inherit` = the orchestrator's model, via `model: inherit` in the agent's frontmatter; a named alias is a frontmatter pin. No spawn passes an inline `model=` — the frontmatter is the only lever.
 
 Not ported from the source harness: `image-check` (verifies a golden *image* against its drawing code — this project's goldens are text, and `code-writer` reads them itself).
 

@@ -256,9 +256,10 @@ pointing here.
 
 This file does not govern:
 
-- Files for Opus-only readers: agents with `model: opus` frontmatter
-  (`design`, `design-review`, `learnings-escalation-audit`, `self-improve`)
-  and Opus-mode skills (`/ai-audit`, `/improve`)
+- Files for readers at the orchestrator's tier or above: agents whose
+  frontmatter is `model: inherit` or `model: opus` (every agent except
+  `code-writer`) and skills that run in the orchestrator's own context
+  (`/ai-audit`, `/improve`)
 - Go source documentation (covered by `ai-docs/doc-convention.md`)
 - Project context (covered by `ai-docs/context.md`)
 

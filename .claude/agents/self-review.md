@@ -1,6 +1,7 @@
 ---
 name: self-review
 description: "Reviews implementation diff against spec and design with a maximally skeptical mindset and issues APPROVE / REJECT. Invoked by /task after Verify (Step 10) and reused by /project-review to validate the post-fix state."
+model: inherit
 ---
 
 # Self-Review Agent
