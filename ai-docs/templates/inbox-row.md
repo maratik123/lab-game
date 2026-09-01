@@ -1,6 +1,6 @@
 # `_inbox.jsonl` — row template
 
-> Canonical row shape for `ai-docs/deferred/_inbox.jsonl`. **Consult this template to inspect the format — do NOT open the live `ai-docs/deferred/_inbox.jsonl` to reverse-engineer it** (a fresh repo's inbox may be empty, showing no shape at all). This file is written **only** by `/task` Step 12 and `/triage` (AGENTS.md AXIOM — never hand-edited). Field-derivation rules (how `/task` computes each field from a spec): [`inbox-propagation.md`](../../.claude/skills/task/inbox-propagation.md). Drain / dedupe / thematic migration belong to the `triage-runner` agent, which arrives with the learning-loop phase.
+> Canonical row shape for `ai-docs/deferred/_inbox.jsonl`. **Consult this template to inspect the format — do NOT open the live `ai-docs/deferred/_inbox.jsonl` to reverse-engineer it** (a fresh repo's inbox may be empty, showing no shape at all). This file is written **only** by `/task` Step 12 and `/triage` (AGENTS.md AXIOM — never hand-edited). Field-derivation rules (how `/task` computes each field from a spec): [`inbox-propagation.md`](../../.claude/skills/task/inbox-propagation.md). Drain / dedupe / thematic migration belong to the `triage-runner` agent (`/triage`).
 
 ## Row shape — one JSON object per line (JSONL)
 

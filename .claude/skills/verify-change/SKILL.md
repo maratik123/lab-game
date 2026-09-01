@@ -1,6 +1,6 @@
 ---
 name: verify-change
-description: "Run go test ./.... Pass an optional filter to run a subset of tests."
+description: "Run `go test ./...`; pass an optional filter to run a subset of tests."
 argument-hint: "[test-filter]"
 disable-model-invocation: true
 allowed-tools: Bash(go test *)

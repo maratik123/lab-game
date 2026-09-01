@@ -244,9 +244,11 @@ If the user wants to stop after the interview ("just draft the spec, defer the i
 
 ## Patterns
 
-> **Default to** delegating every question and every spec write to the `spec-writer` Subagent. The orchestrator's role is plumbing — surface the Subagent's questions via `AskUserQuestion` and forward the user's answers as `prior_qa`; never draft a clarifying question yourself, even when the next question feels "obvious" from the user's last answer. Same for the spec body: never edit `*.spec.md` directly — even when the change feels like "just a typo" or "just a tweak the user asked for after `status: ready`". The `spec-writer` Subagent owns ALL writes to `*.spec.md` (mirrors the AXIOM in `.claude/skills/task/SKILL.md` above the Design Amendment header).
->
-> _Validated by repeated user correction across multiple rounds: "from now and for future — don't ask by yourself, delegate to subagent". Recorded in the sibling **quartzite** project's memory namespace — `~/.claude/projects/-home-syt-RustroverProjects-quartzite/memory/feedback_interview_delegate_to_subagent.md` — and in quartzite's `ai-docs/learnings.md` 2026-05-24 entries on orchestrator-side direct spec edits. Both corrections happened **in quartzite**, not here; this repo's log begins 2026-08-29. The rule also stands locally on the AXIOM cross-referenced above._
+### 1. Delegate every question and every spec write to the `spec-writer` Subagent
+
+**Default to** delegating every question and every spec write to the `spec-writer` Subagent. The orchestrator's role is plumbing — surface the Subagent's questions via `AskUserQuestion` and forward the user's answers as `prior_qa`; never draft a clarifying question yourself, even when the next question feels "obvious" from the user's last answer. Same for the spec body: never edit `*.spec.md` directly — even when the change feels like "just a typo" or "just a tweak the user asked for after `status: ready`". The `spec-writer` Subagent owns ALL writes to `*.spec.md` (mirrors the AXIOM in `.claude/skills/task/SKILL.md` above the Design Amendment header).
+
+_Validated by repeated user correction across multiple rounds: "from now and for future — don't ask by yourself, delegate to subagent". Recorded in the sibling **quartzite** project's memory namespace — `~/.claude/projects/-home-syt-RustroverProjects-quartzite/memory/feedback_interview_delegate_to_subagent.md` — and in quartzite's `ai-docs/learnings.md` 2026-05-24 entries on orchestrator-side direct spec edits. Both corrections happened **in quartzite**, not here; this repo's log begins 2026-08-29. The rule also stands locally on the AXIOM cross-referenced above._
 
 ## Anti-patterns
 

@@ -1,76 +1,6 @@
 # /task — Reference
 
-Reference material extracted from `SKILL.md` to keep the SKILL body under the per-skill 5,000-token (~20,000-char) truncation cap. The SKILL body owns the workflow steps; this file owns reference / troubleshooting / detail material.
-
-## ⚡ First — validation sequence (detail)
-
-The ⚡ First preamble's glob `ls ai-docs/plans/*.progress.md` is a flat match — it ignores branch and merge state. Two failure modes have already burned cycles in this repo:
-
-1. **Stale-merge.** The matched progress file's task already merged via a GitHub-UI merge that bypassed `/pr-merged` (gitignored `.progress.md` survived). RESUME-ing into this points at a completed task instead of starting the new one. _See the sibling **quartzite** project's `ai-docs/learnings.md` 2026-05-13 stale-`.progress.md` entry._
-2. **Wrong-branch parallel PR.** The matched progress file belongs to an unrelated in-flight PR on a different feature branch. RESUME-ing here cross-contaminates the two flows. _See quartzite's `ai-docs/learnings.md` 2026-05-14 branch-aware-probe entry._
-
-**Validation sequence (run before the RESUME jump):**
-
-1. Read `**Branch:**` and `**base_commit:**` from the matched `.progress.md`.
-2. **Stale-merge check.** `git merge-base --is-ancestor <base_commit> origin/main` — if exit code is `0`, the task's base commit is now an ancestor of `origin/main`, meaning the work merged. Stale candidate.
-3. **Branch-match check.** Compare the progress file's `**Branch:**` against `git branch --show-current`. If they differ, the user is on a different branch from the progress file's owner. Wrong-branch candidate.
-4. If **either** check signals a mismatch, surface the situation to the user with three options and wait for direction — do NOT jump to RESUME:
-   - **delete** — `rm ai-docs/plans/<base>.progress.md`, then proceed with the new task (Steps 1–7 or whichever applies).
-   - **park** — `mv ai-docs/plans/<base>.progress.md ai-docs/plans/<base>.progress.md.parked`; the `.parked` suffix takes it out of the glob, allowing the new `/task` to start cleanly. Restore via the reverse `mv` later.
-   - **RESUME anyway** — user explicitly chooses to ignore the mismatch (rare; typically only when reviving an interrupted task whose branch happens to be re-checked-out).
-5. If both checks pass (base_commit NOT in origin/main AND branch matches), proceed to the RESUME flow defined in the SKILL body.
-
-## ⚡ Second — deferred plan activation sequence
-
-If `$ARGUMENTS` contains words like "activate", "start", "proceed" **and** a matching plan exists in `ai-docs/plans/deferred/`:
-
-1. Identify the matching `*.spec.md` (and `*.design.md` if present) in `ai-docs/plans/deferred/`.
-2. Move them to `ai-docs/plans/`:
-   ```bash
-   mv ai-docs/plans/deferred/YYYY-MM-DD-name.spec.md ai-docs/plans/
-   mv ai-docs/plans/deferred/YYYY-MM-DD-name.design.md ai-docs/plans/     # if exists
-   mv ai-docs/plans/deferred/YYYY-MM-DD-name.progress.md ai-docs/plans/   # if exists
-   ```
-3. Update `ai-docs/plans/INDEX.md`: move the plan row from the **Deferred plans** table to the **Active plans** table and mark its status as `🟢 ready` (or `🟡 spec-only` if no design).
-4. Tell the user: "Activated plan [name] — moved spec (and design) to `ai-docs/plans/`."
-5. **Verify the spec carries `**Tracked in:**`** — if missing, run `/interview`'s tracking-issue resolution to find or create one and add it to the spec header before continuing.
-6. If a `.progress.md` was moved: treat it as an active task — read it and resume from `## Next action` (same as the RESUME path above).
-7. Otherwise (no progress file): skip Steps 1–7 and jump directly to Step 8 (spec + design already exist).
-
-## ⚡ Third — bare-issue activation sequence (full)
-
-Activation sequence (bare-issue → matching deferred spec):
-
-1. Parse `$ARGUMENTS` — strip leading `#`, confirm it's a positive integer `N`.
-2. Load issue body: `gh issue view <N> --json title,body,state,labels`. The `labels` field feeds `⚡ Fourth` (blocked-label reconciliation) on the next preamble.
-3. Grep deferred specs for the tracking reference:
-   ```bash
-   grep -l "^\*\*Tracked in:\*\* #<N>\b" ai-docs/plans/deferred/*.spec.md
-   ```
-   If grep returns **zero matches**: fall through to Steps 1–5 (interview-driven flow). The issue body loaded in step 2 is available as context for the interview.
-   If grep returns **one match**: continue with step 4.
-   If grep returns **multiple matches** (unexpected — `**Tracked in:**` should be 1:1 with an issue): surface the list to the user and ask which spec to activate before proceeding.
-4. Move the matched spec (and its `*.design.md` / `*.progress.md` siblings if present) from `ai-docs/plans/deferred/` to `ai-docs/plans/`:
-   ```bash
-   mv ai-docs/plans/deferred/YYYY-MM-DD-name.spec.md ai-docs/plans/
-   mv ai-docs/plans/deferred/YYYY-MM-DD-name.design.md ai-docs/plans/     # if exists
-   mv ai-docs/plans/deferred/YYYY-MM-DD-name.progress.md ai-docs/plans/   # if exists
-   ```
-5. Update `ai-docs/plans/INDEX.md`: move the plan row from **Deferred plans** to **Active plans**; status `🟢 ready` (or `🟡 spec-only` if no design exists yet).
-6. Surface the spec's existing `## Acceptance Criteria` table to the user verbatim and ask: *"Confirm these ACs, or revise before continuing?"* — wait for the user's response before proceeding. Any revisions must be applied to the spec file before Step 6 launches.
-7. **Do NOT run the interview.** **Do NOT create an `*.state.md` interview state file.** **Do NOT re-resolve the tracking issue** — the spec's existing `**Tracked in:** #<N>` is authoritative.
-8. If a `.progress.md` was moved (rare — a prior `/task` run on this spec was interrupted): treat the activated task as a resume and jump to the RESUME path's `## Next action`.
-9. Otherwise jump directly to **Step 6** (design phase) — the spec exists, ACs are confirmed, the interview phase is satisfied.
-
-## ⚡ Third — bare-issue activation decision table (detail)
-
-The keyword trigger in `⚡ Second` ("activate", "start", "proceed") does NOT fire on a bare integer, so `/task <N>` would otherwise enter the interview machinery and create a spurious `*.state.md` file even when `ai-docs/plans/deferred/2026-05-01-paint-style.spec.md` already carries `**Tracked in:** #<N>`. The `⚡ Third` preamble catches this case.
-
-| If `$ARGUMENTS` resolves to... | Action |
-|---|---|
-| A bare issue number (`/task <N>` or `/task #<N>`) AND a deferred spec exists with a `**Tracked in:**` line matching that number | Run `⚡ Third`'s activation sequence — do NOT launch the interview, do NOT create a state file. |
-| A bare issue number AND no matching deferred spec | Fall through to the Steps 1–5 interview phase (the issue's body becomes the interview seed). |
-| Free text / keyword-triggered activation / empty args | Skip this phase; the active-task probe above (if applicable) or Steps 1–5 cover those entry modes. |
+Reference material extracted from `SKILL.md` so the SKILL body stays a thin workflow (the thin-`SKILL.md` + supporting-file split `/ai-audit` Checklist K prescribes). The SKILL body owns the workflow steps; this file owns reference / troubleshooting / detail material; [`preambles.md`](preambles.md) owns the step-by-step sequences behind the four `⚡` preambles.
 
 ## Design Amendment recipe (re-entrant — triggered from Step 8 or Step 11)
 
@@ -140,6 +70,19 @@ If a Step 7 design-review GO verdict surfaces a `note` / `minor` / recommendatio
 
 ## Steps 1–5 — spec creation delegation (detail)
 
+**The `args` hand-off shape (binding — SKILL.md § Steps 1–5 AXIOM names the sections; this is the template to copy):**
+
+```
+## TASK (verbatim)
+<the user's text, byte-for-byte, fenced>
+## RECON (unverified claims)
+READ: <files opened + commands run>
+NOT READ: <what was not opened, or the sampling rule used>
+<findings as claims — no verdicts, no instructions, no reading directives>
+## DELTA
+<every constraint present in this hand-off but absent from TASK, one line each, with its source — or the literal line `DELTA: none`>
+```
+
 `/task` does not duplicate the interview workflow. Scope extraction, key-decision confirmation, tracking-issue resolution, spec writing, and the cross-link comment are owned by `/interview` (`.claude/skills/interview/SKILL.md`). Treat these five steps as a single delegated phase.
 
 **Already have a spec?** If a saved spec for this task already exists under `ai-docs/plans/` (e.g. the user previously ran `/interview` to draft the spec without implementing), confirm with the user that this is the spec to implement, then **skip to Step 6** — do not re-run the interview.
@@ -189,6 +132,12 @@ Update content files only — **do not move spec/design to `done/` yet** (that h
 2. **`ai-docs/context.md`** (orientation) — update only if a block's high-level state changed: bump the `## Status` summary bullet for the affected block, resolve open questions answered during implementation, keep the Architecture / Track-artifact orientation current.
 3. **Repo-root user-facing docs** — update any that this change contradicts (a README status line, a runbook). Skip when the change touches none.
 
+**Two measurement rules — full text (the SKILL body carries the binding sentence of each):**
+
+**Every number and every `file:line` you write here is a measurement, not a recollection.** A test count, a package tally, a panic-index row locator, a "N sites" figure — re-derive each one **in this turn, after the last edit**, with the command that produces it (`go test ./internal/<package>/ -count=1` for a per-package count; the locator `rg` re-run after the final `golangci-lint fmt`). **NEVER** transcribe a figure from a subagent's return summary — it is a claim (AGENTS.md § *Workflow*), and a `code-writer` has already reported one package's count for another's. If a new figure contradicts an existing durable baseline (README's test line, a panic-index row), the resolution is a **fresh measurement**, never picking one of the two.
+
+**A diff that REMOVES something has a wider doc surface than one that adds.** Prose enumerates what exists, so a deleted dep edge / flag / module / panic-index row leaves assertions scattered through documents you are otherwise editing correctly. Adding a description of what is now true does **not** discharge the obligation to delete what is now false — and the two routinely live in the same file, paragraphs apart. Concrete trigger: for every name your diff removed, `grep -ni '<removed-name>' <every doc you are touching>` **before** closing the edit — case-insensitive, because this is a completeness sweep over prose (AGENTS.md § *Propagation Rule*; identifier-like names get capitalised mid-sentence). The salience of a removal that was an *acceptance criterion* is what makes this feel already-handled.
+
 ## Step 8 — first-action GO-notes verification (detail)
 
 Verify both spec and design (with GO verdict) exist AND that **every note / minor / recommendation from the latest design-review GO verdict has been written back into the design document**. "Applied in code later" is NOT the same as "resolved in the design"; the design doc is the implementation contract. Scan the most recent `## Self-Review (Round N)` / `## Verdict: GO` block emitted by `.claude/agents/design-review.md` — for each `## Issues` row of `Severity: note` / `minor` and each `## Recommendations` bullet, confirm the corresponding API table / helper list / risk table / decomposition section of `ai-docs/plans/YYYY-MM-DD-name.design.md` was updated to match. If any note is unresolved → stop, edit the design doc to incorporate it (and re-run design-review if the change is non-trivial per the Design Amendment rule), and only then begin coding. Missing spec, missing design, missing GO verdict, OR unresolved GO-notes = previous steps incomplete.
@@ -222,6 +171,10 @@ During Step 8 the orchestrator NEVER executes subtask code in its own context. E
 The every-group fan-out removes the failure mode structurally: the orchestrator's own context never grows long enough to trip compaction (Step 8 subtask work runs in short-lived subagent invocations), and the `## Handoff plan` is the per-group spec the orchestrator reads at each return.
 
 **Trigger source: design's `## Handoff plan` section.** As of the every-group redesign (quartzite's PR for `maratik123/quartzite#375`), the `design` Subagent produces a `## Handoff plan` section in the design document for **every** decomposition with M ≥ 1 (per `.claude/agents/design.md` § Rules → handoff-grouping). That section names the exact group boundaries and the per-group spawn order — pre-computed at design time. Single-subtask designs (M = 1) carry a `## Handoff plan` with one group, fanned out via one `/context-reset` invocation; M = 9 → 3 groups, fanned out via 3 `/context-reset` invocations. Every M ≥ 1 design now carries explicit per-group fan-out.
+
+**Per-group implementor selection — the file is the only lever.** The *orchestrator* model is per-invocation; pinning it was considered and rejected (Key Decision Q3 of the every-group redesign). Per-group *implementor* selection is a different decision — do not conflate the two. A **code** group (marked `sonnet` in the `## Handoff plan`) spawns `subagent_type="code-writer"`, whose `model: sonnet` + `effort: medium` are frontmatter-pinned; pass NO inline `model=`/effort override, because there is no per-invocation `effort` parameter, so an inline `general-purpose` code spawn could never enforce a "medium (pinned)" tier. An **instructions/harness** group (marked `opus`) spawns `subagent_type="general-purpose"` with inline `model="opus"` and effort inherited — both in a 1M-token window. Only that implementor spawn takes an inline `model=` override; the orchestrator itself and the `design` / `design-review` / `self-review` quality gates stay Opus and are never overridden.
+
+**Why the clean-tree check is two commands.** `git diff --quiet && git diff --cached --quiet` (or an empty `git status --porcelain`) — never bare `git diff --quiet`, which compares the working tree to the **index** and so reports a staged-only change as clean. That is exactly the pre-spawn state AGENTS.md § *Workflow* phase (2) forbids: a staged file lands in the delegate's commit.
 
 ## Step 8 — local FAIL investigation before push (AGENTS.md workflow corollary)
 
@@ -267,7 +220,9 @@ For each `⬜ Open` finding in the latest `## Self-Review (Round N)` section of 
 
 After all findings are resolved (`✅ Fixed` or `⚠️ Objected`), run the **full** gate set — `go build ./...`, `go test ./...`, `golangci-lint fmt -d`, `golangci-lint run`, `go vet ./...` — **after EVERY fix, including ones an agent (or you) calls trivial: "one character", "just a typo", "doc-comment only"**. A fix's *size* is not evidence of its *risk*; "the fix is one character" is a claim about the edit, never about the gates. A doc-comment edit can fail `revive` while build, vet and tests stay green — `go vet` does not subsume `golangci-lint run`, and vice versa. Then update `.progress.md`, re-read the PR body (`gh pr view <N> --json title,body`) and edit only if it contradicts new commits, and resolve every fixed review thread per the GraphQL recipe in AGENTS.md § *Workflow* (PR review comment resolution) — reply via REST, query unresolved thread IDs via `reviewThreads`, then `resolveReviewThread` each fixed thread and verify `isResolved: true`. Threads behind `⚠️ Objected` findings stay open. Skipping this resolution earned the same correction twice in the **graphite-gp** harness.
 
-- **Test plan** (checklist: one line per AC, plus the gate results by name)
+**Batch ordering — full rationale.** A Step-11 fix batch routinely contains both a correction to a *number about* file F and an edit *to* F; batch order does not naturally put them in the valid order. Before writing any figure into a durable surface, answer: **"does anything else in this batch touch the file I am measuring?"** If yes, that edit lands first and the measurement is re-derived after it. A figure that was correct when you measured it is not thereby correct when you commit it — this is the Step-11 instance of AGENTS.md § *Communication* ("never record-then-edit") and of Step 9.5's measurement rule, and it is where that rule has recurred.
+
+**Recurrence history behind the Step-11 amendment AXIOM.** Recurrences (in the sibling **quartzite** project's log): 2026-05-13 (notes not folded back), 2026-05-15 GO-with-notes resolution, 2026-05-21 design doc change committed directly during self-review fix (the latest is the propagation gap — Step 11 self-review fix flow was missing from the prior escalation set; see quartzite's `ai-docs/learnings.md` 2026-05-21).
 
 ## Step 12 — inbox propagation (detail)
 
@@ -280,6 +235,18 @@ The Step 12 sub-step 5 parser specification lives in a dedicated reference file:
 - For each candidate row, dedupe at *file* granularity: if the candidate's `source_path` is in `H`, skip the entire file (all of its sections); otherwise append the JSON line to `ai-docs/deferred/_inbox.jsonl` below the existing body.
 - Emit one `WARN: <spec-path> :: <section heading> — unrecognised body shape, no rows emitted` line to stdout for any section whose body matches none of the six shape rules; the row count for that section is zero and Step 12 continues normally.
 - The Step 12 commit stages `_inbox.jsonl` alongside the existing artefacts.
+
+## Step 12 — PR-body template (detail)
+
+The `gh pr create` body (SKILL.md Step 12 item 10) carries these sections, in this order:
+
+- **Summary** — what landed and why.
+- **Tracking** — `Closes #N` when the PR fully resolves the tracking issue, `Refs #N` when it resolves it partially; omit the section when the spec carries `Tracked in: none`.
+- **Test plan** (checklist: one line per AC, plus the gate results by name) — including the two results of `ai-docs/task-run-schema.md` § *Step-12 verification block* (sub-step 5a).
+
+## Step 12 — step-skip gate (recurrence history)
+
+Step 10 (self-review) has been silently skipped on "simple" tasks and post-compaction. Recurrence pattern, all in the sibling **quartzite** project ([its log](https://github.com/maratik123/quartzite/blob/main/ai-docs/learnings.md)): 2026-05-07 design-skip; 2026-05-14 `maratik123/quartzite#339` Step-10 skip; 2026-05-14 `maratik123/quartzite#281` compaction-induced skip (an issue, not a PR); 2026-05-16 `maratik123/quartzite#374` context-rot. The gate fires regardless of how trivial the diff appears — no "too simple" exemption (quartzite's `ai-docs/learnings.md` 2026-05-07 entry).
 
 ## FORBIDDEN
 
@@ -327,6 +294,8 @@ The Step 12 sub-step 5 parser specification lives in a dedicated reference file:
 | `Write` a `*.design.md` because the Subagent's text output didn't land on disk | Re-spawn the `design` Subagent; do NOT transcribe its text |
 | `Edit` a `*.spec.md` to apply a user tweak after `interview` returned `ready` | Spawn `spec-writer` with the tweak as a synthetic round |
 | `Edit` a `done/*.spec.md` during `/pr-commented` Spec Amendment | Same — route through `spec-writer` |
+
+**Recurrence history.** Recurrences (in the sibling **quartzite** project's log, 2026-05-24 — 4 process entries): orchestrator wrote design file when subagent's text response landed without a `Write` call; orchestrator transcribed design output instead of re-running the agent; orchestrator directly edited spec on user tweak after `status: ready`; orchestrator edited design doc during spec-amendment sub-flow.
 
 ## Amendment-route rule — rationale (SKILL.md § Design Amendment AXIOM)
 
