@@ -245,8 +245,10 @@ test — the guard carries targeted exclusions, and the test is what keeps them
 > `entry_args` format demo. Of the `file:line` pair it replaced, the
 > `spec-writer.md` pin had already drifted onto an empty line (and its specimen
 > is covered by the anchored template-field rule regardless), while the
-> `task/reference.md` pin was still accurate — and the commit that replaced it
-> moved that line by some sixty rows, which would have broken the pin. But
+> `task/reference.md` pin was still accurate — the phrase match has been in
+> place since the learning-loop import, and the commit that rewrote this
+> paragraph moved that line by 57 rows, which would have broken a pin had the
+> code still carried one. But
 > **no test case exercises the phrase match**: if you touch it, add a case that
 > shifts the demo row before trusting a green run; do not re-pin.
 

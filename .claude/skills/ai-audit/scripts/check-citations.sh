@@ -105,9 +105,10 @@ while IFS=: read -r file line cite; do
   #     empty line without the guard noticing (the same rot the header records
   #     for check (2)) -- and its specimen turned out to be covered by the
   #     anchored template-field rule in (a) anyway. The task/reference.md pin
-  #     was still accurate, and the very commit that content-addressed it also
-  #     moved that line by ~60 rows, which would have broken the pin. Live
-  #     specimen: the entry_args format demo in task/reference.md (bare-vs-plain
+  #     was still accurate; the phrase match has been in place since the
+  #     learning-loop import, and the commit that rewrote this comment moved
+  #     that line by 57 rows -- which would have broken a pin, had the code
+  #     still carried one. Live specimen: the entry_args format demo in task/reference.md (bare-vs-plain
   #     issue-ref argument forms). A phrase match is broader than a pin -- every
   #     line carrying the phrase is exempt -- so keep it specific to the demo's
   #     wording and re-run test-check-citations.sh after touching it.
