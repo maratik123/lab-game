@@ -64,18 +64,17 @@ go run ./cmd/bot                                        # run the bot
 >
 > What `actionlint` catches that `go` cannot: runner-version mismatches, deprecated action versions, expression-syntax errors, shell-quoting issues. Harness scripts are executable code and get the same treatment as `.go` files.
 
-> **AXIOM — instruction files live under a 40,000-byte hard cap, with hysteresis.**
+> **AXIOM — instruction files live under a 40,000-byte hard cap, and enforcing it is `/ai-audit`'s exclusive job.**
 > Measured by `wc -c` (bytes; character counts under-count multibyte punctuation). Applies to `AGENTS.md`, `CLAUDE.md`, every `.claude/skills/**/*.md`, every `.claude/agents/**.md`, every `.claude/rules/*.md`, and `ai-docs/{code-style,doc-convention,context,agent-writing-style,corrections-log}.md`.
 >
-> | State | Meaning |
+> | Who | Obligation |
 > |---|---|
-> | ≥ 40,000 bytes | **Gate.** The growing flow stops; the next `/ai-audit` run owns an extraction pass whose single postcondition is the file landing **below 35,000** — restoring the growth budget. CI is red on this. |
-> | 35,000–39,999 bytes | **Normal working range.** No flow reports it, no task constrains itself by it, no AC names a byte ceiling below the hard cap. |
-> | < 35,000 bytes | Post-`/ai-audit` state; full growth budget. |
+> | `/ai-audit` | **Sole owner**, via two checklists that run every pass: K1 proposes extraction for any `SKILL.md` over 200 lines; M9 makes extraction mandatory at `≥ 40,000` bytes, postcondition **below 35,000**. No other surface enforces either, CI included. |
+> | Every other flow — `/task`, `/interview`, `/bugfix`, `/improve`, both reviewers, CI | **FORBIDDEN** to measure, report or plan around instruction-file size. No spec constraint, no AC, no design risk row, no review finding may name a file size or byte budget, at any threshold. A flow whose edits push a file past a threshold ships anyway and says nothing; the next `/ai-audit` extracts. |
 
 > **A zero exit status is evidence about the LAST pipeline stage, not about your question.** Never pipe a gate whose exit code is load-bearing — `go test ./... | tail -6` reports `tail`'s status (always 0), so a RED gate records as green, and `tail -N` can truncate away the `FAIL` line you needed. Capture to a file and grep the saved log: `go test ./... > gate.log 2>&1 && echo GATE-GREEN || echo GATE-RED`, then `grep -E "^(FAIL|ok|---)" gate.log`. (`set -o pipefail` also works.) A `PreToolUse` hook blocks the `go test … | tail/head` form; the principle is broader than what the hook matches — the same silent-success shape covers a `jq` filter printing `null` from an error body, and a mutating flag (`rg -r`) rewriting output while exiting 0.
 
-**CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the size cap, the link check) · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
+**CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
 
 Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-index.md)); fall back to `rg <pattern> --type go [-l | -C 3]` when `ast-index` returns empty.
 

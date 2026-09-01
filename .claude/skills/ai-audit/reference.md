@@ -71,7 +71,25 @@ Per the official docs:
 
 Per the [Claude Code skill-directory pattern](https://code.claude.com/docs/en/skills#add-supporting-files), a skill directory may contain SKILL.md plus supporting files (reference docs loaded on demand, scripts the skill executes, examples Claude can read). Audit checks:
 
-1. **Oversized SKILL.md check.** Severity `minor`. Run `wc -l .claude/skills/*/SKILL.md` against the live tree. For each file > 200 lines, emit a `minor` finding: scan for *reference content* sections (format specs, parser rules, lookup tables, long checklists, embedded templates) — material that is referenced once or twice in the workflow but loaded into context on every invocation — and propose extraction to a supporting file (a `reference.md` sibling loaded on demand, as `improve` / `project-review` / `task` already do). lab-game keeps no skill-size exemption index; if an oversized SKILL.md is intentional, note the rationale inline in the finding rather than tracking it in a separate file.
+**Recording protocol (binding).** Run each of the three sub-checks below in its
+**own** tool call — never two in one command block — and write its verdict line
+into the run's findings record **before** starting the next one. The verdict
+line is one of exactly two shapes:
+
+- `K<n>: clear` — the check ran and nothing crossed its threshold.
+- `K<n>: <count> over threshold → <count> findings` — followed immediately by the findings themselves.
+
+Checklist K is not complete until all three lines exist. A sub-check whose
+measurement ran but whose verdict line is absent counts as **not run**: re-run
+it. Rationale, measured — in the `/ai-audit` run at `e97768c`, K1 and K2 shared
+one command block; K2's heuristic was wrong and was re-run alone, and K1's
+result (seven `SKILL.md` files over the 200-line threshold, `.claude/skills/task/SKILL.md`
+among them at 293) was left in the discarded output and never became a finding.
+The relief K1 owes never arrived, and the next `/task` collided with the byte
+cap that extraction would have relieved. Fixing an instrument mid-checklist is
+exactly when a completed measurement gets dropped.
+
+1. **Oversized SKILL.md check.** Severity `minor`. Run `wc -l .claude/skills/*/SKILL.md` against the live tree, alone. This is the harness's routine size relief — since CI carries no size gate, K1 and Sub-check M9 are the only surfaces that ever measure an instruction file, and K1 is the one that fires before anything is over the cap. For each file > 200 lines, emit a `minor` finding: scan for *reference content* sections (format specs, parser rules, lookup tables, long checklists, embedded templates) — material that is referenced once or twice in the workflow but loaded into context on every invocation — and propose extraction to a supporting file (a `reference.md` sibling loaded on demand, as `improve` / `project-review` / `task` already do). lab-game keeps no skill-size exemption index; if an oversized SKILL.md is intentional, note the rationale inline in the finding rather than tracking it in a separate file.
 
 2. **Multi-consumer supporting files belong in `ai-docs/templates/`.** When a supporting file is referenced from **>1 Skill or Subagent**, propose moving it from the owning Skill's directory to `ai-docs/templates/<file>.md` (per AGENTS.md *Agent Docs*). Single-consumer supporting files stay inside the owning Skill directory. Cross-references then point at `ai-docs/templates/` directly instead of routing through another Skill's body. Severity `minor`.
 

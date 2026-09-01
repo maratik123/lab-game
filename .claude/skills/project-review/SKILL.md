@@ -64,7 +64,7 @@ git rev-parse HEAD
 Create the progress file path: `ai-docs/plans/YYYY-MM-DD-project-review.progress.md` (use today's date). The progress file MUST include the canonical schema header fields per [`ai-docs/templates/progress-format.md`](../../../ai-docs/templates/progress-format.md): `**Branch:**`, `**base_commit:**`, `**Last build:**`, `**current_step:**`, `**last_passed_gate:**`, and a `## Decisions log` h2 section. Initialise `**current_step:** Phase 1 — review-findings` before spawning the Subagent.
 
 ```
-Agent(subagent_type="general-purpose", prompt="
+Agent(subagent_type="review-findings", prompt="
   Read .claude/agents/review-findings.md and follow it exactly.
   Branch: [branch name]
   base_commit: [base_commit]
@@ -112,7 +112,7 @@ After every 3 fixes (or when all findings in a subtask are resolved):
 ### Step 5: Self-review loop (max 3 rounds)
 
 ```
-Agent(subagent_type="general-purpose", prompt="
+Agent(subagent_type="self-review", prompt="
   Read .claude/agents/self-review.md and follow it.
   Progress: ai-docs/plans/YYYY-MM-DD-project-review.progress.md
   base_commit is recorded in the progress file.
