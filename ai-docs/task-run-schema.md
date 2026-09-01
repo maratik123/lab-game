@@ -229,12 +229,12 @@ criterion exists to avoid — a copy of membership whose owner is another docume
 never transcribe it forward.** Measured 2026-09-01 on lab-game, after the last edit
 of the commit that pins it (the figures this paragraph carried before were
 graphite-gp's, transcribed with the import — the copy this rule forbids): the
-counted set is 9,366 lines post-exclusion, so the 1 % threshold is 93.66 lines.
+counted set is 9,368 lines post-exclusion, so the 1 % threshold is 93.68 lines.
 Files inside the counted set that satisfy the criterion: `ai-docs/harness-gaps.md`
 (93 — journaling, the second learning log), `ai-docs/context-status.md` (45 — the
 per-task implementation log) and `ai-docs/panic-index.md` (9 — volume set by the
 codebase; every production panic must add a row). None has crossed the threshold,
-so the `:(exclude)` term above still carries only `ai-docs/learnings.md` — 70 lines
+so the `:(exclude)` term above still carries only `ai-docs/learnings.md` — 76 lines
 today, below the threshold, but a file that satisfies the criterion is never
 restored (crossings are one-way, below) and the term is what the script embeds.
 `harness-gaps.md` is within one line of the threshold: its next entry crosses it,
