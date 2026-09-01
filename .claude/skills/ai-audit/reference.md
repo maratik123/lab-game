@@ -240,15 +240,14 @@ test — the guard carries targeted exclusions, and the test is what keeps them
 > excluded row and fails any fix that merely re-pins the number; case 3 fails
 > any fix that over-corrects into skipping the whole file; case 4 catches a
 > test run that mutates the target file's mode, which `git status` cannot see.
-> **The test covers check (2) only.** Two `file:line` exclusions survive in
-> check (1) and are *not* covered — and they are not safer by nature, just
-> accidentally undisturbed: `spec-writer.md`'s is **inert** (its specimen ref
-> sits below the live high-water mark, so execution `continue`s before
-> reaching it — and its file has in fact been edited since the pin was
-> written, which the pin survived only because the edit was line-count-neutral),
-> while `task/reference.md`'s is the only live one and survives only because
-> nothing has yet been inserted above it. Content-address either the moment it
-> drifts, or preferably before; do not re-pin.
+> **The test covers check (2) only.** Check (1)'s prose-specimen exclusion is
+> content-addressed as well — a phrase match on the `task/reference.md`
+> `entry_args` format demo. The `file:line` pair it replaced had already
+> rotted: one pin pointed at an empty line, and the `spec-writer.md` specimen
+> it named turned out to be covered by the anchored template-field rule, not
+> by any pin. But **no test case exercises the phrase match**: if you touch
+> it, add a case that shifts the demo row before trusting a green run; do not
+> re-pin.
 
 | Probe | Fires on |
 |---|---|

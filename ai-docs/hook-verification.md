@@ -30,6 +30,15 @@ commands you expect to pass — **including innocent ones that merely CONTAIN th
 substring** (`grep -rn 'go test' AGENTS.md | head -3` is not a gate invocation) — and confirm they are not
 blocked.
 
+**And confirm the output reaches its reader — firing is not delivery.** A `PostToolUse`
+body that prints its warning to stderr and exits 0 has fired, and its text went to the debug
+log only: per `hooks.md`, Claude never sees exit-0 stderr. On `PostToolUse` the only exit
+status whose stderr reaches Claude is 2 (non-blocking there — the tool already ran). The
+panic-gate and PR-body-sync advisories shipped silent in exactly that shape, and nothing on
+this page asked whether the message *arrived* — every check asked whether the hook *ran*.
+Exercise the advisory path and read the message in your own transcript before recording
+MUST 2 for an advisory hook.
+
 The `crates-io-ua` incident (**graphite-gp**'s `ai-docs/learnings.md`, 2026-07-16) is the
 reference failure: 15 self-invented cases all passed, then the live hook blocked its own
 author's `grep`, and four more valid `curl` spellings were later found wrongly blocked.

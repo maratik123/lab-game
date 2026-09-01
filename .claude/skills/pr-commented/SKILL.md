@@ -221,6 +221,8 @@ Trivial fixes (typo, rename, single-call rewrite, comment fix, test addition, do
 
 **Spec Amendment recipe** — fires BEFORE Step 5 when the round's diff touches `ai-docs/plans/*.spec.md` (or `done/*.spec.md`). See [`reference.md` § Spec Amendment recipe (pr-commented surface)](reference.md#spec-amendment-recipe-pr-commented-surface) for the detection trigger, sub-flow, and FORBIDDEN-reasoning list.
 
+> **A spec-touching round runs `design` → `design-review` before `self-review` (binding).** Whenever the round's diff touches a `*.spec.md`, spawn the `design` Subagent and then `design-review` before Step 5 — that is the recipe above, and it fires regardless of how small the spec edit appears. `self-review` checks code-against-spec; it cannot validate spec-against-design, so skipping the design pass leaves the amended spec unreviewed. This is an architectural rule derived from the recipe, not a promoted-from-`learnings.md` carrot — which is why it lives here and not under a `## Patterns` heading.
+
 **Write progress at this step boundary** before further tool calls: rewrite this round's `**current_step:**` to `Round M Step 4`; rewrite the round's `**last_passed_gate:**` to `golangci-lint run | <ISO-8601 UTC timestamp> | <commit SHA from git rev-parse HEAD>`; append a `### Decisions log (round M)` bullet recording the fix count + commit SHA (one line, prefixed `Step 4:`). If the Spec Amendment recipe fired, append a second bullet recording the design / design-review verdicts (prefixed `Step 4 (spec amendment):`).
 
 ### Step 5 — Self-review (loops with Step 4, cap 3)
@@ -294,12 +296,6 @@ Re-invoke /pr-commented after the reviewer responds to the open threads.
 **Re-invocation semantics** — see [`reference.md` § Re-invocation semantics](reference.md#re-invocation-semantics) for the actionable-thread filter, objection-reclassification rule, and empty-actionable-set contract.
 
 **Edge cases** — see [`reference.md` § Edge cases](reference.md#edge-cases) for the per-case action table (force-push request, main ahead, red CI, reviewer-resolved mid-round, outdated anchor, architectural rework, PR-author comment, multiple-commenter disagreement, self-review REJECT cap, bot endorsement).
-
-## Patterns
-
-> **Default to** spawning the `design` Subagent (then `design-review`) before `self-review` whenever the round's diff touches a `*.spec.md` file. Self-review checks code-against-spec; it cannot validate spec-against-design. The Spec Amendment recipe (Step 4 → `reference.md`) is the canonical flow — do NOT skip the design / design-review step regardless of how small the spec edit appears.
->
-> _Provenance: an architectural default derived from the Spec Amendment recipe (Step 4 → `reference.md`), **not** a promoted-from-`learnings.md` validation carrot — so it carries no back-link by design (unlike the `### N`-numbered validation carrots elsewhere). When a `/pr-commented` round amends a `*.spec.md`, the `design` Subagent confirms the decomposition still holds and `design-review` issues GO before `self-review` runs downstream — `self-review` checks code-against-spec, not spec-against-design._
 
 ## Anti-patterns
 

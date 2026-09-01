@@ -37,12 +37,20 @@ trap "cp '$backup' '$target'; rm -f '$backup'; exit 143" TERM
 cp "$target" "$backup"
 mode_before=$(stat -c '%a' "$target")
 
+guard_out=""
+run_guard() {
+  # Capture the guard's own output so a FAIL can say WHY -- a silent >/dev/null
+  # once hid a transient gh outage behind "expected exit 0, got 1".
+  guard_out=$(bash "$guard" 2>&1)
+}
+
 report() {
   # $1 = case name, $2 = observed exit, $3 = expected exit
   if [ "$2" -eq "$3" ]; then
     printf '  PASS  %s (exit %s)\n' "$1" "$2"
   else
     printf '  FAIL  %s — expected exit %s, got %s\n' "$1" "$3" "$2"
+    printf '%s\n' "$guard_out" | sed 's/^/        | /'
     failures=$((failures + 1))
   fi
 }
@@ -53,7 +61,7 @@ echo
 # --- Case 1: the guard is green on the pristine tree -------------------------
 # Failed before the fix: the exclusion was pinned to corrections-log.md:47
 # while the format-spec example it means to exclude had drifted to :49.
-bash "$guard" >/dev/null 2>&1
+run_guard
 report "case 1: green on pristine tree" "$?" 0
 
 # --- Case 2: the exclusion survives line drift --------------------------------
@@ -79,7 +87,7 @@ if [ "$row_before" = "$row_after" ]; then
   failures=$((failures + 1))
 else
   printf '  ....  case 2 setup: Superseded-by row moved %s -> %s\n' "$row_before" "$row_after"
-  bash "$guard" >/dev/null 2>&1
+  run_guard
   report "case 2: green after the excluded row drifts" "$?" 0
 fi
 
@@ -97,7 +105,7 @@ cp "$backup" "$target"
 bad_year="2026"
 bad_date="${bad_year}-03-14"
 printf '\n> See the %s learnings entry for context.\n' "$bad_date" >> "$target"
-bash "$guard" >/dev/null 2>&1
+run_guard
 report "case 3: genuine bad citation still RED" "$?" 1
 
 cp "$backup" "$target"

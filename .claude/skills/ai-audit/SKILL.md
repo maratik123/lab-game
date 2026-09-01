@@ -114,7 +114,7 @@ For each item below, when a violation is found record: file path, line number (w
 | M | `agent-writing-style.md` conformance — 11 sub-checks (Patterns 1–7 + Anti-patterns + Sub-checks 9/10 + Cross-shape verbs) over the audited corpus | [`checklist-m.md`](checklist-m.md) |
 | N | Bidirectional `## Patterns` ↔ `Kind: validation` coherence — every promoted carrot round-trips both ways | [`reference.md` § Checklist N — Bidirectional `## Patterns` ↔ `Kind: validation` coherence](reference.md#checklist-n--bidirectional--patterns--kind-validation-coherence) |
 | O | Embedded-name clash scan — project-defined Subagent / Skill / Hook-event names MUST NOT clash with the harness's embedded names (read from the session's agent-type + skill listings, NOT from any file in this repo; an empty embedded list is `inconclusive`, never `pass`) | [`reference.md` § Checklist O — Embedded-name clash scan](reference.md#checklist-o--embedded-name-clash-scan) |
-| P | Cross-repo citation resolvability — every cited `#N` (bare or `PR #N`) / `learnings.md` date / memory file resolves for its reader; run `scripts/check-citations.sh`, then `scripts/test-check-citations.sh` (the guard's own regression test — it must stay 4/4; it covers the **check-(2)** exclusion, verifying that one is content-addressed rather than line-pinned. Check (1)'s two `file:line` pins remain uncovered — see `reference.md` § Checklist P) | [`reference.md` § Checklist P — Cross-repo citation resolvability](reference.md#checklist-p--cross-repo-citation-resolvability) |
+| P | Cross-repo citation resolvability — every cited `#N` (bare or `PR #N`) / `learnings.md` date / memory file resolves for its reader; run `scripts/check-citations.sh`, then `scripts/test-check-citations.sh` (the guard's own regression test — it must stay 4/4; it covers the **check-(2)** exclusion, verifying that one is content-addressed rather than line-pinned. Check (1)'s prose-specimen exclusion is content-addressed too but has no test case — see `reference.md` § Checklist P) | [`reference.md` § Checklist P — Cross-repo citation resolvability](reference.md#checklist-p--cross-repo-citation-resolvability) |
 
 The audited corpus for Checklist M is enumerated in [`checklist-m.md` § audited corpus](checklist-m.md#checklist-m--audited-corpus).
 
@@ -136,7 +136,7 @@ Show the user a numbered list of findings with proposed fixes (concrete diffs fo
 - `blocker` / `major`: ask user to confirm before applying.
 - `minor` / `nit`: may apply autonomously if the fix is mechanical and obvious; otherwise ask.
 
-Apply approved fixes via `Edit` / `Write`. Update `ai-docs/learnings.md` with a new entry per AGENTS.md "Learning Log" format (copyable skeleton: [`ai-docs/templates/learnings-entry.md`](../../../ai-docs/templates/learnings-entry.md)) **only if** the audit revealed a *new* class of mistake worth tracking — do not log routine cleanup.
+Apply approved fixes via `Edit` / `Write`. A *new* `ai-docs/learnings.md` entry (per AGENTS.md "Learning Log" format; copyable skeleton: [`ai-docs/templates/learnings-entry.md`](../../../ai-docs/templates/learnings-entry.md)) is warranted **only if** the audit revealed a *new* class of mistake worth tracking — do not log routine cleanup — and it is **never written in the same turn as the instruction-file fixes**: AGENTS.md § Learning Log Boundary rule 2 forbids a NEW entry alongside instruction-file edits, and the `/improve` / `/ai-audit` exception covers only Phase 1's `Escalated?` / `Superseded by:` field updates. Draft the entry in the report; write it in a later turn as its own commit.
 
 ### Step 2.6: Verify
 
@@ -170,7 +170,7 @@ EOF
 )"
 ```
 
-If `ai-docs/learnings.md` was modified by Phase 1 or Phase 2, stage it together — per AGENTS.md "Workflow", learnings entries are part of the deliverable and must be visible in the diff.
+If Phase 1 updated `Escalated?` / `Superseded by:` fields in `ai-docs/learnings.md`, stage it together — per AGENTS.md "Workflow", learnings changes are part of the deliverable and must be visible in the diff. A Phase 2 *new* entry is written in a later turn and gets its own commit (Boundary rule 2 — see Step 2.5).
 
 Per AGENTS.md, **never** `git add -A` / `git add .`.
 
@@ -189,7 +189,7 @@ Per AGENTS.md, **never** `git add -A` / `git add .`.
 
 ## Anti-patterns
 
-- Do **not** rewrite `learnings.md` history — it is append-only. Phase 1 may only correct the `Escalated?` field of an existing entry or add a *new* corrective entry; never delete or rephrase past entries.
+- Do **not** rewrite `learnings.md` history — it is append-only. Phase 1 may only correct the `Escalated?` / `Superseded by:` fields of an existing entry; it never appends an entry (Boundary rule 2 — the audit edits instruction files in the same turn) and never deletes or rephrases past entries.
 - Do **not** invent rules. The audit finds compliance gaps in *existing* rules; new rules go through `/improve`.
 - Do **not** skip the `claude-code-guide` spawn in Phase 2. The official docs are the source of truth for Hook/Skill/Subagent shapes — relying on memory is the failure mode this Skill exists to prevent.
 - Do **not** auto-resolve a blocker without surfacing it. Severity is a signal that human judgment is needed.

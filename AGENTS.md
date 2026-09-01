@@ -115,8 +115,15 @@ Project invariants that outrank convenience. Full detail: [`ai-docs/domain-invar
 
 > **AXIOM — Balances move only through the ledger, never by an ad-hoc UPDATE.**
 > Every change to stamina, resources, money, or items is a set of postings written by `store.Post` under exactly one basis document, and the postings in one transaction sum to zero per kind. Item instances move through `item_movements` with an unbroken holder chain. A handler that mutates a balance column directly is rejected in review, however small the change.
+>
+> The action table — what to do instead of each ad-hoc write — lives with the mechanics: [`ai-docs/domain-invariants.md` § 1 — The ledger](ai-docs/domain-invariants.md).
 
 > **AXIOM — A new mechanic declares its telemetry in the same PR that implements it** (`docs/DESIGN.md` §13.4). Events go in the event dictionary; a mechanic that moves balances additionally declares its **posting signature**, and the contract test checks actual postings against it. Telemetry never lags code.
+>
+> | If the PR... | It also carries |
+> |---|---|
+> | Adds or changes a mechanic | That mechanic's events, in the event dictionary |
+> | Moves any balance | The basis document's **posting signature**, plus the contract test that checks actual postings against it |
 
 Three more, each with its mechanics on that page: **never write to a chat that is not the intended one** (`ALLOWED_CHAT_IDS`, plus snapshot sanitisation as part of restore — §12.5); **respect Telegram limits by construction** (honour `retry_after`, back off exponentially, never a tight retry loop — a flood ban attaches to the bot id and survives token reissue); **scheduler tasks are idempotent and guard-checked** on `state`/`seq`, because a stale task firing late is normal operation, not an error (§3.5).
 
@@ -177,8 +184,13 @@ When changing dependencies: **never hand-edit a version in `go.mod`** — `go ge
 >
 > APPROVE = push. REJECT = fix on the same branch and re-run; after 3 REJECTs in a row, surface and stop without pushing.
 
-> **AXIOM — `ai-docs/deferred/_inbox.jsonl` is written ONLY by `/task` Step 12 and (once it lands) `/triage`.**
+> **AXIOM — `ai-docs/deferred/_inbox.jsonl` is written ONLY by `/task` Step 12 and `/triage`.**
 > A hand-edit hides rows from the parser and collides with future appends; one malformed line breaks the whole `jq` read. Row shape: [`ai-docs/templates/inbox-row.md`](ai-docs/templates/inbox-row.md).
+>
+> | If you need to... | Action |
+> |---|---|
+> | Record a deferred / out-of-scope / open-question item | Let `/task` Step 12 parse it from the finalised spec — never append by hand |
+> | Promote, dedupe or move a row | Run `/triage` — `triage-runner` owns every mutation under `ai-docs/deferred/**` |
 
 ## Propagation Rule
 

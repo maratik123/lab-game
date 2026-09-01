@@ -43,12 +43,26 @@
 #     documents what was decided AT THE TIME; rewriting its references
 #     edits history rather than an instruction.
 #   - ai-docs/deferred/**: `_inbox.jsonl` is AXIOM-protected -- AGENTS.md
-#     § Workflow: "written ONLY by /task Step 12 and /triage. Hand-edits
-#     defeat the propagation contract." A guard that fails on a file nobody
-#     may hand-edit is a guard that teaches people to ignore it.
+#     § Workflow: written ONLY by /task Step 12 and /triage, never by hand.
+#     A guard that fails on a file nobody may hand-edit is a guard that
+#     teaches people to ignore it.
 set -uo pipefail
 
-LOCAL_MAX=$(gh pr list --state all --limit 1 --json number --jq '.[0].number')
+# The high-water mark is an INSTRUMENT reading. An empty or non-numeric value
+# (gh auth/network hiccup, a lock collision with a concurrent gh call) must
+# fail loudly as an instrument error -- never leak into the comparison, where
+# it would flag every citation as unresolvable and dress the outage up as a
+# finding. Retry briefly, then stop.
+LOCAL_MAX=""
+for attempt in 1 2 3; do
+  LOCAL_MAX=$(gh pr list --state all --limit 1 --json number --jq '.[0].number // 0' 2>/dev/null)
+  case "$LOCAL_MAX" in ''|*[!0-9]*) LOCAL_MAX=""; sleep "$attempt" ;; *) break ;; esac
+done
+if [ -z "$LOCAL_MAX" ]; then
+  echo "ERROR: could not read the local PR high-water mark (gh pr list returned nothing numeric after 3 attempts)." >&2
+  echo "       Instrument failure, not a citation finding -- check gh auth / network and re-run." >&2
+  exit 1
+fi
 fail=0
 
 echo "== local high-water mark: PR #${LOCAL_MAX} =="
@@ -84,34 +98,22 @@ while IFS=: read -r file line cite; do
   #     skipped. That is the substring-blacklist trap this guard warns about;
   #     anchoring closes it.
   echo "$txt" | grep -qE '^[[:space:]]*[-*]?[[:space:]]*(issue_ref|linked_prs|tracked_in|detail):' && continue
-  # (b) PROSE specimens -- two lines quote an illustrative `#N` inside example
-  #     text, where no field key exists to anchor to. Excluded by exact
-  #     file:line rather than by a phrase, so a REAL citation later added to
-  #     either file still gets checked. NOTE: check (2) deliberately does NOT
-  #     use this mechanism -- its line pin drifted and broke (see the header).
-  #     These two are NOT safer by nature; they are unrepaired for two
-  #     different accidental reasons, neither of which is stability:
-  #       - spec-writer.md's pin is INERT. Its specimen ref is below the live
-  #         high-water mark, so the LOCAL_MAX test above `continue`s and
-  #         execution never reaches this `case`. Its file HAS been edited since
-  #         the pin was written; the pin survived only because that edit was
-  #         line-count-neutral -- luck, not stability.
-  #       - task/reference.md's pin is the only live one, and survives only
-  #         because nothing has yet been inserted above it.
-  #     Content-address either one the moment it drifts, or preferably before;
-  #     do NOT re-pin. Same failure mode as the header's:
-  #       spec-writer.md:161    -- a `detail`-field shape demo, quoting a
-  #                                specimen ref inside example prose
-  #       task/reference.md:179 -- an entry_args format demo, showing the
-  #                                bare-vs-plain issue-ref argument forms
-  #     (Both are described, not spelled: a comment that quotes the bad shape
-  #     IS the bad shape, and this script would flag its own source. See
-  #     reference.md Checklist P -- "describe the bad shape; spell it only
-  #     alongside its fix." That rule applies here too.)
-  # Content-addressed, never line-pinned: a pin drifts silently when rows are
-  # inserted above it -- the exact failure this guard's own header records.
+  # (b) PROSE specimens -- a line that quotes an illustrative `#N` inside
+  #     example text where no field key exists to anchor to. Excluded by a
+  #     phrase that sits ON THE LINE ITSELF, never by file:line. This started
+  #     as a pair of file:line pins; one drifted onto an empty line without the
+  #     guard noticing (the same rot the header records for check (2)), and
+  #     the other named a spec-writer.md specimen that is in fact covered by
+  #     the anchored template-field rule in (a). Live specimen: the entry_args
+  #     format demo in task/reference.md (bare-vs-plain issue-ref argument
+  #     forms). A phrase match is broader than a pin -- every line carrying the
+  #     phrase is exempt -- so keep it specific to the demo's wording and
+  #     re-run test-check-citations.sh after touching it.
+  #     (Described, not spelled: a comment that quotes the bad shape IS the bad
+  #     shape, and this script would flag its own source. See reference.md
+  #     Checklist P -- "describe the bad shape; spell it only alongside its fix.")
   case "$txt" in
-    *entry_args*|*'issue-ref argument'*) continue ;;
+    *entry_args*) continue ;;
   esac
   # (c) HEX COLOUR shape. `\b` alone is NOT sufficient: it excludes #93A2B8
   #     (letters break the digit run) but an ALL-NUMERIC hex like #123456 or

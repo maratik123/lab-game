@@ -4,7 +4,7 @@ Reference page for `ai-docs/metrics/task-runs.jsonl`, the longitudinal record of
 `/task` run cost. One JSON object per line, one line per completed `/task` run,
 appended at Step 12 by `.claude/skills/task/scripts/append-task-run.sh`.
 
-Source spec: `ai-docs/plans/done/2026-07-31-task-run-telemetry.spec.md` (issue 186).
+Source spec: the sibling **graphite-gp** project's `ai-docs/plans/done/2026-07-31-task-run-telemetry.spec.md` (maratik123/graphite-gp#186) — this page and the script were inherited from that harness; lab-game holds no local spec for them.
 
 ## Single writer, append-only, never hand-edited
 
@@ -226,15 +226,18 @@ as the rule, rather than as current derived membership, has restated the defect 
 criterion exists to avoid — a copy of membership whose owner is another document.
 
 **Derived membership — a measurement with a date. Re-derive it at each pinning;
-never transcribe it forward.** Measured 2026-07-31, five files inside the counted
-set satisfy the criterion: `ai-docs/learnings.md` (610 lines — journaling, one
-entry per correction by mandate), `ai-docs/library-survey.md` (55) and
-`ai-docs/dependency-versions.md` (50) (volume set by the dependency count), and
-`ai-docs/panic-index.md` (14) and `ai-docs/panic-index.md` (7) (volume set by the
-codebase — every production panic and `unsafe` site must add a row). Only the first
-is material by size, so the `:(exclude)` term above carries that one file. The
-other four fall under the criterion **in principle** and are retained in v1 purely
-as negligible; they will need excluding once they grow.
+never transcribe it forward.** Measured 2026-09-01 on lab-game (the figures this
+paragraph carried before were graphite-gp's, transcribed with the import — the
+copy this rule forbids): the counted set is 9,306 lines post-exclusion, so the
+1 % threshold is 93 lines. Files inside the counted set that satisfy the
+criterion: `ai-docs/harness-gaps.md` (93 — journaling, the second learning log),
+`ai-docs/context-status.md` (45 — the per-task implementation log) and
+`ai-docs/panic-index.md` (9 — volume set by the codebase; every production panic
+must add a row). None has crossed the threshold, so the `:(exclude)` term above
+still carries only `ai-docs/learnings.md` — 70 lines today, below the threshold,
+but a file that satisfies the criterion is never restored (crossings are one-way,
+below) and the term is what the script embeds. `harness-gaps.md` sits exactly on
+the line: its next entry crosses it, and the pinning after that excludes it.
 
 **Re-check threshold — 1% of the counted corpus**, the denominator being the
 post-exclusion total this command itself produces at that commit, so the guard and
