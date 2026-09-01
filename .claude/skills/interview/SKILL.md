@@ -125,7 +125,7 @@ For each round (1..=`round_cap`):
 
 ```
 Agent(
-  subagent_type="general-purpose",
+  subagent_type="spec-writer",
   model="opus",
   prompt="""
     Read .claude/agents/spec-writer.md and follow it.
@@ -151,7 +151,7 @@ Capture the returned `agentId` into the state file's `agent_id`. If the harness 
 **Rounds 2..cap — warm reuse if possible, cold fallback otherwise:**
 
 - If `agent_id` is set in state: `SendMessage(to=agent_id, prompt="""<same fields with updated round + prior_qa>""")`. Capture the response.
-- If `agent_id` is null OR the `SendMessage` call fails: cold spawn a fresh `Agent(model="opus", prompt=...)` with the full state in the prompt (the Subagent definition mandates re-derivation from prompt anyway). Update state file's `agent_id` from the new spawn (may again be null).
+- If `agent_id` is null OR the `SendMessage` call fails: cold spawn a fresh `Agent(subagent_type="spec-writer", model="opus", prompt=...)` with the full state in the prompt (the Subagent definition mandates re-derivation from prompt anyway). Update state file's `agent_id` from the new spawn (may again be null).
 
 > The cold-spawn path is the **default contract**; warm reuse is an opportunistic optimization conditional on the harness returning a usable `agentId` and `SendMessage` succeeding.
 >

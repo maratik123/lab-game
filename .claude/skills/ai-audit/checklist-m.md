@@ -26,10 +26,10 @@ After running Checklist M, surface findings using the same severity-driven apply
 Detection mechanism. Run this verbatim invocation:
 
 ```bash
-wc -c AGENTS.md CLAUDE.md .claude/skills/**/*.md .claude/agents/*.md \
-      .claude/rules/*.md \
-      ai-docs/code-style.md ai-docs/doc-convention.md ai-docs/context.md \
-      ai-docs/agent-writing-style.md ai-docs/corrections-log.md
+{ find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md';
+  printf '%s\n' ai-docs/code-style.md ai-docs/doc-convention.md \
+                 ai-docs/context.md ai-docs/agent-writing-style.md \
+                 ai-docs/corrections-log.md; } | xargs wc -c
 ```
 
 Apply the three-band severity table to every reported size. `wc -c` reports
@@ -39,14 +39,14 @@ a character count read lower than the gate does.
 | Reported size (bytes) | Finding | Severity |
 |---|---|---|
 | `< 35,000` | none | — |
-| `35,000–39,999` | none — **normal working range** under the hysteresis AXIOM; do NOT report it, and do NOT let an AC name a ceiling below the hard cap | — |
+| `35,000–39,999` | none — **normal working range**; do NOT report it. No flow outside this audit may name a file size at all, so there is no AC or spec constraint here to police | — |
 | `≥ 40,000` | `<path>: <count> bytes — AXIOM violation (≥ 40,000)`; the extraction pass this run owns must land the file **below 35,000** | `major` |
 
 The covered file set is enumerated verbatim from `AGENTS.md § Build & Test` (the source-of-truth AXIOM) and restated in `ai-docs/agent-writing-style.md § 8. 40k byte-cap on instruction files, with hysteresis`. A future change to the covered file set MUST update Sub-check 9 in the same PR per the Propagation Rule.
 
-Note: the shell-glob form (`.claude/skills/**/*.md`, `.claude/agents/*.md`, `.claude/rules/*.md`) is acceptable here because Pattern 4's explicit-path requirement applies to the *fail-loud bullet list* in Pattern 8 (so static readers see the covered set), not to the shell command that consumes the set.
+The recipe is `find`-based, not glob-based, and that is load-bearing: a `**` glob resolves only one level deep without `globstar`, so a future `.claude/skills/<skill>/<sub>/*.md` would silently leave the corpus. Pattern 4's explicit-path requirement applies to the *fail-loud bullet list* in Pattern 8 (so static readers see the covered set), not to the shell command that consumes it.
 
-Sub-check 9 is not the only enforcement surface: `.github/workflows/ci.yml` § *Harness guards* carries a mechanical `≥ 40,000` gate over the same corpus and turns the run red. The audit is the surface that additionally owns the **extraction pass** the gate demands, and it fires per-`/ai-audit`-run.
+Sub-check 9 is the **only** enforcement surface for the byte cap. `.github/workflows/ci.yml` carried a mechanical `≥ 40,000` gate over this corpus until forge-4 retired it: a red PR is a byte budget by another name, and it forced every `/task` to plan around sizes the AXIOM forbids it to know. Nothing else measures now — if this sub-check does not run, or runs and does not record a verdict, the cap is unenforced for that pass.
 
 ### Sub-check 10 — style-guide audit coverage map
 

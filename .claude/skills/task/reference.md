@@ -80,7 +80,7 @@ If implementation (Step 8) reveals a necessary deviation from the design, **or**
 2. **Surface to user:** describe what changed and why the design must be updated. Wait for approval.
 3. **Spawn the `design` Subagent** to update `ai-docs/plans/YYYY-MM-DD-name.design.md` to reflect the new approach. The orchestrator MUST NOT edit `*.design.md` directly — the `design` Subagent owns ALL writes to `*.design.md` (per the AXIOM in `SKILL.md` above the Design Amendment header). Orchestrator-side direct edits are FORBIDDEN.
    ```
-   Agent(subagent_type="general-purpose", prompt="
+   Agent(subagent_type="design", prompt="
      Read .claude/agents/design.md and follow it.
      Spec: ai-docs/plans/YYYY-MM-DD-name.spec.md
      Existing design: ai-docs/plans/YYYY-MM-DD-name.design.md
@@ -90,7 +90,7 @@ If implementation (Step 8) reveals a necessary deviation from the design, **or**
    On Subagent return, immediately verify the design file was written (`ls ai-docs/plans/YYYY-MM-DD-name.design.md`). If missing — re-spawn the Subagent; do NOT transcribe its text output into the file.
 4. Re-run design review — same as Step 7 (max 3 rounds total across all design-review runs):
    ```
-   Agent(subagent_type="general-purpose", prompt="
+   Agent(subagent_type="design-review", prompt="
      Read .claude/agents/design-review.md and follow it.
      Design: ai-docs/plans/YYYY-MM-DD-name.design.md
      Spec: ai-docs/plans/YYYY-MM-DD-name.spec.md
@@ -115,7 +115,7 @@ If a Step 7 design-review GO verdict surfaces a `note` / `minor` / recommendatio
 4. **On user approval — amend the spec via the `spec-writer` Subagent.** The orchestrator MUST NOT edit `*.spec.md` directly (per the AXIOM in `SKILL.md` above the Design Amendment header). Spawn `spec-writer` with the user's approved amendment as a synthetic round (`extra_context` carries the amendment description); the Subagent re-writes the spec on disk. Orchestrator-side direct `*.spec.md` edits with `Edit` / `Write` are FORBIDDEN — mirrors `.claude/skills/interview/SKILL.md` § Anti-patterns ("Mutating the spec yourself").
 5. **Re-enter Step 6 (`design` Subagent)** with explicit context: "spec was amended at Step 7 GO-with-notes resolution — re-verify decomposition and ACs against the new spec":
    ```
-   Agent(subagent_type="general-purpose", prompt="
+   Agent(subagent_type="design", prompt="
      Read .claude/agents/design.md and follow it.
      Spec: ai-docs/plans/YYYY-MM-DD-name.spec.md
      Existing design: ai-docs/plans/YYYY-MM-DD-name.design.md
@@ -125,7 +125,7 @@ If a Step 7 design-review GO verdict surfaces a `note` / `minor` / recommendatio
    ```
 6. **Re-enter Step 7 (design-review)** against the new (spec, design) pair — same as the original Step 7 (counts against the 3-design-round-cap, which applies to the merged total of pre- and post-amendment iterations):
    ```
-   Agent(subagent_type="general-purpose", prompt="
+   Agent(subagent_type="design-review", prompt="
      Read .claude/agents/design-review.md and follow it.
      Design: ai-docs/plans/YYYY-MM-DD-name.design.md
      Spec: ai-docs/plans/YYYY-MM-DD-name.spec.md
@@ -185,7 +185,7 @@ The `**entry_args:**` field is recorded ONCE at Step 8 creation and **read-only 
 
 Update content files only — **do not move spec/design to `done/` yet** (that happens at Step 12):
 
-1. **`ai-docs/context-status.md`** (detailed per-issue log) — append this task's implementation-status entry: the per-issue bullet capturing design decisions, traps, and invariants worth not rediscovering (the same shape as the existing `## Status` bullets there). This is where the growing per-issue log lives — **not** `context.md`, which stays a thin orientation page under the size cap.
+1. **`ai-docs/context-status.md`** (detailed per-issue log) — append this task's implementation-status entry: the per-issue bullet capturing design decisions, traps, and invariants worth not rediscovering (the same shape as the existing `## Status` bullets there). This is where the growing per-issue log lives — **not** `context.md`, which stays a thin orientation page.
 2. **`ai-docs/context.md`** (orientation) — update only if a block's high-level state changed: bump the `## Status` summary bullet for the affected block, resolve open questions answered during implementation, keep the Architecture / Track-artifact orientation current.
 3. **Repo-root user-facing docs** — update any that this change contradicts (a README status line, a runbook). Skip when the change touches none.
 

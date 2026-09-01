@@ -251,7 +251,7 @@ After `code-writer` returns, the **orchestrator** applies the bail rules below â
 2. Spawn the `self-review` Subagent with the trace artifact as the spec-equivalent input:
 
    ```
-   Agent(subagent_type="general-purpose", prompt="
+   Agent(subagent_type="self-review", prompt="
      Read .claude/agents/self-review.md and follow it.
      This is a /bugfix self-review (no /task spec; no design doc).
 

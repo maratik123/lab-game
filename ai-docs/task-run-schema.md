@@ -475,9 +475,9 @@ The registry lives on this page rather than in a plan document because a plan is
 ## Hosted blocks for `/task` Step 12 sub-step 5a
 
 `.claude/skills/task/SKILL.md` carries one-line pointers to the three blocks
-below rather than the blocks themselves — that file sits in the upper part of
-the 40,000-byte instruction-file cap's range and this page is not in the
-capped set, so the blocks live here where they cost nothing.
+below rather than the blocks themselves — verbatim recipes are reference
+content, loaded on demand rather than on every invocation, which is the
+extraction pattern `/ai-audit` Checklist K1 exists to propose.
 
 ### Precondition assertion — untracked corpus files
 

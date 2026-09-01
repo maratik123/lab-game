@@ -210,7 +210,7 @@ git branch --show-current   # MUST return fix/main-ci-<run-id> — not main
 Now root-cause the failure from the log + reproducer output. Three paths:
 
 - **Mechanical single-command fixes — STAY INLINE** with the orchestrator: `fmt` (`golangci-lint fmt`), an auto-`--fix`-able `lint` lint, an `actionlint`-guided workflow-YAML one-liner, a `doc` typo. These are deterministic and need no code-writing reasoning — spawning a sonnet subagent to run `golangci-lint fmt` is pure latency/context overhead. Edit the offending file(s); re-run the reproducer until green. Stage explicitly by name (never `git add -A` / `git add .`).
-- **Substantive code-writing — DELEGATE to `code-writer`** (Mode B). A `lint` or `build` failure whose fix needs a real code change — a logic restructure to satisfy a lint, rewriting a broken doctest — is genuine code-writing, so hand it to the `code-writer` subagent. It authors the fix from the class + reproducer + log context (NOT a transcribed diff), stays within the failing surface, re-runs the reproducer + gates, and returns **WITHOUT committing** (the orchestrator owns Step 5 self-review and the Step-6 commit):
+- **Substantive code-writing — DELEGATE to `code-writer`** (Mode B). A `lint` or `build` failure whose fix needs a real code change — a logic restructure to satisfy a lint, adding the missing `rows.Err()` check `rowserrcheck` demands — is genuine code-writing, so hand it to the `code-writer` subagent. It authors the fix from the class + reproducer + log context (NOT a transcribed diff), stays within the failing surface, re-runs the reproducer + gates, and returns **WITHOUT committing** (the orchestrator owns Step 5 self-review and the Step-6 commit):
 
   ```
   Agent(subagent_type="code-writer", prompt="

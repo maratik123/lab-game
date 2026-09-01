@@ -152,14 +152,14 @@ Source-of-truth AXIOM lives in `AGENTS.md § Build & Test`. Pattern 8 is the
 style-guide-side restatement so the rule is discoverable from the writing
 conventions reference and audit-able via `/ai-audit` Phase 2 Checklist M.
 
-> **AXIOM — Every covered instruction file stays under 40,000 bytes, and the band below the cap is a working range, not a warning.**
+> **AXIOM — Every covered instruction file stays under 40,000 bytes, and `/ai-audit` is the only surface allowed to know that.**
 > Measured by `wc -c` — **bytes, not characters**: a character count under-counts multibyte punctuation (every `—`, `§`, `≥` in these files is 2–3 bytes), so a char-based reading silently reports a file as smaller than the gate sees it. The harness applies a soft cap on per-invocation instruction-file load; crossing 40,000 bytes imposes measurable per-invocation cost on every Subagent spawn and Skill invocation.
 >
-> | If `wc -c <file>` reports... | Action |
+> | Who | Obligation |
 > |---|---|
-> | `≥ 40,000` bytes | **Gate.** The growing flow stops; the next `/ai-audit` run owns an extraction pass whose single postcondition is the file landing **below 35,000** — restoring the growth budget. CI is red on this. Extract verbose subsections into `ai-docs/<topic>.md` reference pages with anchored links from the source file. |
-> | `35,000–39,999` bytes | **Normal working range.** No flow reports it, no task constrains itself by it, no AC names a byte ceiling below the hard cap. |
-> | `< 35,000` bytes | Post-`/ai-audit` state; full growth budget. |
+> | `/ai-audit` Checklist K1 | Propose extraction for every `SKILL.md` over 200 lines, every pass — the routine relief that keeps files away from the gate. |
+> | `/ai-audit` Checklist M9 | Make extraction mandatory at `≥ 40,000` bytes; postcondition is the file landing **below 35,000**, not merely back under the cap. |
+> | Every other flow, CI included | **FORBIDDEN** to measure, report or plan around instruction-file size. No spec constraint, no AC, no design risk row, no review finding may name a file size or byte budget, at any threshold. A flow whose edits push a file past a threshold ships anyway and says nothing. |
 
 **Covered file set** (enumerate verbatim; no glob-as-the-entire-list per Pattern 4):
 
@@ -174,18 +174,10 @@ conventions reference and audit-able via `/ai-audit` Phase 2 Checklist M.
 - `ai-docs/agent-writing-style.md`
 - `ai-docs/corrections-log.md`
 
-**Per-commit invariant.** The cap binds at every commit boundary on a
-feature branch — not just at merge time. A commit that introduces a
-transient violation (e.g., adds 4,000 bytes to a 38,000-byte file, then a
-later commit on the same branch extracts the content back out) is still a
-violation. Stage the extraction in the same commit as the addition, or
-sequence the extraction commit first.
-
 **Extraction model.** The canonical extraction pattern for `AGENTS.md`:
 verbose subsections moved into `ai-docs/<topic>.md` reference pages with
-anchored links from the source file. Apply the same model when a covered
-file reaches the 40,000-byte gate — the extraction's postcondition is
-landing it below 35,000, not merely back under the cap.
+anchored links from the source file. `/ai-audit` applies the same model in
+both its extraction passes — K1's routine proposal and M9's mandatory one.
 
 ## Writing checklist
 

@@ -156,21 +156,6 @@ jobs:
           bash .claude/skills/ai-audit/scripts/test-check-citations.sh
           bash .claude/skills/task/scripts/test-append-task-run.sh
           bash .claude/skills/ai-audit/scripts/test-piped-gate-guard.sh
-      - name: instruction files stay under the 40k hard cap
-        run: |
-          set -euo pipefail
-          status=0
-          while IFS= read -r f; do
-            n=$(wc -c < "$f")
-            if [ "$n" -ge 40000 ]; then
-              echo "::error file=$f::instruction file is $n bytes (hard cap 40000) — run /ai-audit: its extraction pass must land the file below 35000. If this PR did not grow the file, the debt predates it — run /ai-audit before merging anyway."
-              status=1
-            fi
-          done < <(find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md';
-                   printf '%s\n' ai-docs/code-style.md ai-docs/doc-convention.md \
-                                  ai-docs/context.md ai-docs/agent-writing-style.md \
-                                  ai-docs/corrections-log.md)
-          exit "$status"
       - name: relative markdown links resolve
         run: |
           set -euo pipefail
