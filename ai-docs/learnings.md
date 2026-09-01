@@ -68,3 +68,9 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **at:** a8191a9
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-01 — process — self-review measured and reported instruction-file byte counts under a "this is /ai-audit's commit" reading
+**What happened:** Reviewing an `/ai-audit` commit as `self-review`, I ran `wc -c` on the extracted `task/` skill files and quoted the before/after byte counts under "What was checked", with the parenthetical that size talk was legal because the commit under review was `/ai-audit`'s own. The AXIOM in AGENTS.md § Build & Test carves the exemption by **flow**, not by whose diff is on the table: `/ai-audit` is the sole owner, and "both reviewers" are named among the flows FORBIDDEN to measure or report instruction-file size. The permissive reading was the one that let me do the check I wanted to do.
+**Rule:** A carve-out names the actor it exempts; being *adjacent* to that actor (reviewing its work, running inside its PR) does not transfer the exemption. When a rule sorts flows into owner vs everyone-else, locate *your own flow* in the table before acting, and verify a permissive reading harder than a restrictive one (AGENTS.md § Communication). A reviewer verifies an `/ai-audit` size claim by checking that `/ai-audit` measured it, not by measuring again; its verdict names no byte figure.
+**Kind:** correction
+**Escalated?** no
