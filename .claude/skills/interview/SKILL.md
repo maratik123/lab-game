@@ -5,7 +5,7 @@ argument-hint: "[issue-number | task description]"
 allowed-tools: Bash(gh issue view *) Bash(gh issue list *) Bash(gh issue create *) Bash(gh issue comment *)
 ---
 
-Orchestrator for the spec-drafting interview. Drives the round loop, surfaces the subagent's questions to the user, and applies the user's answers — but does **not** draft the spec itself. Spec drafting and question generation live in `.claude/agents/spec-writer.md` (subagent on `model: opus`).
+Orchestrator for the spec-drafting interview. Drives the round loop, surfaces the subagent's questions to the user, and applies the user's answers — but does **not** draft the spec itself. Spec drafting and question generation live in `.claude/agents/spec-writer.md` (subagent on `model: inherit`).
 
 > **MUST run before:** code investigation, `design` Subagent, or writing code.
 > Run standalone when you want a spec without committing to implementation (defer it to `ai-docs/plans/deferred/` afterward).
@@ -38,7 +38,7 @@ Orchestrator for the spec-drafting interview. Drives the round loop, surfaces th
 Two pieces:
 
 1. **This file** (orchestrator) — plumbing only. Detects entry mode, manages state, runs the round loop, parses the subagent's YAML status block, surfaces questions via `AskUserQuestion`, executes action handlers on `unresolvable`, posts the cross-link comment on `ready`.
-2. **`.claude/agents/spec-writer.md`** (subagent, `model: opus`) — owns scope extraction, question drafting, AGENTS.md preflight, the Rule-5 substring blacklist, the optimization-target enforcement, and the spec write itself.
+2. **`.claude/agents/spec-writer.md`** (subagent, `model: inherit`) — owns scope extraction, question drafting, AGENTS.md preflight, the Rule-5 substring blacklist, the optimization-target enforcement, and the spec write itself.
 
 ## Round / question caps
 
@@ -126,7 +126,6 @@ For each round (1..=`round_cap`):
 ```
 Agent(
   subagent_type="spec-writer",
-  model="opus",
   prompt="""
     Read .claude/agents/spec-writer.md and follow it.
 
@@ -151,7 +150,7 @@ Capture the returned `agentId` into the state file's `agent_id`. If the harness 
 **Rounds 2..cap — warm reuse if possible, cold fallback otherwise:**
 
 - If `agent_id` is set in state: `SendMessage(to=agent_id, prompt="""<same fields with updated round + prior_qa>""")`. Capture the response.
-- If `agent_id` is null OR the `SendMessage` call fails: cold spawn a fresh `Agent(subagent_type="spec-writer", model="opus", prompt=...)` with the full state in the prompt (the Subagent definition mandates re-derivation from prompt anyway). Update state file's `agent_id` from the new spawn (may again be null).
+- If `agent_id` is null OR the `SendMessage` call fails: cold spawn a fresh `Agent(subagent_type="spec-writer", prompt=...)` (no `model=` — the frontmatter `inherit` governs) with the full state in the prompt (the Subagent definition mandates re-derivation from prompt anyway). Update state file's `agent_id` from the new spawn (may again be null).
 
 > The cold-spawn path is the **default contract**; warm reuse is an opportunistic optimization conditional on the harness returning a usable `agentId` and `SendMessage` succeeding.
 >

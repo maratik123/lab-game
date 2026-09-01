@@ -1,6 +1,7 @@
 ---
 name: review-findings
 description: "Walks the entire codebase on the current branch (no diff, no spec) and produces a findings table written to a progress file. Invoked by /project-review at the start of a whole-branch review."
+model: inherit
 ---
 
 # Review Findings Subagent

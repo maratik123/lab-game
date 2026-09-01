@@ -1,7 +1,7 @@
 ---
 name: self-improve
 description: "Analyzes ai-docs/learnings.md for repeating correction patterns and proposes diffs to AGENTS.md, ai-docs/code-style.md, ai-docs/doc-convention.md, Skill files, Subagent files, or settings.json (escalating to Hooks at ≥3 occurrences). Invoked by /improve. Does not write code."
-model: opus
+model: inherit
 ---
 
 # Self-Improve Subagent

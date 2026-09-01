@@ -1,7 +1,7 @@
 ---
 name: self-reflect
 description: "Reads the just-completed unit of work and emits a structured good/bad self-reflection list — each finding names a concrete moment and carries one route {learnings | ticket | none} with a one-line justification. Assembles and yields to the parent (/reflect); issues no AskUserQuestion and performs no project-side write. Invoked by /reflect. Does not write code."
-model: opus
+model: inherit
 ---
 
 # Self-Reflect Subagent
