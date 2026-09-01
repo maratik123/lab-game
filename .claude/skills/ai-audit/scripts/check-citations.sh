@@ -101,14 +101,16 @@ while IFS=: read -r file line cite; do
   # (b) PROSE specimens -- a line that quotes an illustrative `#N` inside
   #     example text where no field key exists to anchor to. Excluded by a
   #     phrase that sits ON THE LINE ITSELF, never by file:line. This started
-  #     as a pair of file:line pins; one drifted onto an empty line without the
-  #     guard noticing (the same rot the header records for check (2)), and
-  #     the other named a spec-writer.md specimen that is in fact covered by
-  #     the anchored template-field rule in (a). Live specimen: the entry_args
-  #     format demo in task/reference.md (bare-vs-plain issue-ref argument
-  #     forms). A phrase match is broader than a pin -- every line carrying the
-  #     phrase is exempt -- so keep it specific to the demo's wording and
-  #     re-run test-check-citations.sh after touching it.
+  #     as a pair of file:line pins. The spec-writer.md pin had drifted onto an
+  #     empty line without the guard noticing (the same rot the header records
+  #     for check (2)) -- and its specimen turned out to be covered by the
+  #     anchored template-field rule in (a) anyway. The task/reference.md pin
+  #     was still accurate, and the very commit that content-addressed it also
+  #     moved that line by ~60 rows, which would have broken the pin. Live
+  #     specimen: the entry_args format demo in task/reference.md (bare-vs-plain
+  #     issue-ref argument forms). A phrase match is broader than a pin -- every
+  #     line carrying the phrase is exempt -- so keep it specific to the demo's
+  #     wording and re-run test-check-citations.sh after touching it.
   #     (Described, not spelled: a comment that quotes the bad shape IS the bad
   #     shape, and this script would flag its own source. See reference.md
   #     Checklist P -- "describe the bad shape; spell it only alongside its fix.")

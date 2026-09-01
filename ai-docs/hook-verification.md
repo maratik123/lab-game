@@ -32,7 +32,7 @@ blocked.
 
 **And confirm the output reaches its reader — firing is not delivery.** A `PostToolUse`
 body that prints its warning to stderr and exits 0 has fired, and its text went to the debug
-log only: per `hooks.md`, Claude never sees exit-0 stderr. On `PostToolUse` the only exit
+log only: per the Claude Code hooks reference (`code.claude.com/docs/en/hooks`), Claude never sees exit-0 stderr. On `PostToolUse` the only exit
 status whose stderr reaches Claude is 2 (non-blocking there — the tool already ran). The
 panic-gate and PR-body-sync advisories shipped silent in exactly that shape, and nothing on
 this page asked whether the message *arrived* — every check asked whether the hook *ran*.

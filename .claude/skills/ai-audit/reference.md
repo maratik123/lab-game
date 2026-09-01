@@ -242,12 +242,13 @@ test — the guard carries targeted exclusions, and the test is what keeps them
 > test run that mutates the target file's mode, which `git status` cannot see.
 > **The test covers check (2) only.** Check (1)'s prose-specimen exclusion is
 > content-addressed as well — a phrase match on the `task/reference.md`
-> `entry_args` format demo. The `file:line` pair it replaced had already
-> rotted: one pin pointed at an empty line, and the `spec-writer.md` specimen
-> it named turned out to be covered by the anchored template-field rule, not
-> by any pin. But **no test case exercises the phrase match**: if you touch
-> it, add a case that shifts the demo row before trusting a green run; do not
-> re-pin.
+> `entry_args` format demo. Of the `file:line` pair it replaced, the
+> `spec-writer.md` pin had already drifted onto an empty line (and its specimen
+> is covered by the anchored template-field rule regardless), while the
+> `task/reference.md` pin was still accurate — and the commit that replaced it
+> moved that line by some sixty rows, which would have broken the pin. But
+> **no test case exercises the phrase match**: if you touch it, add a case that
+> shifts the demo row before trusting a green run; do not re-pin.
 
 | Probe | Fires on |
 |---|---|

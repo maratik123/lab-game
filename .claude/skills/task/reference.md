@@ -224,8 +224,6 @@ After all findings are resolved (`✅ Fixed` or `⚠️ Objected`), run the **fu
 
 **Recurrence history behind the Step-11 amendment AXIOM.** Recurrences (in the sibling **quartzite** project's log): 2026-05-13 (notes not folded back), 2026-05-15 GO-with-notes resolution, 2026-05-21 design doc change committed directly during self-review fix (the latest is the propagation gap — Step 11 self-review fix flow was missing from the prior escalation set; see quartzite's `ai-docs/learnings.md` 2026-05-21).
 
-- **Test plan** (checklist: one line per AC, plus the gate results by name)
-
 ## Step 12 — inbox propagation (detail)
 
 The Step 12 sub-step 5 parser specification lives in a dedicated reference file: **[inbox-propagation.md](inbox-propagation.md)**. It covers the six shape rules (NONE / TABLE / PIPEBULLET3 / PIPEBULLET2 / BOLDBULLET / PLAINBULLET), the unrecognised-shape warning behaviour, the per-row mapping format (one JSON line per item appended to `_inbox.jsonl` — canonical row shape: [`ai-docs/templates/inbox-row.md`](../../../ai-docs/templates/inbox-row.md)), and the file-level dedupe rule against the thematic `.jsonl` files. Load it on demand when implementing or modifying Step 12's propagation logic.
@@ -237,6 +235,14 @@ The Step 12 sub-step 5 parser specification lives in a dedicated reference file:
 - For each candidate row, dedupe at *file* granularity: if the candidate's `source_path` is in `H`, skip the entire file (all of its sections); otherwise append the JSON line to `ai-docs/deferred/_inbox.jsonl` below the existing body.
 - Emit one `WARN: <spec-path> :: <section heading> — unrecognised body shape, no rows emitted` line to stdout for any section whose body matches none of the six shape rules; the row count for that section is zero and Step 12 continues normally.
 - The Step 12 commit stages `_inbox.jsonl` alongside the existing artefacts.
+
+## Step 12 — PR-body template (detail)
+
+The `gh pr create` body (SKILL.md Step 12 item 10) carries these sections, in this order:
+
+- **Summary** — what landed and why.
+- **Tracking** — `Closes #N` when the PR fully resolves the tracking issue, `Refs #N` when it resolves it partially; omit the section when the spec carries `Tracked in: none`.
+- **Test plan** (checklist: one line per AC, plus the gate results by name) — including the two results of `ai-docs/task-run-schema.md` § *Step-12 verification block* (sub-step 5a).
 
 ## Step 12 — step-skip gate (recurrence history)
 
