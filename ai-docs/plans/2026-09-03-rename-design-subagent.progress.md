@@ -8,18 +8,18 @@ _Updated: 2026-09-03 02:44_
 **Last build:** PASS
 **Issue:** #10
 **Spec:** ai-docs/plans/2026-09-03-rename-design-subagent.spec.md
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** go build ./... | 2026-09-02T23:44:49Z | f00871d
+**current_step:** Step 8 — subtask 1 of 8 complete
+**last_passed_gate:** awk 'FNR==1{f=0} /^---$/{f=!f; next} f && /^name:/{print $2}' .claude/agents/design-writer.md | 2026-09-02T23:47:03Z | 6b27bab
 **entry_args:** 10
 
 ## Next action
 
-**Do this immediately:** hand Group A (subtasks 1–8) to `general-purpose` through `/context-reset`, per the design's `## Handoff plan`.
+**Do this immediately:** continue Group A at subtask 2 — the Task/Design sync group.
 
 ## Subtasks
 
-- [ ] 1. `git mv` the definition to `.claude/agents/design-writer.md`; `name: design-writer`; retitle H1; fix its self-referential agent list. Small content delta so the commit records a rename.  ← CURRENT
-- [ ] 2. Task/Design sync group — dispatch examples, Step-6 heading/body, Design-Amendment prose + anti-pattern rows, handoff triggers, quality-gate enumerations, coordinate-drift ownership rows, `design-review`'s frontmatter description.
+- [x] 1. `git mv` the definition to `.claude/agents/design-writer.md`; `name: design-writer`; retitle H1; fix its self-referential agent list. Small content delta so the commit records a rename.
+- [ ] 2. Task/Design sync group — dispatch examples, Step-6 heading/body, Design-Amendment prose + anti-pattern rows, handoff triggers, quality-gate enumerations, coordinate-drift ownership rows, `design-review`'s frontmatter description.  ← CURRENT
 - [ ] 3. Remaining Subagent definitions: `spec-writer`, `self-review`, `self-reflect`, `self-improve`.
 - [ ] 4. Remaining Skills: `interview`, `pr-commented`, `pr-ci-failed`, `main-ci-failed` (SKILL + reference). Most sites sit OUTSIDE the Spec-Amendment recipe — sweep each file whole.
 - [ ] 5. `ai-docs/` inventory pages: `claude-tools-hierarchy.md`, `propagation-groups.md`, `improve-eval-contract.md`.
@@ -34,6 +34,7 @@ _Updated: 2026-09-03 02:44_
 - **Step 7 round 2**: GO with five notes and two recommendations, all classified design-internal and folded in without a further round. AC9-vs-AC11 checked against the spec's `:177` disposition row before accepting the reviewer's permissive reading.
 - **Step 7**: design's rebuttal of the round-1 reviewer's `ci.yml` line-pin "correction" verified and upheld — `:152` is the guard-suites step; the correction would have introduced the drift it claimed to fix.
 - **Step 8**: gate reachability settled without widening permissions — AC7, AC8 and AC12's script half are discharged by CI's *Harness guards* job, which `paths-filter` reaches on this diff.
+- **Step 8 subtask 1**: three IN-class sites in the renamed file, per a whole-file `grep -niw design` read — frontmatter `name:`, the H1, and sub-point (g)'s `design` / `design-review` / `self-review` / `spec-writer` enumeration. `Designer Subagent.` at `:9` stays (role noun, per the design's judgement call), and every other token is the design *document*, the design *phase*, `docs/DESIGN.md`, or ordinary English. `git status` records `RM`, so AC2's rename continuity holds.
 
 ## Key discoveries (don't re-investigate)
 
