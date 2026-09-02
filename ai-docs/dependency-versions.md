@@ -36,4 +36,4 @@ A `jq` filter over an error body prints `null` and exits **0**. A `grep` over th
 
 ## Standard library first
 
-A new dependency needs a stated reason in the design document. The load-bearing ones are already fixed in `docs/DESIGN.md` §11 and [`key-decisions.md`](key-decisions.md): `telego` (low-level only), `pgx`, a migration tool, and a self-written scheduler rather than a job framework.
+A new dependency needs a stated reason in the design document. The load-bearing ones are already fixed in `docs/DESIGN.md` §11 and [`key-decisions.md`](key-decisions.md): `telego` (low-level only), `pgx`, `goose` for migrations, `shopspring/decimal` with its pgx codec for ledger amounts, testcontainers-go for the test database, and a self-written scheduler rather than a job framework.
