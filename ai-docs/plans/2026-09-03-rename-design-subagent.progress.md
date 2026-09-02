@@ -8,13 +8,13 @@ _Updated: 2026-09-03 02:44_
 **Last build:** PASS
 **Issue:** #10
 **Spec:** ai-docs/plans/2026-09-03-rename-design-subagent.spec.md
-**current_step:** Step 8 — subtask 6 of 8 complete
-**last_passed_gate:** awk '/^## Checklist O/,/^## Step 2\.6/' .claude/skills/ai-audit/reference.md \| grep -niE 'cross-axis\|dispatch time\|dispatches through different tools\|not automatically\|minor' → one hit, `:174`'s instrument-coverage clause, permitted by the disposition table | 2026-09-02T23:56:30Z | 62b4424
+**current_step:** Step 8 — subtask 7 of 8 complete
+**last_passed_gate:** grep -n '^## ' ai-docs/key-decisions.md → `## Harness naming (2026-09-03)` is the trailing section, and `grep -c 'KD-21'` → 1 | 2026-09-02T23:57:31Z | 1a966a7
 **entry_args:** 10
 
 ## Next action
 
-**Do this immediately:** continue Group A at subtask 7 — the new dated KD section.
+**Do this immediately:** continue Group A at subtask 8 — the closing cold re-sweep.
 
 ## Subtasks
 
@@ -24,8 +24,8 @@ _Updated: 2026-09-03 02:44_
 - [x] 4. Remaining Skills: `interview`, `pr-commented`, `pr-ci-failed`, `main-ci-failed` (SKILL + reference). Most sites sit OUTSIDE the Spec-Amendment recipe — sweep each file whole.
 - [x] 5. `ai-docs/` inventory pages: `claude-tools-hierarchy.md`, `propagation-groups.md`, `improve-eval-contract.md`.
 - [x] 6. Rewrite Checklist O's severity rule to one rule, any axis `major`: `:152` justification, `:174` presuppositions, `:184` untouched, delete `:186`, add worked example.
-- [ ] 7. New dated KD section in `ai-docs/key-decisions.md`.  ← CURRENT
-- [ ] 8. Closing concept-level re-sweep of the live tree. Re-derive the class from the spec's § Scope tables, NEVER from subtasks 1–7's edit log.
+- [x] 7. New dated KD section in `ai-docs/key-decisions.md`.
+- [ ] 8. Closing concept-level re-sweep of the live tree.  ← CURRENT Re-derive the class from the spec's § Scope tables, NEVER from subtasks 1–7's edit log.
 
 ## Decisions log
 
@@ -41,6 +41,7 @@ _Updated: 2026-09-03 02:44_
 - **Step 8 subtask 5**: AC6's two files are done — `claude-tools-hierarchy.md`'s Subagent-table row is re-keyed and its `design-review` neighbour's "Loops with" clause follows it; `propagation-groups.md`'s Task/Design anchor row, its reverse row, and the domain-invariant row are all keyed by file path, so each carries the new path. The table's row order is deliberately left alone (it is workflow order, not alphabetical). OUT: `claude-tools-hierarchy.md:76`'s "the design-system skill" names a source-harness skill this project does not have.
 - **Step 8 subtask 6**: the worked example was drafted naming the old definition path and was rewritten to say "this project's design Subagent" instead — the literal `.claude/agents/design.md` inside `.claude/**` would have failed AC3 outright. The example's demonstrator is a two-column table ("What the clash did not do" / "What it did") rather than a fenced block, and the closing sentence states the ground positively rather than quoting the deleted carve-out, so the section-scoped `cross-axis|dispatch time|dispatches through different tools|not automatically|minor` grep leaves exactly the one hit AC11 requires. Audit sync group re-swept after the edit: the only sibling hit is `ai-audit/SKILL.md:116`, which names no severity and no axis and whose anchor link still resolves — no sibling edit, as the design predicted.
 - **Step 8 subtask 6 (finding, no action taken)**: the design's R7 assumes Checklist M governs this rewrite, but `checklist-m.md`'s audited corpus is `AGENTS.md` + every `.claude/skills/**/SKILL.md` + every `.claude/agents/**.md` + four `ai-docs/` pages + `.claude/rules/**`; `.claude/skills/ai-audit/reference.md` is a `reference.md`, so sub-checks 2 and 6 never reach it. The mitigation was applied anyway (one bold-uppercase verb in the lead paragraph, a demonstrator two lines below it) because it costs nothing and the prose is better for it. No design edit — R7's mitigation is satisfiable either way, so nothing in the design is falsified for this run.
+- **Step 8 subtask 7**: KD-21 lands in a new trailing `## Harness naming (2026-09-03)` section rather than under `## Repository and harness`, so the KD numbers keep ascending in reading order (the last existing section is `## Ledger core (2026-09-02)` holding KD-17–20). The row records the *decision* and points at Checklist O for the reader-vs-parser *argument* — no duplication, per the design's "both surfaces, different jobs" call. The old definition path is deliberately not spelled anywhere in the row: `ai-docs/**` is inside AC3's glob.
 
 ## Key discoveries (don't re-investigate)
 
