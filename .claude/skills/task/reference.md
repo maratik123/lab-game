@@ -124,6 +124,8 @@ Record base commit, branch, and `entry_args` in the progress file header immedia
 **entry_args:** <original $ARGUMENTS at /task entry — bare issue ref (`#348`/`348`), `activate paint-style`, free text (`add foo to bar`), or `(none)` for empty entry>
 ```
 
+Then `git add -f` the progress file and commit it — the `-f` is needed exactly once, because the path matches a `.gitignore` glob and the glob stops applying once the file is tracked. Step 12 sub-step 9a `mv`s it to `ai-docs/plans/ignored/` and commits the deletion.
+
 The `**entry_args:**` field is recorded ONCE at Step 8 creation and **read-only thereafter** — Steps 9–12 do NOT touch it. On a lost-arguments re-entry (empty `$ARGUMENTS` after compaction), this recorded value is the canonical entry reference per `⚡ First`'s lost-arguments clause.
 
 ## Step 9.5 — documentation update (detail)
@@ -255,8 +257,9 @@ Step 10 (self-review) has been silently skipped on "simple" tasks and post-compa
 - Declaring done with uncovered ACs.
 - Skipping design review.
 - Writing code before the spec is confirmed.
-- `rm`ing `.progress.md` from within `/task` (it's gitignored and lives until `/pr-merged`).
-- Staging `.progress.md` into a commit.
+- `rm`ing `.progress.md` or the interview `.state.md` — they are the run's only record, and nothing deletes them any more.
+- Reaching Step 12 with `.progress.md` untracked (Step 8 commits it with `git add -f`, so a delegate's truncating edit stays recoverable).
+- Opening the PR without Step 12 sub-step 9a (a state file in the PR diff).
 - Pushing from the main branch.
 - Silently deviating from the design without triggering Design Amendment.
 
@@ -267,14 +270,14 @@ Step 10 (self-review) has been silently skipped on "simple" tasks and post-compa
 | Steps 1–5 | Spec saved at `ai-docs/plans/YYYY-MM-DD-name.spec.md`? `**Tracked in:** #N` present (or `none` with reason)? Cross-link comment posted on the tracking issue (unless tracking skipped)? ACs confirmed by user and verifiable? See `/interview` gate checklist for the full per-step list. |
 | Step 6 | Spec exists? ACs confirmed? Not a "spec-only / defer" run? |
 | Step 8 | Design doc with GO? Test Design section present? **Every note / minor / recommendation from the GO verdict written back into the design doc?** |
-| Step 8 start | Feature branch created? Run `git branch --show-current` before every `git commit` — must not be `main`. `base_commit` + `branch` recorded in progress file? |
+| Step 8 start | Feature branch already exists from `/interview` Step 2 — `git branch --show-current` must not be `main` (re-create it only when the interview was skipped). `base_commit` + `branch` recorded in progress file? Progress file committed with `git add -f`? |
 | Each subtask | `go build ./...` ✅? Tests run? `.progress.md` updated? |
 | Step 9 | `go build ./...` ✅? `go test ./...` green? `go test -race ./...` green when the change touches goroutines / the scheduler / shared state? `golangci-lint fmt -d` clean? `golangci-lint run` clean? `go vet ./...` clean? `go mod tidy` leaves `go.mod`/`go.sum` unchanged (only if deps moved)? `make file-limits` clean (no other gate here covers it — `golangci-lint run` stays green on an over-limit file)? `actionlint` clean on every changed workflow and `shellcheck` clean on every changed script (skip if none)? Any new `panic(` / `log.Fatal*` / `Must…` outside `_test.go` → `ai-docs/panic-index.md` updated and staged? Domain-invariant sweep run, every hit resolved or justified in the decisions log? All ACs covered? |
 | Step 9.5 | context-status.md entry appended + context.md summary/README.md updated? (spec/design NOT moved yet — happens at Step 12) |
-| Step 10 | Self-review APPROVE? (Progress file persists in working tree — gitignored — until `/pr-merged`. Do NOT `rm` it here.) |
+| Step 10 | Self-review APPROVE? (Progress file is tracked until Step 12 sub-step 9a retires it, and stays on disk after. Do NOT `rm` it here.) |
 | Step 11 | `major`/`blocker` objections confirmed by user? Design change → Design Amendment triggered? `gh pr view <N>` re-read after every push (unconditional) — `gh pr edit` only if body contradicts new commits? |
 | Design Amendment | User approved the amendment? Design review returned GO before resuming? |
-| Step 12 | Branch ≠ main? INDEX.md ✅? spec/design moved to done/? `_inbox.jsonl` parsed and appended (or warning logged for unrecognised shape) and staged? `go.sum` refreshed? PR body references the tracking issue (`Closes #N` or `Refs #N`)? PR created and URL posted? |
+| Step 12 | Branch ≠ main? INDEX.md ✅? spec/design `git mv`d to done/? `_inbox.jsonl` parsed and appended (or warning logged for unrecognised shape) and staged? `go.sum` refreshed? **Sub-step 9a run before `gh pr create` — both state files readable under `ai-docs/plans/ignored/`, `git status --porcelain` empty, both probes returning nothing?** PR body references the tracking issue (`Closes #N` or `Refs #N`)? PR created and URL posted? |
 
 ## In-flight marker — full contract (Stop hook)
 

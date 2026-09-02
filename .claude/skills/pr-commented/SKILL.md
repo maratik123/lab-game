@@ -97,16 +97,28 @@ Resolved threads stay in the snapshot for context (prior-round decisions inform 
 
 ### Step 1 — Open / extend progress file
 
-The `/task` progress file is gitignored and persists from `/task` Step 10 APPROVE through `/pr-merged`. Locate it via the PR-linkage path — the same derivation `/pr-merged` uses:
+The `/task` progress file persists from `/task` Step 8 through the life of the PR. **It lives in one of two places**: `ai-docs/plans/<spec-base>.progress.md` while `/task` is still running, and `ai-docs/plans/ignored/<spec-base>.progress.md` once Step 12 sub-step 9a retired it before opening the PR — which is the state you will normally find it in. Check the retired path first, then the live one:
 
 ```bash
 PR_NUM=<N>   # from preconditions
 SPEC_PATH=$(grep -l "Tracked in:.*#${PR_NUM}\b" ai-docs/plans/done/*.spec.md ai-docs/plans/*.spec.md 2>/dev/null | head -n1)
 if [ -n "$SPEC_PATH" ]; then
   SPEC_BASE=$(basename "$SPEC_PATH" .spec.md)
-  PROGRESS="ai-docs/plans/${SPEC_BASE}.progress.md"
+  PROGRESS="ai-docs/plans/ignored/${SPEC_BASE}.progress.md"
+  [ -f "$PROGRESS" ] || PROGRESS="ai-docs/plans/${SPEC_BASE}.progress.md"
 fi
 ```
+
+> **Amending the spec or design from here — the state files come back first.** A `/pr-commented` round that triggers a Spec or Design Amendment needs the interview state file where `spec-writer` looks for it, and needs both files tracked so the amendment round is recoverable. Round trip, both ends committed:
+> ```bash
+> mv ai-docs/plans/ignored/<spec-base>.progress.md ai-docs/plans/            # and the .state.md sibling
+> git add -f ai-docs/plans/<spec-base>.progress.md && git add ai-docs/plans/<spec-base>.spec.md.state.md
+> git commit -m "chore(plans): restore the run's state files for a spec/design amendment"
+> # … run the amendment; the files receive their writes as tracked files …
+> mkdir -p ai-docs/plans/ignored && mv ai-docs/plans/<spec-base>.progress.md ai-docs/plans/<spec-base>.spec.md.state.md ai-docs/plans/ignored/
+> git add -u && git commit -m "chore(plans): retire the run's state files before the push"
+> ```
+> Retire them **before the push**, not after: the PR diff must not carry them. While they are back in `ai-docs/plans/` they are visible to `⚡ First`'s probe again — a new `/task` started in that window hits the stale-file check, which is the accepted cost of the round trip.
 
 - **Default path** — the `/task` progress file was found: append a new `## Comment cycle round M` section to that file. This is the expected case for any PR produced by `/task`.
 - **Fallback (rare)** — no `/task` progress file matches the PR number. Fires when the PR was opened outside `/task`, or when `/pr-merged` already ran on a previous attempt. Create `ai-docs/pr-comments/pr-<N>.progress.md` (the skill creates the `ai-docs/pr-comments/` directory if missing); both paths are gitignored, so neither file enters git.
@@ -308,7 +320,7 @@ Re-invoke /pr-commented after the reviewer responds to the open threads.
 - **Never stack fix-up commits inside one round** — if self-review REJECTs, amend the single commit; loop cap 3.
 - **Never resolve an `objection` or `clarify` thread** — they stay open for the reviewer.
 - **Never run this skill on `main`** — preconditions block it.
-- **Never stage progress file changes.** Both `ai-docs/plans/*.progress.md` and `ai-docs/pr-comments/pr-<N>.progress.md` are gitignored. They are local-only Subagent artefacts. If `git status` ever lists one as modified/untracked-but-staged, unstage immediately.
+- **Stage the `/task` progress file only while it is back in `ai-docs/plans/`** for an amendment round trip (see Step 1) — it is tracked there and its writes belong in the branch's history. Once retired to `ai-docs/plans/ignored/` it is ignored again and must not be staged. `ai-docs/pr-comments/pr-<N>.progress.md` is never tracked at all: it is the fallback surface for PRs `/task` did not produce.
 
 ## Gate checklist
 

@@ -43,7 +43,7 @@ Body:
 5. **Execute** the chosen action via [bail-with-issue body template](#bail-with-issue-body-template), [bail-with-comment body template](#bail-with-comment-body-template), or the printed pause message.
 6. **Record** the parent's chosen action into `ai-docs/dependabot/pr-<N>.progress.md` (a `### Decisions log (round M)` bullet, prefixed `Step 4 (verdict-translation):`).
 
-Both progress files survive the round (gitignored). `/pr-merged` cleans both on PR merge.
+Both progress files survive the round (gitignored, never tracked — Dependabot PRs are not `/task`-produced and have no retire step). `/pr-merged` cleans the `ai-docs/ci-fixes/` one on PR merge; `ai-docs/dependabot/pr-<N>.progress.md` it has never touched.
 
 ## Cell — lockfile-only × pending
 

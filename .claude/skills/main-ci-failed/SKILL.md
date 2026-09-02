@@ -137,7 +137,7 @@ _Updated: YYYY-MM-DD HH:MM UTC_
 - Step 1: progress file opened for failing main run <run-id>
 ```
 
-This file is deleted by `/pr-merged` once the fresh PR (created in Step 7) merges. Cleanup uses the new `**Tracked in run:** <run-id>` secondary probe added to `scripts/cleanup-progress.sh`.
+This file is **committed** from creation (`git add -f`, since the path matches a `.gitignore` glob) so a delegate's truncating edit stays recoverable, and **retired** in Step 7 immediately before `gh pr create`: `mkdir -p ai-docs/main-ci/ignored && mv ai-docs/main-ci/<run-id>.progress.md ai-docs/main-ci/ignored/ && git add -u && git commit`. The move takes it out of the `ls ai-docs/main-ci/*.progress.md` probe this skill's own re-entry check runs. Nothing deletes it afterwards — `/pr-merged` no longer removes state files.
 
 **Write progress at this step boundary** before further tool calls.
 
@@ -291,6 +291,17 @@ Capture the commit SHA; update the progress file.
    git push -u origin fix/main-ci-<run-id>
    ```
 
+1a. **Retire the run's progress file — the last commit before the PR.**
+
+   ```bash
+   mkdir -p ai-docs/main-ci/ignored
+   mv ai-docs/main-ci/<run-id>.progress.md ai-docs/main-ci/ignored/
+   git add -u && git commit -m "chore(main-ci): retire the run's state file before the PR"
+   git push
+   ```
+
+   Same contract as `/task` Step 12 sub-step 9a: the file stays intact on disk under an ignored directory, the deletion of the old path is what gets committed, the PR diff carries none of it, and the path leaves this skill's own re-entry probe. Verify the file is readable under `ai-docs/main-ci/ignored/` and `git status --porcelain` is empty before continuing.
+
 2. Open the PR via `gh pr create`:
 
    ```bash
@@ -322,7 +333,7 @@ Capture the commit SHA; update the progress file.
    )"
    ```
 
-   The `**Tracked in run:** <run-id>` line is what `scripts/cleanup-progress.sh` greps for to delete `ai-docs/main-ci/<run-id>.progress.md` once this PR merges.
+   The `**Tracked in run:** <run-id>` line links the PR back to its retired progress file at `ai-docs/main-ci/ignored/<run-id>.progress.md`. It is no longer a deletion key: `/pr-merged` stops removing state files.
 
 3. **AXIOM-2 carve-out:** the unconditional `gh pr view <N>` body-read rule only fires on **subsequent** pushes to a feature branch with an open PR. The Step-7 `gh pr create` IS the PR-creation push — the body is what we just authored, so the AXIOM-2 read is skipped this once. The rule fires on the NEXT push if reviewer comments arrive.
 
@@ -336,7 +347,7 @@ Optional — wait for the next main push (typically triggered when the new PR me
 gh pr checks <new-PR-N> --watch
 ```
 
-If the new PR's CI is green, it merges normally and `/pr-merged` cleans up `ai-docs/main-ci/<run-id>.progress.md` via the `**Tracked in run:**` probe.
+If the new PR's CI is green, it merges normally. The retired progress file stays at `ai-docs/main-ci/ignored/<run-id>.progress.md` — `/pr-merged` no longer deletes state files.
 
 ### Step 9 — Close round
 
@@ -374,7 +385,7 @@ After the new PR merges, /pr-merged will clean up ai-docs/main-ci/<run-id>.progr
 - **Never stack fix-up commits inside one round** — if self-review REJECTs, amend the single commit; loop cap 3.
 - **Never run `gh run rerun`** as a fix — that's "fix the symptom, not the cause".
 - **Never revert silently.** If a forward-fix is infeasible and a revert is the right call, surface and bail; the user runs `git revert` manually.
-- **Never stage progress file changes.** `ai-docs/main-ci/<run-id>.progress.md` is gitignored. It is a local-only Subagent artefact. If `git status` ever lists it as modified/untracked-but-staged, unstage immediately.
+- **Stage `ai-docs/main-ci/<run-id>.progress.md` with each commit while the run is live** — it is tracked from creation (`git add -f` once) so a truncating edit stays recoverable. Step 7 sub-step 1a retires it to `ai-docs/main-ci/ignored/`; after that it is ignored again and must not be staged.
 
 ## Gate checklist
 

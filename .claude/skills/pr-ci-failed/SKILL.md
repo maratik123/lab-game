@@ -100,14 +100,15 @@ Record in the progress file: failing-check name, run-id, job-id, run URL.
 
 ### Step 1 — Open / extend progress file
 
-The `/task` progress file is gitignored and persists from `/task` Step 10 APPROVE through `/pr-merged`. Locate it via the PR-linkage path — the same derivation `/pr-merged` uses:
+The `/task` progress file persists from `/task` Step 8 through the life of the PR. **It lives in one of two places**: `ai-docs/plans/<spec-base>.progress.md` while `/task` is still running, and `ai-docs/plans/ignored/<spec-base>.progress.md` once Step 12 sub-step 9a retired it before opening the PR — which is the state you will normally find it in. Check the retired path first, then the live one:
 
 ```bash
 PR_NUM=<N>   # from preconditions
 SPEC_PATH=$(grep -l "Tracked in:.*#${PR_NUM}\b" ai-docs/plans/done/*.spec.md ai-docs/plans/*.spec.md 2>/dev/null | head -n1)
 if [ -n "$SPEC_PATH" ]; then
   SPEC_BASE=$(basename "$SPEC_PATH" .spec.md)
-  PROGRESS="ai-docs/plans/${SPEC_BASE}.progress.md"
+  PROGRESS="ai-docs/plans/ignored/${SPEC_BASE}.progress.md"
+  [ -f "$PROGRESS" ] || PROGRESS="ai-docs/plans/${SPEC_BASE}.progress.md"
 fi
 ```
 
@@ -341,7 +342,7 @@ Re-invoke /pr-ci-failed after the next CI run if it turns red again.
 - **Never stack fix-up commits inside one round** — if self-review REJECTs, amend the single commit; loop cap 3.
 - **Never run this skill on `main`** — preconditions block it; use `/main-ci-failed` for main-side red CI.
 - **Never run `gh run rerun`** as a fix — that's "fix the symptom, not the cause". The skill exists to land a real code fix.
-- **Never stage progress file changes.** Both `ai-docs/plans/*.progress.md` and `ai-docs/ci-fixes/pr-<N>.progress.md` are gitignored. They are local-only Subagent artefacts. If `git status` ever lists one as modified/untracked-but-staged, unstage immediately.
+- **Never stage progress file changes from here.** By the time this skill runs, the `/task` progress file has been retired to `ai-docs/plans/ignored/` and is ignored again; `ai-docs/ci-fixes/pr-<N>.progress.md` is never tracked at all. If `git status` ever lists one as modified/untracked-but-staged, unstage immediately. (Only `/pr-commented`'s spec/design amendment round trip brings a state file back under version control, and it retires it again before the push.)
 
 ## Gate checklist
 

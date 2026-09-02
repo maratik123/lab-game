@@ -358,10 +358,14 @@ cost falls entirely on the harness's ability to measure *itself*, a use case the
 design predates.
 
 **(v)** *Does the harness need a durable surface that is **not** the repository?*
-This log's own source, `ai-docs/plans/<spec-base>.progress.md`, is gitignored and
-therefore has **no history**, so any question about *when* a field was written or
-*by whom* — delegate, or orchestrator backfilling afterwards — is unanswerable once
-the session ends. The only reconstruction available is file mtime, which does not
+This log's own source, `ai-docs/plans/<spec-base>.progress.md`, **had** no history
+when this section was written, so any question about *when* a field was written or
+*by whom* — delegate, or orchestrator backfilling afterwards — was unanswerable once
+the session ended. That premise no longer holds: the file is committed while `/task`
+runs and retired to `ai-docs/plans/ignored/` before the PR, so its per-step versions
+live in the branch's commit objects and reach `main` through the merge commit. The
+argument below is preserved as the reasoning that produced this log; where it turns
+on the absence of history, read it as answered rather than open. The only reconstruction available is file mtime, which does not
 survive a copy, checkout, archive, or clone. The task persists *derived* telemetry
 from a source that is itself unauditable. Be honest about the provenance: the repo
 records a **classification, not a justification** — the ignore rule and the agent
@@ -376,9 +380,11 @@ harness need a durable append-only event journal *outside* the repository?
 
 **(vii)** *Is the harness's working state systematically unrecoverable?* Second face
 of the same property. Two artefacts recording how a run actually proceeded are
-destroyed by design: `/interview`'s `.state.md`, created at the start of round 1 and
-deleted on terminal exit, and `<spec-base>.progress.md`, gitignored and deleted
-after merge. Both hold exactly the process history this log tries to summarise, so
+destroyed by design when this was written: `/interview`'s `.state.md` and
+`<spec-base>.progress.md`. Neither is destroyed now — the state file survives a
+`ready` exit as the re-entry point for later `spec-writer` rounds, both are committed
+while the flow runs, and both are retired to `ai-docs/plans/ignored/` rather than
+deleted. Both hold exactly the process history this log tries to summarise, so
 spec round counts and handoff authorship are **unverifiable after the fact, not
 merely unrecorded**. The two reach that outcome by **different mechanisms** — the
 progress file is matched by an ignore rule; `.state.md` is matched by none and is

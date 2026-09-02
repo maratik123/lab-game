@@ -68,7 +68,7 @@ Not ported from the source harness: `image-check` (verifies a golden *image* aga
 | `/pr-commented` | explicit | One round of reviewer-comment response: classify each unresolved thread, bundle fixes into one commit, self-review, push, reply and resolve per category. |
 | `/pr-ci-failed` | model-invocable | One round of CI-failure response on the current PR: classify, reproduce locally, fix, self-review, push, re-read the PR body. |
 | `/main-ci-failed` | model-invocable | Same, for a red run on `main` — the fix lands on a NEW branch and a new PR; `main` is never modified directly. |
-| `/pr-merged` | explicit | After a merge: switch to `main`, pull, delete the merged branch's local progress files, delete the local branch. |
+| `/pr-merged` | explicit | After a merge: switch to `main`, pull, delete the fallback progress files, delete the local branch. |
 | `/dependabot-pr` | explicit | One round of triage on a Dependabot **gomod** PR. Never auto-merges, never pushes to the bot branch; prints the merge command and pauses. |
 
 Built-in Claude Code commands (`/code-review`, `/simplify`, `/security-review`, `/init`) are **not** part of this harness and are not governed by this page. They overlap `self-review` / `project-review` in purpose but not in contract: the harness surfaces review against *this* project's spec, design and domain invariants, and gate the push; the built-ins review a diff on general principles and gate nothing. Use the harness surfaces inside a `/task` flow; the built-ins are fine ad hoc.
@@ -84,7 +84,7 @@ The port is complete: every subagent and skill the source harness carried, minus
 | `ai-audit/scripts/test-piped-gate-guard.sh` | before editing the piped-gate hook, and by CI's Harness-guards job | 26 fixtures through the hook body **extracted from `.claude/settings.json`**, never a retyped regex: 15 must-block, 10 must-allow, plus the known false positive asserted as blocked. Fails when a regex edit breaks either direction. |
 | `task/scripts/append-task-run.sh` | `/task` Step 12 sub-step 5a | Single writer of `ai-docs/metrics/task-runs.jsonl`. Degrades rather than halting Step 12. |
 | `task/scripts/test-append-task-run.sh` | before editing the writer | 20 cases; AC6 asserts the case count equals `ai-docs/task-run-schema.md` § *Cases* — add a row there in the same commit as a new case. |
-| `pr-merged/scripts/cleanup-progress.sh` | `/pr-merged` step 3 | Derives the merged PR's issue number from its body, finds the matching spec in `plans/done/`, and deletes only that branch's local progress files. |
+| `pr-merged/scripts/cleanup-progress.sh` | `/pr-merged` step 3 | Deletes only the fallback progress files of the merged PR (`pr-comments/`, `ci-fixes/`). Flow-owned state files are retired by their own flow before its PR and are left alone. |
 
 All three regression suites must pass `shellcheck -s bash` and run green before `git add` (`AGENTS.md` § *Build & Test*).
 
