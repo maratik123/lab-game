@@ -3,7 +3,7 @@
 **Issue:** #10
 **Date:** 2026-09-03
 **Round:** 2 — revised against the amended spec (AC4 gained AC3's history-surface exclusion) and
-design-review round 1. Every `[measured …]` coordinate below was re-read at base `08271a3`.
+design-review rounds 1–2.
 
 ## Approach
 
@@ -72,9 +72,13 @@ design", "a design risk row", "design-blocking STOP", "pure function by design"]
 Two judgement calls made here so they are not re-litigated per site:
 
 - **`### Step 6: Design Subagent`** in `.claude/skills/task/SKILL.md` names the agent, not the
-  phase, so it is IN the class. It carries no inbound anchor link
-  `[measured 08271a3 · grep -rn '#step-6\|design-subagent\|Step 6: Design' --include='*.md' . →
-  only .claude/skills/task/SKILL.md:108 itself]`, so renaming the heading breaks no cross-reference.
+  phase, so it is IN the class. Nothing links to its anchor — not from anywhere, and not into that
+  file at all
+  `[measured 08271a3 · grep -rnE '\]\([^)]*#step-6' --include='*.md' . → empty, and
+  grep -rnE '\]\([^)]*task/SKILL\.md#' --include='*.md' . → empty]`, so renaming the heading breaks
+  no cross-reference. (The probe is the markdown-link form on purpose: a bare-substring sweep also
+  matches this design's own prose and the `spec_path:` YAML value in the run's `.state.md`, neither
+  of which is a link.)
 - **`Designer Subagent.`**, the lead sentence of the renamed file
   `[measured 08271a3:.claude/agents/design.md:9 · sed -n '9p' → "Designer Subagent. Receives a
   task description…"]`, is a **role noun**, not the registered name — it stays as prose. The H1
@@ -153,6 +157,31 @@ its edit** and escalate to the orchestrator if the rewrite has made any sibling'
 prose (§ *Why the Checklist O rewrite carries a worked example*, § Risks R7). Being *governed by* a
 sibling is not the same as *needing an edit to* it, and neither of its Pattern rules changes here.
 
+**The other groups subtasks 3–5 trigger, inspected on the same terms.** The Audit group is not the
+only membership this diff touches, and the recorded-sweep obligation is per group, not per design.
+Each row below was resolved against `ai-docs/propagation-groups.md` and each named sibling read for
+a `design` token denoting the Subagent; **every one is OUT of the class, so no sibling edit is
+needed** — recorded here because Step-10 self-review applies the same rule and looks for the record,
+and because an unrecorded OUT is indistinguishable from an unexamined one.
+
+| Row / group | Siblings reached | Verdict |
+|---|---|---|
+| **Review** (`self-review.md` ↔ `review-findings.md` AND `project-review/SKILL.md`) | `review-findings.md`, `project-review/SKILL.md` | Tokens are `*.design.md`, "Design conformance", "API design", `docs/DESIGN.md`, "no spec/design" — OUT; no edit |
+| **Reflect** (`reflect/SKILL.md` ↔ `self-reflect.md`) | `reflect/SKILL.md` | One token, "needs its own enforcement design" — OUT; no edit |
+| **Improve** — the row that fires is `self-improve.md` → `improve/SKILL.md` AND `improve-eval-contract.md`, since subtask 3 edits `self-improve.md` | `improve/SKILL.md` | One token, "design's `AC<N> verified by:` lines" — the design *document* — OUT; no edit. (`improve-eval-contract.md` is IN class and is subtask 5's.) |
+| **CI** (`pr-ci-failed/SKILL.md` → `main-ci-failed/SKILL.md` AND `dependabot-pr/reference.md`) | `dependabot-pr/reference.md` | One token, "Round 1 of the design considered" — OUT; no edit. (`main-ci-failed/SKILL.md` is IN class and is subtask 4's.) |
+| **Domain-invariant row** (a domain rule → `domain-invariants.md` AND `self-review.md` § 4a AND `review-findings.md` § 1a AND the renamed agent's § Rules) | `domain-invariants.md` | The row's *trigger* is "a domain-invariant rule changed", and subtask 1 changes none — it touches frontmatter, the H1 and one agent list. Obligation vacuous; `domain-invariants.md`'s tokens are `docs/DESIGN.md` references — OUT; no edit. The row's own text names the agent by path, which is why it is a site in subtask 5. |
+
+Measured for the whole table
+`[measured 08271a3 · grep -nwi design .claude/agents/review-findings.md
+.claude/skills/project-review/SKILL.md .claude/skills/reflect/SKILL.md
+.claude/skills/improve/SKILL.md .claude/skills/dependabot-pr/reference.md
+ai-docs/domain-invariants.md → every hit is a `docs/DESIGN.md` reference, a `*.design.md` /
+"design document" reference, a phase or round name, or ordinary English]`
+`[measured 08271a3:ai-docs/propagation-groups.md:7-9,15,17-20,27-28 ·
+sed -n '7,9p;15p;17,20p;27,28p' → the Review, domain-invariant, Reflect, Improve and CI rows quoted
+above]`.
+
 ### Rejected alternatives
 
 - **Blanket `sed`/`rg -r` substitution over the tree.** Rejected: corrupts the OUT-of-class
@@ -175,18 +204,19 @@ sibling is not the same as *needing an edit to* it, and neither of its Pattern r
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
 | 1 | `git mv` the definition to `.claude/agents/design-writer.md`; set frontmatter `name: design-writer`; retitle the H1 to `# Design-Writer Subagent`; update the self-referential agent list in its § Rules sub-point (g). Keep the content delta small so the commit records a rename (§ Risks R1). | `.claude/agents/design.md` → `.claude/agents/design-writer.md` | — |
-| 2 | Update the **Task/Design sync group**: the dispatch examples, the Step-6 heading and body, the Design-Amendment prose, the handoff-trigger prose, the anti-pattern table rows, and `design-review`'s own frontmatter description and checklist cross-references. | `.claude/skills/task/SKILL.md`, `.claude/skills/task/reference.md`, `.claude/agents/design-review.md`, `.claude/skills/context-reset/SKILL.md` | 1 |
+| 2 | Update the **Task/Design sync group**. Not one passage-kind but several: the dispatch examples and the Step-6 heading and body; the Design-Amendment prose and its anti-pattern table rows; the handoff-trigger prose; the **quality-gate enumerations** that list this agent beside `design-review` / `self-review` / `spec-writer` (`context-reset/SKILL.md`'s group-spawn rule, `task/SKILL.md`'s every-group-handoff item, `task/reference.md`'s per-group-implementor note); the coordinate-drift rows that name it as the owner of `*.design.md`; and `design-review`'s own frontmatter description plus its checklist cross-references. Sweep the file, do not stop at the recipe. | `.claude/skills/task/SKILL.md`, `.claude/skills/task/reference.md`, `.claude/agents/design-review.md`, `.claude/skills/context-reset/SKILL.md` | 1 |
 | 3 | Update the remaining Subagent definitions that name it — `spec-writer`'s optimization-target and hand-off prose, `self-review`'s locator-drift and Subagent-ownership rows, `self-reflect`'s CAN-vs-MAY citation, and `self-improve`'s closed agent-stem enumeration. | `.claude/agents/spec-writer.md`, `.claude/agents/self-review.md`, `.claude/agents/self-reflect.md`, `.claude/agents/self-improve.md` | 1 |
-| 4 | Update the remaining Skills that name it — `/interview`'s run-before gate and exit line, and the Spec-Amendment recipe carried by the CI/comment skills and their reference pages. | `.claude/skills/interview/SKILL.md`, `.claude/skills/pr-commented/SKILL.md`, `.claude/skills/pr-commented/reference.md`, `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/pr-ci-failed/reference.md`, `.claude/skills/main-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/reference.md` | 1 |
+| 4 | Update the remaining Skills that name it. The Spec-Amendment recipe on each `reference.md` is only part of the residue — most sites in the three `SKILL.md` files sit **outside** it: the never-inline-edit-a-design-doc rules, the design-doc-ownership bail, and the binding "a spec-touching round runs `design` → `design-review` before `self-review`" rule. Plus `/interview`'s run-before gate and its exit line. Sweep each file whole. | `.claude/skills/interview/SKILL.md`, `.claude/skills/pr-commented/SKILL.md`, `.claude/skills/pr-commented/reference.md`, `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/pr-ci-failed/reference.md`, `.claude/skills/main-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/reference.md` | 1 |
 | 5 | Update the `ai-docs/` inventory pages — the Subagent-table row and its `design-review` neighbour, the Task/Design sync-group rows and the domain-invariant row (each keyed by file path), and the CAN-vs-MAY citation. | `ai-docs/claude-tools-hierarchy.md`, `ai-docs/propagation-groups.md`, `ai-docs/improve-eval-contract.md` | 1 |
 | 6 | Rewrite Checklist O's severity rule to *one rule, any axis is `major`*: replace `:152`'s justification clause, strip `:174`'s severity presuppositions while leaving its procedural content intact, leave `:184` untouched, delete the `:186` paragraph, and add the worked example. | `.claude/skills/ai-audit/reference.md` | — |
 | 7 | Record the decision as a new `KD` row in a new dated section: the rename, the severity flip, and a pointer to Checklist O for the reader-vs-parser argument. | `ai-docs/key-decisions.md` | 1, 6 |
-| 8 | Closing concept-level re-sweep of the whole live tree against the § Scope membership criterion, with a per-site verdict recorded in the progress file's decisions log; fix any in-class site subtasks 1–7 missed, and report any OUT-of-class site deliberately left alone. | whole live tree (no new file expected) | 1–7 |
+| 8 | Closing concept-level re-sweep of the whole live tree against the § Scope membership criterion, with a per-site verdict recorded in the progress file's decisions log; fix any in-class site subtasks 1–7 missed, and report any OUT-of-class site deliberately left alone. **Re-derive the class from the spec's two § Scope tables — never from the edit log of subtasks 1–7.** The same delegate authored those edits, so a sweep driven by its own record would only re-confirm what it already believed; the sweep must start from the criterion and meet the tree cold. | whole live tree (no new file expected) | 1–7 |
 
 **Where rows 2–5's file contents come from.** Every "update X's <named passage>" claim in the table
-above is the IN-class residue of the two sweeps in § Approach → *Site inventory*; that section
-carries the measurement, and no row asserts anything those commands did not print. Each row's
-named passage is re-resolved by its sentence text at edit time, never by a line number.
+above is the IN-class residue of the two sweeps in § Approach → *Site inventory*, which carries the
+measurement. Each row's named passage is re-resolved by its sentence text at edit time, never by a
+line number — so a row names the *kinds* of passage to look for, and the implementor's sweep, not
+the row, is what bounds the edit.
 
 **Subtask 6's site coordinates, re-pinned.** The spec pins `:152` / `:174` / `:184` / `:186` at
 `fe7c6c1`; they still land on the same sentences at this design's base
@@ -297,11 +327,10 @@ its own, so a delegate-side run measures the wrong session. The same placement a
   `[measured 08271a3:.claude/skills/ai-audit/SKILL.md:6 · sed -n '6p' → allowed-tools including
   Bash(comm *), Bash(.claude/skills/ai-audit/scripts/check-citations.sh),
   Bash(.claude/skills/ai-audit/scripts/test-check-citations.sh)]`, so an `/ai-audit` invocation is
-  the unattended local route if one is wanted later. *Pin re-verified at this round's base:* the
-  guard-suites step's `- name:` line is at `:152`, and `:151` is the preceding citation step's `run:`
-  line, so the `:152-159` pin below stands unchanged
-  `[measured 08271a3:.github/workflows/ci.yml:151,152 · sed -n '151p;152p' → "run: bash
-  .claude/skills/ai-audit/scripts/check-citations.sh" then "- name: guard regression suites"]`.
+  the unattended local route if one is wanted later. The guard-suites pin § Test Design carries is
+  re-resolved at this round's base
+  `[measured 08271a3:.github/workflows/ci.yml:152 · sed -n '152p' → "- name: guard regression
+  suites"]`.
 - **R6 — the new name is not dispatchable in the session that creates it.** The set of
   `subagent_type` values is session state (spec § *Technical constraints*): after subtask 1 lands,
   the tree says `design-writer` while the running session still resolves `design`. *Mitigation:*
@@ -320,12 +349,11 @@ its own, so a delegate-side run measures the wrong session. The same placement a
   bold-uppercase verb per non-table paragraph, and a demonstrator within eight lines of the
   contrast paragraph. `[derived → AC9, AC10, AC11]`
 - **R8 — a `#N` citation added by the rewrite fails the citation guard.** Check (1) flags a bare
-  `#N` above the repository's PR high-water mark. Citing this task's own issue is safe: the mark
-  is at or above 16 `[measured 08271a3 · gh pr list --state all --limit 1 --json number --jq
-  '.[0].number // 0' → 16]` and the guard skips any `#N` at or below it
+  `#N` above the repository's PR high-water mark. Citing this task's own issue is safe: the guard
+  skips any `#N` at or below that mark
   `[measured 08271a3:.claude/skills/ai-audit/scripts/check-citations.sh:84 · sed -n '84p' →
-  '[ "$n" -le "$LOCAL_MAX" ] 2>/dev/null && continue']`. Any citation to the sibling projects must
-  still carry its namespace. `[derived → AC8]`
+  '[ "$n" -le "$LOCAL_MAX" ] 2>/dev/null && continue']`, and issue #10 is this repository's own and
+  below it. Any citation to the sibling projects must still carry its namespace. `[derived → AC8]`
 - **R9 — a relative markdown link to the renamed file breaks (AC7).** Measured negative: no
   markdown link anywhere in the tree targets the file — every reference to it is inline code
   `[measured 08271a3 · grep -rnE '\]\([^)]*design\.md' --include='*.md' . → no match anywhere in
@@ -398,7 +426,21 @@ and sed -n '6p' .claude/skills/task/SKILL.md | grep -c 'Bash(ls' → 0]`.
   prompt. `[derived → AC7]`
 - **AC8 — citation namespaces.** CI's "citation namespaces resolve" and "guard regression suites"
   steps. `[derived → AC8]`
-- **AC9 / AC10 / AC11 — the Checklist O rewrite.** Read the whole `## Checklist O` section and
+- **AC9 / AC10 / AC11 — the Checklist O rewrite.** *Read AC9's "per-axis distinction" as
+  severity-scoped, because AC11 says so.* AC11 requires `:174` to keep **every** procedural claim,
+  and one of those claims — "The session listing stays authoritative for the cross-axis sweep only"
+  `[measured 08271a3:.claude/skills/ai-audit/reference.md:174 · sed -n '174p' → that sentence
+  closing the step-2 callout]` — *is* a per-axis distinction, about which **instrument covers which
+  axis**. It must survive. The spec's disposition table settles the apparent conflict in AC11's
+  favour: `:174`'s "Procedural content survives **unchanged**", with only the severity
+  presuppositions removed
+  `[measured 08271a3:ai-docs/plans/2026-09-03-rename-design-subagent.spec.md:177 · sed -n '177p' →
+  "Procedural content survives **unchanged** … Only the two severity presuppositions go: it may no
+  longer imply that same-axis is the axis the table rates `major`, nor that same-axis is 'the
+  serious case'"]`. So the rule a verifier applies is: **an axis distinction about *severity* is a
+  defect; an axis distinction about *instrument coverage* is required.** Failing a correct rewrite
+  on a literal reading of AC9 is the error this paragraph exists to prevent. With that settled,
+  read the whole `## Checklist O` section and
   check, per site: `:152`'s verdict survives with a justification that names reader/model
   confusion and **not** dispatch-time ambiguity; `:174` keeps every procedural claim (the
   subtraction blinds the listing; the `claude-code-guide` roster is the fix) while asserting no
