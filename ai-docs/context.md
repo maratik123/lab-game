@@ -24,7 +24,7 @@ The mechanics are deliberately conventional (stamina, auto-combat, seasons, an e
 
 ## Architecture
 
-The design document defines the blocks; **the Go package layout is not yet decided** — it lands with the first implementation specs, not by assumption. The blocks it will have to house:
+The design document defines the blocks; the Go package layout lands one implementation spec at a time, never by assumption. **Layout so far:** `internal/store` — the ledger's write path (owner/scope/account catalog, forward migrations under `internal/store/migrations`, `store.Post`); `internal/testdb` — PostgreSQL provisioning for package tests (a `postgres:18` container or `LAB_GAME_TEST_DSN`, one schema per test). The blocks the layout has to house:
 
 | Block | Responsibility | Design ref |
 |---|---|---|
@@ -32,15 +32,15 @@ The design document defines the blocks; **the Go package layout is not yet decid
 | World | Deterministic chunked generation, prefabs, materialisation, discovery/knowledge | §2.2 |
 | Raid | Session FSM, leader screen (one edited message), stamina, standing-timer escalation | §3, §5 |
 | Combat | Pure simulator + narrative rendering from the world's vocabulary | §4 |
-| Economy | Double-entry ledger, item machine, logistics addresses, shop/craft | §6, §11 |
+| Economy | Double-entry ledger (`internal/store`), item machine, logistics addresses, shop/craft | §6, §11 |
 | Scheduler | `scheduled_tasks` worker (`FOR UPDATE SKIP LOCKED`), one transaction per task with its effects | §11 |
 | Notifications | Outbound queue with a rate limiter; the notification budget is a design obligation | §1, §13.3 |
 | Observability | `events` log (product) + Prometheus metrics and canaries (health) | §13 |
 
-## Status (2026-08-30)
+## Status (2026-09-02)
 
 - **Design:** finalized in `docs/DESIGN.md`; open questions live in its §16 (loot split in a group, all balance numbers, the game's name, player↔chat membership).
-- **Code:** none yet beyond the `cmd/bot` scaffold. MVP scope is `docs/DESIGN.md` §14.
+- **Code:** the ledger core — `internal/store` (`Migrate`, `NewPool`, `CreateOwner`, `Post`) with its first migration, and `internal/testdb`; `cmd/bot` is still the scaffold. MVP scope is `docs/DESIGN.md` §14.
 - **Gates:** one entry point — `make verify` runs the whole gate list, and CI invokes the same sub-targets, so hook, CI and a local run cannot disagree. Format gate is `golangci-lint fmt -d` (gofumpt included); file size is gated at 1000 / 1500 lines. Per-task detail: [`context-status.md`](context-status.md).
 - **Harness:** being ported from the `graphite-gp` project (which in turn evolved it from `quartzite`), adapted to Go and to this domain.
 - **Repository:** `maratik123/lab-game`, private, default branch `main`. No server-side branch protection — see `AGENTS.md` § Permissions.
