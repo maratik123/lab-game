@@ -122,3 +122,10 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **at:** f343909
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-02 — tooling — probed against the owner's local PostgreSQL and left schemas and a database behind
+**What happened:** During the ledger task I and two delegates ran exploratory `psql` probes against the machine's local PostgreSQL — CHECK-constraint behaviour, `numeric(30,5)` rounding, enum semantics, the upsert-vs-UPDATE matrix — and the debris stayed: leftover schemas and a stray database the owner had to clean up. The owner's instruction, verbatim: «Не используй локальную базу (я почистил ошметки, которые создали либо ты, либо субагенты, базу привел в порядок …). Лучше вместо локальной базы использовать базу в контейнере podman.» It also invalidated facts already written into the spec (passwordless TCP access, a `template1` collation mismatch that had been cited as a design rationale), so the cleanup cost a round of re-measurement on top of the cleanup itself.
+**Rule:** the machine's own PostgreSQL is not a scratchpad. Every exploratory probe — mine or a delegate's — runs in a disposable `docker.io/library/postgres:18` container started for the probe and removed after it, so nothing survives the question it answered. Applies to any service the owner runs locally, not only Postgres. Two consequences worth remembering: gate container readiness on `pg_isready` inside the container, because rootless podman's healthcheck never leaves `starting`; and a fact measured against the local instance is a fact about *that host's configuration*, so it must be re-measured in the container before it can be cited as a property of PostgreSQL. Where the suite gets its database is a separate, already-recorded decision (`ai-docs/key-decisions.md` KD-20, `ai-docs/go-test-conventions.md`); this entry is about where *investigation* happens.
+**at:** 30501e2
+**Kind:** correction
+**Escalated?** no
