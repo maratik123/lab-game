@@ -33,7 +33,7 @@ Each basis-document type is its **own table** with its own schema and lifecycle 
 
 Adding a document type is a migration plus a `CHECK` edit — deliberately: a new kind of document passes an explicit review, and the `CHECK` doubles as a greppable registry of every type that exists.
 
-**Idempotency rides on the same rail:** a unique constraint `(source, operation_id)` on the Telegram-operation document means a replayed update creates no document, therefore no postings. There is no second idempotency mechanism to keep in sync.
+**Idempotency rides on the same rail:** a unique constraint `(source, operation_id)` on the player-operation document (`player_operation`, `source` enum) means a replayed update creates no document, therefore no postings. There is no second idempotency mechanism to keep in sync.
 
 ## 4. The raid FSM and the scheduler
 
