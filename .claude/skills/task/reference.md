@@ -18,13 +18,14 @@ If implementation (Step 8) reveals a necessary deviation from the design, **or**
    ")
    ```
    On Subagent return, immediately verify the design file was written (`ls ai-docs/plans/YYYY-MM-DD-name.design.md`). If missing — re-spawn the Subagent; do NOT transcribe its text output into the file.
-4. Re-run design review — same as Step 7 (max 3 rounds total across all design-review runs):
+4. Re-run design review — same as Step 7 (max 3 rounds total across all design-review runs). **The prompt is the closed list and nothing else** (`design-review.md` § Spawn prompt contract): five items, no `Context:` line, no description of what changed, no amendment history. The amended design is on disk and the reviewer reads it; anything you add becomes its finding #1 (`major`, `PROMPT-CONTAMINATION`) and is then ignored:
    ```
    Agent(subagent_type="design-review", prompt="
      Read .claude/agents/design-review.md and follow it.
-     Design: ai-docs/plans/YYYY-MM-DD-name.design.md
      Spec: ai-docs/plans/YYYY-MM-DD-name.spec.md
-     Context: design was amended during implementation / self-review — describe what changed.
+     Design: ai-docs/plans/YYYY-MM-DD-name.design.md
+     Progress: ai-docs/plans/YYYY-MM-DD-name.progress.md
+     Round: <N>
    ")
    ```
 5. **On GO** → resume from the step that triggered the amendment:
@@ -53,13 +54,14 @@ If a Step 7 design-review GO verdict surfaces a `note` / `minor` / recommendatio
      Re-verify decomposition and ACs against the new spec. Update the design doc to reconcile any drift.
    ")
    ```
-6. **Re-enter Step 7 (design-review)** against the new (spec, design) pair — same as the original Step 7 (counts against the 3-design-round-cap, which applies to the merged total of pre- and post-amendment iterations):
+6. **Re-enter Step 7 (design-review)** against the new (spec, design) pair — same as the original Step 7 (counts against the 3-design-round-cap, which applies to the merged total of pre- and post-amendment iterations). **The prompt is the closed list and nothing else** (`design-review.md` § Spawn prompt contract): five items, no `Context:` line, no "verify the design now matches the amended spec" — that is a reading directive, and steering where a gate looks is contamination even when every word of it is true. This template shipped one (`ai-docs/harness-gaps.md` 2026-09-02):
    ```
    Agent(subagent_type="design-review", prompt="
      Read .claude/agents/design-review.md and follow it.
-     Design: ai-docs/plans/YYYY-MM-DD-name.design.md
      Spec: ai-docs/plans/YYYY-MM-DD-name.spec.md
-     Context: spec was amended during a previous Step 7 GO-with-notes resolution — verify the design now matches the amended spec.
+     Design: ai-docs/plans/YYYY-MM-DD-name.design.md
+     Progress: ai-docs/plans/YYYY-MM-DD-name.progress.md
+     Round: <N>
    ")
    ```
 7. **On the new GO** → proceed to **Step 8**. Step 8's first-action GO-notes verification ("every note / minor / recommendation from the latest design-review GO has been written back into the design document") now references the **new** GO verdict; pre-amendment notes are no longer authoritative.
@@ -155,7 +157,7 @@ Verify both spec and design (with GO verdict) exist AND that **every note / mino
 9. **`make file-limits`** — clean. CI's Lint job runs it, and no other gate on this list covers it: `golangci-lint run` stays green on a file that breaks the 1000 / 1500-line limit, so skipping this one records `ALL PASS` on a tree CI will reject. Running `make verify` discharges items 1–8 and this one together.
 10. **Panic-index sync** — see `## Step 9 — panic-index sync (detail)` below.
 11. **Domain-invariant sweep** — see `## Step 9 — domain-invariant sweep` below.
-12. For each AC — confirm covered by test or manual verification. For a **measurable** AC (one naming a command or a scope), run **that AC's own command over that AC's own stated scope** and treat the result as authoritative — not `design-review`'s operative reading, not a delegate's "flagged, left as-is". See § *Patterns* 1 in [`SKILL.md`](SKILL.md#1-step-9s-per-ac-sweep-is-load-bearing-not-ceremonial).
+12. For each AC — confirm covered by test or manual verification. **An AC states a condition, not a command** (`spec-writer.md` Rule 9/PROC-3): for a **measurable** AC — one naming a regexp, a glob, a scope, a symbol or a test — **you write the command that checks it**, run it over that AC's own stated scope, and treat the result as authoritative — not `design-review`'s narrower operative reading, not a delegate's "flagged, left as-is". Record the command you used in the progress file's `verifying command` column; it belongs to you and it is expected to change between rounds. An AC row that *does* carry a shell command is a spec defect — re-derive the criterion, run your own command, and raise it. See § *Patterns* 1 in [`SKILL.md`](SKILL.md#1-step-9s-per-ac-sweep-is-load-bearing-not-ceremonial).
 13. Show a `| # | Criterion | Test / Verification | Status |` summary table.
 14. On ALL PASS → proceed to Step 9.5.
 

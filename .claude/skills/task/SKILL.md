@@ -111,7 +111,7 @@ First action: confirm the spec exists. Spawn the `design` Subagent (per `.claude
 
 ### Step 7: Design review
 
-Spawn the `design-review` Subagent (per `.claude/agents/design-review.md`) with the spec + design paths.
+Spawn the `design-review` Subagent with **exactly** these five things: the invocation line (`Read .claude/agents/design-review.md and follow it.`), the spec path, the design path, the progress-file path (when one exists), and the round number — **nothing else**. No `Context:` paragraph, no amendment history, no "verify that X now matches Y", no framing of what changed. Anything beyond the list becomes a `major` `PROMPT-CONTAMINATION` finding against this orchestrator, and the reviewer then ignores the content it flagged. The amended artefacts are on disk; the round number is the only state a gate prompt carries. (Enumerated here rather than left as "per `design-review.md`" because the one in-flow spawn example an orchestrator used to meet — the amendment recipes' template — carried a `Context:` line and shipped the contamination: `ai-docs/harness-gaps.md` 2026-09-02.)
 
 Verdict: GO / ITERATE / STOP.
 - **GO** → proceed to Step 8. Spec-amending notes (AC/constraint changes) need Step 6 → Step 7 re-run, not a fold-in — see `reference.md` § Spec Amendment recipe.
@@ -201,6 +201,7 @@ Spawn the `self-review` Subagent with **exactly**: the invocation line (`Read .c
 > |---|---|
 > | A `*.design.md` file under `ai-docs/plans/` (active or `done/`) | **STOP.** Trigger the **Design Amendment recipe** above — surface to user, update the design, re-run Step 7 design-review on the amended design (max 3 rounds), then resume Step 11 from the GO verdict. Mark the originating finding `✅ Fixed (design amended)`. Do NOT commit the design-doc edit as a code-fix commit. |
 > | A `*.spec.md` file under `ai-docs/plans/` (active or `done/`) | **STOP.** Trigger the **Spec Amendment recipe** (`reference.md` § Spec Amendment recipe) — surface to user, update the spec, re-run Step 6 design → Step 7 design-review on the amended (spec, design) pair, then resume Step 11. Mark the originating finding `✅ Fixed (spec amended)`. |
+> | A `*.spec.md` / `*.design.md` **coordinate only** — the cited claim still describes the artefact correctly, but its line number, path or offset moved (an added import, a `git mv`, a re-ordered block) | **NOT an amendment.** Re-resolve the coordinate yourself, record the re-resolved value in the register row, and continue the code-fix path. No `spec-writer`, no `design`, no re-review, no round. This row is the cheap half of the pair: four self-review rounds and two design-review rounds were spent on this class before it existed (`ai-docs/harness-gaps.md` 2026-09-02). A changed **criterion** or a changed **design decision** is not a coordinate drift and takes the rows above. |
 > | Only `*.go` / `go.mod` / migrations / non-`ai-docs/plans/` `*.md` / other source files | Normal Step 11 code-fix path — apply, re-run gates, push. |
 
 **Order the batch so every measurement is taken after the last content edit.** Before writing any figure into a durable surface, ask: *does anything else in this batch touch the file I am measuring?* If yes, that edit lands first and the figure is re-derived after it — the Step-11 instance of AGENTS.md § *Communication* (never record-then-edit); full rationale in `reference.md` § Step 11 — review-fix narrative (detail).
@@ -252,8 +253,11 @@ After the PR is created, the unconditional PR-body re-read rule (AGENTS.md *Work
 
 ### 1. Step 9's per-AC sweep is load-bearing, not ceremonial
 
-*Prefer* running **each measurable AC's own command over the AC's own stated scope**,
-and treating that result as authoritative. Two upstream readings do **not** override it:
+*Prefer* running **your own command for each measurable AC, over that AC's own stated scope**,
+and treating that result as authoritative. The AC states a condition, never a command
+(`spec-writer.md` Rule 9/PROC-3) — writing the command is the verifier's job, and re-writing
+it when the tree moves is why it lives in the progress file's `verifying command` column
+rather than in the spec. Two upstream readings do **not** override it:
 `design-review`'s narrower operative reading of an AC (an AC saying "anywhere in
 `internal/`, grep-clean" binds every subtask, including one a later design section adds for
 a *different* AC's traceability), and a delegate's "flagged, left as-is per the design".

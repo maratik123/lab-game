@@ -49,7 +49,12 @@ Designer Subagent. Receives a task description (and optionally reviewer feedback
 - **Tests:** for every non-trivial logic — a test plan? (module, entry point, fixtures)
 - **Risks:** Panic paths? Error propagation correct?
 - **Constraints:** for every "X does Y" in the design — did you **READ the file that BINDS X** (lint config / invariant doc / the callee's own instruction file)? **CAN it?** and **MAY it?** are independent questions: a `tools:` / capability / nesting-depth grant is evidence about **CAN** and says **nothing** about **MAY**. If your justification names X's *capabilities* instead of X's *contract*, the permission check has not been done.
-- **Claims:** every factual assertion tagged **`[measured: <command> → <output>]`** or **`[derived → <gate that will discharge it>]`** — in **EVERY** section, not just § Risks. An untagged factual claim is a defect **wherever it lives**: scope a claim-class rule to the **claim class**, never to the section where the class was first noticed, or the next instance lands one heading away. A **derivation is not a check** — reading a table never discharges a claim about what a tool will *do* with it; validity is a property of the tool's rules, not of the values you assembled, so execute the parser (`go list -m -json all`, `--help`, `actionlint`). A **negative** ("not applicable", "harmless", "cannot happen", "no precedent exists") names no artifact to run, so **no gate will ever discharge it** — measure it on the spot or do not write it. A **prescribing** negative ("no precedent exists, *so this sets the shape*") converts an unverified absence into an instruction and is the highest-priority claim in the document to execute. Diagnostic: **"which artifact would have to be wrong for my claim to be false?"** — if it is a document you never opened, no amount of re-reading the one you did open reaches it.
+- **Claims — three forms, and only three.** Every factual assertion carries exactly one tag, in **EVERY** section, not just § Risks. An untagged factual claim is a defect **wherever it lives**: scope a claim-class rule to the **claim class**, never to the section where the class was first noticed, or the next instance lands one heading away.
+  - **(1) A fact read from code or config that ALREADY EXISTS** → **`[measured <commit>:<path>:<lines> · <command> → <output>]`**. The commit is `git rev-parse --short HEAD` taken in the same turn as the read, and it is **not optional**: a coordinate with no pin is not a citation, it is a guess with a colon in it. A path without a line range is legal; a line range without a commit is not.
+  - **(2) A claim about an artefact THIS TASK will create or rewrite** — a file, a test, a symbol, a behaviour that does not exist yet → **`[derived → <the AC or test that will establish it>]`**, carrying **no line number, no count, and no exact-string content**. Never `[measured:]`: a scratch probe of the same shape passing proves a fact about the scratch tree. This is the form that stops locators rotting — there is nothing left in the tag to rot.
+  - **(3) Anything else is not yours to write** — see the *Out of remit* bullet below.
+  A **derivation is not a check** — reading a table never discharges a claim about what a tool will *do* with it; validity is a property of the tool's rules, not of the values you assembled, so execute the parser (`go list -m -json all`, `--help`, `actionlint`). A **negative** ("not applicable", "harmless", "cannot happen", "no precedent exists") names no artifact to run, so **no gate will ever discharge it** — measure it on the spot or do not write it. A **prescribing** negative ("no precedent exists, *so this sets the shape*") converts an unverified absence into an instruction and is the highest-priority claim in the document to execute. Diagnostic: **"which artifact would have to be wrong for my claim to be false?"** — if it is a document you never opened, no amount of re-reading the one you did open reaches it.
+- **Out of remit — a design names things, it does not count them.** Counts (of files, tests, functions, dependencies, commits, sites, grep hits), sizes, line counts, positions within a file and commit tallies are **not** the design's to state — at any number, in any section, including inside a `[measured …]` tag. Each is true for one commit and false for the next, each is what the implementor and the verifier measure anyway, and each is a review round waiting to happen. Write the thing, not its cardinality: «the enum labels D6 names», not «the six enum labels»; «the tests § Test Design lists», not «30 test functions». The only numbers a design may state are the ones that are **decisions** — a scale, a precision, a bound, a version, a timeout — and each of those is a Key Decision carrying its source. **One carve-out:** § Rules → migration site counts, where `≥N (verified `rg -U …`)` is a **scoping floor**, not a count of the tree, and is written with the `≥` that says so.
 - **Economy:** YAGNI — no unnecessary abstractions? (But YAGNI never overrides a denied lint — see § *Read before designing* → binding-constraint file.)
 
 ## Artifact format
@@ -87,7 +92,7 @@ Example, `M = 1` (one group, terminal):
 
 ## Risks
 
-- [risk]: [mitigation] — `[measured: <cmd> → <output>]` or `[derived → <gate>]`
+- [risk]: [mitigation] — `[measured <commit>:<path>:<lines> · <cmd> → <output>]` or `[derived → <AC or test>]`
 
 ## Test Design
 
@@ -98,7 +103,10 @@ For each non-trivial task:
 - Fixtures / helpers needed
 
 Tag factual claims here too — § Test Design and spawn contracts are exactly where
-untagged claims survive review (see § Quality checklist → Claims).
+untagged claims survive review (see § Quality checklist → Claims). Every claim in
+this section is about a test that does not exist yet, so the tag here is
+**`[derived → …]`** essentially always; a `[measured …]` tag in § Test Design is
+almost always a probe of a scratch artefact wearing a citation's clothes.
 
 ## Open questions
 
