@@ -74,3 +74,16 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **Rule:** A carve-out names the actor it exempts; being *adjacent* to that actor (reviewing its work, running inside its PR) does not transfer the exemption. When a rule sorts flows into owner vs everyone-else, locate *your own flow* in the table before acting, and verify a permissive reading harder than a restrictive one (AGENTS.md § Communication). A reviewer verifies an `/ai-audit` size claim by checking that `/ai-audit` measured it, not by measuring again; its verdict names no byte figure.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-02 — process — spawned design-review with framing its closed-list contract forbids
+**What happened:** The Step 7 spawn prompt carried a "Context:" paragraph beyond the five permitted items — the amendment history plus "verify the design matches the spec as it stands on disk now, including KD-15, AC15 and AC16". The reviewer raised it as finding #1 (`PROMPT-CONTAMINATION`, major) and ignored the content. I had spawned "per `design-review.md`" without opening the file; the only spawn example I had read that turn — the Spec Amendment recipe's template in `task/reference.md:62` — itself carries a `Context:` line, which made the shape feel sanctioned.
+**Rule:** Before spawning a gate agent, open its file and read its spawn contract in that turn — a skill's spawn template is an example, the agent file is the contract, and a citation offered as authority is itself a claim (AGENTS.md § Communication). Content that steers where the reviewer looks is framing even when every word of it is true; the round number is the only state a gate prompt carries.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-02 — testing — a "measured" statement was verified on one input class and assumed on the other
+**What happened:** The round-1 design tagged its balance upsert (`INSERT … ON CONFLICT DO UPDATE SET balance = balance + EXCLUDED.balance`) as `[measured:]` against a live Postgres — but every probe had sent a credit (`+1.00000`, `+0.5`). Debits were never sent. Postgres evaluates the `CHECK (balance >= 0)` on the proposed INSERT row before conflict arbitration, so a debit of `-5` against a row holding `100` is refused with `23514`. The design-review warned about "hiding behind an untested class"; the defect surfaced only in round 3, when the AC2 property test was actually run against a database and rapid shrank the failure to one debit leg. The whole schema redesign that followed started from that one unmeasured class.
+**Rule:** A measurement covers exactly the input classes it sent, and the tag must name them. When a statement's behaviour can differ by the sign, nullness, presence-of-row or size of its input, the probe sends every class the production code will send — for a balance statement that is at minimum {credit, debit} × {row exists, row missing}. A `[measured:]` tag that exercised one class is evidence about that class only; citing it for the other is the untested-class shape the reviewer named. Running the real property test against the real database during design, before the implementor exists, is the cheap way to find this — keep doing it.
+**at:** a11f637
+**Kind:** correction
+**Escalated?** no
