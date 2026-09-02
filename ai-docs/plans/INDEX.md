@@ -5,7 +5,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | Plan | Status | Tracked in | Depends on |
 |---|---|---|---|
 | [2026-08-30 — mechanical code-style gates](done/2026-08-30-mechanical-code-style-gates.spec.md) | ✅ implemented (0 Go tests; gates verified by fixture) | none (PR #6) | — |
-| [2026-09-02 — ledger core: `store.Post`](2026-09-02-ledger-post-core.spec.md) | 🟢 in progress | none (owner's decision) | — |
+| [2026-09-02 — ledger core: `store.Post`](done/2026-09-02-ledger-post-core.spec.md) | ✅ implemented (33 tests) | none (owner's decision) | — |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 
