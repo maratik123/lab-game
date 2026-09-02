@@ -41,14 +41,19 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 		}
 	}
 
-	// Non-test Go sources of this package. The test binary's working
-	// directory is the package directory; _test.go files are excluded
-	// because post_test.go carries the planted control lines.
+	// Collect first: non-test Go sources of this package (the test binary's
+	// working directory is the package directory; _test.go files are
+	// excluded because post_test.go carries the planted control lines) and
+	// the embedded migrations (a migration is a code path under KD-3 too).
+	type source struct {
+		name    string
+		content string
+	}
+	var sources []source
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatalf("read package dir: %v", err)
 	}
-	var scanned []string
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
@@ -58,11 +63,8 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
-		scanned = append(scanned, name)
-		reportHits(t, name, content)
+		sources = append(sources, source{name: name, content: string(content)})
 	}
-
-	// Embedded migrations: a migration is a code path under KD-3 too.
 	migrations, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
 		t.Fatalf("read migrations dir: %v", err)
@@ -72,23 +74,26 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read migration %s: %v", entry.Name(), err)
 		}
-		scanned = append(scanned, "migrations/"+entry.Name())
-		reportHits(t, "migrations/"+entry.Name(), content)
+		sources = append(sources, source{name: "migrations/" + entry.Name(), content: string(content)})
 	}
 
-	// Non-vacuity guard: a scan that never saw the ledger's own source or
-	// its first migration proves nothing (a cwd surprise or an empty embed
-	// would otherwise pass with zero hits). The message lists what was
-	// scanned so a real zero is distinguishable from a vacuous one.
-	if !slices.Contains(scanned, "post.go") || !slices.Contains(scanned, "migrations/00001_ledger_core.sql") {
-		t.Fatalf("append-only scan is vacuous: post.go and migrations/00001_ledger_core.sql must be in the scanned set; scanned %d files: %v", len(scanned), scanned)
+	// Non-vacuity guard, between collecting and scanning: a scan that never
+	// saw the ledger's own source or its first migration proves nothing (a
+	// cwd surprise or an empty embed would otherwise pass with zero hits).
+	// The message lists what was collected so a real zero is
+	// distinguishable from a vacuous one.
+	names := make([]string, 0, len(sources))
+	for _, src := range sources {
+		names = append(names, src.name)
 	}
-}
+	if !slices.Contains(names, "post.go") || !slices.Contains(names, "migrations/00001_ledger_core.sql") {
+		t.Fatalf("append-only scan is vacuous: post.go and migrations/00001_ledger_core.sql must be in the scanned set; collected %d files: %v", len(names), names)
+	}
 
-// reportHits records one failure per forbidden statement found in content.
-func reportHits(t *testing.T, name string, content []byte) {
-	t.Helper()
-	for _, loc := range appendOnlyPattern.FindAllIndex(content, -1) {
-		t.Errorf("%s: forbidden statement on a ledger table: %q", name, content[loc[0]:loc[1]])
+	// Scan: one failure per forbidden statement, naming file and match.
+	for _, src := range sources {
+		for _, loc := range appendOnlyPattern.FindAllStringIndex(src.content, -1) {
+			t.Errorf("%s: forbidden statement on a ledger table: %q", src.name, src.content[loc[0]:loc[1]])
+		}
 	}
 }
