@@ -107,7 +107,13 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: null
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "Issue #10 records `design-writer` as your pick from session a47d904a, and asks for re-confirmation at interview time. Confirm it, or re-pick?"
+    answer: "design-writer"
+  - round: 1
+    question: "After the rewrite, what severity does Checklist O assign a cross-axis clash (project Subagent vs embedded Skill)? This also settles the three-way disagreement at reference.md:152 / :184 / :186."
+    answer: "Any axis = major"
 ```
