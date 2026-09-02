@@ -13,6 +13,15 @@ const (
 
 var ownerKinds = []OwnerKind{OwnerWorld, OwnerPlayer, OwnerChat}
 
+func (k OwnerKind) known() bool {
+	for _, m := range ownerKinds {
+		if k == m {
+			return true
+		}
+	}
+	return false
+}
+
 // Kind mirrors the database enum ledger_kind: the currency an account
 // carries, read from account_definition.kind.
 type Kind string
