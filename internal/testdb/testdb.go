@@ -84,11 +84,21 @@ func Main(m *testing.M) int {
 	return code
 }
 
+const (
+	// terminateTimeout bounds the container's Terminate call at the end of
+	// a package's TestMain; Ryuk remains the crash safety net.
+	terminateTimeout = 30 * time.Second
+	// schemaMaxConns caps each per-test pool so 16 parallel subtests stay
+	// well under the server's connection limit (design D11: 16 × 4 = 64
+	// against max_connections = 100).
+	schemaMaxConns = 4
+)
+
 func terminate(ctx context.Context) {
 	if container == nil {
 		return
 	}
-	tctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	tctx, cancel := context.WithTimeout(ctx, terminateTimeout)
 	defer cancel()
 	if err := container.Terminate(tctx); err != nil {
 		fmt.Fprintf(os.Stderr, "testdb: terminating container: %v\n", err)
@@ -143,7 +153,7 @@ func Schema(tb testing.TB) *pgxpool.Config {
 	})
 
 	cfg.ConnConfig.RuntimeParams["search_path"] = name
-	cfg.MaxConns = 4
+	cfg.MaxConns = schemaMaxConns
 
 	return cfg
 }

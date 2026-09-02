@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -136,9 +137,12 @@ func TestPost_zero_invariant_property(t *testing.T) {
 			return // vanishingly rare; skip this draw
 		}
 
-		var ownerCountBefore, postingCountBefore int
-		if err := tx.QueryRow(ctx, `SELECT count(*) FROM owner`).Scan(&ownerCountBefore); err != nil {
-			rt.Fatalf("count owner: %v", err)
+		var entryCountBefore, correctionCountBefore, postingCountBefore int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM journal_entry`).Scan(&entryCountBefore); err != nil {
+			rt.Fatalf("count journal_entry: %v", err)
+		}
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM manual_correction`).Scan(&correctionCountBefore); err != nil {
+			rt.Fatalf("count manual_correction: %v", err)
 		}
 		if err := tx.QueryRow(ctx, `SELECT count(*) FROM posting`).Scan(&postingCountBefore); err != nil {
 			rt.Fatalf("count posting: %v", err)
@@ -150,16 +154,37 @@ func TestPost_zero_invariant_property(t *testing.T) {
 			rt.Fatalf("mutated batch Post = %v, want ErrUnbalanced", err)
 		}
 
-		var ownerCountAfter, postingCountAfter int
-		if err := tx.QueryRow(ctx, `SELECT count(*) FROM owner`).Scan(&ownerCountAfter); err != nil {
-			rt.Fatalf("count owner: %v", err)
+		// Before any write: the recorder holds the single SELECT of phase b
+		// and nothing that writes.
+		stmts := rec.Statements()
+		for _, s := range stmts {
+			up := strings.ToUpper(s.SQL)
+			if strings.Contains(up, "INSERT") || strings.Contains(up, "UPDATE") || strings.Contains(up, "DELETE") {
+				rt.Fatalf("rejected batch issued a write: %+v", s)
+			}
+		}
+		if len(stmts) != 1 || !strings.Contains(stmts[0].SQL, "account_definition") {
+			rt.Fatalf("rejected batch recorded %d statements, want exactly the phase-b SELECT: %+v", len(stmts), stmts)
+		}
+
+		var entryCountAfter, correctionCountAfter, postingCountAfter int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM journal_entry`).Scan(&entryCountAfter); err != nil {
+			rt.Fatalf("count journal_entry: %v", err)
+		}
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM manual_correction`).Scan(&correctionCountAfter); err != nil {
+			rt.Fatalf("count manual_correction: %v", err)
 		}
 		if err := tx.QueryRow(ctx, `SELECT count(*) FROM posting`).Scan(&postingCountAfter); err != nil {
 			rt.Fatalf("count posting: %v", err)
 		}
-		if ownerCountAfter != ownerCountBefore || postingCountAfter != postingCountBefore {
-			rt.Fatalf("row counts changed on rejection: owner %d->%d, posting %d->%d",
-				ownerCountBefore, ownerCountAfter, postingCountBefore, postingCountAfter)
+		if entryCountAfter != entryCountBefore || correctionCountAfter != correctionCountBefore || postingCountAfter != postingCountBefore {
+			rt.Fatalf("row counts changed on rejection: journal_entry %d->%d, manual_correction %d->%d, posting %d->%d",
+				entryCountBefore, entryCountAfter, correctionCountBefore, correctionCountAfter, postingCountBefore, postingCountAfter)
+		}
+		for acc, want := range tracked {
+			if got := balanceOf(t, ctx, tx, acc); !got.Equal(want) {
+				rt.Fatalf("balance for account %d moved on rejection: %s, want %s", acc, got, want)
+			}
 		}
 	})
 }

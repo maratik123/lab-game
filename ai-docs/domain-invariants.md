@@ -29,7 +29,7 @@ Holders of the item machine and accounts of the quantitative machine share **one
 
 ## 3. Basis documents — exclusive arc, not a polymorphic pair
 
-Each basis-document type is its **own table** with its own schema and lifecycle (Telegram operation, raid-session transition, cron day-close, deferred one-shot, recurring task, manual correction, season close). A posting carries one nullable FK column per type plus `CHECK (num_nonnulls(...) = 1)`. A polymorphic `(doc_type, doc_id)` pair without referential integrity was considered and **rejected** (§11).
+Each basis-document type is its **own table** with its own schema and lifecycle (player operation — `player_operation`, raid-session transition, cron day-close, deferred one-shot, recurring task, manual correction, season close). A posting carries one nullable FK column per type plus `CHECK (num_nonnulls(...) = 1)`. A polymorphic `(doc_type, doc_id)` pair without referential integrity was considered and **rejected** (§11).
 
 Adding a document type is a migration plus a `CHECK` edit — deliberately: a new kind of document passes an explicit review, and the `CHECK` doubles as a greppable registry of every type that exists.
 

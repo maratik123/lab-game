@@ -127,4 +127,35 @@ func TestPost_phase_and_capture_order(t *testing.T) {
 			t.Fatalf("posting insert %d account = %v, want %d", i, ins.Args[1], batch[i].AccountID)
 		}
 	}
+	// 5. Inter-phase order and total count (AC3): SELECT < document INSERT
+	// < journal_entry INSERT < first UPDATE; last UPDATE < first posting
+	// INSERT; and nothing else was issued.
+	firstIdx := func(sub string) int {
+		for i, s := range stmts {
+			if strings.Contains(s.SQL, sub) {
+				return i
+			}
+		}
+		return -1
+	}
+	lastIdx := func(sub string) int {
+		for i := len(stmts) - 1; i >= 0; i-- {
+			if strings.Contains(stmts[i].SQL, sub) {
+				return i
+			}
+		}
+		return -1
+	}
+	selIdx := firstIdx("account_definition")
+	docIdx := firstIdx("INSERT INTO player_operation")
+	entryIdx := firstIdx("INSERT INTO journal_entry")
+	firstUpd, lastUpd := firstIdx("UPDATE account_balance"), lastIdx("UPDATE account_balance")
+	firstPost := firstIdx("INSERT INTO posting")
+	if selIdx >= docIdx || docIdx >= entryIdx || entryIdx >= firstUpd || lastUpd >= firstPost {
+		t.Fatalf("phase order violated: select=%d document=%d entry=%d updates=%d..%d postings=%d",
+			selIdx, docIdx, entryIdx, firstUpd, lastUpd, firstPost)
+	}
+	if wantTotal := 1 + 1 + 1 + len(wantIDs) + len(batch); len(stmts) != wantTotal {
+		t.Fatalf("statements recorded = %d, want %d: %+v", len(stmts), wantTotal, stmts)
+	}
 }

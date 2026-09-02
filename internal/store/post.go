@@ -31,6 +31,16 @@ func validAmount(a decimal.Decimal) bool {
 	return !a.IsZero() && a.Truncate(5).Equal(a) && a.Abs().LessThan(maxIntegerDigitsBound)
 }
 
+const (
+	// sqlstateCheckViolation is PostgreSQL's SQLSTATE for a CHECK constraint
+	// violation (class 23, integrity constraint violation).
+	sqlstateCheckViolation = "23514"
+	// constraintBalanceNonnegative names the CHECK (balance >= 0) on
+	// account_balance in migration 00001; Post maps a violation of exactly
+	// this constraint to ErrOverdraft.
+	constraintBalanceNonnegative = "account_balance_nonnegative"
+)
+
 // Post applies one balanced batch of postings under basis, inside the
 // caller's transaction tx. The caller owns the transaction: Post neither
 // commits nor rolls back. Postings may reference an account more than
@@ -54,7 +64,12 @@ func validAmount(a decimal.Decimal) bool {
 //	   ascending account_id (ErrOverdraft or ErrBalanceRowMissing, or any
 //	   other wrapped database error — all leave the transaction aborted,
 //	   except ErrBalanceRowMissing, which still requires a rollback
-//	   because phase d already wrote).
+//	   because phase d already wrote). A balance that would exceed
+//	   numeric(30,5)'s 25 integer digits is refused by the database with
+//	   SQLSTATE 22003 (numeric_value_out_of_range) and surfaces as a
+//	   wrapped *pgconn.PgError, not as a sentinel: it is unreachable
+//	   through posting.amount (validated in phase a) and reachable only
+//	   through the accumulated balance.
 //	f. insert the postings, in the caller's order (aborted on error).
 func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Posting) error {
 	// Phase a.
@@ -153,7 +168,7 @@ func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 			`UPDATE account_balance SET balance = balance + $2 WHERE account_id = $1`, id, delta)
 		if err != nil {
 			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23514" && pgErr.ConstraintName == "account_balance_nonnegative" {
+			if errors.As(err, &pgErr) && pgErr.Code == sqlstateCheckViolation && pgErr.ConstraintName == constraintBalanceNonnegative {
 				return fmt.Errorf("%w: account %d: %w", ErrOverdraft, id, err)
 			}
 			return fmt.Errorf("post: update balance for account %d: %w", id, err)

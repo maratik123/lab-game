@@ -94,3 +94,10 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **at:** 170b626
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-02 — process — wrote a delegate's figure into a durable doc, then "measured" it with a regex that did not match the source
+**What happened:** Step 9.5's `context-status.md` entry said "nine sentinels" — a figure carried from the design agent's return, not measured. The Step-9.5 rule forbids exactly that. Correcting it, my first count (`grep -cE '^\s*Err…=' errors.go`) returned 8 and my second (a `go doc` grep) returned 0, and a `sed` wrote "0 sentinels" into the file before I looked at the source; the ninth sentinel is declared as a top-level `var ErrInvalidOwner` outside the `var (…)` block, which the indent-anchored pattern excluded. The true count (9) came only from reading the declarations and then writing a pattern that matched both shapes.
+**Rule:** for any figure that lands in a durable surface, read the source region first and then write the counting command against the shapes actually present — a count from a pattern that was never checked against the corpus is not a measurement, it is a guess with a number attached. Never let a `sed` write a computed figure into a document in the same command that computes it; print the count, look at it, then write. And a delegate's number in a design or return summary is a claim to re-derive, never text to copy (AGENTS.md § Workflow, /task Step 9.5).
+**at:** 6150879
+**Kind:** correction
+**Escalated?** no

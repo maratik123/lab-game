@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -328,5 +329,46 @@ func TestPost_player_operation_replay(t *testing.T) {
 	want := decimal.RequireFromString("1.00000")
 	if !got.Equal(want) {
 		t.Fatalf("balance after replay = %s, want %s (applied once)", got, want)
+	}
+}
+
+func TestPost_cancelled_context_writes_nothing(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool, rec := newStoreWithRecorder(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer rollback(t, ctx, tx)
+
+	money, _ := createPlayer(t, ctx, tx)
+	fund(t, ctx, tx, money, KindMoney, decimal.RequireFromString("5"))
+
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+
+	rec.Reset()
+	err = Post(cancelled, tx, &ManualCorrection{Actor: "t", Reason: "cancelled"},
+		Posting{AccountID: money, Amount: decimal.RequireFromString("-1")},
+		Posting{AccountID: WorldMoney, Amount: decimal.RequireFromString("1")},
+	)
+	if err == nil {
+		t.Fatal("Post with a cancelled context succeeded")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Post = %v, want an error wrapping context.Canceled", err)
+	}
+	for _, s := range []error{ErrNoBasis, ErrEmptyBatch, ErrInvalidAmount, ErrUnknownAccount, ErrUnbalanced, ErrAlreadyPosted, ErrOverdraft, ErrBalanceRowMissing} {
+		if errors.Is(err, s) {
+			t.Fatalf("Post = %v wrongly matches the domain sentinel %v", err, s)
+		}
+	}
+	for _, s := range rec.Statements() {
+		up := strings.ToUpper(s.SQL)
+		if strings.Contains(up, "INSERT") || strings.Contains(up, "UPDATE") {
+			t.Fatalf("cancelled Post issued a write: %+v", s)
+		}
 	}
 }

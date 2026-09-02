@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 
@@ -147,7 +148,9 @@ func TestPost_anti_deadlock(t *testing.T) {
 					if err == nil {
 						err = tx.Commit(ctx)
 					} else {
-						_ = tx.Rollback(ctx)
+						if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
+							t.Errorf("rollback: %v", rbErr)
+						}
 					}
 				}
 				if err != nil {
