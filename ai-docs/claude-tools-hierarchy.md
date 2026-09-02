@@ -35,8 +35,8 @@ The two advisory bodies changed on **2026-09-01** — panic-gate and PR-body syn
 | Agent | Model | Spawned by | Contract |
 |---|---|---|---|
 | `spec-writer` | inherit | `/interview`, `/task` Steps 1–5 | Drafts the spec one interview round at a time; asks 0–3 questions per round or returns `ready` / `unresolvable`. Never implements. |
-| `design` | inherit | `/task` Step 6 | Produces the design document with decomposition and a `## Handoff plan`. Reads the binding-constraint file for anything it specifies. Writes no code. |
-| `design-review` | inherit | `/task` Step 7 | Reviews a design against the checklist, issues GO / ITERATE / STOP. Loops with `design`. |
+| `design-writer` | inherit | `/task` Step 6 | Produces the design document with decomposition and a `## Handoff plan`. Reads the binding-constraint file for anything it specifies. Writes no code. |
+| `design-review` | inherit | `/task` Step 7 | Reviews a design against the checklist, issues GO / ITERATE / STOP. Loops with `design-writer`. |
 | `code-writer` | sonnet, effort medium (pinned in frontmatter) | `/context-reset` group handoff | Implements a group's subtasks sequentially, gates and commits per subtask. **Never** pushes, opens a PR, runs self-review, or spawns anything. |
 | `self-review` | inherit | `/task` Step 10, `/bugfix` Step 6, `/project-review` | Reviews the implementation diff against spec and design; APPROVE / REJECT. The push gate. |
 | `review-findings` | inherit | `/project-review` | Walks the whole codebase (no diff, no spec) and writes a findings table into the progress file. |

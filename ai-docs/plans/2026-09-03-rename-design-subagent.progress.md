@@ -8,13 +8,13 @@ _Updated: 2026-09-03 02:44_
 **Last build:** PASS
 **Issue:** #10
 **Spec:** ai-docs/plans/2026-09-03-rename-design-subagent.spec.md
-**current_step:** Step 8 — subtask 4 of 8 complete
-**last_passed_gate:** grep -nE '`design`\|design Subagent\|agents/design\.md' over the seven remaining Skill files → empty | 2026-09-02T23:52:49Z | 8b0f63c
+**current_step:** Step 8 — subtask 5 of 8 complete
+**last_passed_gate:** grep -n 'design-writer' ai-docs/claude-tools-hierarchy.md ai-docs/propagation-groups.md → Subagent-table row 38 and Task/Design group rows 12/13/15 (AC6) | 2026-09-02T23:53:45Z | dbae3c4
 **entry_args:** 10
 
 ## Next action
 
-**Do this immediately:** continue Group A at subtask 5 — the `ai-docs/` inventory pages.
+**Do this immediately:** continue Group A at subtask 6 — Checklist O's severity rewrite.
 
 ## Subtasks
 
@@ -22,8 +22,8 @@ _Updated: 2026-09-03 02:44_
 - [x] 2. Task/Design sync group — dispatch examples, Step-6 heading/body, Design-Amendment prose + anti-pattern rows, handoff triggers, quality-gate enumerations, coordinate-drift ownership rows, `design-review`'s frontmatter description.
 - [x] 3. Remaining Subagent definitions: `spec-writer`, `self-review`, `self-reflect`, `self-improve`.
 - [x] 4. Remaining Skills: `interview`, `pr-commented`, `pr-ci-failed`, `main-ci-failed` (SKILL + reference). Most sites sit OUTSIDE the Spec-Amendment recipe — sweep each file whole.
-- [ ] 5. `ai-docs/` inventory pages: `claude-tools-hierarchy.md`, `propagation-groups.md`, `improve-eval-contract.md`.  ← CURRENT
-- [ ] 6. Rewrite Checklist O's severity rule to one rule, any axis `major`: `:152` justification, `:174` presuppositions, `:184` untouched, delete `:186`, add worked example.
+- [x] 5. `ai-docs/` inventory pages: `claude-tools-hierarchy.md`, `propagation-groups.md`, `improve-eval-contract.md`.
+- [ ] 6. Rewrite Checklist O's severity rule to one rule, any axis `major`: `:152` justification, `:174` presuppositions, `:184` untouched, delete `:186`, add worked example.  ← CURRENT
 - [ ] 7. New dated KD section in `ai-docs/key-decisions.md`.
 - [ ] 8. Closing concept-level re-sweep of the live tree. Re-derive the class from the spec's § Scope tables, NEVER from subtasks 1–7's edit log.
 
@@ -38,6 +38,7 @@ _Updated: 2026-09-03 02:44_
 - **Step 8 subtask 2**: two sites beyond the design's row-2 enumeration were found by sweeping each file whole and are IN class — `task/reference.md:183`'s second quality-gate enumeration (`design` / `design-review` / `self-review` quality gates), and `task/reference.md:314`'s "the design agent raised genuine scope questions" in the Amendment-route recurrence history, which names the agent in bare prose. OUT and left alone: every "design-defined group", "the design's `## Handoff plan`", "Step 6 design → Step 7 design-review" phase pairing, `### Step 7: Design review`, `# Design Review Subagent`, and the `description:` phase chain "interview → spec → design → design-review" in `task/SKILL.md`'s frontmatter. `### Step 6: Design Subagent` → `### Step 6: Design-Writer Subagent` per the design's judgement call (it names the agent, and nothing links to the anchor).
 - **Step 8 subtask 3**: one unbackticked coin-flip resolved IN — `spec-writer.md`'s "take the default and let design choose otherwise via Design Amendment". Ruled IN because the construction is an *actor* one ("let X choose"), and the two sentences before it name that actor as the Subagent; the spec's OUT table's phase shapes are all noun phrases ("the design phase", "`design` rounds", "interview → spec → design → design-review"). The mirror-image shape is ruled OUT for the same reason: `self-review.md:152`'s "re-run design-review (and design, for spec amendments)" and `task/SKILL.md:206`'s "re-run Step 6 design → Step 7 design-review" are step pairings, not actors, and both stay `design`.
 - **Step 8 subtask 4**: sweeping whole files past the Spec-Amendment recipe paid twice — `pr-commented/SKILL.md:316` carries a *second* agent enumeration in its trailing clause ("which spawns the `spec-writer` / `design` / `design-review` Subagents") after the one in its lead sentence, and `pr-commented/SKILL.md:236`'s binding spec-touching-round rule names the agent in both its bold lead and its body. OUT and left alone: `main-ci-failed/SKILL.md:239`'s "record the design / design-review verdicts" (a step pairing, same shape as `task/SKILL.md:206`), `pr-commented/SKILL.md:25`'s "(Question 3 of design)" (the design document), and every `/task` design-review bail route.
+- **Step 8 subtask 5**: AC6's two files are done — `claude-tools-hierarchy.md`'s Subagent-table row is re-keyed and its `design-review` neighbour's "Loops with" clause follows it; `propagation-groups.md`'s Task/Design anchor row, its reverse row, and the domain-invariant row are all keyed by file path, so each carries the new path. The table's row order is deliberately left alone (it is workflow order, not alphabetical). OUT: `claude-tools-hierarchy.md:76`'s "the design-system skill" names a source-harness skill this project does not have.
 
 ## Key discoveries (don't re-investigate)
 

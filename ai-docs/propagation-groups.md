@@ -9,10 +9,10 @@ Per-file sync groups behind `AGENTS.md` § *Propagation Rule*. **Editing any fil
 | `.claude/skills/project-review/SKILL.md` | `.claude/agents/self-review.md` AND `.claude/agents/review-findings.md` (Review group) |
 | `.claude/skills/interview/SKILL.md` | `.claude/agents/spec-writer.md` (Interview group) |
 | `.claude/agents/spec-writer.md` | `.claude/skills/interview/SKILL.md` (Interview group) |
-| `.claude/skills/task/SKILL.md` (Steps 6–8, the design phase) | `.claude/agents/design.md` AND `.claude/agents/design-review.md` AND `.claude/skills/context-reset/SKILL.md` (Task/Design group) |
-| `.claude/agents/design.md` OR `.claude/agents/design-review.md` OR `.claude/skills/context-reset/SKILL.md` | See the *Task/Design group* anchor row above |
+| `.claude/skills/task/SKILL.md` (Steps 6–8, the design phase) | `.claude/agents/design-writer.md` AND `.claude/agents/design-review.md` AND `.claude/skills/context-reset/SKILL.md` (Task/Design group) |
+| `.claude/agents/design-writer.md` OR `.claude/agents/design-review.md` OR `.claude/skills/context-reset/SKILL.md` | See the *Task/Design group* anchor row above |
 | `.claude/skills/task/SKILL.md` verify list | `.claude/skills/task/reference.md` § *Step 9 — verify list (full)* — the SKILL names the gates, the reference details them; they must not drift |
-| A domain-invariant rule (ledger, telemetry, balance constants, chat safety, determinism) | `ai-docs/domain-invariants.md` AND `.claude/agents/self-review.md` § 4a AND `.claude/agents/review-findings.md` § 1a AND `.claude/agents/design.md` § Rules |
+| A domain-invariant rule (ledger, telemetry, balance constants, chat safety, determinism) | `ai-docs/domain-invariants.md` AND `.claude/agents/self-review.md` § 4a AND `.claude/agents/review-findings.md` § 1a AND `.claude/agents/design-writer.md` § Rules |
 | A gate command (adding, removing, or renaming one) | `AGENTS.md` § *Build & Test* AND every skill's `allowed-tools` line that grants it AND `.claude/skills/task/reference.md` § *Gate checklist* |
 | `.claude/skills/reflect/SKILL.md` | `.claude/agents/self-reflect.md` (Reflect group) |
 | `.claude/agents/self-reflect.md` | `.claude/skills/reflect/SKILL.md` (Reflect group) |
