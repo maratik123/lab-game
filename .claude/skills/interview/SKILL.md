@@ -53,12 +53,22 @@ These constants are **not** configurable via skill arguments in this iteration. 
 
 Path: `<spec_path>.state.md` — e.g. `ai-docs/plans/2026-05-09-name.spec.md` ↔ `ai-docs/plans/2026-05-09-name.spec.md.state.md`.
 
-Created at the start of round 1; deleted on terminal exit (`ready` / `abort` / `defer_to_deferred`). Format: markdown header + a single fenced YAML block.
+Created at the start of round 1 and **committed with the spec from that moment on** — this file and `<spec_path>` are the only record of an interview that runs for hours, and both were untracked for their whole life until a delegate's truncating edit proved that unrecoverable (`ai-docs/learnings.md` 2026-09-02).
+
+**Lifecycle by exit:**
+
+| Exit | State file |
+|---|---|
+| `ready` | **KEPT.** A later step re-enters `spec-writer` — a Step 7 GO-with-notes spec amendment, a Step 9 finding, a Step 11 amendment trigger, a `/pr-commented` round — and this file is what makes that a continuation instead of a cold start: it carries the round counter and the original `gh_issue:` / `task_description:` inputs. `/task` Step 12 `mv`s it to `ai-docs/plans/ignored/` before the PR. |
+| `abort` | Deleted with the spec (`git rm` both, commit) — there is nothing to return to. |
+| `defer_to_deferred` | Deleted; the parked spec is re-entered through `⚡ Second`, which starts its own interview. |
+
+Format: markdown header + a single fenced YAML block.
 
 ```markdown
 # Interview state — <task name>
 
-Transient handoff between rounds. Deleted on terminal exit.
+Handoff between rounds, and the re-entry point for every later return to `spec-writer`. Kept on `ready`.
 
 ```yaml
 schema_version: 1
@@ -113,7 +123,8 @@ Then detect entry mode:
 1. Derive a kebab-case spec slug from the issue title (or task description), ≤ 5 words.
 2. `spec_path = ai-docs/plans/<TODAY>-<slug>.spec.md`
 3. `state_path = <spec_path>.state.md`
-4. Write the initial state file with `round: 1`, `prior_qa: []`, `agent_id: null`, **plus the Step 1 payload**: issue-ref mode emits a `gh_issue:` block populated with `title` / `state` / `labels` / `body` / `comments` / `linked_issues` / `linked_prs`; free-text mode emits a `task_description:` block carrying the user's description verbatim. The two blocks are mutually exclusive — exactly one is present per state file.
+3a. **Create the feature branch now — the first commit of this flow happens in this skill, not in `/task` Step 8.** Run `git branch --show-current`; if it is `main`, `git checkout -b <prefix>/<TODAY>-<slug>` using the same date-slug as `spec_path` (AGENTS.md § Workflow AXIOM 1 — the branch exists before the first edit, and from here on there are edits to commit). `/task` Step 8 finds the branch already created and verifies it instead of creating it.
+4. Write the initial state file, then `git add ai-docs/plans/<TODAY>-<slug>.spec.md.state.md` and commit it (no `-f` needed — the state path matches no ignore rule). Contents: `round: 1`, `prior_qa: []`, `agent_id: null`, **plus the Step 1 payload**: issue-ref mode emits a `gh_issue:` block populated with `title` / `state` / `labels` / `body` / `comments` / `linked_issues` / `linked_prs`; free-text mode emits a `task_description:` block carrying the user's description verbatim. The two blocks are mutually exclusive — exactly one is present per state file.
 
 ### Step 3: Round loop
 
@@ -209,8 +220,8 @@ Build an `AskUserQuestion` with:
 Execute the chosen action:
 
 - **`extend_cap`** — bump `round_cap += 1` in state; loop to 3a with `round: <current> + 1`. The Subagent receives the new `round_cap` and may now `ask` if it has questions.
-- **`defer_to_deferred`** — `mv <spec_path> ai-docs/plans/deferred/`; update `INDEX.md` (move row to **Deferred plans**, status `🟡 spec-only`); delete state file; exit. Skip Step 4.
-- **`abort`** — delete `<spec_path>` (if exists); delete state file; exit. Skip Step 4.
+- **`defer_to_deferred`** — `git mv <spec_path> ai-docs/plans/deferred/` (the spec is tracked from round 1); update `INDEX.md` (move row to **Deferred plans**, status `🟡 spec-only`); `git rm` the state file; commit; exit. Skip Step 4.
+- **`abort`** — `git rm <spec_path>` and the state file (both tracked from round 1), commit, exit. Skip Step 4. The branch is left for the user to delete.
 - **`request_external_info`** — prompt the user via `AskUserQuestion` (single free-form question option) for the additional context; loop to 3a with `extra_context: <user paste>` injected into the next round's prompt.
 
 ### Step 4: Cross-link and exit (on `ready`)
@@ -227,7 +238,7 @@ Execute the chosen action:
      ```bash
      gh issue comment <N> --body "Spec: \`<spec_path>\`"
      ```
-   - Delete the state file.
+   - **Do NOT delete the state file.** It is kept for every later return to `spec-writer` (§ *State file* → lifecycle table); `/task` Step 12 retires it. Commit the final spec and state file before exiting.
 4. Skill exits. `/task` (the caller) resumes at Step 6 (`design` Subagent).
 
 > **Skip the tracking-issue resolution only if the user explicitly states "no tracking issue".** Note the reason in the spec header (`**Tracked in:** none — <reason>`) and skip the cross-link comment.
@@ -255,7 +266,7 @@ _Validated by repeated user correction across multiple rounds: "from now and for
 - Mutating the spec yourself. The subagent owns spec writes; the orchestrator only reads it.
 - Skipping the YAML status parse and inferring intent from prose. The status block is the contract; treat parse failure as a defect.
 - Embedding the Rule-5 substring blacklist in this file. It lives in the Subagent definition; this orchestrator's only Rule-5 role is the validation gate at 3d (defence in depth).
-- Forgetting to delete the state file on terminal exit. It's transient handoff; orphaned state files confuse subsequent runs.
+- Deleting the state file on `ready`. It is the re-entry point for every later `spec-writer` round (§ *State file*); only `abort` and `defer_to_deferred` remove it. An orphaned state file from an abandoned run is caught by `⚡ First`'s validation sequence, not by destroying the record of a live one.
 - Saving the spec without `**Tracked in:**` (unless user explicitly opted out).
 - Skipping the cross-link comment on the tracking issue.
 - **Silently switching to implementation mid-interview.** If the Subagent's first round suggests the task is trivially small (< ~20 lines, no design decisions), the Subagent should still emit `ready` with a complete spec; the orchestrator surfaces it normally and the user can choose to spec-only-defer if they want a one-shot edit instead.

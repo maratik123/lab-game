@@ -13,6 +13,15 @@
 /gate.log
 *.gate.log
 
+# Retired run state. A flow COMMITS its progress and interview-state files while
+# it runs (so a delegate's truncating edit is recoverable from history), then
+# `mv`s them here and commits the deletion of the old paths as the last commit
+# before the PR. Ignoring the directory keeps them out of the repo; moving them
+# also takes them out of the `ls ai-docs/plans/*.progress.md` and
+# `ls ai-docs/plans/*.spec.md.state.md` probes, which a plain untrack does not.
+/ai-docs/plans/ignored/
+/ai-docs/main-ci/ignored/
+
 # Harness local-only state (see AGENTS.md § Agent Docs)
 /ai-docs/plans/**/*.progress.md
 # /task in-flight marker (Stop-hook contract, .claude/skills/task/SKILL.md)

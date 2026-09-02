@@ -13,6 +13,6 @@ Directory layout:
 
 - `ai-docs/plans/*.spec.md` — active task specs with acceptance criteria
 - `ai-docs/plans/*.design.md` — active task design documents
-- `ai-docs/plans/*.progress.md` — active task progress / handoff state (**gitignored**, local-only)
+- `ai-docs/plans/*.progress.md` — active task progress / handoff state. Committed while the task runs, then `mv`d to `ai-docs/plans/ignored/` before the PR, so the PR diff stays clean and a finished run leaves nothing for `⚡ First` to match
 - `ai-docs/plans/done/` — completed pairs (spec + design), implemented and merged
 - `ai-docs/plans/deferred/` — specs written but not scheduled

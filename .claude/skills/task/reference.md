@@ -18,13 +18,14 @@ If implementation (Step 8) reveals a necessary deviation from the design, **or**
    ")
    ```
    On Subagent return, immediately verify the design file was written (`ls ai-docs/plans/YYYY-MM-DD-name.design.md`). If missing — re-spawn the Subagent; do NOT transcribe its text output into the file.
-4. Re-run design review — same as Step 7 (max 3 rounds total across all design-review runs):
+4. Re-run design review — same as Step 7 (max 3 rounds total across all design-review runs). **The prompt is the closed list and nothing else** (`design-review.md` § Spawn prompt contract): five items, no `Context:` line, no description of what changed, no amendment history. The amended design is on disk and the reviewer reads it; anything you add becomes its finding #1 (`major`, `PROMPT-CONTAMINATION`) and is then ignored:
    ```
    Agent(subagent_type="design-review", prompt="
      Read .claude/agents/design-review.md and follow it.
-     Design: ai-docs/plans/YYYY-MM-DD-name.design.md
      Spec: ai-docs/plans/YYYY-MM-DD-name.spec.md
-     Context: design was amended during implementation / self-review — describe what changed.
+     Design: ai-docs/plans/YYYY-MM-DD-name.design.md
+     Progress: ai-docs/plans/YYYY-MM-DD-name.progress.md
+     Round: <N>
    ")
    ```
 5. **On GO** → resume from the step that triggered the amendment:
@@ -53,13 +54,14 @@ If a Step 7 design-review GO verdict surfaces a `note` / `minor` / recommendatio
      Re-verify decomposition and ACs against the new spec. Update the design doc to reconcile any drift.
    ")
    ```
-6. **Re-enter Step 7 (design-review)** against the new (spec, design) pair — same as the original Step 7 (counts against the 3-design-round-cap, which applies to the merged total of pre- and post-amendment iterations):
+6. **Re-enter Step 7 (design-review)** against the new (spec, design) pair — same as the original Step 7 (counts against the 3-design-round-cap, which applies to the merged total of pre- and post-amendment iterations). **The prompt is the closed list and nothing else** (`design-review.md` § Spawn prompt contract): five items, no `Context:` line, no "verify the design now matches the amended spec" — that is a reading directive, and steering where a gate looks is contamination even when every word of it is true. This template shipped one (`ai-docs/harness-gaps.md` 2026-09-02):
    ```
    Agent(subagent_type="design-review", prompt="
      Read .claude/agents/design-review.md and follow it.
-     Design: ai-docs/plans/YYYY-MM-DD-name.design.md
      Spec: ai-docs/plans/YYYY-MM-DD-name.spec.md
-     Context: spec was amended during a previous Step 7 GO-with-notes resolution — verify the design now matches the amended spec.
+     Design: ai-docs/plans/YYYY-MM-DD-name.design.md
+     Progress: ai-docs/plans/YYYY-MM-DD-name.progress.md
+     Round: <N>
    ")
    ```
 7. **On the new GO** → proceed to **Step 8**. Step 8's first-action GO-notes verification ("every note / minor / recommendation from the latest design-review GO has been written back into the design document") now references the **new** GO verdict; pre-amendment notes are no longer authoritative.
@@ -122,6 +124,8 @@ Record base commit, branch, and `entry_args` in the progress file header immedia
 **entry_args:** <original $ARGUMENTS at /task entry — bare issue ref (`#348`/`348`), `activate paint-style`, free text (`add foo to bar`), or `(none)` for empty entry>
 ```
 
+Then `git add -f` the progress file and commit it — the `-f` is needed exactly once, because the path matches a `.gitignore` glob and the glob stops applying once the file is tracked. Step 12 sub-step 9a `mv`s it to `ai-docs/plans/ignored/` and commits the deletion.
+
 The `**entry_args:**` field is recorded ONCE at Step 8 creation and **read-only thereafter** — Steps 9–12 do NOT touch it. On a lost-arguments re-entry (empty `$ARGUMENTS` after compaction), this recorded value is the canonical entry reference per `⚡ First`'s lost-arguments clause.
 
 ## Step 9.5 — documentation update (detail)
@@ -155,7 +159,7 @@ Verify both spec and design (with GO verdict) exist AND that **every note / mino
 9. **`make file-limits`** — clean. CI's Lint job runs it, and no other gate on this list covers it: `golangci-lint run` stays green on a file that breaks the 1000 / 1500-line limit, so skipping this one records `ALL PASS` on a tree CI will reject. Running `make verify` discharges items 1–8 and this one together.
 10. **Panic-index sync** — see `## Step 9 — panic-index sync (detail)` below.
 11. **Domain-invariant sweep** — see `## Step 9 — domain-invariant sweep` below.
-12. For each AC — confirm covered by test or manual verification. For a **measurable** AC (one naming a command or a scope), run **that AC's own command over that AC's own stated scope** and treat the result as authoritative — not `design-review`'s operative reading, not a delegate's "flagged, left as-is". See § *Patterns* 1 in [`SKILL.md`](SKILL.md#1-step-9s-per-ac-sweep-is-load-bearing-not-ceremonial).
+12. For each AC — confirm covered by test or manual verification. **An AC states a condition, not a command** (`spec-writer.md` Rule 9/PROC-3): for a **measurable** AC — one naming a regexp, a glob, a scope, a symbol or a test — **you write the command that checks it**, run it over that AC's own stated scope, and treat the result as authoritative — not `design-review`'s narrower operative reading, not a delegate's "flagged, left as-is". Record the command you used in the progress file's `verifying command` column; it belongs to you and it is expected to change between rounds. An AC row that *does* carry a shell command is a spec defect — re-derive the criterion, run your own command, and raise it. See § *Patterns* 1 in [`SKILL.md`](SKILL.md#1-step-9s-per-ac-sweep-is-load-bearing-not-ceremonial).
 13. Show a `| # | Criterion | Test / Verification | Status |` summary table.
 14. On ALL PASS → proceed to Step 9.5.
 
@@ -253,8 +257,9 @@ Step 10 (self-review) has been silently skipped on "simple" tasks and post-compa
 - Declaring done with uncovered ACs.
 - Skipping design review.
 - Writing code before the spec is confirmed.
-- `rm`ing `.progress.md` from within `/task` (it's gitignored and lives until `/pr-merged`).
-- Staging `.progress.md` into a commit.
+- `rm`ing `.progress.md` or the interview `.state.md` — they are the run's only record, and nothing deletes them any more.
+- Reaching Step 12 with `.progress.md` untracked (Step 8 commits it with `git add -f`, so a delegate's truncating edit stays recoverable).
+- Opening the PR without Step 12 sub-step 9a (a state file in the PR diff).
 - Pushing from the main branch.
 - Silently deviating from the design without triggering Design Amendment.
 
@@ -265,14 +270,14 @@ Step 10 (self-review) has been silently skipped on "simple" tasks and post-compa
 | Steps 1–5 | Spec saved at `ai-docs/plans/YYYY-MM-DD-name.spec.md`? `**Tracked in:** #N` present (or `none` with reason)? Cross-link comment posted on the tracking issue (unless tracking skipped)? ACs confirmed by user and verifiable? See `/interview` gate checklist for the full per-step list. |
 | Step 6 | Spec exists? ACs confirmed? Not a "spec-only / defer" run? |
 | Step 8 | Design doc with GO? Test Design section present? **Every note / minor / recommendation from the GO verdict written back into the design doc?** |
-| Step 8 start | Feature branch created? Run `git branch --show-current` before every `git commit` — must not be `main`. `base_commit` + `branch` recorded in progress file? |
+| Step 8 start | Feature branch already exists from `/interview` Step 2 — `git branch --show-current` must not be `main` (re-create it only when the interview was skipped). `base_commit` + `branch` recorded in progress file? Progress file committed with `git add -f`? |
 | Each subtask | `go build ./...` ✅? Tests run? `.progress.md` updated? |
 | Step 9 | `go build ./...` ✅? `go test ./...` green? `go test -race ./...` green when the change touches goroutines / the scheduler / shared state? `golangci-lint fmt -d` clean? `golangci-lint run` clean? `go vet ./...` clean? `go mod tidy` leaves `go.mod`/`go.sum` unchanged (only if deps moved)? `make file-limits` clean (no other gate here covers it — `golangci-lint run` stays green on an over-limit file)? `actionlint` clean on every changed workflow and `shellcheck` clean on every changed script (skip if none)? Any new `panic(` / `log.Fatal*` / `Must…` outside `_test.go` → `ai-docs/panic-index.md` updated and staged? Domain-invariant sweep run, every hit resolved or justified in the decisions log? All ACs covered? |
 | Step 9.5 | context-status.md entry appended + context.md summary/README.md updated? (spec/design NOT moved yet — happens at Step 12) |
-| Step 10 | Self-review APPROVE? (Progress file persists in working tree — gitignored — until `/pr-merged`. Do NOT `rm` it here.) |
+| Step 10 | Self-review APPROVE? (Progress file is tracked until Step 12 sub-step 9a retires it, and stays on disk after. Do NOT `rm` it here.) |
 | Step 11 | `major`/`blocker` objections confirmed by user? Design change → Design Amendment triggered? `gh pr view <N>` re-read after every push (unconditional) — `gh pr edit` only if body contradicts new commits? |
 | Design Amendment | User approved the amendment? Design review returned GO before resuming? |
-| Step 12 | Branch ≠ main? INDEX.md ✅? spec/design moved to done/? `_inbox.jsonl` parsed and appended (or warning logged for unrecognised shape) and staged? `go.sum` refreshed? PR body references the tracking issue (`Closes #N` or `Refs #N`)? PR created and URL posted? |
+| Step 12 | Branch ≠ main? INDEX.md ✅? spec/design `git mv`d to done/? `_inbox.jsonl` parsed and appended (or warning logged for unrecognised shape) and staged? `go.sum` refreshed? **Sub-step 9a run before `gh pr create` — both state files readable under `ai-docs/plans/ignored/`, `git status --porcelain` empty, both probes returning nothing?** PR body references the tracking issue (`Closes #N` or `Refs #N`)? PR created and URL posted? |
 
 ## In-flight marker — full contract (Stop hook)
 

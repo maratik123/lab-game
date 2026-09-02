@@ -109,9 +109,11 @@ If the resolved issue's `labels` array (already fetched by `⚡ Third` step 2) c
 
 First action: confirm the spec exists. Spawn the `design` Subagent (per `.claude/agents/design.md`) with the spec path; result: `ai-docs/plans/YYYY-MM-DD-name.design.md`.
 
+**Commit the design as soon as it lands, and after every design round** — `git add <design>` and commit. The branch already exists (`/interview` Step 2 created it). The design is read by every delegate for hours and is rewritten whole each round; untracked, one truncating rewrite is unrecoverable, which is not hypothetical (`ai-docs/learnings.md` 2026-09-02: a 172-line design reduced to its header, restored only as a reconstruction).
+
 ### Step 7: Design review
 
-Spawn the `design-review` Subagent (per `.claude/agents/design-review.md`) with the spec + design paths.
+Spawn the `design-review` Subagent with **exactly** these five things: the invocation line (`Read .claude/agents/design-review.md and follow it.`), the spec path, the design path, the progress-file path (when one exists), and the round number — **nothing else**. No `Context:` paragraph, no amendment history, no "verify that X now matches Y", no framing of what changed. Anything beyond the list becomes a `major` `PROMPT-CONTAMINATION` finding against this orchestrator, and the reviewer then ignores the content it flagged. The amended artefacts are on disk; the round number is the only state a gate prompt carries. (Enumerated here rather than left as "per `design-review.md`" because the one in-flow spawn example an orchestrator used to meet — the amendment recipes' template — carried a `Context:` line and shipped the contamination: `ai-docs/harness-gaps.md` 2026-09-02.)
 
 Verdict: GO / ITERATE / STOP.
 - **GO** → proceed to Step 8. Spec-amending notes (AC/constraint changes) need Step 6 → Step 7 re-run, not a fold-in — see `reference.md` § Spec Amendment recipe.
@@ -139,14 +141,15 @@ If implementation (Step 8) reveals a necessary deviation from the design, **or**
 
 > First action: verify spec + design + GO verdict exist AND that every `note`/`minor`/recommendation from the latest design-review GO has been written back into the design document. "Applied in code later" is NOT the same as "resolved in the design"; the design doc is the implementation contract. See `reference.md` § Step 8 — first-action GO-notes verification (detail). Unresolved GO-notes = previous steps incomplete.
 
-- **Create a feature branch immediately** — before writing any code or making any commits:
+- **The feature branch already exists** — `/interview` Step 2 created it before the first commit of this flow, and Steps 6–7 have been committing to it. Verify, do not re-create:
   ```bash
-  git checkout -b feat/YYYY-MM-DD-name
+  git branch --show-current    # must not be main; must match the spec's date-name
   ```
-  Use the same date-name as the spec file. Record the branch name in the progress file. Create the in-flight marker: `date -u +%FT%TZ > ai-docs/plans/.task-inflight` (gitignored; Stop-hook contract — see § In-flight marker).
+  If it *is* `main`, the interview was skipped (a saved spec was reused): `git checkout -b feat/YYYY-MM-DD-name` now, using the spec file's date-name. Record the branch name in the progress file. Create the in-flight marker: `date -u +%FT%TZ > ai-docs/plans/.task-inflight` (gitignored; Stop-hook contract — see § In-flight marker).
 - **Visibility from the first group return (binding).** When the FIRST Step-8 group returns and its subtask commits are in: `git push -u origin <branch>`. Every subsequent group return and every Step-11 fix round pushes. **No PR yet** — the PR is created at Step 12, after self-review APPROVE; CI on the PR is the FINAL gate (AGENTS.md § Workflow carve-out). The push is visibility and survivability, not presentation.
 - **Before every `git commit` in this step:** run `git branch --show-current` and confirm it is NOT `main`. If it is — stop immediately, do not commit, apply the recovery procedure in AGENTS.md.
 - **Before every `git commit` in this step:** stage a modified/untracked `ai-docs/learnings.md` with the related code change, and after every push give a later-written entry its own commit in the same turn — AGENTS.md § *Workflow* (learnings are part of the deliverable). Order: write learning → `git add ai-docs/learnings.md` → commit → push.
+- **Commit the progress file at creation** — `git add -f ai-docs/plans/YYYY-MM-DD-name.progress.md` (the `-f` is needed exactly once, because the path matches a `.gitignore` glob; once tracked the glob no longer applies) and commit it with the current spec/design state. Every later writer stages it with a plain `git add` in its own commit. Step 12 retires it. **Why:** six agents write this file over hours, and the `## Review register` inside it is the only cross-round memory the loop has — the re-litigation tripwire is computed from those rows.
 - Create `ai-docs/plans/YYYY-MM-DD-name.progress.md` at start using the canonical schema at [`ai-docs/templates/progress-format.md`](../../../ai-docs/templates/progress-format.md). Required: `**Branch:**`, `**base_commit:**`, `**Last build:**`, `**current_step:**`, `**last_passed_gate:**`, `**entry_args:**`, plus a `## Decisions log` h2 section. For `/task` flows also include `**Issue:**` / `**Spec:**`. Record `**entry_args:**` (original `$ARGUMENTS` — bare ref, keyword phrase, free text, or `(none)`) ONCE and **read-only thereafter**; on lost-arguments re-entry it is the canonical entry reference. Full header template + write-once rule: `reference.md` § Step 8 — progress-file creation template (detail).
 - After each subtask:
   1. `go build ./...` — must compile
@@ -186,7 +189,7 @@ Spawn the `self-review` Subagent with **exactly**: the invocation line (`Read .c
 >
 > **Re-litigation tripwire (binding).** After each round: `share = rows re-opening or citing an earlier round ÷ rows raised`. `share ≥ 50%`, or any register row at its SECOND re-opening → the loop STOPS regardless of remaining cap; surface the register to the user via `AskUserQuestion`. A loop feeding on its own rounds is not converging; continuing is a user decision, never an orchestrator one.
 
-**On APPROVE:** proceed to Step 12. The progress file is gitignored and **stays in the working tree** — `/pr-commented` extends it across reviewer rounds, `/pr-merged` deletes it post-merge. Do NOT `rm` it here. **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 10 — self-review APPROVE (Round N)`; append a `## Decisions log` bullet recording the round count (one line, prefixed `Step 10:`).
+**On APPROVE:** proceed to Step 12. The progress file is tracked until Step 12 retires it and **stays on disk either way** — `/pr-commented` extends it across reviewer rounds; nothing deletes it. Do NOT `rm` it here. **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 10 — self-review APPROVE (Round N)`; append a `## Decisions log` bullet recording the round count (one line, prefixed `Step 10:`).
 
 **On REJECT:** proceed to Step 11. After Step 11, loop back here. **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 10 — self-review REJECT (Round N), addressing findings`; append a `## Decisions log` bullet recording the finding count + severity breakdown (one line, prefixed `Step 10:`).
 
@@ -201,6 +204,7 @@ Spawn the `self-review` Subagent with **exactly**: the invocation line (`Read .c
 > |---|---|
 > | A `*.design.md` file under `ai-docs/plans/` (active or `done/`) | **STOP.** Trigger the **Design Amendment recipe** above — surface to user, update the design, re-run Step 7 design-review on the amended design (max 3 rounds), then resume Step 11 from the GO verdict. Mark the originating finding `✅ Fixed (design amended)`. Do NOT commit the design-doc edit as a code-fix commit. |
 > | A `*.spec.md` file under `ai-docs/plans/` (active or `done/`) | **STOP.** Trigger the **Spec Amendment recipe** (`reference.md` § Spec Amendment recipe) — surface to user, update the spec, re-run Step 6 design → Step 7 design-review on the amended (spec, design) pair, then resume Step 11. Mark the originating finding `✅ Fixed (spec amended)`. |
+> | A `*.spec.md` / `*.design.md` **coordinate only** — the cited claim still describes the artefact correctly, but its line number, path or offset moved (an added import, a `git mv`, a re-ordered block) | **NOT an amendment.** Re-resolve the coordinate yourself, record the re-resolved value in the register row, and continue the code-fix path. No `spec-writer`, no `design`, no re-review, no round. This row is the cheap half of the pair: four self-review rounds and two design-review rounds were spent on this class before it existed (`ai-docs/harness-gaps.md` 2026-09-02). A changed **criterion** or a changed **design decision** is not a coordinate drift and takes the rows above. |
 > | Only `*.go` / `go.mod` / migrations / non-`ai-docs/plans/` `*.md` / other source files | Normal Step 11 code-fix path — apply, re-run gates, push. |
 
 **Order the batch so every measurement is taken after the last content edit.** Before writing any figure into a durable surface, ask: *does anything else in this batch touch the file I am measuring?* If yes, that edit lands first and the figure is re-derived after it — the Step-11 instance of AGENTS.md § *Communication* (never record-then-edit); full rationale in `reference.md` § Step 11 — review-fix narrative (detail).
@@ -221,18 +225,27 @@ After all findings are resolved, run gates (`go build ./...`, `go test ./...`, `
 ### Step 12: Finalise docs, commit, and create PR
 
 1. **Step-skip gate (binding, not optional).** Read `**current_step:**` from `ai-docs/plans/<spec-base>.progress.md`. It MUST be one of `Step 10 — self-review APPROVE (Round N)` or `Step 11 — review fixes complete (Round N)`. If it is anything else (e.g. `Step 9 — Verify (ALL PASS)`, `Step 9.5 — docs updated`, `Step 8 — subtask N of M complete`) — **STOP**, do not proceed to commit, surface the gap to the user, and loop back to the missing step. The gate fires regardless of how trivial the diff appears — no "too simple" exemption; Step 10 has been silently skipped on "simple" tasks and post-compaction (four upstream incidents: `reference.md` § Step 12 — step-skip gate (recurrence history)). **Compaction-recovery exception:** if `**current_step:**` is unparseable or absent and the post-compaction summary suggests Step 10 ran, ask the user explicitly before treating Step 10 as satisfied — do NOT auto-pass the gate.
-2. **Confirm `.progress.md` is NOT staged.** It is gitignored (`/ai-docs/plans/**/*.progress.md`); `git status` should not list it. If accidentally tracked or staged, unstage / `git rm --cached`. The file MUST stay in the working tree but MUST NOT enter the commit.
+2. **The progress file and the interview state file are TRACKED at this point** (committed since `/interview` Step 2 and Step 8 respectively) and are retired in sub-step 9a below, immediately before `gh pr create`. Do not unstage them here and do not `rm` them: 9a is the single place they leave the tree, and they must keep receiving this step's writes until then.
 3. Confirm `git branch --show-current` is **not** `main`. If it is — stop, do not push, tell the user, apply the AGENTS.md recovery procedure.
 4. **Finalise INDEX.md and move plan files:**
    - Change the plan row status to `✅ implemented (N tests)`
-   - Move spec/design files to `ai-docs/plans/done/`
+   - `git mv` the spec and design files to `ai-docs/plans/done/` — both are tracked (spec since `/interview`, design since Step 6). They are deliverables and stay in the PR.
    - Update dependency tree and **Suggested next steps**
 5. **Inbox propagation.** Parse the just-finalised spec (and its design if present) and append one JSON line per item to `ai-docs/deferred/_inbox.jsonl` (row shape: [`ai-docs/templates/inbox-row.md`](../../../ai-docs/templates/inbox-row.md)); dedupe over `.source_path` against the thematic `*.jsonl` siblings via `jq`; emit a `WARN:` line on unrecognised body shapes and continue. Per-shape parser + dedupe rules: `reference.md` § Step 12 — inbox propagation (detail) and [`inbox-propagation.md`](inbox-propagation.md). Sub-step 7 stages `_inbox.jsonl` with the other artefacts.
    - **Sub-step 5a — append the task-run telemetry record** — single writer, append-only; schema, field table and operating rules: [`ai-docs/task-run-schema.md`](../../../ai-docs/task-run-schema.md). Run that page's § *Precondition assertion* first, then `.claude/skills/task/scripts/append-task-run.sh ai-docs/plans/<spec-base>.progress.md`. Exit 0 (full **or** degraded) → continue; non-zero → hand-write the `fallback-required` fields per its § *Fallback recipe*, then continue. **Never halt Step 12 here.** Finally run its § *Step-12 verification block* and record both results in the PR body **Test plan**.
 6. `go build ./...` — ensures `go.sum` is refreshed and included if changed.
-7. Stage all changed files: implementation files from `## Files touched`, `context-status.md` (+ `context.md` if its summary changed), any repo-root doc the change touched, `ai-docs/learnings.md` (if modified), updated `INDEX.md`, `ai-docs/deferred/_inbox.jsonl` (rows appended in sub-step 5), `ai-docs/metrics/task-runs.jsonl` (record appended in sub-step 5a), and spec/design now in `done/`.
+7. Stage all changed files: implementation files from `## Files touched`, `context-status.md` (+ `context.md` if its summary changed), any repo-root doc the change touched, `ai-docs/learnings.md` (if modified), updated `INDEX.md`, `ai-docs/deferred/_inbox.jsonl` (rows appended in sub-step 5), `ai-docs/metrics/task-runs.jsonl` (record appended in sub-step 5a), spec/design now in `done/`, and `ai-docs/plans/<spec-base>.progress.md` (tracked; its Step-10/11/12 writes ride in this commit, and sub-step 9a retires it).
 8. Commit `feat(<package>): <imperative summary>` with a 1–3 line body and `N new tests; all M tests green.`
 9. `git push` (the branch tracks `origin` since the first Step-8 group return).
+9a. **Retire the run's state files — the last commit before the PR (binding).** Move both out of `ai-docs/plans/`, then commit the deletion of the old paths:
+    ```bash
+    mkdir -p ai-docs/plans/ignored
+    mv ai-docs/plans/<spec-base>.progress.md ai-docs/plans/ignored/
+    mv ai-docs/plans/<spec-base>.spec.md.state.md ai-docs/plans/ignored/   # if it exists
+    git add -u && git commit -m "chore(plans): retire the run's state files before the PR"
+    git push
+    ```
+    Measured, so the shortcut is not attempted: `mv` leaves both files **intact on disk** under an ignored directory, `git add -u` stages the two deletions, and after the commit `git diff <base>...HEAD` carries none of them, `git status` is clean, and — the part a plain `git rm --cached` does **not** give — the paths also leave the `ls ai-docs/plans/*.progress.md` and `ls ai-docs/plans/*.spec.md.state.md` probes that `⚡ First` and `/interview` scan. **Verify before continuing:** both files readable under `ai-docs/plans/ignored/`, `git status --porcelain` empty, and each probe returning nothing. If any of the three fails — STOP: a state file in the PR diff violates the standing constraint, and one deleted from disk destroys `/pr-commented`'s input.
 10. `gh pr create` with the full title + body — body must include **Summary** / **Tracking** (`Closes #N` for full-resolve or `Refs #N` for partial; omit if `Tracked in: none`) / **Test plan** (one line per AC + the gate results by name). Full body template: `reference.md` § Step 12 — PR-body template (detail).
 11. Post the PR URL to the user.
 12. **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 12 — PR opened (PR #<N>)`; append a `## Decisions log` bullet recording the PR number and the spec/design `done/` move (one line, prefixed `Step 12:`).
@@ -252,8 +265,11 @@ After the PR is created, the unconditional PR-body re-read rule (AGENTS.md *Work
 
 ### 1. Step 9's per-AC sweep is load-bearing, not ceremonial
 
-*Prefer* running **each measurable AC's own command over the AC's own stated scope**,
-and treating that result as authoritative. Two upstream readings do **not** override it:
+*Prefer* running **your own command for each measurable AC, over that AC's own stated scope**,
+and treating that result as authoritative. The AC states a condition, never a command
+(`spec-writer.md` Rule 9/PROC-3) — writing the command is the verifier's job, and re-writing
+it when the tree moves is why it lives in the progress file's `verifying command` column
+rather than in the spec. Two upstream readings do **not** override it:
 `design-review`'s narrower operative reading of an AC (an AC saying "anywhere in
 `internal/`, grep-clean" binds every subtask, including one a later design section adds for
 a *different* AC's traceability), and a delegate's "flagged, left as-is per the design".

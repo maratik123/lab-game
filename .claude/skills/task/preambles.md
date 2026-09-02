@@ -6,7 +6,7 @@ The step-by-step sequences behind the four `⚡` preambles at the top of `SKILL.
 
 The ⚡ First preamble's glob `ls ai-docs/plans/*.progress.md` is a flat match — it ignores branch and merge state. Two failure modes have already burned cycles in this repo:
 
-1. **Stale-merge.** The matched progress file's task already merged via a GitHub-UI merge that bypassed `/pr-merged` (gitignored `.progress.md` survived). RESUME-ing into this points at a completed task instead of starting the new one. _See the sibling **quartzite** project's `ai-docs/learnings.md` 2026-05-13 stale-`.progress.md` entry._
+1. **Stale-merge.** The matched progress file's task already merged, but its `/task` run never reached Step 12 sub-step 9a — the retire step that `mv`s the file to `ai-docs/plans/ignored/` and takes it out of this glob. A run that completed normally leaves nothing here to match, so a hit means the run was interrupted or the merge bypassed the flow. RESUME-ing into this points at a completed task instead of starting the new one. _See the sibling **quartzite** project's `ai-docs/learnings.md` 2026-05-13 stale-`.progress.md` entry._
 2. **Wrong-branch parallel PR.** The matched progress file belongs to an unrelated in-flight PR on a different feature branch. RESUME-ing here cross-contaminates the two flows. _See quartzite's `ai-docs/learnings.md` 2026-05-14 branch-aware-probe entry._
 
 **Validation sequence (run before the RESUME jump):**

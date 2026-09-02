@@ -1,6 +1,6 @@
 ---
 name: pr-merged
-description: "After a PR merge: switch to main, pull, delete the merged branch's local progress files, and delete the local PR branch."
+description: "After a PR merge: switch to main, pull, delete the fallback progress files of PRs no flow produced, and delete the local PR branch. Flow-owned state files are retired by their own flow before its PR and are left alone."
 disable-model-invocation: true
 allowed-tools: Bash(git checkout main) Bash(git pull) Bash(git pull *) Bash(git branch -d *) Bash(git branch --show-current) Bash(git status) Bash(git status --porcelain) Bash(.claude/skills/pr-merged/scripts/cleanup-progress.sh *)
 ---
@@ -22,7 +22,7 @@ Otherwise, run in order. **Capture `<previous-branch>` from the `Current branch:
 
 1. `git checkout main`
 2. `git pull`
-3. **Delete the merged branch's local progress files** (gitignored Subagent artefacts; no longer needed). Run the cleanup script:
+3. **Delete the merged branch's fallback progress files only.** The `/task` and `/main-ci-failed` state files are **not** deleted any more: each flow retires its own into an ignored directory before opening its PR (`/task` Step 12 sub-step 9a, `/main-ci-failed` Step 7 sub-step 1a), they are out of every probe, and they are the run's only working copy of a record that took hours to produce. What still gets removed is the fallback surfaces created for PRs no flow produced — `ai-docs/pr-comments/`, `ai-docs/ci-fixes/` — which were never tracked and have no retire step. Run the cleanup script:
 
    ```bash
    ${CLAUDE_SKILL_DIR}/scripts/cleanup-progress.sh <previous-branch>
@@ -30,10 +30,10 @@ Otherwise, run in order. **Capture `<previous-branch>` from the `Current branch:
 
    The script encapsulates the PR-linkage derivation (PR number → spec lookup → progress-file paths) and handles the failure modes:
    - **`PR_NUM` empty** (branch merged outside `gh`, or PR is closed-not-merged): prints `pr-merged: no merged PR found for <previous-branch>; skipping progress-file cleanup.` and exits 0.
-   - **No matching `/task` spec** (manual PR without `/task`): skips the `/task`-progress-file deletion silently; the `ai-docs/pr-comments/` fallback path (`/pr-commented`'s) is still attempted.
+   - **No fallback file on disk** (the usual case for a `/task`-produced PR, which retired its own state): `rm -f` is silent on missing files and the script is idempotent.
    - **`rmdir` on `ai-docs/pr-comments`** is opportunistic — non-fatal if the directory has unrelated files or doesn't exist; exit code ignored.
 
-   Deferred-task progress files (`ai-docs/plans/deferred/`) are intentionally NOT touched — deferral is its own workflow and a deferred task has no merged PR to drive cleanup. Source: [`scripts/cleanup-progress.sh`](scripts/cleanup-progress.sh).
+   Deferred-task plan files (`ai-docs/plans/deferred/`) and every retired state file under `ai-docs/plans/ignored/` and `ai-docs/main-ci/ignored/` are intentionally NOT touched. Source: [`scripts/cleanup-progress.sh`](scripts/cleanup-progress.sh).
 
 4. `git branch -d <previous-branch>` — always `-d`, never `-D`. If `-d` refuses because the branch is not fully merged, stop and report the message; do not force-delete.
 
