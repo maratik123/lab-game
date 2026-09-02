@@ -101,3 +101,10 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **at:** 6150879
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-02 — process — recommended waiving the amendment re-review five times in a row
+**What happened:** Five spec/design amendments after design-review round 3 (AC9 grep-pattern fix; AC9/AC12 storage-form and dependency-fact fix; the subtasks-1+2 commit note; the `**/testdata/rapid/` and four-§11-lines fold; the AC9 line-number citations) were each surfaced to the owner with «Править без ре-ревью» as the first option, labelled Recommended. Each was individually small and each waiver was the owner's to give — but the effect was that the (spec, design) pair went through spec rounds 10–11 and design revisions 5–6 with no design-review reading it whole, and the owner asked «и долго еще будем вносить правки в спеку/дизайн по твоим рекомендациям без ревью?». The AXIOM says the re-review is unconditional and the exemption is the owner's per instance; recommending the exemption every time is the orchestrator routing around the gate one instance at a time.
+**Rule:** never label the waiver of a gate as the recommended option. Present the rule's path first (amend + re-review); if the cost argument is real, state it as a cost with a number (minutes, tokens) and let the owner choose without a nudge. When several small amendments accumulate after the last review, propose one consolidated re-review over the final pair rather than a fifth exemption — the gate's value is the whole-document read, which no sequence of per-instance waivers replaces. AGENTS.md § Communication: verify a permissive reading harder than a restrictive one; a bound is not a target.
+**at:** 809355d
+**Kind:** correction
+**Escalated?** no
