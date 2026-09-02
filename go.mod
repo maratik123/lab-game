@@ -8,7 +8,7 @@ require (
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/shopspring/decimal v1.4.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
-	pgregory.net/rapid v1.2.0
+	pgregory.net/rapid v1.3.0
 )
 
 require (
