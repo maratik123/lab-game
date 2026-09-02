@@ -8,20 +8,20 @@ _Updated: 2026-09-03 02:44_
 **Last build:** PASS
 **Issue:** #10
 **Spec:** ai-docs/plans/2026-09-03-rename-design-subagent.spec.md
-**current_step:** Step 8 — subtask 2 of 8 complete
-**last_passed_gate:** grep -nE '`design`\|design Subagent\|design agent\|agents/design\.md' over the four Task/Design-group files → empty | 2026-09-02T23:49:55Z | cd8869c
+**current_step:** Step 8 — subtask 3 of 8 complete
+**last_passed_gate:** grep -nE '`design`\|design Subagent\|agents/design\.md' over the four remaining agent definitions → empty | 2026-09-02T23:51:28Z | e71445a
 **entry_args:** 10
 
 ## Next action
 
-**Do this immediately:** continue Group A at subtask 3 — the remaining Subagent definitions.
+**Do this immediately:** continue Group A at subtask 4 — the remaining Skills.
 
 ## Subtasks
 
 - [x] 1. `git mv` the definition to `.claude/agents/design-writer.md`; `name: design-writer`; retitle H1; fix its self-referential agent list. Small content delta so the commit records a rename.
 - [x] 2. Task/Design sync group — dispatch examples, Step-6 heading/body, Design-Amendment prose + anti-pattern rows, handoff triggers, quality-gate enumerations, coordinate-drift ownership rows, `design-review`'s frontmatter description.
-- [ ] 3. Remaining Subagent definitions: `spec-writer`, `self-review`, `self-reflect`, `self-improve`.  ← CURRENT
-- [ ] 4. Remaining Skills: `interview`, `pr-commented`, `pr-ci-failed`, `main-ci-failed` (SKILL + reference). Most sites sit OUTSIDE the Spec-Amendment recipe — sweep each file whole.
+- [x] 3. Remaining Subagent definitions: `spec-writer`, `self-review`, `self-reflect`, `self-improve`.
+- [ ] 4. Remaining Skills: `interview`, `pr-commented`, `pr-ci-failed`, `main-ci-failed` (SKILL + reference). Most sites sit OUTSIDE the Spec-Amendment recipe — sweep each file whole.  ← CURRENT
 - [ ] 5. `ai-docs/` inventory pages: `claude-tools-hierarchy.md`, `propagation-groups.md`, `improve-eval-contract.md`.
 - [ ] 6. Rewrite Checklist O's severity rule to one rule, any axis `major`: `:152` justification, `:174` presuppositions, `:184` untouched, delete `:186`, add worked example.
 - [ ] 7. New dated KD section in `ai-docs/key-decisions.md`.
@@ -36,6 +36,7 @@ _Updated: 2026-09-03 02:44_
 - **Step 8**: gate reachability settled without widening permissions — AC7, AC8 and AC12's script half are discharged by CI's *Harness guards* job, which `paths-filter` reaches on this diff.
 - **Step 8 subtask 1**: three IN-class sites in the renamed file, per a whole-file `grep -niw design` read — frontmatter `name:`, the H1, and sub-point (g)'s `design` / `design-review` / `self-review` / `spec-writer` enumeration. `Designer Subagent.` at `:9` stays (role noun, per the design's judgement call), and every other token is the design *document*, the design *phase*, `docs/DESIGN.md`, or ordinary English. `git status` records `RM`, so AC2's rename continuity holds.
 - **Step 8 subtask 2**: two sites beyond the design's row-2 enumeration were found by sweeping each file whole and are IN class — `task/reference.md:183`'s second quality-gate enumeration (`design` / `design-review` / `self-review` quality gates), and `task/reference.md:314`'s "the design agent raised genuine scope questions" in the Amendment-route recurrence history, which names the agent in bare prose. OUT and left alone: every "design-defined group", "the design's `## Handoff plan`", "Step 6 design → Step 7 design-review" phase pairing, `### Step 7: Design review`, `# Design Review Subagent`, and the `description:` phase chain "interview → spec → design → design-review" in `task/SKILL.md`'s frontmatter. `### Step 6: Design Subagent` → `### Step 6: Design-Writer Subagent` per the design's judgement call (it names the agent, and nothing links to the anchor).
+- **Step 8 subtask 3**: one unbackticked coin-flip resolved IN — `spec-writer.md`'s "take the default and let design choose otherwise via Design Amendment". Ruled IN because the construction is an *actor* one ("let X choose"), and the two sentences before it name that actor as the Subagent; the spec's OUT table's phase shapes are all noun phrases ("the design phase", "`design` rounds", "interview → spec → design → design-review"). The mirror-image shape is ruled OUT for the same reason: `self-review.md:152`'s "re-run design-review (and design, for spec amendments)" and `task/SKILL.md:206`'s "re-run Step 6 design → Step 7 design-review" are step pairings, not actors, and both stay `design`.
 
 ## Key discoveries (don't re-investigate)
 

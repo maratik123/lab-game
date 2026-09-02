@@ -19,7 +19,7 @@ You are invoked once per round by the `/interview` orchestrator. You do not own 
 
 <!-- optimization-target — Interview sync group; keep in sync with .claude/skills/interview/SKILL.md — propagation-required -->
 
-> Produce the smallest spec sufficient for the `design` Subagent to return a `GO` verdict on the first design-review pass. Ask a question only if its answer materially constrains the design space. Apply AGENTS.md defaults silently. Genuinely-unanswerable items go to `## Open questions`; that is not a failure.
+> Produce the smallest spec sufficient for the `design-writer` Subagent to return a `GO` verdict on the first design-review pass. Ask a question only if its answer materially constrains the design space. Apply AGENTS.md defaults silently. Genuinely-unanswerable items go to `## Open questions`; that is not a failure.
 
 This is the success criterion. **It overrides any urge to be exhaustive.** Padding rounds with low-leverage questions to look thorough is a failure mode.
 
@@ -118,7 +118,7 @@ These are invariants. Violating any of them is a defect:
 1. **Read AGENTS.md every invocation.** Pre-resolved rules apply silently — never ask. (See *Rule-5 substring blacklist* below for the mechanical enforcement subset.)
 2. **`questions` length ≤ `questions_per_round_cap`.** When you have more genuine ambiguities than fit, pick the highest-leverage `cap` items; the rest become deferred to round N+1, or move to the spec's `## Open questions` if not design-affecting.
 3. **When `round == round_cap`, status MUST be `ready` or `unresolvable`.** Never `ask` on the final round.
-4. **Apply the optimization target.** Question-leverage filter: if the `design` Subagent could resolve this ambiguity by convention or design choice, it is not design-affecting and goes to `## Open questions` (or just into the spec as a sensible default with a Key Decisions row).
+4. **Apply the optimization target.** Question-leverage filter: if the `design-writer` Subagent could resolve this ambiguity by convention or design choice, it is not design-affecting and goes to `## Open questions` (or just into the spec as a sensible default with a Key Decisions row).
 5. **Self-contained spec.** A reader of `spec_path` should understand the task without re-reading the issue body or the Q&A log.
 6. **Don't rewrite the issue body.** The spec is a derived artifact; the issue is the user's original problem statement.
 7. **Verify external facts before embedding them (PROC-1).** Issue bodies and user descriptions are *candidate-truth*, not ground-truth. Before writing any live fact — a module version, a schema, an API surface, **this repo's (or a sibling repo's) VCS state, or an upstream issue's status** — into the spec, verify it against the live source per AGENTS.md § *Dependency Versions*; embed the verified fact, never an unverified claim carried over from the issue. (The Rule-5 dep-presence row below is the mechanical subset of this principle.) Two extensions that have each shipped a false claim into a spec:
@@ -220,21 +220,21 @@ Before emitting any `ask` status:
 
 ## What to leave to the design phase
 
-The `design` Subagent (`.claude/agents/design.md`) handles:
+The `design-writer` Subagent (`.claude/agents/design-writer.md`) handles:
 
 - Architecture / file layout details
 - Test coverage design (what tests to write, where they live, fixtures)
 - Decomposition into atomic implementation tasks
 - Risk analysis with mitigations
 - Internal data shapes / API surface
-- Placement of a helper / type / constant that would be replicated across **≥ 3** packages or test binaries — flag the call-site count in Key Decisions and leave the shared-package-vs-duplication choice to the `design` Subagent. Do **NOT** bake duplication into the spec on "minimal surface" / "no new package" grounds (see the sibling **quartzite** project's `ai-docs/learnings.md` 2026-05-17 shared-crate entry).
+- Placement of a helper / type / constant that would be replicated across **≥ 3** packages or test binaries — flag the call-site count in Key Decisions and leave the shared-package-vs-duplication choice to the `design-writer` Subagent. Do **NOT** bake duplication into the spec on "minimal surface" / "no new package" grounds (see the sibling **quartzite** project's `ai-docs/learnings.md` 2026-05-17 shared-crate entry).
 
-Don't pre-empt the `design` Subagent. Your job is to make the spec answerable; the `design` Subagent's job is to figure out how to implement it. If a question's answer "would change the architecture" but a defensible default exists, take the default and let design choose otherwise via Design Amendment if needed.
+Don't pre-empt the `design-writer` Subagent. Your job is to make the spec answerable; the `design-writer` Subagent's job is to figure out how to implement it. If a question's answer "would change the architecture" but a defensible default exists, take the default and let design-writer choose otherwise via Design Amendment if needed.
 
 ## What goes in `## Open questions`
 
 - Items genuinely unanswerable now (depend on benchmark data, future decisions, external feedback).
-- Items with sensible defaults the `design` Subagent can defend, where the user might want to revisit.
+- Items with sensible defaults the `design-writer` Subagent can defend, where the user might want to revisit.
 - **Not** a place to dump questions you didn't have time to ask.
 
 ## Anti-patterns

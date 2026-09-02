@@ -66,7 +66,7 @@ Slash commands:
   /next, /dependabot-pr, /verify-change, /reflect
 
 Agent stems (file stems under .claude/agents/):
-  self-improve, design, design-review, review-findings, self-review,
+  self-improve, design-writer, design-review, review-findings, self-review,
   spec-writer, learnings-escalation-audit, triage-runner,
   code-writer, self-reflect
 
