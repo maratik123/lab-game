@@ -11,22 +11,26 @@ is that the *model* does: it picks the wrong tool, or blends the two definitions
 because the name is the same. Unambiguous-to-the-parser and unambiguous-to-the-reader are
 different properties, and only the second one was ever load-bearing.
 
-Two things follow, and this task does both. The Subagent is renamed. And Checklist O — the
-`/ai-audit` check that inspected this exact clash and waved it through — has its severity
-rule rewritten, because that rule's stated motive ("dispatch resolves, therefore the clash
-is theoretical") is the claim the field evidence contradicts. Renaming only `design` would
-leave the rule that permitted it standing for the next collision.
+Two things follow, and this task does both. The Subagent is renamed to **`design-writer`**.
+And Checklist O — the `/ai-audit` check that inspected this exact clash and waved it through —
+has its severity rule rewritten to **one rule, any axis is `major`**, because that rule's
+stated motive ("dispatch resolves, therefore the clash is theoretical") is the claim the field
+evidence contradicts. Renaming only `design` would leave the rule that permitted it standing
+for the next collision.
 
 ## Scope
 
-1. **Rename the Subagent definition.** `git mv .claude/agents/design.md
-   .claude/agents/<NEW-NAME>.md`, and set the file's YAML `name:` value to the new basename.
-   The `<NEW-NAME>` placeholder is resolved by Key decision Q1.
+1. **Rename the Subagent definition** to **`design-writer`** (owner, round 2). `git mv
+   .claude/agents/design.md .claude/agents/design-writer.md`, and set the file's YAML `name:`
+   value to `design-writer`.
 2. **Update every live site that refers to the Subagent** — see *the class* below.
 3. **Rewrite Checklist O's severity rule** (`.claude/skills/ai-audit/reference.md`
-   § *Checklist O — Embedded-name clash scan*) so that no site of it justifies leniency
-   toward a cross-axis clash by dispatch resolvability, and so that its three currently
-   disagreeing sites (§ *Source conflicts*) state one rule. The new verdict is Key decision Q2.
+   § *Checklist O — Embedded-name clash scan*) to the owner's round-2 verdict: **one rule,
+   any axis is `major`.** An embedded-name clash is a `major` finding whichever axis it
+   crosses; the finding names the axis, and naming it does not lower the severity. Three
+   sites carry the change, enumerated with their verbatim text in § *Source conflicts* —
+   `:186` is deleted outright, `:152`'s justification clause is rewritten, and `:174`'s two
+   severity presuppositions are removed while its procedural content survives intact.
 4. **Re-run Checklist O** against the renamed tree, with the AXIOM at
    `.claude/skills/ai-audit/reference.md` § Checklist O honoured: an empty embedded-name
    list is `inconclusive`, never `pass`.
@@ -93,11 +97,12 @@ level, and record a per-site judgement rather than trusting a grep tally.
 
 | Question | Decision |
 |---|---|
-| Q1 — the new Subagent name | **PENDING (round 1 question).** Issue #10 records `design-writer` as the owner's pick in session `a47d904a` round 2, and asks for re-confirmation or a re-pick at interview time. |
-| Q2 — what Checklist O's severity rule becomes | **PENDING (round 1 question).** The rewrite must remove the dispatch-resolvability justification; the resulting verdict for a cross-axis clash is the owner's call, and it also fixes the intra-checklist disagreement in § *Source conflicts*. |
-| Scope of the sweep: issue #10's 20-file table vs. a concept-level sweep | Concept-level sweep, per issue #10 § *The trap*. Verified at `b78bcfc`: the standalone token `design` occurs in live files beyond that table — among them `.claude/skills/task/scripts/test-append-task-run.sh`, `.claude/skills/task/preambles.md`, `.claude/skills/task/inbox-propagation.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md` — and most of those occurrences are OUT of the class. Neither the table nor a grep tally is the boundary; the membership criterion is. |
+| Q1 — the new Subagent name | **`design-writer`** — owner, round 2, re-confirming the pick issue #10 records from session `a47d904a`. It matches the directory's `<artifact>-writer` pattern (`spec-writer`, `code-writer`), pairs with the unchanged `design-review`, and names the role rather than the artifact. |
+| Q2 — what Checklist O's severity rule becomes | **One rule, any axis is `major`** — owner, round 2. The cross-axis carve-out is deleted, not re-justified: any embedded-name clash is `major`, the finding names the axis, and the axis does not lower the severity. |
+| Q2a — which Checklist O sites the Q2 verdict touches | **Three, not one.** The round-2 answer's option text said the rewrite "only removes `:186`". Checked against the file at `fe7c6c1`, that under-counts: `:152` and `:184` do already carry the *verdict*, but `:152` also carries the *justification* ("A clash makes it ambiguous which definition a name resolves to at dispatch time"), which is false for precisely the cross-axis case the rule must now cover — delete `:186` alone and the only surviving statement of *why* argues a future auditor straight back into the carve-out. `:174` is a fourth site the round-1 sweep missed, and two of its clauses presuppose the carve-out. `:184` is genuinely unchanged. Widening from one site to three is not a scope change the owner has to re-approve: issue #10's acceptance item 3 already requires the justification to stop resting on dispatch resolvability, and `:152` and `:174` are where it rests once `:186` is gone. |
+| Scope of the sweep: issue #10's 20-file table vs. a concept-level sweep | Concept-level sweep, per issue #10 § *The trap*. Verified at `fe7c6c1`: the standalone token `design` occurs in live files beyond that table — among them `.claude/skills/task/scripts/test-append-task-run.sh`, `.claude/skills/task/preambles.md`, `.claude/skills/task/inbox-propagation.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md` — and most of those occurrences are OUT of the class. Neither the table nor a grep tally is the boundary; the membership criterion is. |
 | Whether the rename is mechanical (`sed`-style) or per-site | Per-site with a recorded judgement. A blanket substitution corrupts every OUT-of-class site in the table above. |
-| Whether Checklist O's index row in `.claude/skills/ai-audit/SKILL.md` changes | Only if the rewrite changes what that row asserts. The row states the invariant and the `inconclusive` AXIOM; it states no severity. Design decides. |
+| Whether Checklist O's index row in `.claude/skills/ai-audit/SKILL.md` changes | Read at `fe7c6c1`: the row states the invariant and the `inconclusive` AXIOM and names **no severity and no axis**, so the Q2 verdict does not falsify it. It changes only if the rewrite alters something it asserts. Design decides. |
 | Where the rename's rationale is recorded so it is not re-litigated | Design's call between `ai-docs/key-decisions.md` and the rewritten Checklist O prose itself; the reader-vs-parser argument must survive somewhere live, since it is the reason the rule changed. |
 
 ## Technical constraints
@@ -138,12 +143,17 @@ level, and record a per-site judgement rather than trusting a grep tally.
 ## Source conflicts
 
 `.claude/skills/ai-audit/reference.md` § *Checklist O* disagrees with itself about the
-severity of an embedded-name clash. All three sites, verbatim
-`[source: b78bcfc:.claude/skills/ai-audit/reference.md:152,184,186 · sed -n '152p;184p;186p']`:
+severity of an embedded-name clash. Four sites, all read at
+`[source: fe7c6c1:.claude/skills/ai-audit/reference.md:152,174,184,186 · sed -n '152p;174p;184p;186p']`:
 
 - **:152 (intro)** — "A clash makes it ambiguous which definition a name resolves to at
   dispatch time. Any match → `major` finding with a rename recommendation; the project side
   renames, never the embedded name."
+- **:174 (step-2 callout)** — "**The subtraction blinds this list to the SAME-AXIS clash — the
+  one the table rates `major`.** A project skill named `X` and an embedded skill named `X`
+  collapse to a single listing row, and step 2 then subtracts it, so the intersection is empty
+  precisely when the serious case is present. … The session listing stays authoritative for
+  the cross-axis sweep only."
 - **:184 (trigger table)** — "| `comm -12` output is non-empty | `major` finding per name:
   *\"Project-defined `<name>` clashes with embedded `<name>`. Rename the project side.\"* |"
 - **:186 (closing paragraph)** — "**Cross-axis clashes are reportable but not automatically
@@ -152,34 +162,45 @@ severity of an embedded-name clash. All three sites, verbatim
   today. Report it at `minor` with the axis named, and let the owner decide; reserve `major`
   for a same-axis collision, where dispatch is genuinely ambiguous."
 
-:152 and :184 admit no axis distinction and rate **any** match `major`; :186 carves cross-axis
-down to `minor`. Issue #10 attributes the `minor` rating to "the severity table", but the
-table (:184) does not say it — only the prose at :186 does. **Resolution: pending owner
-answer to Q2.** Whichever verdict lands, all three sites must state it, and the
-dispatch-resolvability justification comes out of :152 as well as :186.
+**The shape of the disagreement.** `:152` and `:184` admit no axis distinction and rate **any**
+match `major`. `:186` carves cross-axis down to `minor`. `:174` presupposes the carve-out twice
+over — "the one the table rates `major`" implies only same-axis is rated so, and "the serious
+case" implies cross-axis is not one. Issue #10 attributes the `minor` rating to "the severity
+table", but the table (`:184`) does not say it; only the prose at `:186` does.
+
+**Resolution — one rule, any axis is `major`. Chosen by the owner, round 2 (prior_qa answer to
+the round-1 Q2), not by this spec.** What each site becomes:
+
+| Site | Disposition |
+|---|---|
+| `:152` | Verdict already correct and stays. Its **justification** clause is rewritten: dispatch-time ambiguity is not why a clash matters, because for a cross-axis clash dispatch is *not* ambiguous and the clash still bites. The replacement states the reader/model-confusion ground — the owner's repeated field observation that a model picks the wrong tool or blends the two definitions when a Skill and a Subagent share a name. |
+| `:174` | Procedural content survives **unchanged** — the subtraction genuinely does blind the session listing to a same-axis clash, and the `claude-code-guide` roster genuinely is the fix. Only the two severity presuppositions go: it may no longer imply that same-axis is the axis the table rates `major`, nor that same-axis is "the serious case". |
+| `:184` | Unchanged. It states the verdict with no axis and no rationale. |
+| `:186` | Deleted outright. It is the carve-out. |
 
 ## Acceptance Criteria
 
 | # | Criterion |
 |---|-----------|
-| AC1 | `.claude/agents/` contains a file whose basename (without `.md`) is the Q1 name, and contains no file named `design.md`. The renamed file's YAML frontmatter `name:` value equals that basename. |
+| AC1 | `.claude/agents/design-writer.md` exists, `.claude/agents/design.md` does not, and the new file's YAML frontmatter declares `name: design-writer` — matching its basename. |
 | AC2 | The renamed file's git history is continuous with the former `.claude/agents/design.md` — the change is recorded as a rename, not as a delete plus an add. |
 | AC3 | No file matching glob `.claude/**`, `ai-docs/**` (excluding the history surfaces named in § *Out of scope*), `AGENTS.md`, `CLAUDE.md`, `.github/**` or `Makefile` contains the literal string `.claude/agents/design.md`. |
-| AC4 | No file in the tree contains the literal string `subagent_type="design"` (with the closing quote, which already excludes `subagent_type="design-review"`); every dispatch of this Subagent names it by the Q1 name, and the `design-review` dispatch sites are unchanged. |
-| AC5 | Every live site in the class defined in § *Scope* names the Subagent by the Q1 name, and no live site names the Subagent `design`. Sites whose referent is OUT of the class per that section's second table are unchanged. |
-| AC6 | The Q1 name occurs in `ai-docs/claude-tools-hierarchy.md`'s Subagent table and in `ai-docs/propagation-groups.md`'s Task/Design group rows; neither file names this Subagent `design` any longer. |
+| AC4 | No file in the tree contains the literal string `subagent_type="design"` (with the closing quote, which already excludes `subagent_type="design-review"`). Every dispatch of this Subagent reads `subagent_type="design-writer"`, and the `design-review` dispatch sites are unchanged. |
+| AC5 | Every live site in the class defined in § *Scope* names the Subagent `design-writer`, and no live site names the Subagent `design`. Sites whose referent is OUT of the class per that section's second table are unchanged. |
+| AC6 | `design-writer` occurs in `ai-docs/claude-tools-hierarchy.md`'s Subagent table and in `ai-docs/propagation-groups.md`'s Task/Design group rows; neither file names this Subagent `design` any longer. |
 | AC7 | Every relative markdown link in every `*.md` file in the repository resolves to an existing path (the condition the CI *Harness guards* job's relative-link step enforces). |
 | AC8 | The citation-namespace invariant stated in `.claude/skills/ai-audit/scripts/check-citations.sh`'s header holds over the post-rename tree, and its regression suite `.claude/skills/ai-audit/scripts/test-check-citations.sh` passes every case it defines. |
-| AC9 | `.claude/skills/ai-audit/reference.md` § *Checklist O* states exactly one severity rule for an embedded-name clash, consistent across the three sites listed in § *Source conflicts*, and matching the Q2 decision. |
-| AC10 | No text under `.claude/skills/ai-audit/` § *Checklist O* asserts that a cross-axis clash is acceptable, theoretical, or lower-severity **because** the two names dispatch through different tools. The reader-confusion evidence that replaced that reasoning is stated in its place. |
-| AC11 | A Checklist O run over the post-rename tree, performed with an embedded-name list of at least one entry, reports no clash for the renamed Subagent. A run whose embedded list is empty satisfies nothing — it is `inconclusive` by the checklist's own AXIOM. |
-| AC12 | No file changed by this task is under `cmd/**`, `internal/**`, `docs/**`, or is a `.go`, `.sql`, `go.mod` or `go.sum` file. |
+| AC9 | `.claude/skills/ai-audit/reference.md` § *Checklist O* states exactly one severity rule for an embedded-name clash — `major`, on any axis — and no text in that section states or implies a lower severity, a per-axis distinction, or an "not automatically a defect" disposition for any clash. |
+| AC10 | No text under `.claude/skills/ai-audit/` § *Checklist O* gives dispatch-time ambiguity as the reason a clash matters, and none asserts that a cross-axis clash is acceptable, theoretical, or lower-severity because the two names dispatch through different tools. The section instead states the reader/model-confusion ground recorded in § *Source conflicts*. |
+| AC11 | Each of the four Checklist O sites listed in § *Source conflicts* matches its row in that section's disposition table: `:152` keeps its verdict with a rewritten justification, `:174` keeps every procedural claim while asserting no severity or "serious case" distinction between axes, `:184` is unchanged, and the `:186` paragraph is absent from the file. |
+| AC12 | A Checklist O run over the post-rename tree, performed with an embedded-name list of at least one entry, reports no clash for `design-writer`. A run whose embedded list is empty satisfies nothing — it is `inconclusive` by the checklist's own AXIOM. |
+| AC13 | No file changed by this task is under `cmd/**`, `internal/**`, `docs/**`, or is a `.go`, `.sql`, `go.mod` or `go.sum` file. |
 
 ## Open questions
 
-- Whether the rewritten Checklist O should also gain a worked example of the `design` clash
-  (so a future auditor sees why the rule changed) or stay abstract. Design's call; either
-  satisfies AC9 and AC10.
+- Whether the rewritten Checklist O should also carry a worked example of the `design` →
+  `design-writer` clash (so a future auditor sees why the rule changed) or stay abstract.
+  Design's call; either satisfies AC9, AC10 and AC11.
 - Whether `ai-docs/key-decisions.md` gains a `KD-n` row for the reader-vs-parser argument.
   Recorded as a Key decision above; the rationale must live somewhere live, and the design
   picks where.
