@@ -7,7 +7,7 @@ allowed-tools: Bash(gh issue view *) Bash(gh issue list *) Bash(gh issue create 
 
 Orchestrator for the spec-drafting interview. Drives the round loop, surfaces the subagent's questions to the user, and applies the user's answers — but does **not** draft the spec itself. Spec drafting and question generation live in `.claude/agents/spec-writer.md` (subagent on `model: inherit`).
 
-> **MUST run before:** code investigation, `design` Subagent, or writing code.
+> **MUST run before:** code investigation, `design-writer` Subagent, or writing code.
 > Run standalone when you want a spec without committing to implementation (defer it to `ai-docs/plans/deferred/` afterward).
 > For the full task workflow use `/task` — it delegates Steps 1–5 to this skill, then continues with design → implementation → PR.
 
@@ -239,7 +239,7 @@ Execute the chosen action:
      gh issue comment <N> --body "Spec: \`<spec_path>\`"
      ```
    - **Do NOT delete the state file.** It is kept for every later return to `spec-writer` (§ *State file* → lifecycle table); `/task` Step 12 retires it. Commit the final spec and state file before exiting.
-4. Skill exits. `/task` (the caller) resumes at Step 6 (`design` Subagent).
+4. Skill exits. `/task` (the caller) resumes at Step 6 (`design-writer` Subagent).
 
 > **Skip the tracking-issue resolution only if the user explicitly states "no tracking issue".** Note the reason in the spec header (`**Tracked in:** none — <reason>`) and skip the cross-link comment.
 
