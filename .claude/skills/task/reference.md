@@ -8,10 +8,10 @@ If implementation (Step 8) reveals a necessary deviation from the design, **or**
 
 1. **Stop** the current step immediately. Do not silently continue with the deviated approach.
 2. **Surface to user:** describe what changed and why the design must be updated. Wait for approval.
-3. **Spawn the `design` Subagent** to update `ai-docs/plans/YYYY-MM-DD-name.design.md` to reflect the new approach. The orchestrator MUST NOT edit `*.design.md` directly — the `design` Subagent owns ALL writes to `*.design.md` (per the AXIOM in `SKILL.md` above the Design Amendment header). Orchestrator-side direct edits are FORBIDDEN.
+3. **Spawn the `design-writer` Subagent** to update `ai-docs/plans/YYYY-MM-DD-name.design.md` to reflect the new approach. The orchestrator MUST NOT edit `*.design.md` directly — the `design-writer` Subagent owns ALL writes to `*.design.md` (per the AXIOM in `SKILL.md` above the Design Amendment header). Orchestrator-side direct edits are FORBIDDEN.
    ```
-   Agent(subagent_type="design", prompt="
-     Read .claude/agents/design.md and follow it.
+   Agent(subagent_type="design-writer", prompt="
+     Read .claude/agents/design-writer.md and follow it.
      Spec: ai-docs/plans/YYYY-MM-DD-name.spec.md
      Existing design: ai-docs/plans/YYYY-MM-DD-name.design.md
      Context: design must be amended during implementation / self-review — describe what changed and the user-approved direction.
@@ -44,10 +44,10 @@ If a Step 7 design-review GO verdict surfaces a `note` / `minor` / recommendatio
 2. **Stop before Step 8.** Do not begin implementation against the pre-amendment spec, and do not fold spec-amending notes into the design alone — FORBIDDEN. The design doc is the implementation contract built **against the spec**; if the spec changes, the contract must be re-established and re-verified.
 3. **Surface to user via `AskUserQuestion`** — describe the candidate spec amendment (which AC / which line / proposed new wording) and wait for explicit approval. Two paths are common: **Path A** — amend the spec to match the design's discovered shape; **Path B** — annotate the design with a "Spec amendment / supersession" subsection (still requires the re-loop below if the design's shape effectively changes the spec). Path A is the default.
 4. **On user approval — amend the spec via the `spec-writer` Subagent.** The orchestrator MUST NOT edit `*.spec.md` directly (per the AXIOM in `SKILL.md` above the Design Amendment header). Spawn `spec-writer` with the user's approved amendment as a synthetic round (`extra_context` carries the amendment description); the Subagent re-writes the spec on disk. Orchestrator-side direct `*.spec.md` edits with `Edit` / `Write` are FORBIDDEN — mirrors `.claude/skills/interview/SKILL.md` § Anti-patterns ("Mutating the spec yourself").
-5. **Re-enter Step 6 (`design` Subagent)** with explicit context: "spec was amended at Step 7 GO-with-notes resolution — re-verify decomposition and ACs against the new spec":
+5. **Re-enter Step 6 (`design-writer` Subagent)** with explicit context: "spec was amended at Step 7 GO-with-notes resolution — re-verify decomposition and ACs against the new spec":
    ```
-   Agent(subagent_type="design", prompt="
-     Read .claude/agents/design.md and follow it.
+   Agent(subagent_type="design-writer", prompt="
+     Read .claude/agents/design-writer.md and follow it.
      Spec: ai-docs/plans/YYYY-MM-DD-name.spec.md
      Existing design: ai-docs/plans/YYYY-MM-DD-name.design.md
      Context: spec was amended during Step 7 GO-with-notes resolution.
@@ -178,9 +178,9 @@ During Step 8 the orchestrator NEVER executes subtask code in its own context. E
 
 The every-group fan-out removes the failure mode structurally: the orchestrator's own context never grows long enough to trip compaction (Step 8 subtask work runs in short-lived subagent invocations), and the `## Handoff plan` is the per-group spec the orchestrator reads at each return.
 
-**Trigger source: design's `## Handoff plan` section.** As of the every-group redesign (quartzite's PR for `maratik123/quartzite#375`), the `design` Subagent produces a `## Handoff plan` section in the design document for **every** decomposition with M ≥ 1 (per `.claude/agents/design.md` § Rules → handoff-grouping). That section names the exact group boundaries and the per-group spawn order — pre-computed at design time. Single-subtask designs (M = 1) carry a `## Handoff plan` with one group, fanned out via one `/context-reset` invocation; M = 9 → 3 groups, fanned out via 3 `/context-reset` invocations. Every M ≥ 1 design now carries explicit per-group fan-out.
+**Trigger source: design's `## Handoff plan` section.** As of the every-group redesign (quartzite's PR for `maratik123/quartzite#375`), the `design-writer` Subagent produces a `## Handoff plan` section in the design document for **every** decomposition with M ≥ 1 (per `.claude/agents/design-writer.md` § Rules → handoff-grouping). That section names the exact group boundaries and the per-group spawn order — pre-computed at design time. Single-subtask designs (M = 1) carry a `## Handoff plan` with one group, fanned out via one `/context-reset` invocation; M = 9 → 3 groups, fanned out via 3 `/context-reset` invocations. Every M ≥ 1 design now carries explicit per-group fan-out.
 
-**Per-group implementor selection — the file is the only lever.** The *orchestrator* model is per-invocation; pinning it was considered and rejected (Key Decision Q3 of the every-group redesign). Per-group *implementor* selection is a different decision — do not conflate the two. A **code** group (marked `sonnet` in the `## Handoff plan`) spawns `subagent_type="code-writer"`, whose `model: sonnet` + `effort: medium` are frontmatter-pinned; pass NO inline `model=`/effort override, because there is no per-invocation `effort` parameter, so an inline `general-purpose` code spawn could never enforce a "medium (pinned)" tier. An **instructions/harness** group (marked `inherit`) spawns `subagent_type="general-purpose"` with NO inline `model=` (it inherits the orchestrator's model) and effort inherited — both in a 1M-token window. No spawn takes an inline `model=` override; the orchestrator itself is per-invocation and the `design` / `design-review` / `self-review` quality gates inherit it (`model: inherit`).
+**Per-group implementor selection — the file is the only lever.** The *orchestrator* model is per-invocation; pinning it was considered and rejected (Key Decision Q3 of the every-group redesign). Per-group *implementor* selection is a different decision — do not conflate the two. A **code** group (marked `sonnet` in the `## Handoff plan`) spawns `subagent_type="code-writer"`, whose `model: sonnet` + `effort: medium` are frontmatter-pinned; pass NO inline `model=`/effort override, because there is no per-invocation `effort` parameter, so an inline `general-purpose` code spawn could never enforce a "medium (pinned)" tier. An **instructions/harness** group (marked `inherit`) spawns `subagent_type="general-purpose"` with NO inline `model=` (it inherits the orchestrator's model) and effort inherited — both in a 1M-token window. No spawn takes an inline `model=` override; the orchestrator itself is per-invocation and the `design-writer` / `design-review` / `self-review` quality gates inherit it (`model: inherit`).
 
 **Why the clean-tree check is two commands.** `git diff --quiet && git diff --cached --quiet` (or an empty `git status --porcelain`) — never bare `git diff --quiet`, which compares the working tree to the **index** and so reports a staged-only change as clean. That is exactly the pre-spawn state AGENTS.md § *Workflow* phase (2) forbids: a staged file lands in the delegate's commit.
 
@@ -299,8 +299,8 @@ Step 10 (self-review) has been silently skipped on "simple" tasks and post-compa
 
 | If the orchestrator is tempted to... | Do this instead |
 |---|---|
-| `Edit` a `*.design.md` to apply a self-review finding | Spawn `design` Subagent with the finding text |
-| `Write` a `*.design.md` because the Subagent's text output didn't land on disk | Re-spawn the `design` Subagent; do NOT transcribe its text |
+| `Edit` a `*.design.md` to apply a self-review finding | Spawn `design-writer` Subagent with the finding text |
+| `Write` a `*.design.md` because the Subagent's text output didn't land on disk | Re-spawn the `design-writer` Subagent; do NOT transcribe its text |
 | `Edit` a `*.spec.md` to apply a user tweak after `interview` returned `ready` | Spawn `spec-writer` with the tweak as a synthetic round |
 | `Edit` a `done/*.spec.md` during `/pr-commented` Spec Amendment | Same — route through `spec-writer` |
 
@@ -311,7 +311,7 @@ Step 10 (self-review) has been silently skipped on "simple" tasks and post-compa
 The obligation to route a spec/design change through its amendment recipe used to live at named POINTS: Step 11's fix-diff detection table, and the reviewer's literal "Amendment trigger" wording. Observed gaps, one per phase the points missed:
 
 1. Session `ec78f817`: a reviewer-emitted spec-amendment trigger was closed in-thread — fixed by the two-exits rule at Step 11.
-2. First post-forge run, DESIGN phase: the design agent raised genuine scope questions (propagation breadth; a `settings.json` permission) surfaced to the user BARE — correct questions, no route attached, so the user's "yes" had no defined next step.
+2. First post-forge run, DESIGN phase: the design-writer agent raised genuine scope questions (propagation breadth; a `settings.json` permission) surfaced to the user BARE — correct questions, no route attached, so the user's "yes" had no defined next step.
 
 The generalisation keys on the QUESTION'S SUBJECT, not the phase or the originator: if a "yes" changes Scope / an AC / a KD / a standing constraint, the question names its route; the answer authorises the change, and the route runs regardless. Detection is deliberately coarse — ask "what is this question ABOUT?", never "who asked" or "which step".
 
