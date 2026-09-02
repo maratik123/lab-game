@@ -8,13 +8,13 @@ _Updated: 2026-09-03 02:44_
 **Last build:** PASS
 **Issue:** #10
 **Spec:** ai-docs/plans/2026-09-03-rename-design-subagent.spec.md
-**current_step:** Step 8 — subtask 5 of 8 complete
-**last_passed_gate:** grep -n 'design-writer' ai-docs/claude-tools-hierarchy.md ai-docs/propagation-groups.md → Subagent-table row 38 and Task/Design group rows 12/13/15 (AC6) | 2026-09-02T23:53:45Z | dbae3c4
+**current_step:** Step 8 — subtask 6 of 8 complete
+**last_passed_gate:** awk '/^## Checklist O/,/^## Step 2\.6/' .claude/skills/ai-audit/reference.md \| grep -niE 'cross-axis\|dispatch time\|dispatches through different tools\|not automatically\|minor' → one hit, `:174`'s instrument-coverage clause, permitted by the disposition table | 2026-09-02T23:56:30Z | 62b4424
 **entry_args:** 10
 
 ## Next action
 
-**Do this immediately:** continue Group A at subtask 6 — Checklist O's severity rewrite.
+**Do this immediately:** continue Group A at subtask 7 — the new dated KD section.
 
 ## Subtasks
 
@@ -23,8 +23,8 @@ _Updated: 2026-09-03 02:44_
 - [x] 3. Remaining Subagent definitions: `spec-writer`, `self-review`, `self-reflect`, `self-improve`.
 - [x] 4. Remaining Skills: `interview`, `pr-commented`, `pr-ci-failed`, `main-ci-failed` (SKILL + reference). Most sites sit OUTSIDE the Spec-Amendment recipe — sweep each file whole.
 - [x] 5. `ai-docs/` inventory pages: `claude-tools-hierarchy.md`, `propagation-groups.md`, `improve-eval-contract.md`.
-- [ ] 6. Rewrite Checklist O's severity rule to one rule, any axis `major`: `:152` justification, `:174` presuppositions, `:184` untouched, delete `:186`, add worked example.  ← CURRENT
-- [ ] 7. New dated KD section in `ai-docs/key-decisions.md`.
+- [x] 6. Rewrite Checklist O's severity rule to one rule, any axis `major`: `:152` justification, `:174` presuppositions, `:184` untouched, delete `:186`, add worked example.
+- [ ] 7. New dated KD section in `ai-docs/key-decisions.md`.  ← CURRENT
 - [ ] 8. Closing concept-level re-sweep of the live tree. Re-derive the class from the spec's § Scope tables, NEVER from subtasks 1–7's edit log.
 
 ## Decisions log
@@ -39,6 +39,8 @@ _Updated: 2026-09-03 02:44_
 - **Step 8 subtask 3**: one unbackticked coin-flip resolved IN — `spec-writer.md`'s "take the default and let design choose otherwise via Design Amendment". Ruled IN because the construction is an *actor* one ("let X choose"), and the two sentences before it name that actor as the Subagent; the spec's OUT table's phase shapes are all noun phrases ("the design phase", "`design` rounds", "interview → spec → design → design-review"). The mirror-image shape is ruled OUT for the same reason: `self-review.md:152`'s "re-run design-review (and design, for spec amendments)" and `task/SKILL.md:206`'s "re-run Step 6 design → Step 7 design-review" are step pairings, not actors, and both stay `design`.
 - **Step 8 subtask 4**: sweeping whole files past the Spec-Amendment recipe paid twice — `pr-commented/SKILL.md:316` carries a *second* agent enumeration in its trailing clause ("which spawns the `spec-writer` / `design` / `design-review` Subagents") after the one in its lead sentence, and `pr-commented/SKILL.md:236`'s binding spec-touching-round rule names the agent in both its bold lead and its body. OUT and left alone: `main-ci-failed/SKILL.md:239`'s "record the design / design-review verdicts" (a step pairing, same shape as `task/SKILL.md:206`), `pr-commented/SKILL.md:25`'s "(Question 3 of design)" (the design document), and every `/task` design-review bail route.
 - **Step 8 subtask 5**: AC6's two files are done — `claude-tools-hierarchy.md`'s Subagent-table row is re-keyed and its `design-review` neighbour's "Loops with" clause follows it; `propagation-groups.md`'s Task/Design anchor row, its reverse row, and the domain-invariant row are all keyed by file path, so each carries the new path. The table's row order is deliberately left alone (it is workflow order, not alphabetical). OUT: `claude-tools-hierarchy.md:76`'s "the design-system skill" names a source-harness skill this project does not have.
+- **Step 8 subtask 6**: the worked example was drafted naming the old definition path and was rewritten to say "this project's design Subagent" instead — the literal `.claude/agents/design.md` inside `.claude/**` would have failed AC3 outright. The example's demonstrator is a two-column table ("What the clash did not do" / "What it did") rather than a fenced block, and the closing sentence states the ground positively rather than quoting the deleted carve-out, so the section-scoped `cross-axis|dispatch time|dispatches through different tools|not automatically|minor` grep leaves exactly the one hit AC11 requires. Audit sync group re-swept after the edit: the only sibling hit is `ai-audit/SKILL.md:116`, which names no severity and no axis and whose anchor link still resolves — no sibling edit, as the design predicted.
+- **Step 8 subtask 6 (finding, no action taken)**: the design's R7 assumes Checklist M governs this rewrite, but `checklist-m.md`'s audited corpus is `AGENTS.md` + every `.claude/skills/**/SKILL.md` + every `.claude/agents/**.md` + four `ai-docs/` pages + `.claude/rules/**`; `.claude/skills/ai-audit/reference.md` is a `reference.md`, so sub-checks 2 and 6 never reach it. The mitigation was applied anyway (one bold-uppercase verb in the lead paragraph, a demonstrator two lines below it) because it costs nothing and the prose is better for it. No design edit — R7's mitigation is satisfiable either way, so nothing in the design is falsified for this run.
 
 ## Key discoveries (don't re-investigate)
 

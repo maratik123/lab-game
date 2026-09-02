@@ -149,7 +149,15 @@ Severity `major` — dead-reference class. The bidirectional shape mirrors Check
 
 ## Checklist O — Embedded-name clash scan
 
-Project-defined Subagent / Skill / Hook-event names MUST NOT clash with the **embedded** names the harness ships (Anthropic built-in agent types and skills, marketplace-plugin skills, harness hook events). A clash makes it ambiguous which definition a name resolves to at dispatch time. Any match → `major` finding with a rename recommendation; the project side renames, never the embedded name.
+Project-defined Subagent / Skill / Hook-event names MUST NOT clash with the **embedded** names the harness ships (Anthropic built-in agent types and skills, marketplace-plugin skills, harness hook events). What a clash costs is paid by the reader, not by the parser: one name now carries two definitions, so the model picks the wrong one or blends them, and it does that whether or not the two tokens ever reach the same dispatcher. One rule, therefore, and no axis exemption — any match → `major` finding with a rename recommendation; the project side renames, never the embedded name. A finding names the axis it crosses, and naming it does not lower the severity.
+
+**Worked example — the clash that rewrote this rule (issue #10).** This project's design Subagent declared `name: design` while the harness ships an embedded `design` Skill. Nothing ever mis-resolved. The damage landed before any tool call was made:
+
+| What the clash did not do | What it did |
+|---|---|
+| Send a call to the wrong destination — `Agent(subagent_type=…)` and `Skill(skill=…)` are separate tools with separate registries | Leave one name meaning two things, so the model reached for the Skill where the workflow wanted the Subagent, and blended the two contracts when it reached for the Subagent |
+
+The project side was renamed to `design-writer`. The example is kept here because the rule above cannot be re-derived from how dispatch behaves — dispatch behaved correctly for as long as the clash stood, and a future auditor reasoning from resolvability alone would talk itself back out of the rule.
 
 > **The embedded inventory is NOT in this repository — do not look for it here.**
 > [`ai-docs/claude-tools-hierarchy.md`](../../../ai-docs/claude-tools-hierarchy.md) is the **project** inventory (this repo's own hooks, rules, Subagents, Skills, shell guards). Intersecting project names against it would match *everything*, not nothing. The embedded inventory is **session state**: the `Available agent types for the Agent tool` block and the `The following skills are available` block the harness injects into the orchestrator's context, plus the hook-event table the Step 2.1 `claude-code-guide` spawn returns.
@@ -171,7 +179,7 @@ Project-defined Subagent / Skill / Hook-event names MUST NOT clash with the **em
    - **Hook event keys are NOT project names.** `jq -r '.hooks | keys[]' .claude/settings.json` returns `SessionStart` / `PreToolUse` / … — harness event names the project *references*, and matching them is correct, not a clash. Feeding them into `project-names.txt` manufactures a false positive per configured event. They get the inverse check instead (step 4).
 2. **Embedded names** — transcribe the agent-type and skill listings from session context, **minus** the project's own entries (registered project Subagents and Skills appear in those same listings, so they must be subtracted or every project name self-matches). Namespaced names like `ast-index:initialize-rust` count as ONE token; do NOT split on `:`. Sort + dedupe → `embedded-names.txt`.
 
-   > **The subtraction blinds this list to the SAME-AXIS clash — the one the table rates `major`.** A project skill named `X` and an embedded skill named `X` collapse to a single listing row, and step 2 then subtracts it, so the intersection is empty precisely when the serious case is present. The listing alone cannot distinguish *shadowed* from *absent*. For the same-axis sweep, get the built-in roster from the Step 2.1 `claude-code-guide` spawn (ask it for the built-in skill and agent-type names from `code.claude.com`) and intersect the project names against **that** roster, which no project registration can suppress. The session listing stays authoritative for the cross-axis sweep only.
+   > **The subtraction blinds this list to the SAME-AXIS clash.** A project skill named `X` and an embedded skill named `X` collapse to a single listing row, and step 2 then subtracts it, so the intersection is empty precisely when that clash is present. The listing alone cannot distinguish *shadowed* from *absent*. For the same-axis sweep, get the built-in roster from the Step 2.1 `claude-code-guide` spawn (ask it for the built-in skill and agent-type names from `code.claude.com`) and intersect the project names against **that** roster, which no project registration can suppress. The session listing stays authoritative for the cross-axis sweep only.
 
    Separately, from the Step 2.1 `hooks-guide` table, write the hook event names to their own file → `embedded-events.txt` (step 4 consumes it; do NOT merge them into `embedded-names.txt`, or every configured hook event self-matches in step 3).
 3. **Intersection** — `comm -12 <(sort -u project-names.txt) <(sort -u embedded-names.txt)` MUST return empty.
@@ -182,8 +190,6 @@ Project-defined Subagent / Skill / Hook-event names MUST NOT clash with the **em
 | `embedded-names.txt` is empty | `inconclusive` — the instrument measured nothing; do not record a pass |
 | `comm -12` output is empty (and the embedded list is non-empty) | no flag — clash-scan baseline holds |
 | `comm -12` output is non-empty | `major` finding per name: *"Project-defined `<name>` clashes with embedded `<name>`. Rename the project side."* |
-
-**Cross-axis clashes are reportable but not automatically defects.** A project *Subagent* sharing a name with an embedded *Skill* dispatches through different tools (`Agent(subagent_type=…)` vs `Skill(skill=…)`) and resolves unambiguously today. Report it at `minor` with the axis named, and let the owner decide; reserve `major` for a same-axis collision, where dispatch is genuinely ambiguous.
 
 ## Step 2.6 sub-step 4 — Cross-reference re-verification (anchor-aware)
 
