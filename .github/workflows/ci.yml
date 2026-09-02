@@ -37,6 +37,7 @@ jobs:
           filters: |
             go:
               - '**/*.go'
+              - '**/*.sql'
               - 'go.mod'
               - 'go.sum'
               - '.golangci.yml'

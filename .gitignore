@@ -27,3 +27,7 @@
 
 # IDE
 /.idea/
+
+# pgregory.net/rapid writes a timestamped .fail file here on every property failure;
+# a defect worth keeping becomes a table-test case, never a checked-in fail file
+**/testdata/rapid/

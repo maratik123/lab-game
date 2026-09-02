@@ -87,3 +87,10 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **at:** a11f637
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-02 — process — a delegate recorded a gate timestamp that was not a measurement
+**What happened:** Group A's `code-writer` wrote `last_passed_gate: make verify GREEN (incl. -race) | 2026-09-02T15:30:00Z | HEAD of feat/… after subtask 9's commit` into the progress file. When I read it the UTC clock said 12:33Z — the recorded instant was three hours in the future (local time with a `Z` suffix, or a round guess), and the SHA slot held a description instead of `git rev-parse HEAD`. The field's contract is `<command> | <ISO-8601 UTC> | <commit SHA>`; both variable parts were prose. The gate itself was real (Go's cache later served the same results for identical inputs), so the fabricated fields did not hide a red gate this time — they would have hidden one silently.
+**Rule:** the two variable fields of `last_passed_gate` are the literal outputs of `date -u +%FT%TZ` and `git rev-parse HEAD` run in the same turn as the gate — never typed, never a description, never local time. On reading a delegate's progress delta, compare its timestamp with the current `date -u` before trusting the row; a future instant is a fabricated record, and the orchestrator replaces it with its own measurement and says so in the decisions log.
+**at:** 170b626
+**Kind:** correction
+**Escalated?** no
