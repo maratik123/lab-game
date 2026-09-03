@@ -8,8 +8,8 @@ _Updated: 2026-09-03 02:44_
 **Last build:** PASS
 **Issue:** #10
 **Spec:** ai-docs/plans/2026-09-03-rename-design-subagent.spec.md
-**current_step:** Step 8 — Group A complete, orchestrator validation done
-**last_passed_gate:** go build ./... | 2026-09-02T23:59:54Z | 4706340
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** golangci-lint run | 2026-09-03T00:06:28Z | 4f88a69
 **entry_args:** 10
 
 ## Next action
@@ -59,21 +59,26 @@ _Updated: 2026-09-03 02:44_
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED — terminal-tree, runs after Step 12 |
-| AC4 | NOT_TESTED — terminal-tree, runs after Step 12 |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED — CI *Harness guards* |
-| AC8 | NOT_TESTED — CI *Harness guards* |
-| AC9 | NOT_TESTED |
-| AC10 | NOT_TESTED |
-| AC11 | NOT_TESTED |
-| AC12 | NOT_TESTED — orchestrator-side at Step 9 |
-| AC13 | NOT_TESTED |
+| # | Criterion | Test / Verification | Status |
+|---|-----------|---------------------|--------|
+| AC1 | new file exists, old gone, `name:` matches basename | `git ls-files .claude/agents/` + `head -3` → `name: design-writer` | PASS |
+| AC2 | recorded as a rename, not delete+add | `git diff -M --summary f00871d...HEAD` → `rename … (98%)` | PASS |
+| AC3 | no `.claude/agents/design.md` literal | grep over 109 tracked paths, run's own artefacts pruned | PASS on LIVE — re-run on the terminal tree after Step 12 |
+| AC4 | no `subagent_type="design"` literal | same 109-path sweep | PASS on LIVE — re-run on the terminal tree after Step 12 |
+| AC5 | every live in-class site renamed; OUT-of-class untouched | six in-class shape greps → 0 files; three residual `\`design\`` hits adjudicated individually | PASS |
+| AC6 | `design-writer` in both inventory pages | `grep -n design-writer ai-docs/{claude-tools-hierarchy,propagation-groups}.md` | PASS |
+| AC7 | every relative markdown link resolves | the CI *Harness guards* python3 check, run verbatim locally, after the last edit | PASS |
+| AC8 | citation invariant + its regression suite | `check-citations.sh` → `PASS`; `test-check-citations.sh`, `test-append-task-run.sh`, `test-piped-gate-guard.sh` → all green | PASS |
+| AC9 | exactly one severity rule, `major`, any axis | `grep -niE 'cross-axis\|dispatch time\|not automatically\|minor\|serious case'` scoped to §  Checklist O → one hit, the instrument-coverage clause AC11 requires | PASS |
+| AC10 | no dispatch-ambiguity justification | same scoped sweep → no `dispatch time` hit; intro states the reader/model ground | PASS |
+| AC11 | four sites match their disposition rows | `:152` rewritten, `:174` keeps all three procedural claims and loses both severity presuppositions, `:184` intact, `:186` deleted | PASS |
+| AC12 | Checklist O re-run, embedded list non-empty | 26 project names vs 31 embedded; `grep -Fxf` intersection empty; `design-writer` unmatched; project no longer defines `design` | PASS |
+| AC13 | no Go / SQL / docs file touched | `git diff --name-only main...HEAD` filtered | PASS |
+
+Gates: `go build` GREEN · `go vet` GREEN · `go test ./...` GREEN · `golangci-lint fmt -d` no diff · `golangci-lint run` 0 issues. `shellcheck` / `actionlint` / `go mod tidy` N/A — no `.sh`, `.yml` or module change. Panic-index N/A (no Go). Domain-invariant sweep N/A (no ledger/scheduler/Telegram code).
+
+- **Step 9**: AC7 and AC8 ran locally and passed — the design predicted both were unreachable without a permission grant and routed them to CI. The grant was never needed; local green is the stronger evidence and CI still re-checks on the PR.
+- **Step 9**: KD-21 in `ai-docs/key-decisions.md` carried the falsified session-state claim verbatim from the spec; corrected in place to say the registry refreshed mid-session. `key-decisions.md` is neither spec nor design, so this was an ordinary edit, not an amendment.
 
 ## Review register
 
