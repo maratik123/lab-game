@@ -8,7 +8,7 @@ _Updated: 2026-09-03 02:44_
 **Last build:** PASS
 **Issue:** #10
 **Spec:** ai-docs/plans/2026-09-03-rename-design-subagent.spec.md
-**current_step:** Step 8 — subtask 8 of 8 complete (Group A done)
+**current_step:** Step 8 — Group A complete, orchestrator validation done
 **last_passed_gate:** go build ./... | 2026-09-02T23:59:54Z | 4706340
 **entry_args:** 10
 
@@ -54,6 +54,8 @@ _Updated: 2026-09-03 02:44_
 - `ls` and `comm` are granted in neither `.claude/settings.json` `permissions.allow` nor `/task`'s `allowed-tools`. `git`, `grep`, `awk` and `jq` are. Use `git ls-files` for existence checks and `grep -Fxf` for intersections.
 - The token `design` has five referents in this tree; only the Subagent renames. A bare grep count is not the boundary — the spec's § Scope membership tables are.
 - `check-citations.sh` checks `#N`/date namespaces only and excludes `ai-docs/plans/**`, so the deliberately-stale `target:` paths at `ai-docs/harness-gaps.md:110,117` cannot fail AC8. They are left alone on purpose.
+
+- **The "registration is session state" constraint is FALSE in this harness — measured, not inferred.** The spec's § Technical constraints and the design's R6 both assert that the new `subagent_type` becomes dispatchable only in a session started after the rename lands, and that the old name keeps resolving for the rest of the current one. After subtask 1's commit (`cd8869c`) this session's agent registry updated live: `design-writer` became available and `design` was removed, with no restart. Both halves of the claim are false. Nothing in the implementation depends on it — the design deliberately built no verification step on dispatching the new name — so it is a conservative falsehood, not a broken deliverable. It nonetheless ships in the PR inside two artefacts. Step 10 self-review rules on whether it warrants a spec/design amendment.
 
 ## AC Status
 
