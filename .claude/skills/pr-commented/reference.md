@@ -19,7 +19,7 @@ Fires BEFORE Step 5 when the round's diff touches `ai-docs/plans/*.spec.md` (or 
 
 **When spec-amending, run this sub-flow instead of going straight to Step 5:**
 
-1. Re-run **`/task` Step 6 (`design` Subagent)** against the amended spec — spawn the `design` Subagent with `(amended spec, current design)` and prompt: *"the spec was amended during `/pr-commented` Round M; verify the decomposition + ACs still hold against the new spec, and update the design accordingly. The implementation has already landed in commit `<round-M-fix-SHA>`."* Expected output: a refreshed design doc (`ai-docs/plans/*.design.md` if extant, otherwise an inline analysis).
+1. Re-run **`/task` Step 6 (`design-writer` Subagent)** against the amended spec — spawn the `design-writer` Subagent with `(amended spec, current design)` and prompt: *"the spec was amended during `/pr-commented` Round M; verify the decomposition + ACs still hold against the new spec, and update the design accordingly. The implementation has already landed in commit `<round-M-fix-SHA>`."* Expected output: a refreshed design doc (`ai-docs/plans/*.design.md` if extant, otherwise an inline analysis).
 2. Re-run **`/task` Step 7 (`design-review` Subagent)** with `(amended spec, refreshed design, round-M-fix diff)`. Expected verdict: GO, NEEDS-CHANGES, or REQUEST-USER. On NEEDS-CHANGES → loop back to sub-flow Step 1 (cap 3 design rounds total, matching `/task` Step 7's cap). On REQUEST-USER → surface and stop.
 3. Only on a GO verdict from design-review: resume `/pr-commented` Step 5 (self-review). `self-review` operates on a code-vs-spec diff; it cannot validate that the spec → design → implementation chain still holds after a spec amendment — that's what the design-review re-entry does.
 

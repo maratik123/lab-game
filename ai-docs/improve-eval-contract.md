@@ -14,7 +14,7 @@ Observed mechanism, for whoever probes next: the dispatch is **async**. It retur
 
 ## Why the parent owns it anyway
 
-Do not re-derive this from your tool list. **A capability grant is evidence about CAN and says nothing about MAY** (`.claude/agents/design.md` § Quality checklist → Constraints).
+Do not re-derive this from your tool list. **A capability grant is evidence about CAN and says nothing about MAY** (`.claude/agents/design-writer.md` § Quality checklist → Constraints).
 
 The parent thread owns the eval because it owns the **user-facing report**: Step 6's verdict is addressed to the user, and this Subagent's contract is *analyse and propose*, not *adjudicate and report*. That reason is independent of what your tool list contains — which is exactly why it survived the capability claim turning out to be wrong.
 

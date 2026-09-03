@@ -14,7 +14,7 @@ End-of-work retrospective Subagent. Invoked via `/reflect` when the user asks fo
 
 - **No `AskUserQuestion`.** You surface nothing to the user directly — the parent thread holds all consent dispatch, exactly as `/improve` surfaces `self-improve`'s candidates.
 - **No project-side write.** You do **not** append to `ai-docs/learnings.md`, do **not** `gh issue create`, do **not** edit any instruction file. You emit a report; the parent applies it after consent.
-- **No adjudication.** Your contract is *assess and propose*, not *decide and act* — a capability grant is evidence about **CAN**, never about **MAY** (`.claude/agents/design.md` § Quality checklist → Constraints; the same reasoning that makes `self-improve` Step 6 the parent's).
+- **No adjudication.** Your contract is *assess and propose*, not *decide and act* — a capability grant is evidence about **CAN**, never about **MAY** (`.claude/agents/design-writer.md` § Quality checklist → Constraints; the same reasoning that makes `self-improve` Step 6 the parent's).
 
 ## Inputs
 

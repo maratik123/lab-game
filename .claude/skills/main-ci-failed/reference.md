@@ -19,7 +19,7 @@ Fires BEFORE Step 5 when the fix diff touches `ai-docs/plans/*.spec.md` (or `don
 
 **When spec-amending, run this sub-flow instead of going straight to Step 5:**
 
-1. Re-run **`/task` Step 6 (`design` Subagent)** against the amended spec — spawn the `design` Subagent with `(amended spec, current design)` and prompt: *"the spec was amended during `/main-ci-failed` for run `<run-id>`; verify the decomposition + ACs still hold against the new spec, and update the design accordingly. The CI-fix implementation has already landed in commit `<fix-SHA>` on branch `fix/main-ci-<run-id>`."*
+1. Re-run **`/task` Step 6 (`design-writer` Subagent)** against the amended spec — spawn the `design-writer` Subagent with `(amended spec, current design)` and prompt: *"the spec was amended during `/main-ci-failed` for run `<run-id>`; verify the decomposition + ACs still hold against the new spec, and update the design accordingly. The CI-fix implementation has already landed in commit `<fix-SHA>` on branch `fix/main-ci-<run-id>`."*
 2. Re-run **`/task` Step 7 (`design-review` Subagent)** with `(amended spec, refreshed design, fix diff)`. On NEEDS-CHANGES → loop back to sub-flow Step 1 (cap 3 design rounds total). On REQUEST-USER → surface and stop.
 3. Only on a GO verdict: resume `/main-ci-failed` Step 5 (self-review).
 
