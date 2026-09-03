@@ -8,13 +8,13 @@ _Updated: 2026-09-03 02:44_
 **Last build:** PASS
 **Issue:** #10
 **Spec:** ai-docs/plans/2026-09-03-rename-design-subagent.spec.md
-**current_step:** Step 9.5 — docs updated
-**last_passed_gate:** golangci-lint run | 2026-09-03T00:06:28Z | 4f88a69
+**current_step:** Step 11 — review fixes complete (Round 1)
+**last_passed_gate:** golangci-lint run | 2026-09-03T00:17:11Z | a38d0fa
 **entry_args:** 10
 
 ## Next action
 
-**Do this immediately:** Group A is complete. Resume `/task` at Step 9 (verify) — AC3/AC4 must be re-run on the terminal tree per § Risks R4, and AC12's Checklist O re-run is orchestrator-side.
+**Do this immediately:** re-run Step 10 self-review (Round 2). **Step 12 carries a binding extra action:** after `gh pr create` returns the number, rewrite `ai-docs/context-status.md`'s heading `(PR #TBD-at-Step-12, 2026-09-03)` to the real `(PR #N, 2026-09-03)`, commit and push — no existing sub-step does this, and the placeholder is durable otherwise.
 
 ## Subtasks
 
@@ -63,7 +63,7 @@ _Updated: 2026-09-03 02:44_
 |---|-----------|---------------------|--------|
 | AC1 | new file exists, old gone, `name:` matches basename | `git ls-files .claude/agents/` + `head -3` → `name: design-writer` | PASS |
 | AC2 | recorded as a rename, not delete+add | `git diff -M --summary f00871d...HEAD` → `rename … (98%)` | PASS |
-| AC3 | no `.claude/agents/design.md` literal | grep over 109 tracked paths, run's own artefacts pruned | PASS on LIVE — re-run on the terminal tree after Step 12 |
+| AC3 | no `.claude/agents/design.md` literal | grep over the full tracked tree, run's own artefacts pruned — re-measured after the Round-1 fix to `context-status.md` | PASS on LIVE — re-run on the terminal tree after Step 12 |
 | AC4 | no `subagent_type="design"` literal | same 109-path sweep | PASS on LIVE — re-run on the terminal tree after Step 12 |
 | AC5 | every live in-class site renamed; OUT-of-class untouched | six in-class shape greps → 0 files; three residual `\`design\`` hits adjudicated individually | PASS |
 | AC6 | `design-writer` in both inventory pages | `grep -n design-writer ai-docs/{claude-tools-hierarchy,propagation-groups}.md` | PASS |
@@ -82,6 +82,8 @@ Gates: `go build` GREEN · `go vet` GREEN · `go test ./...` GREEN · `golangci-
 
 - **Step 9.5**: `context.md` deliberately unchanged — its Harness bullet ("being ported from graphite-gp") is not contradicted by a rename, and no open question was resolved. `AGENTS.md` and `CLAUDE.md` are the only repo-root docs and neither names the Subagent. The removal sweep for `design` over both context pages returned only the document, the phase, and ordinary English.
 
+- **Step 11 round 1**: self-review REJECT, two findings, both mine and both in the Step-9.5 doc entry. #1 was a real AC3 failure — my own `a38d0fa` spelled the forbidden literal and falsified an AC3 PASS I had recorded at `f963d02`, the record-then-edit shape. Not an amendment: reworded, as subtask 6 already did for the Checklist O worked example.
+
 ## Review register
 
 | id | raised | severity | status | verifying command |
@@ -96,3 +98,22 @@ Gates: `go build` GREEN · `go vet` GREEN · `go test ./...` GREEN · `golangci-
 | D2-3 | design round 2 | minor | fixed@f00871d — out-of-remit prose positions removed, not re-measured | `grep -c 'the mark is at or above' ai-docs/plans/2026-09-03-rename-design-subagent.design.md` |
 | D2-4 | design round 2 | minor | fixed@f00871d — `#step-6` tag narrowed to the anchor form | `grep -n 'step-6' ai-docs/plans/2026-09-03-rename-design-subagent.design.md` |
 | D2-5 | design round 2 | note | fixed@f00871d — decomposition rows 2 and 4 widened past the recipe | `grep -n 'do not stop at the recipe' ai-docs/plans/2026-09-03-rename-design-subagent.design.md` |
+| SR1-1 | self-review round 1 | major | ⬜ Open — AC3 literal survives in `ai-docs/context-status.md:56` | `grep -n -F '.claude/agents/design.md' $(git ls-files \| grep -vE '^(docs/\|ai-docs/learnings\.md\|ai-docs/harness-gaps\.md\|ai-docs/plans/\|ai-docs/metrics/\|ai-docs/deferred/)')` → must be empty |
+| SR1-2 | self-review round 1 | minor | ⬜ Open — `PR #TBD-at-Step-12` placeholder ships in a durable doc | `grep -n 'TBD-at-Step-12' ai-docs/context-status.md` → must be empty |
+| SR1-A1 | self-review round 1 | — | accepted@1 — `context-status.md:54,57`'s `` `design` `` tokens name the *pre-rename* agent inside an append-only implementation log, the same class as `key-decisions.md:57` ("declared `name: design`") and `ai-audit/reference.md:154`'s worked example, both of which the design mandates. AC5-compatible; not a live claim that the Subagent is named `design`. | `sed -n '54p;57p' ai-docs/context-status.md` |
+| SR1-A2 | self-review round 1 | — | accepted@1 — the falsified "registration is session state" premise (spec § Technical constraints, design § Risks R6) is **not** a Spec/Design Amendment trigger: both artefacts become `ai-docs/plans/done/**` at Step 12, which `AGENTS.md` § *Propagation Rule* step 4 names a history surface left untouched, and every LIVE surface already carries the corrected fact. | `grep -n 'refreshed mid-session' ai-docs/key-decisions.md` → non-empty |
+| SR1-A3 | self-review round 1 | — | accepted@1 — design-review round 2's two *recommendations* carry no register rows (only D2-1…D2-5, the five notes). The verdict text lives in no durable artefact, so their closure cannot be re-derived; the § Decisions log records them folded in at `f00871d`, before implementation opened at `cd8869c`. Record-keeping gap, below the severity floor. | `grep -c '^| D2-' ai-docs/plans/2026-09-03-rename-design-subagent.progress.md` |
+| SR1-A4 | self-review round 1 | — | accepted@1 — the `harness-gaps.md` append was examined against `AGENTS.md` § *Build & Test*'s instruction-file AXIOM and is not a violation: a harness diagnosis addressed to `/improve` is none of the four artefact kinds that AXIOM enumerates, it is the surface Boundary rule 2's carve-out designates for exactly this genre, and it measures no file. | `git log --oneline main...HEAD -- ai-docs/harness-gaps.md` |
+
+## Self-Review (Round 1)
+
+**Verdict:** REJECT
+
+**What was checked.** Every AC-verification command in the design's § Test Design, re-run against the shipped tree at `a38d0fa` (not against the drafting-time state): AC1 (`git ls-files .claude/agents/` + the Checklist O `awk` name extractor) PASS · AC2 (`git diff -M --summary main...HEAD -- .claude/agents/` → `rename .claude/agents/{design.md => design-writer.md} (98%)`) PASS · **AC3 FAIL** · AC4 (`grep -n -F 'subagent_type="design"'` over LIVE → empty; `subagent_type="design-review"` still present at `task/reference.md:23,59`) PASS · AC5 (six-shape sweep + a co-occurrence sweep over the 106-path LIVE set; every residual `design` hit re-read against the spec's IN/OUT tables) PASS · AC6 PASS · AC7 (the CI *Harness guards* `python3` relative-link program, run verbatim, exit 0) PASS · AC8 (`check-citations.sh` → `PASS: every citation resolves for its reader.`; `test-check-citations.sh`, `test-append-task-run.sh`, `test-piped-gate-guard.sh` all green) PASS · AC9/AC10/AC11 (section-scoped `grep -niE 'cross-axis|dispatch time|dispatches through different tools|not automatically|minor'` → exactly one hit, `:174`'s instrument-coverage clause; `:184` byte-identical to `main`'s; the `:186` "Cross-axis clashes are reportable but not automatically defects" paragraph absent; `grep -nE 'serious case|the one the table rates'` empty) PASS · AC12 (26 project names via the checklist's own extractor; `design` no longer among them; `design-writer` absent from this session's embedded agent-type and skill listings, which are non-empty) PASS · AC13 (`git diff --name-only main...HEAD` matches no `cmd/`, `internal/`, `docs/`, `*.go`, `*.sql`, `go.mod`, `go.sum`) PASS.
+
+Also checked: the design-review round-2 GO-with-notes round trip (`f00871d` precedes the first implementation commit `cd8869c`); every Propagation-Rule sync group this diff triggers — Task/Design, Interview, Improve, Reflect, CI, `pr-commented`↔`pr-ci-failed`, Review, Audit — with each unedited sibling re-read and confirmed OUT of class (`reflect/SKILL.md:16`, `dependabot-pr/reference.md:142`, `improve/SKILL.md:17`, `domain-invariants.md`, `review-findings.md`, `project-review/SKILL.md`); the Audit-group post-edit re-grep the design's subtask 6 mandates (one hit, `ai-audit/SKILL.md:116`, still true and its anchor still resolving); Boundary rule 2 on the `learnings.md` and `harness-gaps.md` appends (`9a38af1` and `08271a3` touch no instruction file); the renamed file's own residual tokens; and the gates — `go build` GREEN, `go vet` GREEN, `golangci-lint run` **0 issues**, `golangci-lint fmt -d` clean. §§ 3, 4, 4a of the checklist are N/A: no `*.go` in the diff, no panic site, no ledger/scheduler/Telegram/determinism surface.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | ai-docs/context-status.md:56 | major | **AC3 fails on the shipped tree.** The Step-9.5 entry added by `a38d0fa` spells the forbidden literal: `` `.claude/agents/design.md` renamed to `.claude/agents/design-writer.md` ``. `ai-docs/context-status.md` is inside AC3's `ai-docs/**` glob and is **not** one of the history surfaces the spec's § Out of scope enumerates (`learnings.md`, `harness-gaps.md`, `plans/done/**`, `metrics/task-runs.jsonl`, `deferred/_inbox.jsonl`, the `.state.md`), so no exclusion reaches it — and unlike the spec/design/`.state.md`, it never moves at Step 12. Failing command and actual output: `grep -n -F '.claude/agents/design.md' $LIVE` → `ai-docs/context-status.md:56:- **What landed:** \`.claude/agents/design.md\` renamed to …`. Consequence: the § AC Status row recording `AC3 \| PASS on LIVE` is a claim measured at `f963d02` and falsified by `a38d0fa` — the record-then-edit shape `AGENTS.md` § *Communication* names; it must be re-measured after the fix. **Not** an Amendment trigger: a resolution exists that touches no `*.spec.md` / `*.design.md` — reword the sentence so it does not spell the old path, exactly as this run already did for the Checklist O worked example (§ Decisions log, "Step 8 subtask 6"), which was rewritten to say "this project's design Subagent" for this same reason. | ✅ Fixed — reworded to "the design Subagent's definition file"; AC3 re-measured over the full tracked tree AFTER the edit → empty |
+| 2 | ai-docs/context-status.md:54 | minor | The entry heading ships the literal placeholder `(PR #TBD-at-Step-12, 2026-09-03)` where the file's own template calls for `<PR #N>` and the preceding entry carries `(PR #6, 2026-08-30)`. No Step-12 sub-step backfills it: sub-step 7 stages `context-status.md` and sub-step 8 commits, both **before** `gh pr create` at sub-step 10, and sub-step 12 rewrites only the progress file's `current_step`. Left as-is the placeholder is durable. | ✅ Fixed — the gap was the missing action, so Step 12 gains a binding backfill sub-step (see § Next action): after `gh pr create`, rewrite the heading's `#TBD-at-Step-12` to the real number, commit, push |
