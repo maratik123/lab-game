@@ -8,7 +8,7 @@ _Updated: 2026-09-03 02:44_
 **Last build:** PASS
 **Issue:** #10
 **Spec:** ai-docs/plans/2026-09-03-rename-design-subagent.spec.md
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** golangci-lint run | 2026-09-03T00:06:28Z | 4f88a69
 **entry_args:** 10
 
@@ -79,6 +79,8 @@ Gates: `go build` GREEN · `go vet` GREEN · `go test ./...` GREEN · `golangci-
 
 - **Step 9**: AC7 and AC8 ran locally and passed — the design predicted both were unreachable without a permission grant and routed them to CI. The grant was never needed; local green is the stronger evidence and CI still re-checks on the PR.
 - **Step 9**: KD-21 in `ai-docs/key-decisions.md` carried the falsified session-state claim verbatim from the spec; corrected in place to say the registry refreshed mid-session. `key-decisions.md` is neither spec nor design, so this was an ordinary edit, not an amendment.
+
+- **Step 9.5**: `context.md` deliberately unchanged — its Harness bullet ("being ported from graphite-gp") is not contradicted by a rename, and no open question was resolved. `AGENTS.md` and `CLAUDE.md` are the only repo-root docs and neither names the Subagent. The removal sweep for `design` over both context pages returned only the document, the phase, and ordinary English.
 
 ## Review register
 
