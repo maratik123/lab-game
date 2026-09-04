@@ -22,7 +22,11 @@ in one implementation of telego's own `telegoapi.Caller` interface. telego's `Bo
 the URL and the request body from its generated types and then hands both to that one
 method; everything this task owns — the retry loop, the `retry_after` wait, both
 limiters, the outbound gate seam #22 needs, and the per-call observation — happens inside
-it. Nothing above it can route around it, and nothing below it exists.
+it. **Across the generated-method surface — every `Bot.SendMessage`-shaped method, which is
+the whole Bot API — nothing routes around it, and nothing below it exists.** That is the
+guarantee at the strength it actually holds; it is *not* unconditional, because telego's
+exported options can be reapplied to a bot from outside. D2 measures that escape and
+specifies the guard that closes it.
 
 That choice falls out of reading the pinned library rather than assuming it. telego's
 `Caller` is a single method taking the request URL and the marshalled body
@@ -295,7 +299,10 @@ silence.
 telego composes the URL as base + `/bot<token>/<method>`
 [measured telego@v1.11.2:bot.go · `sed -n '/func (b \*Bot) constructAndCallRequest/,/^}/p' bot.go` →
 `url = b.apiURL + botPathPrefix + b.token + "/" + methodName`], so `path.Base` of the parsed
-URL path is the method name — observed live in the probe (`method: sendMessage`).
+URL path is the method name — observed live in the probe (`method: sendMessage`). The same
+function has a `useTestServerPath` branch that inserts a `/test/` segment before the method,
+and `path.Base` still yields the method name from it, so the rule needs no special case for
+the test-server path.
 
 The chat is read from the request body by decoding **only** the `chat_id` field as a
 `json.RawMessage` — also observed live (`server chat_id token: -1001234567890`). Every
@@ -483,7 +490,21 @@ and `u ∈ [0,1)` comes from an injectable source.
 Full jitter (`U(0, d_i)`) was rejected precisely because it can shrink a successive delay,
 which would make AC5 assert something false about the code.
 
-The source is `Options.Jitter func() float64`, defaulting to `math/rand/v2`'s `Float64`. It
+The source is `Options.Jitter func() float64`, defaulting to `math/rand/v2`'s `Float64`.
+
+**That default needs a lint directive, and naming it here is what keeps `make lint` green on
+the first run.** `gosec`'s G404 flags `math/rand` in non-test code, and this repo's `_test.go`
+gosec exclusion does not reach a package-level default living in production source
+[measured 31736b4:.golangci.yml + golangci-lint 2.13.1 · a scratch package returning
+`rand.Float64()` from a non-test file, `golangci-lint run --config /home/syt/lab-game/.golangci.yml ./...` →
+`G404: Use of weak random number generator (math/rand or math/rand/v2 instead of crypto/rand) (gosec)`].
+The default therefore carries
+`//nolint:gosec // G404: jitter is a backoff spread, not a security decision` — verified to
+silence it while satisfying `nolintlint`'s require-specific and require-explanation settings
+[measured 31736b4:.golangci.yml + golangci-lint 2.13.1 · the same scratch package with a second
+function carrying that exact directive → the run reports the bare call only, `1 issues`, and
+no `nolintlint` finding]. D13 pre-empts the analogous G101 for `tgtest`'s fake token; this is
+the same courtesy for D6's own default. It
 is not a determinism-rule surface — that rule is scoped to generation, combat and trail
 replay [measured 31736b4:AGENTS.md:98 · `sed -n '98p' AGENTS.md` → "world generation,
 combat, and any PvP-trail replay are pure functions of `(seed, input)`"] — but injecting it
@@ -949,14 +970,15 @@ draft asserted roughly double it by counting waits as attempts. Each is an opera
 tuning value an operator may change, which is the entire point of the key class.
 
 **`LAB_GAME_TG_ATTEMPT_TIMEOUT` is an addition beyond the spec's literal criteria, and the
-design says so.** Nothing in the ACs requires it: every telego method takes a `ctx`, so a
+owner has confirmed it explicitly — it is a settled decision, not an unasked addition a later
+reader should reopen.** Nothing in the ACs requires it: every telego method takes a `ctx`, so a
 caller *can* bound a call. But a caller that passes `context.Background()` against a wedged
 self-hosted instance blocks for as long as the server holds the connection, and D5's
 classifier only ever sees an outcome when one arrives — which is precisely the incident
 `docs/DESIGN.md` §12.2 records as the motivation for running our own instance ("a specific
 bot times out for hours with no 429 and no error"). The timeout bounds one attempt, leaving
-the caller's context as the bound on the whole call. Recorded in § Open questions so the owner
-can drop it in one line if they would rather the caller always own it.
+the caller's context as the bound on the whole call. Put to the owner and **kept**: the
+§ Open questions entry records the answer rather than the question.
 
 **What this class does to the configuration layer, checked claim by claim.**
 
@@ -1136,6 +1158,12 @@ Behaviours it must be able to produce on demand [derived → AC19]: a success; a
 fails); a **transport-level failure after the request was written** (the connection closes
 without a response — the ambiguous case AC6 needs); and a delayed response.
 
+**`tgtest.go` carries a package comment**, as `internal/testdb` does: it is non-test Go, and
+`revive`'s `package-comments` rule is enabled here, so a missing one is a lint round rather
+than a style preference
+[measured 31736b4:.golangci.yml · `grep -n -A3 'revive:' .golangci.yml` → `rules:` /
+`- name: exported` / `- name: package-comments`].
+
 It exports a syntactically valid fake token, because `telego.NewBot` rejects anything whose
 shape the package's token regexp refuses — a digit run, a colon, then a fixed-width run of
 word characters and hyphens
@@ -1227,8 +1255,8 @@ would be dead code in the binary and an untested wiring path at once.
 | 1 | `internal/config`: the optional-with-default transport key class — the value types of D10, the key names, the compiled-in defaults, the `<count>/<duration>`\|`off` grammar and its validation, a dedicated `loadTransport` reader joined into `Load` with `EnvKeys()` extended and **`envKeys()` left exactly as it is** (D10), the falsified doc comments in `env.go` and `config.go` rewritten (AC25), **`doc.go`'s package comment extended — its no-fallback clause stays untouched and correct, but its *enumeration* of what the environment supplies becomes incomplete once the transport keys land, so it is in AC29's set and is decided here rather than left to the implementor**, **and `.env.example` carrying each new key with its default as a non-empty value** in the file's existing commented style. Tests first: absent → default, present → parsed, malformed → `*KeyError` naming the key, the three-way key-set equality, and the previously declared variables still required. | `internal/config/transport.go`, `internal/config/transport_test.go`, `internal/config/env.go`, `internal/config/config.go`, `internal/config/doc.go`, `.env.example` | — |
 | 2 | `internal/tgtest`: the in-process fake Bot API server of D13 — `net.Pipe` dialer, the `.invalid` base URL, the scripted behaviours AC19 lists, the fake token constant, and its own tests. | `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` | — |
 | 3 | `internal/tg` foundations **and the telego dependency**: package comment, `Error`, `Observation`/`Observer`, `MethodClass` + the D4 classifier, `Gate`/`Call`/`ChatRef`, `Options` + `New` + `API`. `go get github.com/mymmrac/telego@<pinned>` runs in this subtask, with the importing file, so `make tidy-check` stays green (D1). Tests: the classifier over the pinned version's method names, option validation, error rendering and unwrapping. | `go.mod`, `go.sum`, `internal/tg/doc.go`, `internal/tg/errors.go`, `internal/tg/observe.go`, `internal/tg/class.go`, `internal/tg/client.go`, `internal/tg/class_test.go`, `internal/tg/client_test.go` | 1 |
-| 4 | `internal/tg` limiter — **one schedule type owning every window, no composed legs and no new module** (D9): the window set; the invariant `grant[j+c] - grant[j] ≥ per` asserted after every insertion; `earliest(candidate)` as a pure read over the window-expiry instants; `commit` as a sorted insert; **time-based retention** (never count-based); the **ordered** kind for a chat key and the **unordered** kind for the class-global key; the class-global and per-`(chat, class)` registry under **one mutex**; the decide-then-commit acquire (iterate `t` to a fixed point, deadline refusal **before** any mutation, commit to every schedule at that same `t`, bounded passes with exhaustion treated as a defect); the pacing-vs-quota mapping with `ceil` rounding. **Plus the minimal caller its end-to-end scenarios require** — the `encoding/json` request constructor, and a `Caller.Call` that derives the method name and `ChatRef` (D4), calls the gate, acquires from the limiter, waits, performs **exactly one** attempt and decodes the envelope. **No retry loop, no backoff, no `retry_after`, no observation — those are subtask 5, which extends the same file.** Tests, each written **red-first against the named broken variant** (§ Test Design): per-class global admission, cross-chat non-blocking **with the global class bounded**, per-chat isolation, the undecodable-body branch, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, burst-then-cap shape, **occupancy over every window of each configured `per`, on the chat schedules and on the class-global schedule at its shipped default**, **the global bound holding on emissions when a chat window pushes**, **refusals leaving the schedule unchanged**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/constructor.go`, `internal/tg/caller.go`, `internal/tg/limit_test.go`, `internal/tg/schedule_test.go` | 2, 3 |
-| 5 | `internal/tg` caller — **extends subtask 4's `Call`, it does not create it**: the attempt loop with the limiter acquire moved inside it (D2's per-attempt charging), the `httptrace` write-evidence classifier, equal-jitter backoff, exact `retry_after` honouring with the deadline bound and the bare-429 fallback, the D8 typed error with its token sanitisation, and the single observation. Tests: no-shortened `retry_after`, strictly positive and growing delays, the ambiguous case making exactly one attempt, each retryable case (including a 429 with and without `retry_after`), give-up field by field, deadline refusal, cancellation at every waiting site, the attempt cap, the token absent from a rendered transport error, and the observation for a success, a retried success and a give-up. | `internal/tg/caller.go`, `internal/tg/retry.go`, `internal/tg/caller_test.go`, `internal/tg/retry_test.go` | 4 |
+| 4 | `internal/tg` limiter — **one schedule type owning every window, no composed legs and no new module** (D9): the window set; the invariant `grant[j+c] - grant[j] ≥ per` asserted after every insertion; `earliest(candidate)` as a pure read over the window-expiry instants; `commit` as a sorted insert; **time-based retention** (never count-based); the **ordered** kind for a chat key and the **unordered** kind for the class-global key; the class-global and per-`(chat, class)` registry under **one mutex**; the decide-then-commit acquire (iterate `t` to a fixed point, deadline refusal **before** any mutation, commit to every schedule at that same `t`, bounded passes with exhaustion treated as a defect); the pacing-vs-quota mapping with `ceil` rounding. **Plus the minimal caller its end-to-end scenarios require** — the `encoding/json` request constructor, and a `Caller.Call` that derives the method name and `ChatRef` (D4), calls the gate, acquires from the limiter, waits, performs **exactly one** attempt and decodes the envelope. **No retry loop, no backoff, no `retry_after`, no observation — those are subtask 5, which extends the same file.** `client.go` is edited here too: `New` wires `telego.WithAPICaller` and `telego.WithRequestConstructor` to this subtask's implementations and constructs the limiter registry from `config.Transport`, which is what makes an end-to-end scenario through `Client.API()` reach the limiter at all. Tests, each written **red-first against the named broken variant** (§ Test Design): per-class global admission, cross-chat non-blocking **with the global class bounded**, per-chat isolation, the undecodable-body branch, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, burst-then-cap shape, **occupancy over every window of each configured `per`, on the chat schedules and on the class-global schedule at its shipped default**, **the global bound holding on emissions when a chat window pushes**, **refusals leaving the schedule unchanged**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/constructor.go`, `internal/tg/caller.go`, `internal/tg/client.go`, `internal/tg/limit_test.go`, `internal/tg/schedule_test.go` | 2, 3 |
+| 5 | `internal/tg` caller — **extends subtask 4's `Call`, it does not create it**: the attempt loop with the limiter acquire moved inside it (D2's per-attempt charging), the `httptrace` write-evidence classifier, equal-jitter backoff **with its default jitter source carrying the `//nolint:gosec // G404: …` directive D6 names**, exact `retry_after` honouring with the deadline bound and the bare-429 fallback, the D8 typed error with its token sanitisation, and the single observation. Tests: no-shortened `retry_after`, strictly positive and growing delays, the ambiguous case making exactly one attempt, each retryable case (including a 429 with and without `retry_after`), give-up field by field, deadline refusal, cancellation at every waiting site, the attempt cap, the token absent from a rendered transport error, and the observation for a success, a retried success and a give-up. | `internal/tg/caller.go`, `internal/tg/retry.go`, `internal/tg/caller_test.go`, `internal/tg/retry_test.go` | 4 |
 | 6 | `internal/tg` package-level guard tests: the import scan over `cmd/` and `internal/` non-test files (no fasthttp, no go-json, no metrics registry), the token-absence sweep (**whose known surface includes telego's own `Token()` and `FileDownloadURL` — D4's accepted in-module exposure, so a hit there is not a leak**), **the literal scan discharging AC21's second clause (no retry or rate-limit literal at a call site in `internal/tg` — every such value arrives from `config.Transport`)**, the seam tests (a refusing gate blocks a call through the accessor, **and no non-test file outside `internal/tg` names `telego.NewBot` or a `telego.With*` option** — D2), the base-URL-appears-only-in-the-constructor source check, and the end-to-end call against `tgtest` built from a `config.Load`-produced `BotAPIBaseURL`. | `internal/tg/guards_test.go` | 5 |
 | 7 | `ai-docs/key-decisions.md`: rewrite KD-2 for the shipped reality (pinned version, the caller/constructor swap, the `stdjson` residue and why it was not taken, the toolchain ceiling), and add the decisions this task settles — **the project-owned window schedule: one mechanism holding every window on a key, why no maintained package fits (the rejected-alternatives table of D9), and the two properties it deliberately does *not* provide (grant reclamation, and per-key locking)**, `testing/synctest` in place of a clock abstraction, and the optional-with-default key class with its boundary. | `ai-docs/key-decisions.md` | 6 |
 
@@ -1662,23 +1690,29 @@ the transport renders no combat log, no narrative and no generated maze.
 
 ## Open questions
 
-- **Should the module adopt the `stdjson` build tag?** D3 measured that it works and that it
-  removes `grbit/go-json` from the build graph, and that the honest cost is threading
-  `-tags stdjson` through the Makefile, `.golangci.yml`, `AGENTS.md` § Build & Test and every
-  skill that spells a bare `go` gate — a harness-wide change this transport task does not
-  claim. If the owner wants it, it is one focused PR whose whole content is that propagation.
-  Until then the residue is telego decoding its own generated result types with a drop-in
-  `encoding/json` reimplementation.
-- **Should the local toolchain move to ≥ Go 1.26.7?** It is the only thing between this
-  project and telego `v1.12.x`. Nothing here blocks on the answer; `v1.11.2` carries every
-  mechanism this design uses.
-- **Should `docs/DESIGN.md` §11 gain the per-chat per-second figure?** The spec raised it from
-  an unverified report; it is now verified against the official source, with the modality
-  intact — "In a single chat, avoid sending more than one message per second", advisory,
-  alongside the enforced "not be able to send more than 20 messages per minute" in a group.
-  §11 names only the per-minute figure, so it is incomplete rather than wrong. `docs/DESIGN.md`
-  is decisions and this task does not edit it (`AGENTS.md` § Project); the transport expresses
-  both windows either way.
+**Four entries below carry the owner's answer rather than a question.** They are kept here,
+marked `DECIDED`, rather than deleted: each was raised as a question by an earlier draft, and
+a reader who remembers the question needs to find the answer in the same place instead of
+concluding it was dropped. Everything not marked `DECIDED` is genuinely still open.
+
+
+- **The `stdjson` build tag — DECIDED: not now, and not in this PR.** D3 measured that the tag
+  works and that it removes `grbit/go-json` from the build graph, and that the honest cost is
+  threading `-tags stdjson` through the Makefile, `.golangci.yml`, `AGENTS.md` § Build & Test
+  and every skill that spells a bare `go` gate. The owner's disposition is **a separate focused
+  PR later**, whose whole content is that propagation. D3's residue analysis stands unchanged
+  and is not a loose end: the residue is telego decoding its own generated result types with a
+  drop-in `encoding/json` reimplementation, and the propagation is **deliberately deferred to
+  its own PR**, not left undecided.
+- **The local toolchain — DECIDED: stays at Go 1.26.5 with `GOTOOLCHAIN=local`, and telego
+  stays pinned at `v1.11.2`.** D1's measurement of the `v1.12.x` ceiling stands as the reason
+  the pin is where it is; the question is closed rather than deferred, so an implementor who
+  finds `v1.12.x` unreachable is seeing the designed state, not a stale document.
+- **`docs/DESIGN.md` §11 and the per-chat per-second figure — DECIDED: do not touch §11.**
+  The owner declines the edit for now. The transport expresses both windows either way (D9,
+  D10), so nothing here depends on it. Recorded as a **known, accepted incompleteness** in a
+  decisions document this task does not edit (`AGENTS.md` § Project): §11 names the per-minute
+  figure and not the per-second one that D10 verified upstream as published.
 - **Should the observation carry the final round-trip separately from the call's latency?**
   D11 reports the caller-visible total. #23 may want the transport-only number to keep limiter
   waits out of the health latency histogram; that is a per-attempt observation, not a field,
@@ -1698,10 +1732,10 @@ the transport renders no combat log, no narrative and no generated maze.
   multi-component structure that produced three defects. Contention is the thing to measure if
   fan-out ever makes it a question — and any replacement must keep the decide-then-commit rule
   intact, not merely shard the map.
-- **Should `LAB_GAME_TG_ATTEMPT_TIMEOUT` exist at all?** D10 adds it beyond the spec's
-  literal criteria, to bound one attempt against a wedged instance when the caller passed no
-  deadline (`docs/DESIGN.md` §12.2's incident). If the owner would rather every bound come
-  from the caller's context, dropping it is one key, one field and one `.env.example` line.
+- **`LAB_GAME_TG_ATTEMPT_TIMEOUT` — DECIDED: keep it, default `30s`, as designed.** The owner
+  accepts it as an addition beyond the spec's literal criteria, motivated by
+  `docs/DESIGN.md` §12.2's wedged-instance incident. It is no longer an open question and
+  should not be reopened as an unasked addition.
 - **Should the class-global key ever emit in arrival order?** D9 makes it unordered so a
   backlogged chat cannot hold a quiet one behind it, which costs global arrival order — a
   property no acceptance criterion asks for. If a later mechanic ever needs class-wide
