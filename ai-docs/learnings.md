@@ -18,7 +18,7 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **Rule:** When a change is supposed to flip specific behaviour, run the new test against the OLD artefact as well. The set of rows that flip, and only that set, is the evidence that the edit is load-bearing *and* that it touches nothing else. A pass against the new artefact alone is equally consistent with a tautological test.
 **at:** 05418a8
 **Kind:** validation
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-08-31 — process — evidence gathered and then not read is not evidence
 **What happened:** Reconstructing a `genkernel` command line for the user's host, I emitted `--lvm --mdadm` — after having already inspected the live initramfs and seen `usr/lib/udev/{probe-bcache,bcache-register}`, `69-bcache.rules`, and a root filesystem on `/dev/bcache0`, with LVM present nowhere on the machine. The correct flags were `--mdadm --bcache`. The advice would have produced an unbootable system, and the refuting observation was already in my own tool output.
@@ -46,14 +46,14 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **Rule:** A pointer to a canonical source is an instruction to open it, and it outranks the pointing document's own summary of what it says. When one instruction file both restates a procedure and names another as canonical for it, the restatement is the stale copy by default — read the named source before the first irreversible step, not when the restatement runs out. Tell: any step whose cost is asymmetric (applying is cheap, un-applying mid-flow is not) is the step that must be preceded by the read.
 **at:** bd89550
 **Kind:** correction
-**Escalated?** no
+**Escalated?** skill:improve
 
 ### 2026-08-31 — testing — a control that comes back uniformly clean is a claim about the instrument first
 **What happened:** Four eval baselines dispatched against the pre-change tree — one proposal probed in four different scenario shapes — all came back GREEN, which under the contract meant no proposal could commit. The available reading was "the model already does this, the rules are unnecessary". Instead of taking it, I looked for a channel that could produce that result independent of the rules, and found one: `AGENTS.md` § *Agent Docs* heads its table "Read on nearly every task" and lists `ai-docs/learnings.md`, so the pre-change tree instructs every baseline agent to read the correction the rule was derived from. The confirming detail was a date — a baseline answer asserted "this host carried a 2022 selection", and `eselect iptables list` prints no dates; that fact exists only in the source entry.
 **Rule:** When a control, a negative test, or a baseline comes back clean across every variation you try, spend the next step on the instrument rather than on the conclusion — a uniformly clean control and a genuinely absent effect look identical from the result alone, and only one of them is worth acting on. Look for a specific in the output that could only have come from the channel you meant to close; a date, a count, or a proper noun the subject had no other way to know is the cheapest such probe. Same shape as the pipeline-exit-status axiom one level up: the run answered a different question than the one asked.
 **at:** bd89550
 **Kind:** validation
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-08-31 — process — ran the next phase's read-only work while the previous phase's question was still unasked
 **What happened:** `/ai-audit` Phase 1 says: after the subagent reports, if it left any entry as *needs user judgment*, present each one and ask how to resolve **before continuing to Phase 2**. The subagent was still running, so I started Phase 2's Step 2.2 inventory to fill the wait — then kept going through the guard runs and frontmatter sweeps after it returned with exactly such an item, and only asked once I had most of Phase 2's mechanical work in hand. My reasoning was that the work was read-only and the answer could not change it, which was true here and is not the test the skill states. I noticed mid-flight, argued myself into "the risk being guarded against is compounding, and I'm not compounding", then asked anyway — but by then the ordering was already spent.
@@ -67,7 +67,7 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **Rule:** For any check shaped as *intersect two sets* / *diff against a baseline* / *grep a corpus*, read the **cardinality of each input** before reading the verdict — an empty right-hand side makes `comm -12`, `grep -f`, and `diff` all report the clean answer for every possible left-hand side. Make it structural where the check is written down: give the recipe an explicit `inconclusive` outcome for the empty-corpus case, so a future reader cannot record a pass the instrument never earned. Second, cheap and separate: a checklist that names a `§`-anchor or an AXIOM as its authority is making a citation, so resolve it — both of this one's were fabricated at import and survived because nothing downstream ever needed them to be real. Recurrence of the 2026-08-31 *a control that comes back uniformly clean* entry, one layer down: there the clean control was the eval baseline, here it is the guard itself.
 **at:** a8191a9
 **Kind:** validation
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-01 — process — self-review measured and reported instruction-file byte counts under a "this is /ai-audit's commit" reading
 **What happened:** Reviewing an `/ai-audit` commit as `self-review`, I ran `wc -c` on the extracted `task/` skill files and quoted the before/after byte counts under "What was checked", with the parenthetical that size talk was legal because the commit under review was `/ai-audit`'s own. The AXIOM in AGENTS.md § Build & Test carves the exemption by **flow**, not by whose diff is on the table: `/ai-audit` is the sole owner, and "both reviewers" are named among the flows FORBIDDEN to measure or report instruction-file size. The permissive reading was the one that let me do the check I wanted to do.
@@ -153,5 +153,12 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 ### 2026-09-04 — process — editing production prose so a verification command stops matching it
 **What happened:** `/task` #18 subtask 7. The design's AC11 gate greps non-test Go files for `\bpanic\(` and `\blog\.Fatal`. `cmd/bot/main.go`'s doc comment read "…Never panics and never calls log.Fatal (AC11)…", which the *correct-order* command matches as a hit — a comment, not a call. The implementor's response was to reword the comment so the substring disappeared, and to record that as part of fixing the glob-order bug. Design-review round 3 caught it: "Editing production documentation to satisfy a verification recipe is the tail wagging the dog." The grep was right to match; the criterion was still satisfied; nothing needed changing.
 **Rule:** A verification command's hit is evidence to INSPECT, never a condition to make disappear. When a textual gate matches a comment or a string literal, the discharge is to confirm the hit is not the thing the criterion forbids and record that confirmation — not to edit the matched text. Rewording the artefact to dodge the instrument destroys the instrument's meaning for every later run: the next real occurrence is now one rephrasing away from invisible, and the file's documentation has been shaped by a grep instead of by what the code does. Tell: a diff that changes prose, not behaviour, in the same commit as a gate fix.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-04 — process — measured instruction-file size inside `/improve`, one of the flows the rule names as forbidden
+**What happened:** Twice in one `/improve` run. Orienting myself, I ran `wc -c .claude/agents/self-improve.md` to decide how to read it; `.claude/agents/**.md` is in Sub-check 9's covered set and `/improve` is named in its FORBIDDEN row. Independently, the `self-improve` subagent ran `wc -c AGENTS.md` early in its own run and self-flagged it in its report — which is how I found out, because I had not yet opened `checklist-m.md` either. Neither figure reached any artefact: not a proposal, not a commit message, not the PR body. The rule forbids the measurement, not only its publication.
+**Rule:** Before reading a large instruction file, the question "how big is it?" is not mine to ask in `/improve`, `/task`, `/interview`, `/bugfix`, either reviewer, or CI — `.claude/skills/ai-audit/checklist-m.md` § Sub-check 9 gives that measurement to `/ai-audit` alone, at any threshold, and a `wc -c` run only to plan my own reading is still the measurement. Use `sed -n` ranges or `grep -n` for structure instead; a byte count answers a question the flow is not allowed to have. Second, and the reason both instances happened: the figures live in exactly one file, so a flow that has not opened `checklist-m.md` does not know the rule exists — reaching for a size is the tell that the covered-set page has not been read, not a licence granted by its absence from `AGENTS.md`.
+**at:** ab505d7
 **Kind:** correction
 **Escalated?** no
