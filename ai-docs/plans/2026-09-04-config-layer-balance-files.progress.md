@@ -10,7 +10,7 @@ _Updated: 2026-09-04
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 9 — Verify (AC1–AC16 PASS; AC17 pending Step 9.5)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** make verify + go test -race -count=1 ./... | 2026-09-04T09:40:52Z | d65020415f6d7a6b09b9a8349eea90245a11b6d4
 **entry_args:** 18
 
@@ -66,6 +66,9 @@ _Updated: 2026-09-04
 - **Step 9**: AC11 verified behaviourally, not only by its tests — cmd/bot with all six variables unset exits 1 naming every missing key on stderr with stdout silent; with a valid environment it exits 0. Observed while doing so: the message doubles its prefix ("configuration: config: LAB_GAME_BOT_TOKEN: config: missing: required"), which no AC forbids but reads as an oversight — left for self-review to weigh rather than churned now.
 - **Step 9**: AC1's "no package-level mutable state" holds — the only package-level var block is the four error sentinels in errors.go, which is the form AGENTS.md § Code Style prescribes, not configuration state.
 
+- **Step 9.5**: context.md § Status Code claimed "cmd/bot is still the scaffold", which Group A falsified; Group B left it deliberately because this step owns that bullet. Now reworded, and AC17 closes with it.
+- **Step 9.5**: also corrected claude-tools-hierarchy.md:97, a line this PR authored — it named **/secrets* but not **/.secrets*, which settings.json also denies. In scope because the PR rewrote that sentence; not a widening.
+
 ## Key discoveries (don't re-investigate)
 
 - Permission deny rules reach `Bash` by command text, not only the file tools: `ls -la .env .env.example` is refused, `ls -la .env.example` and `git check-ignore -q .env` both run. Verification commands touching `.env.example` use one path per command.
@@ -94,7 +97,7 @@ _Updated: 2026-09-04
 | AC14 | PASS |
 | AC15 | PASS |
 | AC16 | PASS |
-| AC17 | PENDING — closes at Step 9.5 (context.md § Status Code bullet) |
+| AC17 | PASS |
 
 ## Review register
 
