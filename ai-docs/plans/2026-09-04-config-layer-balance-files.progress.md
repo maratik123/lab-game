@@ -10,13 +10,13 @@ _Updated: 2026-09-04
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 8 — subtask 4 of 8 complete
+**current_step:** Step 8 — subtask 5 of 8 complete
 **last_passed_gate:** golangci-lint run ./internal/config/... | 2026-09-04T00:00:00Z | (pre-commit)
 **entry_args:** 18
 
 ## Next action
 
-**Do this immediately:** subtask 5 — `Load` (`internal/config/config.go`): `Config`, `Secret`, and the composition of `loadEnv`, `resolveWorldPath` and `loadBalance` (plus `LAB_GAME_BALANCE_PATH`'s own presence check) into one joined error. Rewrites `doc.go`'s package comment body to AC13's wording.
+**Do this immediately:** subtask 6 — `.env.example` and the disjointness tests (`internal/config/disjoint_test.go`); adds `github.com/joho/godotenv` as a test-only requirement.
 
 ## Subtasks
 
@@ -24,8 +24,8 @@ _Updated: 2026-09-04
 - [x] 2. Tracked balance set at the default path, placeholder per schema key + curve comments
 - [x] 3. Environment layer: `Lookup`, `EnvKeys`, name constants, token/DSN/base-URL/chat-id validation
 - [x] 4. World-set path resolution: required variable, readability probe, both errors handled
-- [ ] 5. `Load`: `Config`, `Secret`, joined error; rewrites `doc.go`'s comment body to AC13 wording  ← CURRENT
-- [ ] 6. `.env.example` + disjointness tests; adds `godotenv` as a test-only requirement
+- [x] 5. `Load`: `Config`, `Secret`, joined error; rewrites `doc.go`'s comment body to AC13 wording
+- [ ] 6. `.env.example` + disjointness tests; adds `godotenv` as a test-only requirement  ← CURRENT
 - [ ] 7. `cmd/bot` wired to load and validate before any other work; `main` delegates to `run`
 - [ ] 8. CI paths-filter: tracked config artefacts added to the `go` filter; actionlint
 - [ ] 9. Propagation sweep over the prose sites the diff falsifies
@@ -43,6 +43,9 @@ _Updated: 2026-09-04
 - **Step 8, subtask 3**: `gosec` flagged `envBotToken`'s constant declaration as G101 "potential hardcoded credentials" — a false positive, since the string is the environment-variable *name*, never a token value; annotated `//nolint:gosec` with that reason. Not one of D7's pre-measured lint findings, so recorded here for the next reader.
 - **Step 8, subtask 4 (correction to subtask 3's scope)**: re-reading the decomposition table's subtask 3 row ("validation of token, DSN, base URL and ALLOWED_CHAT_IDS" — BALANCE_PATH/WORLD_PATH not listed) against subtask 4's Test-Design entry point ("the unexported world-path probe … variable unset → missing, named") showed `loadEnv` originally over-scoped: it also validated `LAB_GAME_BALANCE_PATH`/`LAB_GAME_WORLD_PATH` presence, which would have duplicated the presence check subtask 4's own `resolveWorldPath` needs to do to be independently testable via a `Lookup`, and duplicated (as two separate error rows for the same variable) whatever subtask 5 does for `LAB_GAME_BALANCE_PATH`. Corrected in this commit: `envValues`/`loadEnv` now cover only the four env-only variables (`envKeys()`, unexported); `EnvKeys()` (exported, AC8/AC16's full set) appends `envBalancePath`/`envWorldPath` on top. Each path variable's presence check now lives exactly once, next to the richer validation that consumes it — `resolveWorldPath` here, `Load`'s balance-path handling in subtask 5. `envKeys()` is a function, not a package `var`, to keep AC1's no-package-level-mutable-state rule literal.
 - **Step 8, subtask 4**: the chmod-0 permission case is deliberately not written (design § Risks) — `TestResolveWorldPath_ParentIsRegularFile` (a path whose parent is a regular file) is the uid-independent negative case that exercises `ErrUnreadable` instead.
+- **Step 8, subtask 5**: `Load` runs `loadEnv`, `resolveWorldPath` and the `LAB_GAME_BALANCE_PATH` presence check unconditionally against the same `lookup`, joining every failure — none of the three needs another to succeed first, since each takes `lookup` directly rather than another's result; `loadBalance` is the only step gated (on `LAB_GAME_BALANCE_PATH` itself resolving), matching the design's "no file is read" case.
+- **Step 8, subtask 5**: verified `doc.go` is still the only file in the package whose first line is a package comment (`head -3` swept across every file) before staging — D7's honour-system gate for a second, unnoticed package comment.
+- **Step 8, subtask 5**: `Secret`'s `%s` redaction test triggers `staticcheck` S1025 ("should use String() instead of fmt.Sprintf") — a correct suggestion for production code, but the test's whole point is exercising the `%s` verb through `fmt`, not calling `.String()` directly; annotated `//nolint:staticcheck` with that reason.
 
 ## Key discoveries (don't re-investigate)
 
@@ -104,3 +107,6 @@ _Updated: 2026-09-04
 - `internal/config/world.go` — `resolveWorldPath`: `LAB_GAME_WORLD_PATH`'s presence check and the open/close readability probe
 - `internal/config/world_test.go` — subtask 4's table tests
 - `config/world/.gitkeep` — the tracked, empty-by-design placeholder target for `LAB_GAME_WORLD_PATH`'s default value
+- `internal/config/doc.go` — package comment rewritten to AC13's wording (reload policy + each source's exclusive domain), replacing subtask 1's provisional text
+- `internal/config/config.go` — `Secret`, `Config`, `Load`, `requiredBalancePath`
+- `internal/config/config_test.go` — subtask 5's scenarios plus `validConfigEnv`

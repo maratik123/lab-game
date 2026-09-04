@@ -1,9 +1,19 @@
 // Package config loads and validates lab-game's runtime configuration from
-// three disjoint sources: the process environment (secrets, runtime
-// settings, file paths), a balance YAML file (every game constant), and a
-// world-set path (existence only — its content is not decoded here).
+// three disjoint sources, each the exclusive owner of one domain — no key
+// may be set through a second source, and there is no override chain
+// between them:
 //
-// TODO(#18): this comment is provisional (design D7) — a later subtask in
-// this issue rewrites its body to AC13's wording (reload policy + each
-// source's exclusive domain).
+//   - the process environment supplies secrets (the bot token, the
+//     database DSN), runtime settings (the Bot API base URL, the allowed
+//     chat ids), and the balance-file and world-set file-system paths;
+//   - the balance YAML file (LAB_GAME_BALANCE_PATH) supplies every game
+//     constant — stamina, combat dice, door and monster-budget curves,
+//     shop rates — with no compiled-in fallback for any of them;
+//   - the world-set path (LAB_GAME_WORLD_PATH) is validated for existence
+//     and readability only; its content is a separate concern this
+//     package does not decode.
+//
+// Configuration is read once, at process start-up, through Load. There is
+// no reload path: a changed environment variable or balance file has no
+// effect until the process restarts.
 package config
