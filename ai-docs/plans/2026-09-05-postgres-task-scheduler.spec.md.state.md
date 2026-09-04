@@ -62,7 +62,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 3
 agent_id: a80e8c5c04428a94f
 prior_qa:
   - round: 1
@@ -75,4 +75,10 @@ prior_qa:
     question: "Where does a recurrent task's next `run_at` come from?"
     answer: "how kagkarlsson/db-scheduler works with recurrent tasks?"
     note: "Not a choice — the owner asked for the prior art before deciding. Researched facts passed as extra_context in round 2; the question is to be re-asked informed by them."
+  - round: 2
+    question: "Round 1 settled that a completed task row is deleted. Does that also govern a recurrent occurrence, or does a recurring row persist and move forward?"
+    answer: "<pending — surfaced to the owner>"
+  - round: 2
+    question: "Where is a recurrent task's cadence declared, and what restores a chain that has stopped?"
+    answer: "<pending — surfaced to the owner>"
 ```
