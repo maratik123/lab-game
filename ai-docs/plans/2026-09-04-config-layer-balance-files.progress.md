@@ -53,6 +53,8 @@ _Updated: 2026-09-04
 - **Step 8, subtask 7**: `run` takes `config.Lookup` directly (not `os.LookupEnv` baked in), so `main` is the only place that ever touches the process environment — `main_test.go` never calls `os.Exit` or spawns a binary, matching the design's "no test invokes a compiled artefact by bare path" constraint.
 - **Step 8, subtask 8**: `.github/workflows/ci.yml`'s `go` paths-filter gains `config/**` and `.env.example`; `actionlint .github/workflows/ci.yml` passed clean before staging (AGENTS.md AXIOM). Group A (subtasks 1-8) is now complete; handing off to Group B for subtask 9 per the design's Handoff plan.
 
+- **Step 8**: owner's decision — the harness changes on this branch (AGENTS.md hand-rolling axiom, the settings.json deny narrowing, the claude-tools-hierarchy propagation) ship in the SAME PR as the config layer, not split out.
+
 ## Key discoveries (don't re-investigate)
 
 - Permission deny rules reach `Bash` by command text, not only the file tools: `ls -la .env .env.example` is refused, `ls -la .env.example` and `git check-ignore -q .env` both run. Verification commands touching `.env.example` use one path per command.
