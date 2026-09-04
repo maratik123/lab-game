@@ -10,22 +10,21 @@ _Updated: 2026-09-04
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 8 — subtask 3 of 8 complete
+**current_step:** Step 8 — subtask 4 of 8 complete
 **last_passed_gate:** golangci-lint run ./internal/config/... | 2026-09-04T00:00:00Z | (pre-commit)
 **entry_args:** 18
 
 ## Next action
 
-**Do this immediately:** subtask 4 — world-set path resolution (`internal/config/world.go`): the required `LAB_GAME_WORLD_PATH` variable, the open/close readability probe, and the tracked `config/world/` placeholder.
+**Do this immediately:** subtask 5 — `Load` (`internal/config/config.go`): `Config`, `Secret`, and the composition of `loadEnv`, `resolveWorldPath` and `loadBalance` (plus `LAB_GAME_BALANCE_PATH`'s own presence check) into one joined error. Rewrites `doc.go`'s package comment body to AC13's wording.
 
 ## Subtasks
 
 - [x] 1. Balance schema + walker; provisional package comment in `doc.go`; adds the YAML parser
 - [x] 2. Tracked balance set at the default path, placeholder per schema key + curve comments
-- [ ] 2. Tracked balance set at the default path, placeholder per schema key + curve comments  ← CURRENT
 - [x] 3. Environment layer: `Lookup`, `EnvKeys`, name constants, token/DSN/base-URL/chat-id validation
-- [ ] 4. World-set path resolution: required variable, readability probe, both errors handled  ← CURRENT
-- [ ] 5. `Load`: `Config`, `Secret`, joined error; rewrites `doc.go`'s comment body to AC13 wording
+- [x] 4. World-set path resolution: required variable, readability probe, both errors handled
+- [ ] 5. `Load`: `Config`, `Secret`, joined error; rewrites `doc.go`'s comment body to AC13 wording  ← CURRENT
 - [ ] 6. `.env.example` + disjointness tests; adds `godotenv` as a test-only requirement
 - [ ] 7. `cmd/bot` wired to load and validate before any other work; `main` delegates to `run`
 - [ ] 8. CI paths-filter: tracked config artefacts added to the `go` filter; actionlint
@@ -42,6 +41,8 @@ _Updated: 2026-09-04
 - **Step 8, subtask 2**: `repo_root_test.go` derives the repository root from `runtime.Caller(0)` of the test file itself rather than `os.Getwd()`, so `repoRootPath` is correct regardless of which directory `go test` is invoked from; subtask 6 reuses it for the example-environment test (design § Risks).
 - **Step 8, subtask 3**: `EnvKeys()` and `envValues` cover all six `LAB_GAME_` variables (including `BALANCE_PATH`/`WORLD_PATH`), not only the four D10 lists as this subtask's own validation scope — `loadEnv` checks presence+non-empty uniformly for all six (the shared, uniform half of D10's rule for the path variables) and leaves the richer checks (file open/close, YAML decode) to subtask 4's world prober and subtask 5's `Load`/balance loader, which is what the decomposition table's per-subtask file list implies. This keeps the declared variable set in one place ahead of AC8/AC16's disjointness test (subtask 6).
 - **Step 8, subtask 3**: `gosec` flagged `envBotToken`'s constant declaration as G101 "potential hardcoded credentials" — a false positive, since the string is the environment-variable *name*, never a token value; annotated `//nolint:gosec` with that reason. Not one of D7's pre-measured lint findings, so recorded here for the next reader.
+- **Step 8, subtask 4 (correction to subtask 3's scope)**: re-reading the decomposition table's subtask 3 row ("validation of token, DSN, base URL and ALLOWED_CHAT_IDS" — BALANCE_PATH/WORLD_PATH not listed) against subtask 4's Test-Design entry point ("the unexported world-path probe … variable unset → missing, named") showed `loadEnv` originally over-scoped: it also validated `LAB_GAME_BALANCE_PATH`/`LAB_GAME_WORLD_PATH` presence, which would have duplicated the presence check subtask 4's own `resolveWorldPath` needs to do to be independently testable via a `Lookup`, and duplicated (as two separate error rows for the same variable) whatever subtask 5 does for `LAB_GAME_BALANCE_PATH`. Corrected in this commit: `envValues`/`loadEnv` now cover only the four env-only variables (`envKeys()`, unexported); `EnvKeys()` (exported, AC8/AC16's full set) appends `envBalancePath`/`envWorldPath` on top. Each path variable's presence check now lives exactly once, next to the richer validation that consumes it — `resolveWorldPath` here, `Load`'s balance-path handling in subtask 5. `envKeys()` is a function, not a package `var`, to keep AC1's no-package-level-mutable-state rule literal.
+- **Step 8, subtask 4**: the chmod-0 permission case is deliberately not written (design § Risks) — `TestResolveWorldPath_ParentIsRegularFile` (a path whose parent is a regular file) is the uid-independent negative case that exercises `ErrUnreadable` instead.
 
 ## Key discoveries (don't re-investigate)
 
@@ -98,5 +99,8 @@ _Updated: 2026-09-04
 - `config/balance.yaml` — the tracked balance set, one placeholder per schema key, curve comments for the door-price and monster-budget triples
 - `internal/config/balance_file_test.go` — the both-directions agreement test for `config/balance.yaml`
 - `internal/config/repo_root_test.go` — `repoRootPath`, resolving a repo-root-relative path from the test file's own location
-- `internal/config/env.go` — `Lookup`, `EnvKeys`, the six `LAB_GAME_` variable-name constants, `loadEnv`, the base-URL and chat-id parsers
+- `internal/config/env.go` — `Lookup`, `EnvKeys`, `envKeys` (the loadEnv-validated subset), the six `LAB_GAME_` variable-name constants, `loadEnv`, the base-URL and chat-id parsers
 - `internal/config/env_test.go` — subtask 3's table tests plus `mapLookup`/`validEnv`, reused by subtask 5
+- `internal/config/world.go` — `resolveWorldPath`: `LAB_GAME_WORLD_PATH`'s presence check and the open/close readability probe
+- `internal/config/world_test.go` — subtask 4's table tests
+- `config/world/.gitkeep` — the tracked, empty-by-design placeholder target for `LAB_GAME_WORLD_PATH`'s default value

@@ -48,17 +48,11 @@ func TestLoadEnv_HappyPath(t *testing.T) {
 	if len(v.AllowedChatIDs) != len(wantIDs) || v.AllowedChatIDs[0] != wantIDs[0] || v.AllowedChatIDs[1] != wantIDs[1] {
 		t.Errorf("AllowedChatIDs = %v, want %v (order preserved)", v.AllowedChatIDs, wantIDs)
 	}
-	if v.BalancePath != "/tmp/balance.yaml" {
-		t.Errorf("BalancePath = %q", v.BalancePath)
-	}
-	if v.WorldPath != "/tmp/world" {
-		t.Errorf("WorldPath = %q", v.WorldPath)
-	}
 }
 
 func TestLoadEnv_RequiredVariableUnset(t *testing.T) {
 	t.Parallel()
-	for _, key := range EnvKeys() {
+	for _, key := range envKeys() {
 		t.Run(key, func(t *testing.T) {
 			t.Parallel()
 			env := validEnv()
@@ -71,7 +65,7 @@ func TestLoadEnv_RequiredVariableUnset(t *testing.T) {
 
 func TestLoadEnv_RequiredVariableEmpty(t *testing.T) {
 	t.Parallel()
-	for _, key := range EnvKeys() {
+	for _, key := range envKeys() {
 		t.Run(key, func(t *testing.T) {
 			t.Parallel()
 			env := validEnv()
@@ -130,7 +124,7 @@ func TestLoadEnv_Aggregation(t *testing.T) {
 	t.Parallel()
 	env := validEnv()
 	delete(env, envBotToken)
-	delete(env, envWorldPath)
+	delete(env, envDSN)
 
 	_, err1 := loadEnv(mapLookup(env))
 	_, err2 := loadEnv(mapLookup(env))
@@ -143,7 +137,27 @@ func TestLoadEnv_Aggregation(t *testing.T) {
 	if !errors.Is(err1, ErrMissing) {
 		t.Errorf("errors.Is(err, ErrMissing) = false; err = %v", err1)
 	}
-	if !strings.Contains(err1.Error(), envBotToken) || !strings.Contains(err1.Error(), envWorldPath) {
+	if !strings.Contains(err1.Error(), envBotToken) || !strings.Contains(err1.Error(), envDSN) {
 		t.Errorf("joined error %q does not name both missing variables", err1)
+	}
+}
+
+// TestEnvKeys_IncludesPathVariables asserts that EnvKeys (the full declared
+// set AC8/AC16 check against) carries the balance-file and world-set
+// variables even though loadEnv does not itself validate them.
+func TestEnvKeys_IncludesPathVariables(t *testing.T) {
+	t.Parallel()
+	keys := EnvKeys()
+	for _, want := range []string{envBalancePath, envWorldPath} {
+		found := false
+		for _, k := range keys {
+			if k == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("EnvKeys() = %v, missing %q", keys, want)
+		}
 	}
 }

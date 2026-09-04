@@ -21,6 +21,17 @@ const (
 	envWorldPath      = "LAB_GAME_WORLD_PATH"
 )
 
+// envKeys returns the four variables loadEnv itself validates. envBalancePath
+// and envWorldPath are validated by their own dedicated readers instead
+// (world.go's resolveWorldPath and config.go's Load) — each owns both the
+// presence check and the richer validation for its path (open/close for
+// the world set, YAML decode for the balance file), so no variable's
+// presence is checked in two places (design § Decomposition, subtasks
+// 3-5).
+func envKeys() []string {
+	return []string{envBotToken, envDSN, envBotAPIBaseURL, envAllowedChatIDs}
+}
+
 // Lookup retrieves one environment variable's value, reporting whether it
 // was present at all — distinct from present-but-empty, which AC2 and AC10
 // treat differently (design D1). cmd/bot passes os.LookupEnv; tests pass a
@@ -34,22 +45,19 @@ type Lookup func(key string) (value string, ok bool)
 // is checked against, and the set .env.example is asserted to equal
 // exactly (AC8).
 func EnvKeys() []string {
-	return []string{envBotToken, envDSN, envBotAPIBaseURL, envAllowedChatIDs, envBalancePath, envWorldPath}
+	return append(envKeys(), envBalancePath, envWorldPath)
 }
 
 // envValues holds the environment layer's validated results: the two
-// secrets as plain strings (config.go's Load wraps them in Secret), the
-// parsed Bot API base URL, the parsed chat-id list, and the two
-// configuration file paths as the operator wrote them — reading and
-// validating what those paths point at is the balance loader's and the
-// world prober's job, not this layer's (design § Approach).
+// secrets as plain strings (config.go's Load wraps them in Secret) and the
+// parsed Bot API base URL and chat-id list. The balance-file and world-set
+// paths are validated by their own dedicated readers, not by loadEnv (see
+// envKeys).
 type envValues struct {
 	BotToken       string
 	DSN            string
 	BotAPIBaseURL  url.URL
 	AllowedChatIDs []int64
-	BalancePath    string
-	WorldPath      string
 }
 
 // loadEnv reads and validates every LAB_GAME_ environment variable through
@@ -94,12 +102,6 @@ func loadEnv(lookup Lookup) (*envValues, error) {
 		} else {
 			v.AllowedChatIDs = ids
 		}
-	}
-	if s, ok := required(envBalancePath); ok {
-		v.BalancePath = s
-	}
-	if s, ok := required(envWorldPath); ok {
-		v.WorldPath = s
 	}
 
 	if len(errs) > 0 {
