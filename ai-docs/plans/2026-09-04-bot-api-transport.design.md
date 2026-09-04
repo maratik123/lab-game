@@ -298,12 +298,55 @@ telego composes the URL as base + `/bot<token>/<method>`
 URL path is the method name — observed live in the probe (`method: sendMessage`).
 
 The chat is read from the request body by decoding **only** the `chat_id` field as a
-`json.RawMessage` — also observed live (`server chat_id token: -1001234567890`). This is
-total across the Bot API by construction: every chat-scoped method names its destination
-chat in that one field, and a method with no `chat_id` (an inline-message edit, `getMe`,
-`getUpdates`) yields no chat key and charges no per-chat bucket. A `chat_id` may be a
-`@channelusername` string rather than a number, so the key is the raw JSON token, not an
-`int64` — one stable key per chat either way.
+`json.RawMessage` — also observed live (`server chat_id token: -1001234567890`). Every
+chat-scoped method names its destination chat in that one field, so one rule covers the whole
+JSON-bodied surface. A `chat_id` may be a `@channelusername` string rather than a number, so
+the key is the raw JSON token, not an `int64` — one stable key per chat either way.
+
+**Two branches produce no chat id, and they are not the same branch.** An earlier draft
+called this rule "total across the Bot API by construction", which was wrong in a way that
+mattered:
+
+- **No `chat_id` in the body.** An inline-message edit, `getMe`, `getUpdates`. There is
+  genuinely no destination chat, so no per-chat schedule applies. `Chat.Known` is false and
+  the call charges its class-global schedule only. Correct, and not a gap.
+- **No body to read at all — `BodyRaw == nil`.** telego routes a request through
+  `MultipartRequest` whenever a parameter carries a file, and that constructor returns a
+  `RequestData` whose `BodyStream` is an `io.Pipe` and whose `BodyRaw` is **nil**; the
+  parameters, `chat_id` among them, are written into the pipe by a goroutine
+  [measured telego@v1.11.2:telegoapi/api.go · `sed -n '/^\/\/ RequestData represents/,/^}/p' …/telegoapi/api.go` →
+  `BodyRaw []byte` and "BodyStream body stream that will be read, ignored if BodyRaw is provided";
+  telego@v1.11.2:telegoapi/request_constructor.go · `sed -n '/func (d DefaultConstructor) MultipartRequest/,/^\t}$/p' …/request_constructor.go` →
+  `pr, pw := io.Pipe()` then `&RequestData{ContentType: writer.FormDataContentType(), BodyStream: pr}`
+  with no `BodyRaw`, against `JSONRequest` which sets `BodyRaw`]. The chat id is therefore
+  **not reachable from `RequestData`** without consuming the stream the request needs.
+
+**Left undecided, that branch is a chat exempt from every per-chat window by construction** —
+a `sendPhoto` would charge the class-global schedule and neither the per-chat rate nor the
+per-chat cap. That is the failure this design's own private-chat row calls "a flood-ban path
+no test would notice", and `ai-docs/domain-invariants.md` § 6 exists to prevent it. So it is
+decided here rather than at implementation time.
+
+**Decision: a call with no decodable body is charged against a single reserved unknown-chat
+key of its class, and `Chat.Known` is false.**
+
+- It is **bounded, never exempt**: such calls share one per-chat schedule, so the class's
+  rate and cap both apply to them. Sharing one key across destinations is conservative — it
+  over-restricts if several such calls ever went to different chats — and conservative is the
+  right direction for a bound whose failure mode is a flood ban.
+- `Chat.Known == false` is carried to the gate (D12), so #22 can refuse a call whose
+  destination it cannot check against `ALLOWED_CHAT_IDS`. This task installs no allowlist; it
+  makes refusing this case *expressible*, which is its obligation.
+- The branch is **exercised by a test even though the MVP never reaches it**, so it is not an
+  untested path [derived → the classifier and limiter scenarios in § Test Design].
+
+**Recorded residue, not built now.** The owner's ruling this round is that media is outside
+the MVP — #43's notifications are text and inline buttons — so no media mechanism is designed
+here, and the spec already anticipated the question rather than needing amendment. The route a
+later media mechanic should take is signposted: **our own `RequestConstructor.MultipartRequest`
+receives `parameters map[string]string`, `chat_id` among them**, before telego writes them
+into the pipe, so the chat id is recoverable at that seam without parsing a stream. Building
+that hand-off is the media mechanic's work, not this task's.
 
 **What this buys that a per-call-site tag cannot.** It cannot be forgotten by a
 caller, and it covers methods this project has not written yet — including everything #22
@@ -535,7 +578,7 @@ half-open interval of length `per` contains more than `c` grants. Equivalently, 
 sorted grants, `grant[j+c] - grant[j] ≥ per` for every `j`. The second form is a local check
 an implementation can assert after every insertion, and § Test Design requires exactly that
 — **the mechanism is correct by a checkable postcondition, not by an argument in this
-document**, which is the property four rounds of review say this design most needed.
+document**, which is the property this design's review history says it most needed.
 
 - **`earliest(candidate)` — a pure read, mutating nothing.** Returns the earliest instant
   `t ≥ candidate` at which one more grant still satisfies the invariant. Because the
@@ -652,19 +695,30 @@ Both key roles produce window constraints on the same schedule; only the reading
 | `_GLOBAL`, `_CHAT_RATE` — **pacing** | steady emission at `N` per `W`, no burst | `(1, ceil(W/N))` **and** `(N, W)` |
 | `_CHAT_CAP` — **quota** | at most `N` in any window of length `W` | `(N, W)` |
 
-**Both halves of the pacing row are load-bearing, and the rounding is not a detail.**
+**Both halves of the pacing row are load-bearing, but they bear DIFFERENT properties, and an
+earlier draft of this section attributed the wrong one to each.**
 
-- **`ceil`, not truncation.** `W/N` in integer duration arithmetic rounds *down*, so `N`
-  intervals fall short of `W` and an `N+1`-th grant fits inside the window — the
-  over-emission direction, against the figure D10 verified as *enforced*. At the shipped
-  global default the shortfall is a few nanoseconds and the effect is a whole extra message
-  per second. Rounding up removes it [derived → AC13's global-ceiling occupancy assertion,
-  specified in § Test Design to run red against a truncating variant first].
-- **The quota window alongside it.** `(N, W)` states the figure the key is named for
-  *directly*, so the bound is asserted rather than inferred from an interval calculation.
-  This is D10's own standard applied to the mechanism: each configured row is a claim about
-  emissions, not about a constructor argument. When `N` is 1 the two windows coincide and the
-  schedule holds one.
+- **The quota window `(N, W)` bears the bound.** It states the figure the key is named for
+  *directly*, and the schedule's invariant does the rest: if `N+1` grants lay inside any
+  half-open interval of length `W`, some `grant[j+N] - grant[j]` would be `< W`, which the
+  invariant forbids. So `N+1` per `W` is unreachable while this window is present — for any
+  pacing interval, correctly rounded or not. This is D10's own standard applied to the
+  mechanism: each configured row is a claim about emissions, not about a constructor
+  argument.
+- **The pacing window `(1, ceil(W/N))` bears the *shape*, not the bound.** Without it the
+  quota window alone is satisfied by emitting all `N` at one instant and then idling for `W`
+  — a burst, which is exactly what the owner's round-3 choice rejects. With it, emission is
+  one per interval [derived → AC30's steady-emission assertion, specified in § Test Design to
+  run red against a `quota-only` variant].
+- **`ceil` rather than truncation buys evenness, and only evenness.** `W/N` in integer
+  duration arithmetic rounds *down*, so `N` truncated intervals fall a few nanoseconds short
+  of `W`. That shortfall cannot produce an `N+1`-th emission — the quota window forbids it —
+  but it does make the quota window intervene, stretching one interval and putting a hiccup
+  in an otherwise uniform stream. Rounding up removes the hiccup. **It is defence in depth,
+  not the thing that stops over-emission**, and an earlier draft claimed the opposite; the
+  correction matters because the repair that false claim invited was to delete the quota
+  window so its red-first variant would finally fail. When `N` is 1 the two windows coincide
+  and the schedule holds one.
 
 The pacing reading is the owner's round-3 choice — a leaky bucket in the shaping sense,
 steady emission, no burst — expressed with no burst parameter at all: "at most one per
@@ -731,9 +785,11 @@ unexported type behind an internal call and is replaceable without touching the 
 **The registry holds one schedule per `(chat, class)` of a bounded class, and this design does
 not evict — recorded as a known bound.** The MVP ships to one friendly chat
 (`docs/DESIGN.md` §14), and #43's fan-out is the trigger to revisit. A schedule's history is
-bounded by its own invariant — at most `c` grants can live inside any `per`, so the retained
-set is a function of the configuration rather than of traffic, and it is a handful of instants
-at the message defaults; an unbounded class allocates no history at all. One correctness note for whoever adds eviction: dropping a key discards its grants
+bounded by its own invariant for the grants already in the past — at most `c` can live inside
+any `per` — while grants still ahead of now extend with the in-flight backlog, so retention is
+**O(calls in flight)**, bounded by concurrency rather than by the window set alone. At the
+message defaults that is a handful of instants; an unbounded class allocates no history at
+all. One correctness note for whoever adds eviction: dropping a key discards its grants
 and so resets every window it was enforcing, which means eviction must be time-based — only a
 key idle longer than its longest `per` may be dropped [derived → the § Open questions entry].
 
@@ -757,6 +813,7 @@ type Transport struct {
     RetryMaxAttempts int
     RetryBaseDelay   time.Duration
     RetryMaxDelay    time.Duration
+    AttemptTimeout   time.Duration
     Limits           TransportLimits
 }
 type TransportLimits struct { Message, Edit, Other ClassLimits }
@@ -911,9 +968,18 @@ can drop it in one line if they would rather the caller always own it.
   `ai-docs/context.md:43`, `ai-docs/context-status.md:79`, `ai-docs/key-decisions.md:61`,
   `internal/config/balance.go:12`, `internal/config/config.go:38`, `internal/config/config.go:39`,
   `internal/config/doc.go:11`, `internal/config/env.go:12`], of which only `env.go` and
-  `config.go` assert the falsified claim — `balance.go`, `doc.go` and `key-decisions.md`
-  line 61 (KD-22) are scoped to balance values, `context-status.md` line 79 likewise, and
-  `context.md` line 43 is the separate "no Telegram client" claim that `/task` Step 9.5 owns.
+  `config.go` assert the falsified claim — `balance.go`'s and `doc.go`'s no-fallback clauses,
+  KD-22's, and `context-status.md`'s are all scoped to **balance values**, and `context.md`'s
+  is the separate "no Telegram client" claim that `/task` Step 9.5 owns.
+
+  **One site the sweep could not have found, and the reason is worth keeping.** `doc.go`'s
+  package comment *enumerates* what the process environment supplies. Nothing in it is
+  falsified — its no-fallback clause is scoped to balance values — but the enumeration becomes
+  **incomplete** once the transport keys land, and an incomplete list matches no
+  falsified-claim phrase, so a regex over claim wording is structurally unable to see it. It
+  is in AC29's set by `AGENTS.md` § Propagation Rule step 4 all the same, it is named in
+  subtask 1, and it is recorded here because "the sweep came back clean" is a statement about
+  the sweep's pattern before it is a statement about the tree (`AGENTS.md` § Patterns 2).
 
 The relaxation reaches **only** these operational tuning keys. Secrets, the base URL, the
 chat allowlist and the balance-file and world-set paths stay required with no default
@@ -1074,10 +1140,10 @@ would be dead code in the binary and an untested wiring path at once.
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | `internal/config`: the optional-with-default transport key class — the value types of D10, the key names, the compiled-in defaults, the `<count>/<duration>`\|`off` grammar and its validation, a dedicated `loadTransport` reader joined into `Load` with `EnvKeys()` extended and **`envKeys()` left exactly as it is** (D10), the falsified doc comments in `env.go` and `config.go` rewritten (AC25), **and `.env.example` carrying each new key with its default as a non-empty value** in the file's existing commented style. Tests first: absent → default, present → parsed, malformed → `*KeyError` naming the key, the three-way key-set equality, and the previously declared variables still required. | `internal/config/transport.go`, `internal/config/transport_test.go`, `internal/config/env.go`, `internal/config/config.go`, `.env.example` | — |
+| 1 | `internal/config`: the optional-with-default transport key class — the value types of D10, the key names, the compiled-in defaults, the `<count>/<duration>`\|`off` grammar and its validation, a dedicated `loadTransport` reader joined into `Load` with `EnvKeys()` extended and **`envKeys()` left exactly as it is** (D10), the falsified doc comments in `env.go` and `config.go` rewritten (AC25), **`doc.go`'s package comment extended — its no-fallback clause stays untouched and correct, but its *enumeration* of what the environment supplies becomes incomplete once the transport keys land, so it is in AC29's set and is decided here rather than left to the implementor**, **and `.env.example` carrying each new key with its default as a non-empty value** in the file's existing commented style. Tests first: absent → default, present → parsed, malformed → `*KeyError` naming the key, the three-way key-set equality, and the previously declared variables still required. | `internal/config/transport.go`, `internal/config/transport_test.go`, `internal/config/env.go`, `internal/config/config.go`, `internal/config/doc.go`, `.env.example` | — |
 | 2 | `internal/tgtest`: the in-process fake Bot API server of D13 — `net.Pipe` dialer, the `.invalid` base URL, the scripted behaviours AC19 lists, the fake token constant, and its own tests. | `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` | — |
 | 3 | `internal/tg` foundations **and the telego dependency**: package comment, `Error`, `Observation`/`Observer`, `MethodClass` + the D4 classifier, `Gate`/`Call`/`ChatRef`, `Options` + `New` + `API`. `go get github.com/mymmrac/telego@<pinned>` runs in this subtask, with the importing file, so `make tidy-check` stays green (D1). Tests: the classifier over the pinned version's method names, option validation, error rendering and unwrapping. | `go.mod`, `go.sum`, `internal/tg/doc.go`, `internal/tg/errors.go`, `internal/tg/observe.go`, `internal/tg/class.go`, `internal/tg/client.go`, `internal/tg/class_test.go`, `internal/tg/client_test.go` | 1 |
-| 4 | `internal/tg` limiter — **one schedule type owning every window, no composed legs and no new module** (D9): the window set; the invariant `grant[j+c] - grant[j] ≥ per` asserted after every insertion; `earliest(candidate)` as a pure read over the window-expiry instants; `commit` as a sorted insert; **time-based retention** (never count-based); the **ordered** kind for a chat key and the **unordered** kind for the class-global key; the class-global and per-`(chat, class)` registry under **one mutex**; the decide-then-commit acquire (iterate `t` to a fixed point, deadline refusal **before** any mutation, commit to every schedule at that same `t`, bounded passes with exhaustion treated as a defect); the pacing-vs-quota mapping with `ceil` rounding; and the charge-once-**per-attempt** discipline (D2). Tests, each written **red-first against the named broken variant** (§ Test Design): per-class global admission, cross-chat non-blocking **with the global class bounded**, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, burst-then-cap shape, **occupancy over every window of each configured `per`, on the chat schedules and on the class-global schedule at its shipped default**, **the global bound holding on emissions when a chat window pushes**, **refusals leaving the schedule unchanged**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go` | 2, 3 |
+| 4 | `internal/tg` limiter — **one schedule type owning every window, no composed legs and no new module** (D9): the window set; the invariant `grant[j+c] - grant[j] ≥ per` asserted after every insertion; `earliest(candidate)` as a pure read over the window-expiry instants; `commit` as a sorted insert; **time-based retention** (never count-based); the **ordered** kind for a chat key and the **unordered** kind for the class-global key; the class-global and per-`(chat, class)` registry under **one mutex**; the decide-then-commit acquire (iterate `t` to a fixed point, deadline refusal **before** any mutation, commit to every schedule at that same `t`, bounded passes with exhaustion treated as a defect); the pacing-vs-quota mapping with `ceil` rounding; and the charge-once-**per-attempt** discipline (D2). Tests, each written **red-first against the named broken variant** (§ Test Design): per-class global admission, cross-chat non-blocking **with the global class bounded**, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, burst-then-cap shape, **occupancy over every window of each configured `per`, on the chat schedules and on the class-global schedule at its shipped default**, **the global bound holding on emissions when a chat window pushes**, **refusals leaving the schedule unchanged**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go`, `internal/tg/schedule_test.go` | 2, 3 |
 | 5 | `internal/tg` caller: the `encoding/json` request constructor, the attempt loop with the limiters inside it, the `httptrace` write-evidence classifier, equal-jitter backoff, exact `retry_after` honouring with the deadline bound, the gate call once per call, and the single observation. Tests: no-shortened `retry_after`, strictly positive and growing delays, the ambiguous case making exactly one attempt, each retryable case, give-up field by field, deadline refusal, cancellation at every waiting site, the attempt cap, and the observation for a success, a retried success and a give-up. | `internal/tg/constructor.go`, `internal/tg/caller.go`, `internal/tg/retry.go`, `internal/tg/caller_test.go`, `internal/tg/retry_test.go` | 4 |
 | 6 | `internal/tg` package-level guard tests: the import scan over `cmd/` and `internal/` non-test files (no fasthttp, no go-json, no metrics registry), the token-absence sweep (**whose known surface includes telego's own `Token()` and `FileDownloadURL` — D4's accepted in-module exposure, so a hit there is not a leak**), **the literal scan discharging AC21's second clause (no retry or rate-limit literal at a call site in `internal/tg` — every such value arrives from `config.Transport`)**, the seam tests (a refusing gate blocks a call through the accessor, **and no non-test file outside `internal/tg` names `telego.NewBot` or a `telego.With*` option** — D2), the base-URL-appears-only-in-the-constructor source check, and the end-to-end call against `tgtest` built from a `config.Load`-produced `BotAPIBaseURL`. | `internal/tg/guards_test.go` | 5 |
 | 7 | `ai-docs/key-decisions.md`: rewrite KD-2 for the shipped reality (pinned version, the caller/constructor swap, the `stdjson` residue and why it was not taken, the toolchain ceiling), and add the decisions this task settles — **the project-owned window schedule: one mechanism holding every window on a key, why no maintained package fits (the rejected-alternatives table of D9), and the two properties it deliberately does *not* provide (grant reclamation, and per-key locking)**, `testing/synctest` in place of a clock abstraction, and the optional-with-default key class with its boundary. | `ai-docs/key-decisions.md` | 6 |
@@ -1100,8 +1166,8 @@ disjointness assertion** — it is the mechanism AC23 is written against.
 **AC29's propagation set, and who owns each site.** Membership is decided by `AGENTS.md`
 § Propagation Rule step 4 and is not bounded by the spec's illustrative list; what this
 design fixes is the ownership, so nothing falls between the design and the workflow.
-`internal/config/env.go`, `internal/config/config.go` and `.env.example` are subtask 1's
-(AC25); `ai-docs/key-decisions.md` KD-2 is subtask 7's.
+`internal/config/env.go`, `internal/config/config.go`, `internal/config/doc.go` and
+`.env.example` are subtask 1's (AC25); `ai-docs/key-decisions.md` KD-2 is subtask 7's.
 `ai-docs/context.md` (§ Architecture "Layout so far" and § Status, whose "no Telegram
 client" claim this change falsifies) and `ai-docs/context-status.md` are **not** subtasks
 here: `/task` Step 9.5 owns those writes, and `ai-docs/plans/INDEX.md` is Step 12's
@@ -1195,12 +1261,19 @@ outside its charter — `code-writer` must STOP on a predominantly-prose assignm
   D9 states retention is by time and why a count bound is unsound; `count-retention` is a
   red-first variant in subtask 4 —
   `[derived → AC10 clause (iii), the global-ceiling occupancy assertion]`.
-- **The pacing interval rounds the wrong way.** `W/N` in integer duration arithmetic truncates,
-  so `N` intervals fall short of `W` and an `N+1`-th emission fits — over-emission against the
-  one figure D10 verified as *enforced*, invisible to every instant-based assertion.
-  Mitigation: D9's mapping table specifies `ceil` **and** pairs the pacing window with the
-  quota window that states the figure directly; `truncating-pace` is a red-first variant —
-  `[derived → AC10 clause (iii) and AC13's global-ceiling clause]`.
+- **A pacing key gets mapped to one window instead of both.** The two windows look redundant
+  and are not: dropping the quota window admits `N+1` per `W`, and dropping the pacing window
+  turns the class into a burst-then-idle emitter, which is the shape the owner's round-3
+  answer rejects. Mitigation: D9 says which window bears which property, and both `pace-only`
+  and `quota-only` are red-first variants aimed at different assertions —
+  `[derived → AC10 clause (iii) for the bound, AC30 for the shape]`.
+- **A false red-first variant is worse than none, and this document shipped one.** An earlier
+  draft named a truncating pacing interval as the variant AC10(iii) should fail against —
+  but with the quota window present it cannot, so the assertion could never have gone red, and
+  the repair it invited was to delete the quota window that actually carries the bound.
+  Mitigation: every variant in subtask 4's table is named with the assertion it must break, so
+  a variant that stays green is itself the finding —
+  `[derived → subtask 4's red-first demonstration, which is where a green variant surfaces]`.
 - **The limiter gets re-composed.** Every defect this document went through came from a
   second component that could move an instant a first component had already committed to, and
   the cheapest-looking future change — "just use `x/time/rate` for the pacing window and keep
@@ -1315,7 +1388,12 @@ the process environment, the network, or a real clock.
 
 ### `internal/tg` limiters — subtask 4
 
-- Location: `internal/tg/limit_test.go`.
+- Location: **two files, split at authoring time rather than when the gate complains** —
+  `internal/tg/limit_test.go` for the end-to-end scenarios and the red-first variants,
+  `internal/tg/schedule_test.go` for the schedule unit tests, the `earliest` oracle and its
+  control, the retention tests and the concurrency exercise. `make file-limits` is a hard gate
+  inside `make verify` (AC28) and this subtask's body is large; naming the split here keeps the
+  implementor from having to make a decomposition call mid-flight.
 - Entry point: the schedule and the limiter's acquire function directly, plus end-to-end
   calls through `Client.API()` against `tgtest`.
 
@@ -1333,7 +1411,8 @@ reduced to a few lines.
 | **`bucket-cap`** — express the quota window as a token bucket sized to its count | round-2: `b + r·W`, double the configured figure |
 | **`ordered-global`** — make the class-global schedule ordered, so `earliest` answers "after everything already granted" | cross-chat head-of-line blocking and, with deadlines, starvation |
 | **`count-retention`** — retain the newest `max(c)` grants instead of retaining by time | an unordered schedule silently forgets live grants and over-emits |
-| **`truncating-pace`** — round the pacing interval down instead of up | `N+1` emissions per `W` at the shipped global default |
+| **`pace-only`** — map a pacing key to its pacing window alone, dropping the quota window, with a truncated interval | `N+1` emissions per `W`: the quota window is what forbids the extra one |
+| **`quota-only`** — map a pacing key to its quota window alone, dropping the pacing window | `N` emissions at one instant then an idle `W`: the pacing window is what makes emission steady |
 
 - Scenarios and the exact configurations they use:
   - **AC10** — two parts.
@@ -1346,8 +1425,10 @@ reduced to a few lines.
     (iii) **the global ceiling at its shipped default**: with `LAB_GAME_TG_LIMIT_MESSAGE_GLOBAL`
     left at `30/1s`, a fan-out releasing one message into each of many chats emits **at most
     thirty in any one-second window** — the figure D10 verified as enforced. Red-first against
-    `truncating-pace`, which admits thirty-one, and against `count-retention`, which admits
-    far more.
+    `pace-only`, which admits thirty-one, and against `count-retention`, which admits far
+    more. **Not** against a merely-truncated pacing interval: with the quota window present
+    that variant still emits thirty, which is why D9 attributes the bound to the quota window
+    and the evenness to the rounding.
   - **AC11** — message chat rate `1/1s`: traffic into chat A is spaced, traffic into chat B is
     not delayed by it, and a `ClassOther` call into chat A is not delayed by the message
     class's allowance. **And the clause the old isolation test could not carry, because it
@@ -1371,11 +1452,19 @@ reduced to a few lines.
     "traceable to a verified figure" becomes a test rather than a claim about a constructor
     argument.
   - **AC14** — a positive (private) chat id is charged on the same terms as a negative one.
+  - **The undecodable-body branch (D4)** — a request whose `BodyRaw` is nil is charged against
+    the reserved unknown-chat key of its class, so the class's rate and cap both bind, and its
+    `Call.Chat.Known` is false when the gate sees it. **Not** exempt from the per-chat windows:
+    the red-first variant here is "treat an unknown chat as no chat", under which the same run
+    shows the per-chat windows never binding at all. The MVP sends no media so this branch is
+    not reached in production, which is exactly why it gets a test rather than a comment.
   - **AC15** — the same configuration under two different base URLs produces identical
     emission instants.
   - **AC30** — one key at a known interval, callers released one at a time with
     `synctest.Wait()` between them so arrival order is fixed: emissions are one interval apart
-    and in arrival order.
+    and in arrival order. Red-first against `quota-only`, where the same run emits the whole
+    allowance at one instant and then idles — the assertion that shows the pacing window earns
+    its place.
   - **AC31** — two parts.
     (i) *Nothing is lost*: under saturation with a deadline shorter than the queue, the
     emissions together with the returned `*Error`s account for **every** submitted call, and
