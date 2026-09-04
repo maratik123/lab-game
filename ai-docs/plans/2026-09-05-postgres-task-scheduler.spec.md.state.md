@@ -62,7 +62,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 3
+round: 4
 agent_id: a80e8c5c04428a94f
 prior_qa:
   - round: 1
@@ -77,8 +77,9 @@ prior_qa:
     note: "Not a choice — the owner asked for the prior art before deciding. Researched facts passed as extra_context in round 2; the question is to be re-asked informed by them."
   - round: 2
     question: "Round 1 settled that a completed task row is deleted. Does that also govern a recurrent occurrence, or does a recurring row persist and move forward?"
-    answer: "<pending — surfaced to the owner>"
+    answer: "Move forward — one live row per recurrence; completing it sets the next run_at in place. A primary key on (type, instance) makes double-seeding unrepresentable. Delete-on-done governs one-shots only."
   - round: 2
     question: "Where is a recurrent task's cadence declared, and what restores a chain that has stopped?"
-    answer: "<pending — surfaced to the owner>"
+    answer: "How db-scheduler self heals recurrent tasks?"
+    note: "Not a choice — the owner asked for the prior art's healing mechanism before deciding. Researched facts passed as extra_context in round 3; the question is to be re-asked informed by them."
 ```
