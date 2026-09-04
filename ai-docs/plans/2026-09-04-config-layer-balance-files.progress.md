@@ -10,8 +10,8 @@ _Updated: 2026-09-04
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 11 — review fixes complete (Round 1)
-**last_passed_gate:** make verify + mutation re-test | 2026-09-04T09:58:29Z | 3306197831134b3228bdc26d954a22a4802e0019
+**current_step:** Step 10 — self-review APPROVE (Round 2)
+**last_passed_gate:** make verify + mutation re-test | 2026-09-04T10:04:06Z | 9899d9c60a7e0c57684d24140dc1963f74616fa2
 **entry_args:** 18
 
 ## Next action
@@ -72,6 +72,8 @@ _Updated: 2026-09-04
 - **Step 11**: SR1-1 was found by mutation testing and is closed the same way — deleting the bindDuration tag guard now turns TestLoadBalance_NullValue_ZeroAdmittingKeys/duration_non_negative RED, and deleting the bindDecimal one turns .../decimal_unit_fraction RED. Both re-run after the last edit; balance_load.go restored byte-identical from a cp backup, never git checkout.
 - **Step 11**: the doubled prefix is fixed on the sentinel side, not the KeyError side — the sentinels lose their "config: " and KeyError keeps rendering it once, so a message reads "config: <key>: missing: required". No test asserted on sentinel text (grep confirmed before the change).
 
+- **Step 10**: APPROVE at round 2. The three below-floor reservations it named were fixed anyway before the PR — a citation that resolves but does not support its claim is the failure shape AGENTS.md § Communication names, and shipping one knowingly is worse than the round it would have cost. Mutation coverage re-verified after the edits, since they touched the very test that kills the mutant.
+
 ## Key discoveries (don't re-investigate)
 
 - Permission deny rules reach `Bash` by command text, not only the file tools: `ls -la .env .env.example` is refused, `ls -la .env.example` and `git check-ignore -q .env` both run. Verification commands touching `.env.example` use one path per command.
@@ -117,7 +119,7 @@ _Updated: 2026-09-04
 | D2-5 | design round 2 | minor | fixed@869cfb3 | `sed -n '49p' ai-docs/key-decisions.md` |
 | SR1-1 | self-review round 1 | major | ✅ fixed@3306197 | delete `bindDuration`'s `if n.Tag != "!!str"` block (`internal/config/balance_load.go:60-62`), then `go test -count=1 ./internal/config/` — must go RED; today it stays green |
 | SR1-2 | self-review round 1 | major | ✅ fixed@3306197 | `grep -n 'chunk size in cells' ai-docs/code-style.md` — must return nothing once the row is amended |
-| SR1-3 | self-review round 1 | minor | ✅ fixed@3306197 | `grep -n 'AGENTS.md §16' internal/config/repo_root_test.go` — must return nothing |
+| SR1-3 | self-review round 1 | minor | ✅ fixed@9899d9c |
 | SR1-4 | self-review round 1 | minor | ✅ fixed@3306197 | `env -u LAB_GAME_BOT_TOKEN … go run ./cmd/bot 2>&1 \| grep -c 'config: .*: config: '` — must be 0 |
 | SR1-5 | self-review round 1 | minor | ✅ fixed@3306197 | `sed -n '63,74p' internal/config/config.go \| grep -c 'ErrMissing'` — must be >= 1 |
 | SR1-6 | self-review round 1 | nit | ✅ fixed@3306197 | `sed -n '59,61p' internal/config/config_test.go` — the `&&` conjunction replaced by a direct assertion |
@@ -125,6 +127,8 @@ _Updated: 2026-09-04
 | SR1-a2 | self-review round 1 | — | accepted@1 — `WorldBalance`/`ChunkBalance` (`internal/config/balance.go:23-31`) do not violate AC15: they type the chunk-grid *balance* axis AC7 enumerates, not the world set's interior (lexicon/bestiary), which `Config.WorldPath` exposes as a bare string. | `grep -n 'WorldPath' internal/config/config.go` → the path string only |
 | SR1-a3 | self-review round 1 | — | accepted@1 — the `AGENTS.md` hand-rolling AXIOM (a73040b) and `ai-docs/dependency-versions.md` ride in this PR outside the spec's Scope list; authorised by the owner's recorded decision (this file, § Decisions log, "**Step 8**: owner's decision"). Not scope creep. | `git log --oneline -1 a73040b` |
 | SR1-a4 | self-review round 1 | — | accepted@1 — `cmd/bot/main.go`'s `run` doc comment avoids the literal `log.Fatal`/`panic(` substrings; the reworded text was never committed with them (first commit 250739e already carries the current wording), the comment is accurate, and the discharge is recorded in `ai-docs/learnings.md` + `ai-docs/harness-gaps.md`. Not a live instance of the dodge. | `git show 250739e:cmd/bot/main.go` |
+| SR2-1 | self-review round 2 | minor | accepted@2 — below severity floor | `grep -n 'DESIGN.md.:69' ai-docs/code-style.md` — must return nothing (cite `§2.2.2`), and the row must quote «размер — конфиг», not *ориентир* |
+| SR2-2 | self-review round 2 | nit | accepted@2 — below severity floor | `sed -n '/ZeroAdmittingKeys/,/^}/p' internal/config/balance_load_test.go` — the field holding the replacement fixture text is not called `want` |
 
 ## Self-Review (Round 1)
 
@@ -163,6 +167,46 @@ _Updated: 2026-09-04
 **Not raised, and why** (durable rows in the register above): `SR1-a1` three redundant-but-unprotected walker guards; `SR1-a2` `WorldBalance`/`ChunkBalance` vs AC15; `SR1-a3` the `AGENTS.md` hand-rolling AXIOM riding in this PR; `SR1-a4` `cmd/bot/main.go`'s gate-shaped doc comment.
 
 **AC status after this round:** AC1-AC16 hold as recorded. **AC17 does not** — finding 2. Findings 1 and 3-6 are quality defects against the design and the convention files rather than AC failures.
+
+## Self-Review (Round 2)
+
+**Verdict:** APPROVE
+
+**Diff window reviewed:** `3ff8c98..HEAD` as given; the round-1 register scoped the work to the diff since `3306197` (`fix(config): cover the null guard the suite could not kill`) plus `0f62955` (progress file only). Six files moved: `ai-docs/code-style.md`, `internal/config/{balance_load_test.go,config.go,config_test.go,errors.go,repo_root_test.go}`. `go.mod`/`go.sum` untouched (`git diff --stat 0ebf112..HEAD -- go.mod go.sum` → empty).
+
+**What was checked.** Every round-1 register row re-verified by its own recorded command; the fix diff read in full for new defects; every gate re-run because production code moved (`errors.go` sentinel texts, `config.go` doc comment).
+
+**Round-1 rows, re-verified by their register commands:**
+
+| id | Register command | Result |
+|---|---|---|
+| SR1-1 | delete `bindDuration`'s `if n.Tag != "!!str"` block, then `go test -count=1 ./internal/config/` — must go RED | **✅ FIXED.** Now RED: `--- FAIL: TestLoadBalance_NullValue_ZeroAdmittingKeys/duration_non_negative`. The symmetric decimal mutation is also killed: `--- FAIL: …/decimal_unit_fraction` **and** `--- FAIL: TestLoadBalance_DecimalGivenQuotedNumber`. The new table covers both zero-admitting keys (`raid.death.respawn_debuff`, `raid.afk.cruelty`) and guards its own fixture with a `t.Fatalf` when the replacement line is not found — the round-1 hole is closed, not papered over. |
+| SR1-2 | `grep -n 'chunk size in cells' ai-docs/code-style.md` — must return nothing | **✅ FIXED** (exit 1). Chunk size moved to the configuration row; AC17's contradiction is gone. The replacement row's *citation* is a new, separate defect — `SR2-1`, below. |
+| SR1-3 | `grep -n 'AGENTS.md §16' internal/config/repo_root_test.go` — must return nothing | **🔁 RE-OPENED.** The literal grep passes (exit 1), but the fix is incorrect in the same way the finding named. See below. |
+| SR1-4 | `go run ./cmd/bot` with all six variables unset, count of `config: .*: config: ` | **✅ FIXED** — count `0`. Measured: `lab-game bot: configuration: config: LAB_GAME_BOT_TOKEN: missing: required` (one prefix). Sentinel texts lost their `config: ` prefix; swept the tree for the old strings (`config: missing` / `unknown key` / `invalid value` / `unreadable path`) — no live reference outside this file's own round-1 record. |
+| SR1-5 | `Load`'s doc comment names `ErrMissing` | **✅ FIXED** — all four sentinels named, with what each classifies and `errors.Is` (DOC-3 satisfied). |
+| SR1-6 | `config_test.go:59` — the `&&` conjunction replaced | **✅ FIXED** — now `if strings.Contains(err.Error(), "no such file")`, a single unconditional assertion. |
+
+**Gates re-run against the shipped tree (production code moved, so none of round 1's results were carried over):**
+
+| Check | Result |
+|---|---|
+| `make verify` | **PASS** — `VERIFY-GREEN`, `golangci-lint run` → `0 issues.` |
+| `go test -race -count=1 ./internal/config/ ./cmd/bot/` (uncached) | **PASS** — `ok` both |
+| AC11 `rg` over the `go list` `GoFiles` set | **PASS** — no output, exit 1 |
+| Panic-index wider run (`panic(`, `log.(Fatal\|Panic)`, `must[A-Z]`) | **PASS** — no output, exit 1; still no index row owed |
+| `git check-ignore -q .env.example` / `.env` (separate commands, D13(c)) | **PASS** — `1` / `0` |
+| `git diff --stat 0ebf112..HEAD -- go.mod go.sum` | **PASS** — empty; the dependency graph did not move |
+
+**No `blocker` or `major` is open**, so the verdict is APPROVE. Three reservations ride along in the register and must not be read as blocking:
+
+- **`SR1-3` — re-opened, `minor`, `internal/config/repo_root_test.go:13-14`.** The comment now reads "(AGENTS.md § Code Style — Determinism: no reliance on ambient state that a test runner may not control)". That section resolves, but the bullet it names reads in full: *"world generation, combat, and any PvP-trail replay are pure functions of `(seed, input)`. No `time.Now()`, no map-iteration order, and no un-seeded `math/rand` on those paths"* — it says nothing about a test's working directory, and `repoRootPath` is a helper on none of those three paths. A non-resolving citation was replaced by a resolving-but-unsupporting one, which is `AGENTS.md` § Communication's named shape: *a thematically adjacent entry makes the misattribution feel checked*. The reason in the comment stands on its own; the cheapest correct fix is to drop the citation.
+- **`SR2-1` — new, `minor`, `ai-docs/code-style.md:51`.** Two defects in the citation that now carries the corrected row. (a) It cites `docs/DESIGN.md`**:69**, a line number, while the same row cites `§16.5` by section — `ai-docs/doc-convention.md` DOC-4: *"Cite the section number, never a line number… `§2.2.4` survives what `:118` does not."* The section is **§2.2.2**. (b) It says chunk size is what DESIGN "calls an *ориентир*". Verbatim, `docs/DESIGN.md:69` is «**Чанки** (размер — конфиг, ориентир 16×16 гексов)»: *конфиг* attaches to the **size**, *ориентир* to the **number 16×16**. The row drops the one word that carries its own rule and quotes the one that does not — a wrong premise attached to a correct rule.
+- **`SR2-2` — new, `nit`, `internal/config/balance_load_test.go:198-201`.** The case struct's `want` field holds the *replacement fixture text* (an input) while `wantKey` holds the expected error key; `want` reads as an expectation. Rename to `new`/`replacement`.
+
+**Count and file list for the below-floor items:** 3 items (2 `minor`, 1 `nit`) across 2 files — `ai-docs/code-style.md`, `internal/config/repo_root_test.go`, `internal/config/balance_load_test.go`. None changes behaviour; none is the difference between verdicts.
+
+**AC status after this round:** AC1-AC17 all hold. AC17's round-1 failure is closed by the `ai-docs/code-style.md` amendment.
 
 ## Files touched
 
