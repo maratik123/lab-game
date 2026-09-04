@@ -5,7 +5,9 @@
 //
 //   - the process environment supplies secrets (the bot token, the
 //     database DSN), runtime settings (the Bot API base URL, the allowed
-//     chat ids), and the balance-file and world-set file-system paths;
+//     chat ids, and internal/tg's optional-with-default retry and
+//     rate-limit tuning), and the balance-file and world-set file-system
+//     paths;
 //   - the balance YAML file (LAB_GAME_BALANCE_PATH) supplies every game
 //     constant — stamina, combat dice, door and monster-budget curves,
 //     shop rates — with no compiled-in fallback for any of them;
