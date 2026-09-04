@@ -4,11 +4,17 @@
 **Date:** 2026-09-04
 
 > **Claim-tag conventions in this document.** A repo fact is pinned to the commit it was
-> read at. A fact about an **external module or the standard library** has no repo path,
-> so its pin is the **module version** (or `go doc`) the probe ran against; the probe
-> modules live outside the repo under the session scratchpad. A claim about an artefact
-> this task creates carries `[derived → …]` and no locator. `docs/DESIGN.md` is cited by
-> section, per the design-writer contract, so those citations carry no `[measured …]` tag.
+> read at. A fact about an **external module, an external tool, or the standard library**
+> has no repo path, so its pin is the **version** (or `go doc`) the probe ran against;
+> the probe modules live outside the repo under the session scratchpad. A claim about an
+> artefact this task has **not yet built** carries `[derived → …]` and no locator.
+> **Amendment carve-out:** once a group has landed, a fact about an artefact this task
+> **has already implemented** may carry `[measured <implementing-commit>:<path>:<line>]` —
+> the usual ground for forbidding a locator ("it cannot have been measured") does not
+> hold when the commit, the file and the line exist and the command was run. Verified
+> evidence is never downgraded to `[derived → …]` for the sake of the form.
+> `docs/DESIGN.md` is cited by section, per the design-writer contract, so those
+> citations carry no `[measured …]` tag.
 
 ---
 
@@ -510,16 +516,17 @@ Two groups, within the default maximum of 4 — no user gate needed.
 - **A test that reads the tracked config files resolves them relative to the package directory, not the repo root.** `.env.example` documents repo-root-relative paths, so any test driven by it must rewrite the path values through a repo-root prefix or it fails on a correct tree — `[derived → subtask 6's example-environment test and its repo-root helper]`.
 - **A change to `config/balance.yaml`, `config/world/**` or `.env.example` alone skips the job that validates it**, because the CI `go` filter does not currently match them — `[measured 5285f4c:.github/workflows/ci.yml:37-52 · `sed -n '30,55p' .github/workflows/ci.yml` → the `go:` filter lists `**/*.go`, `**/*.sql`, `go.mod`, `go.sum`, `.golangci.yml`, `Makefile`, `.github/workflows/**` and nothing under `config/` or `.env.example`]`. Closed by subtask 8.
 - **The "unreadable path" half of AC15 is not testable in a uid-independent way.** A `chmod 0` fixture is defeated when the suite runs as root, which would make the case pass vacuously rather than fail loudly. The negative cases are therefore a non-existent path and a path whose parent is a regular file — both deterministic for any uid — and the chmod case is deliberately not written; `AGENTS.md` § Go Test Conventions treats a vacuous pass as worse than an absent test — `[derived → subtask 4's world-path test table]`.
-- **The panic invariant, and the boundary a grep will meet.** No **production** path in this design panics: the loader returns errors and `main` exits non-zero, which the index explicitly excludes from needing a row. No row is added — `[measured 42f3652:ai-docs/panic-index.md:3,9 · `sed -n '1,12p' ai-docs/panic-index.md` → the scope sentence "in **production** code (outside `_test.go`)" and the `| — | — | — |` placeholder row]`. **A `_test.go` fixture may still panic and is in the clear** — a helper that converts a known-good literal and panics if it cannot is a test's way of failing at the fixture rather than in the assertion, and both AC11 ("any non-test Go file") and the index's own scope exclude it. The consequence is a verification hazard, not a code one: an AC11 command whose `_test.go` exclusion does not actually bite reports such a helper as a criterion failure — see § Test Design → Gate-level checks, where the glob order that makes the exclusion real is specified and measured — `[measured 42f3652:internal/config/balance_load_test.go:69 · the corrected command → no output, exit 1]`.
+- **The panic invariant, and the boundary a grep will meet.** No **production** path in this design panics: the loader returns errors and `main` exits non-zero, which the index explicitly excludes from needing a row. No row is added. **The index's scope is wider than AC11's two spellings, so the claim is discharged by the wider run, not by the AC11 gate** — the index covers `panic`, `log.Fatal*`/`log.Panic*`, `must…` helpers and a deliberate nil-map write, of which the first three are reachable by pattern and the last is a review-level read that no regex reaches — `[measured 42f3652 · `rg -n -e '\bpanic\(' -e '\blog\.(Fatal|Panic)' -e '\bmust[A-Z]'` over the `go list` non-test file set of `./cmd/... ./internal/...` → no output, exit 1; 42f3652:ai-docs/panic-index.md:3,9 · `sed -n '1,12p' ai-docs/panic-index.md` → the scope sentence "in **production** code (outside `_test.go`)" and the `| — | — | — |` placeholder row]`. **A `_test.go` fixture may still panic and is in the clear** — a helper that converts a known-good literal and panics if it cannot is a test's way of failing at the fixture rather than in the assertion, and both AC11 ("any non-test Go file") and the index's own scope exclude it. The consequence is a verification hazard, not a code one: a command whose non-test file set is wrong reports such a helper as a criterion failure — see § Test Design → Gate-level checks, where the file set is taken from `go list` and measured — `[measured 42f3652:internal/config/balance_load_test.go:69 · the `go list`-driven command → no output, exit 1]`.
 - **No balance is moved and no schema is migrated by this task**, so the ledger and forward-migration rules impose no obligation here: the package writes nothing to Postgres and declares no persisted enum — `[derived → the file list in § Decomposition, which contains no `internal/store/migrations/**` entry, and AC14]`.
 
 ---
 
 ## Test Design
 
-Every claim below is about a test that does not exist yet. All cases run without a
-database and without network access (AC12); no test in this package imports
-`internal/testdb`.
+Test Design as specified at design time; measurements dated `42f3652` were taken after
+the implementing commits landed (see the conventions header's amendment carve-out). All
+cases run without a database and without network access (AC12); no test in this package
+imports `internal/testdb`.
 
 **That last clause is checked with `go list`, not with a text search** — the same
 exclusion-verification hazard as the AC11 gate below, in a different disguise. A grep for
@@ -672,33 +679,50 @@ refused by the permission layer, and the refusal does not look like a failed cri
 - `actionlint .github/workflows/ci.yml` before staging subtask 8 (`AGENTS.md` AXIOM).
 - No file in the change carries a real bot token, DSN, `api_id` or `api_hash` (AC8) —
   a review-level check over the diff.
-- **AC11's second sentence gets its own command, with a two-sided positive control.**
-  AC11 scopes itself to "any **non-test** Go file of the change", so the command must
-  exclude `_test.go` — and **glob order is what decides whether it does**:
+- **AC11's second sentence gets its own command. The file set comes from `go list`, not
+  from globs.** AC11 scopes itself to "any **non-test** Go file of the change", and
+  `GoFiles` *is* that set — the compiler's own answer, excluding `_test.go` by definition
+  and honouring build constraints besides:
 
   ```
-  rg -n --glob '*.go' --glob '!*_test.go' -e '\bpanic\(' -e '\blog\.Fatal' cmd internal
+  rg -n -e '\bpanic\(' -e '\blog\.Fatal' \
+    $(go list -f '{{$d := .Dir}}{{range .GoFiles}}{{$d}}/{{.}}{{"\n"}}{{end}}' ./cmd/... ./internal/...)
   ```
 
-  **The positive glob comes first and the negation last. Do not reorder them.** A later
-  `--glob` overrides an earlier one for the paths they both match, so the negation-first
-  spelling re-includes every `_test.go` file it appeared to drop — silently, since both
-  spellings run and neither errors
-  [measured 42f3652 · `rg -c --glob '!*_test.go' --glob '*.go' -e 'func Test' cmd internal` → exit 0, every `_test.go` file in the tree listed; `rg -c --glob '*.go' --glob '!*_test.go' -e 'func Test' cmd internal` → exit 1, no output].
-  This is not hypothetical on this tree: subtask 1's `validBalance` fixture converts
-  known-good decimal literals through a helper that panics if one fails to parse, so the
-  negation-first spelling reports a criterion failure against a legitimate test helper
-  [measured 42f3652:internal/config/balance_load_test.go:69 · the negation-first command → `internal/config/balance_load_test.go:69:  panic(err)`, exit 0; the corrected command → no output, exit 1].
-  A panic in a `_test.go` file is outside AC11 and outside the panic index, which scopes
-  itself to production code and holds an empty table
-  [measured 42f3652:ai-docs/panic-index.md:3,9 · `sed -n '1,12p' ai-docs/panic-index.md` → "in **production** code (outside `_test.go`)" and the `| — | — | — |` placeholder row].
+  must return nothing. Command substitution, not a pipe, so the exit status is `rg`'s own
+  [measured 42f3652 · that command → no output, exit 1; the `go list` half alone → the
+  non-test Go files of `cmd/bot`, `internal/config`, `internal/store` and
+  `internal/testdb`, exit 0]. This is the same principle the § Test Design preamble
+  applies one level up: a claim about which files a package *compiles* is answered by the
+  tool that resolves them.
 
-  **The control is run first and proves both halves.** An empty result is evidence only
-  once the pattern is known to fire, and — given the trap above — only once the exclusion
-  is known to bite. So the same command runs against a scratch directory holding a
-  `panic(` and a `log.Fatal` in ordinary `.go` files **and** a planted `panic(` in a
-  `_test.go` file: the first two must match and the third must not
-  [measured 42f3652 · the corrected command over such a directory → the two non-test lines matched, the `_test.go` panic absent, exit 0].
+  **Why not `--glob`, recorded so it is not "simplified" back.** A later `--glob`
+  overrides an earlier one for the paths they both match, so the natural-reading
+  `--glob '!*_test.go' --glob '*.go'` re-includes every `_test.go` file it appears to
+  drop — silently, since both orders run and neither errors
+  [measured ripgrep 15.2.0 · `rg -c --glob '!*_test.go' --glob '*.go' -e 'func Test' cmd internal` → exit 0, every `_test.go` file in the tree listed; `rg -c --glob '*.go' --glob '!*_test.go' -e 'func Test' cmd internal` → exit 1, no output].
+  On this tree that ordering is not hypothetical: subtask 1's `validBalance` fixture
+  converts known-good decimal literals through a helper that panics if one fails to parse,
+  so the negation-first spelling reports a criterion failure against a legitimate test
+  helper [measured 42f3652:internal/config/balance_load_test.go:69 · the negation-first glob command → `internal/config/balance_load_test.go:69:  panic(err)`, exit 0; the `go list` command above → no output, exit 1]. A panic in a `_test.go`
+  file is outside AC11 and outside the panic index, which scopes itself to production code
+  [measured 42f3652:ai-docs/panic-index.md:3 · `sed -n '1,12p' ai-docs/panic-index.md` → "in **production** code (outside `_test.go`)"].
+
+  **The positive control is a live tree fact, not a scratch fixture.** An empty result is
+  evidence only once the pattern is known to fire. It does, against that same real
+  helper — and `go list` excludes the file it fires on, which is the exclusion half
+  [measured 42f3652 · `rg -n -e '\bpanic\(' internal/config/balance_load_test.go` → `69:  panic(err)`, exit 0; the `go list` file set for `./internal/config` → `balance_load_test.go` absent, `rg -c` over it exit 1].
+
+  **A hit inside a comment or a string literal is a hit to inspect, never a reason to
+  reword the comment.** The pattern is textual, so it matches prose and literals as
+  readily as calls [measured ripgrep 15.2.0 · the same two patterns over a planted file
+  → matched both `// … never calls log.Fatal and never uses panic( in anger.` and
+  `const hint = "call panic( only in tests"`, exit 0]. When the gate fires, read the site
+  and record *why* it is not an executable call. **Editing production documentation so a
+  grep stops matching it is the tail wagging the dog** — it removes the evidence instead
+  of the finding, and leaves the next reader with a comment shaped by a recipe rather than
+  by the code.
+
   Run the real check after the last edit of the change, not once at the start
   (`AGENTS.md` § Communication — a recorded result is a claim).
 - `git check-ignore -q .env.example; echo $?` → non-zero, so the new file is committable
