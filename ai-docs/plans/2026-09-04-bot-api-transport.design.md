@@ -3,14 +3,15 @@
 **Issue:** #19
 **Date:** 2026-09-04
 
-> **Claim-tag conventions in this document.** A repo fact is pinned to the commit it was
-> read at (`31736b4`, from `git rev-parse --short HEAD` in the same turn as every read
-> below). A fact about an **external module, an external tool, the standard library, or a
-> published web page** has no repo path, so its pin is the **version** (or the `go doc`
-> target, or the page plus its fetch date) the probe ran against; the probe modules live
-> outside the repo, under the session scratchpad. A claim about an artefact this task has
-> **not yet built** carries `[derived → …]` and no locator. `docs/DESIGN.md` is cited by
-> section per the design-writer contract, so those citations carry no `[measured …]` tag.
+> **Claim-tag conventions in this document.** A repo fact carries the commit it was read
+> at — the sha in a tag is the commit of the **read**, not of this document, so it may lag
+> `HEAD` after a revision that touched only this file. A fact about an **external module, an
+> external tool, the standard library, or a published web page** has no repo path, so its pin
+> is the **version** (or the `go doc` target, or the page plus its fetch date) the probe ran
+> against; the probe modules live outside the repo, under the session scratchpad. A claim
+> about an artefact this task has **not yet built** carries `[derived → …]` and no locator.
+> `docs/DESIGN.md` is cited by section per the design-writer contract, so those citations
+> carry no `[measured …]` tag.
 
 ---
 
@@ -180,8 +181,26 @@ Exported shape [derived → AC1]:
 
 - `Client`, `New(Options) (*Client, error)`, `(*Client).API() *telego.Bot`
 - `Options` — base URL, bot token, the `config.Transport` settings, optional `Gate`,
-  optional `Observer`, optional jitter source, optional `*http.Client`
+  optional `Observer`, optional jitter source, optional `*http.Client`, optional
+  `Logger telego.Logger`
 - `MethodClass`, `Call`, `ChatRef`, `Gate`, `Observation`, `Observer`, `Error`
+
+**`Options.Logger` exists so telego's own logger is a decision rather than a default.**
+Left alone, `telego.NewBot` installs a logger that writes to `os.Stderr` with error printing
+on
+[measured telego@v1.11.2:logger.go · `sed -n '/func newDefaultLogger/,/^}/p' logger.go` →
+`Out: os.Stderr`, `DebugMode: false`, `PrintErrors: true`, `Replacer: defaultReplacer(token)`],
+and `performRequest` calls `b.log.Errorf` on every error our caller returns — so every
+give-up and every terminal failure would also leave the process by a channel D11 does not
+own, which is not something to hand #23 unannounced. **AC26 is not at risk either way**: the
+default logger redacts the token
+[measured telego@v1.11.2:logger.go · `sed -n '/func defaultReplacer/,/^}/p' logger.go` →
+`strings.NewReplacer(token, DefaultLoggerTokenReplacement)`, and
+`grep -n -A2 'DefaultLoggerTokenReplacement =' logger.go` → `= "BOT_TOKEN"`]. The issue is
+channel ownership, not leakage. **Default: `telego.WithDiscardLogger()`** — the typed error
+and the observation point are the transport's output, and a duplicate ANSI stderr stream is
+noise in a container. An operator or a test that wants telego's own tracing sets
+`Options.Logger`.
 
 Every outbound-call method is telego's own and already takes `ctx` first
 [measured telego@v1.11.2:methods.go · `grep -n -A2 'func (b \*Bot) SendMessage' methods.go` →
@@ -452,10 +471,14 @@ branches the spec's Key decisions demand: *retry later at T* is `RetryAfter > 0`
 **The retry budget is `RetryMaxAttempts`, a count** (owner, round 3). Its default is the
 design's to choose and no source states one — see D10.
 
-### D9 — The limiters use `golang.org/x/time/rate`, and the wait is ours
+### D9 — The shaper roles use `golang.org/x/time/rate`; the window cap is a counter, and the wait is ours
 
-**Adopted: `golang.org/x/time/rate`** as a new direct requirement, published through
-`v0.15.0`
+**Read § Structure below first if you only read one part of this section:** the per-chat
+*window cap* is deliberately **not** a token bucket, and the reason is a measurement, not a
+preference.
+
+**Adopted for the shaper roles: `golang.org/x/time/rate`** as a new direct requirement,
+published through `v0.15.0`
 [measured · `go list -m -versions golang.org/x/time` → `… v0.13.0 v0.14.0 v0.15.0`] and not
 reachable from this module today
 [measured 31736b4:go.mod · `go mod why -m golang.org/x/time` → `# golang.org/x/time` /
@@ -470,6 +493,12 @@ event per interval with no burst beyond the first — which is the mechanism the
 in round 3, and the equivalence is the article's own (the spec's Key-decisions row records
 the meter/token-bucket equivalence). This is not a rename of the rejected option: the
 rejected option is the *burst-allowing* configuration, and `burst` is ours to set.
+
+**That equivalence is about a *rate*, and it does not extend to a *window bound* — this is
+the sentence that stops the round-2 defect being re-derived.** Whatever `burst` is set to, a
+token bucket admits `b + r·W` in a window of length `W`; there is no `burst` that makes it
+mean "at most `count` per `Per`" while leaving the short-window rate free to bind. § Structure
+below carries the measurement and the mechanism that does.
 
 Measured, not argued: with `rate.Every(time.Second)` and `burst 1`, successive `Wait` calls
 returned at exactly `0s`, `1s`, `2s`
@@ -491,6 +520,10 @@ reserve, compare the delay against the deadline, sleep or cancel. `Reservation.C
 is called on every abandoned reservation. **What that cancellation does and does not buy is
 measured below, because the doc comment's "as much as possible" is weaker than it reads and
 an earlier draft of this document over-read it.**
+
+**Scope of everything in this subsection: the `rate.Limiter` legs only** — the global
+shaper and the per-chat shaping rate. The cap leg is the sliding-window counter above, whose
+reclamation is exact and which none of the findings below touch.
 
 **Measured behaviour of `Reservation.CancelAt` under `rate.Every(1s)`, burst 1.** Reserving
 `a`, `b`, `c` at one instant yields delays `0s`, `1s`, `2s`. Cancelling the **middle** one
@@ -545,39 +578,148 @@ only a few lines" and bare dependency aversion outright
 [measured 31736b4:AGENTS.md:138-139 · `sed -n '138,139p' AGENTS.md` → "*\"It's only 10–20
 lines — cheaper than writing the import\"* | **REFUSED.** Line count is not the cost." and
 "*\"Better to write our own than to pull in an established dependency\"* | **REFUSED.**
-Dependency aversion is not a reason by itself."], and neither escape the same table allows
-applies: `x/time/rate` is maintained, and its API *does* express the accounting. Only the
-wait needed writing, and the package documents that split itself.
+Dependency aversion is not a reason by itself."], and for the **pacing** roles neither escape
+the same table allows applies: `x/time/rate` is maintained, and its API *does* express
+token-bucket accounting. Only the wait needed writing, and the package documents that split
+itself.
 
-**Structure.** Every *attempt* charges its class's buckets (D2), so there is no special case
-for "what charges the buckets" — the class table is the whole answer:
+The **window cap** is the one place this design does write its own mechanism, and it clears
+the same bar by the table's own "the API cannot express the requirement" row rather than by
+line count — the argument, with the measurements and the packages that were read and
+rejected, is in § Structure below. Keeping the decisions apart matters: the bucket is
+imported, the counter is written, and each carries its own justification.
 
-- **global**, one shaper per class, `burst 1`;
-- **per chat**, keyed on `(chat key, class)`, a **shaping rate** (`burst 1`) and a **window
-  cap** (`burst = count`). Those roles are why the keys are named `_CHAT_RATE` and
-  `_CHAT_CAP` (D10) rather than "short" and "long": a cap shaped at burst 1 would emit one
-  message every three seconds into a chat and would be stricter than any published figure.
+**Structure.** Every *attempt* charges its class's limiters (D2), so there is no special case
+for "what charges the limiters" — the class table is the whole answer. **The pacing roles are
+token buckets and the cap role is not**, and that split is the substance of this
+section:
 
-`Reserve` does not block, so acquiring all applicable buckets is allocation-order-free and
-there is no lock-ordering hazard; the attempt then waits once, until the **latest** of the
-reserved times, and each bucket is charged exactly once **per attempt**. If that instant is
-past the caller's deadline, every reservation taken for that attempt is cancelled and the
-call returns the D8 error. A private chat is charged on the same terms as a group — no chat
-is exempt by construction (spec Key decisions).
+- **global**, one `rate.Limiter` shaper per class, `burst 1`;
+- **per chat**, keyed on `(chat key, class)`:
+  - a **shaping rate** — a `rate.Limiter`, `burst 1`;
+  - a **window cap** — **NOT a `rate.Limiter`.** A sliding-window admission counter; see
+    below for why a bucket cannot hold this role.
 
-**A `Rate` with zero count is unbounded**, implemented as `rate.Inf`, which the package
-documents as allowing all events regardless of burst
+#### The cap role is a counter, because a token bucket does not bound a window
+
+**A token bucket of size `b` refilled at `r` admits `b + r·W` in a window of length `W`.**
+With the natural-looking parameters `b = count`, `r = count/Per`, a window of length `Per`
+admits `2·count` — double the figure the key is named after. An earlier draft of this
+document specified exactly that and shipped `20/1m` as the message class's per-chat cap,
+i.e. **~40 messages per minute into one chat against a figure `docs/DESIGN.md` §11 and
+`ai-docs/domain-invariants.md` § 6 both state as ~20**, and which D10 verified upstream as
+*enforced* ("bots are not be able to send more than 20 messages per minute"). That is the
+flood-ban surface this package exists to prevent, so the mechanism is replaced rather than
+re-documented.
+
+**Measured, on the exact composition and the exact defaults**, releasing calls into one chat
+and counting emissions rather than listing instants
+[measured golang.org/x/time@v0.15.0 · scratchpad probe `mycancel/fix_test.go`, `go test -v -run TestCapMechanisms` →
+`SHIPPED (bucket burst=20)    first-60s=39   worst-any-60s-window=39   last=2m0s` /
+`CONTROL (bucket burst=1)     first-60s=20   worst-any-60s-window=20   last=2m57s` /
+`CANDIDATE (sliding count)    first-60s=20   worst-any-60s-window=20   last=2m19s`]:
+
+| cap mechanism | emissions in the first `Per` | worst over **any** `Per` window | time to drain 60 calls |
+|---|---|---|---|
+| `rate.Limiter`, `burst = count` (rejected) | **39** | **39** | 2m0s |
+| `rate.Limiter`, `burst = 1` | 20 | 20 | 2m57s |
+| **sliding-window counter (adopted)** | **20** | **20** | **2m19s** |
+
+Both candidates deliver the figure; they differ in what else they cost.
+
+**Rejected — deriving the burst from the window (`burst = 1` on the cap).** It bounds the
+window correctly, but the cap's interval (`Per/count`, i.e. 3s at the message default) is
+then always slower than the short-window rate (1s), so **the `_CHAT_RATE` key can never
+bind — it becomes dead configuration**, and Scope 6's two-window requirement collapses to
+one. It is also worse for the game: a quiet chat would trickle at one message every three
+seconds, so a raid narration reads as broken. The probe shows the cost directly — the same
+sixty calls take 2m57s rather than 2m19s.
+
+**Adopted — a sliding-window admission counter, which is what the spec named.** Its
+Technical constraints already prescribed it: *"a bucket whose interval satisfies the short
+window will still pass far more than the longer-window cap allows over a minute … a bucket
+**plus a counter** for the longer window"*. The earlier draft took the "buckets in series"
+half without checking that the series enforces the longer window; it does not.
+
+Per `(chat, class)` key the cap holds a ring of at most `count` **planned emission instants**.
+Admission of a candidate instant `t`: if the ring is full, the emission is pushed to
+`max(t, oldest + Per)` and the oldest entry is evicted; the granted instant is then appended.
+Because entries are appended in non-decreasing order under the key's mutex, the head is
+always the oldest, so the answer is one comparison rather than a scan. The invariant that
+falls out is the one the ACs must assert: **no window of length `Per` ever contains more than
+`count` emissions** — every window, not merely the first. (The rejected bucket fails both
+readings equally, at `39`; what it *passed* was the instant-list assertion, which is why
+AC12 gains an occupancy clause rather than more instants.)
+
+The emission shape this produces is exactly what Scope 6 and AC12 describe — the burst is
+spread by the short-window rate, and the cap binds only once it has been spread
+[measured golang.org/x/time@v0.15.0 · same probe →
+`CANDIDATE first emissions: [0s 1s 2s 3s 4s 5s 6s 7s 8s 9s 10s 11s 12s 13s 14s 15s 16s 17s 18s 19s 1m0s 1m1s 1m2s]`].
+
+**Why this counter is written here rather than imported**, against `AGENTS.md` § Dependency
+Versions. The requirement is a limiter that **shapes** — answers *when may this go out* — and
+never drops; the spec is explicit that "discarding is not available to this transport in any
+form". The maintained Go packages in this space are **policing** limiters, which answer *is this
+allowed right now*, and neither package read for this decision contains a waiting form at
+all:
+
+- `throttled/throttled/v2` — its current interface is
+  `RateLimitCtx(ctx context.Context, key string, quantity int) (bool, RateLimitResult, error)`,
+  documented as "checks whether a particular key has exceeded a rate limit", and its quota is
+  `RateQuota{MaxRate Rate; MaxBurst int}` — the same burst parameter, so its GCRA would
+  reproduce the overshoot being fixed
+  [measured throttled/throttled/v2@v2.15.0 ·
+  `sed -n '/type RateLimiterCtx interface/,/^}/p' …/rate.go` → that method and doc comment;
+  `sed -n '/^type RateQuota struct/,/^}/p' …/rate.go` → `MaxRate Rate` / `MaxBurst int`].
+- `ulule/limiter/v3` — its whole `*Limiter` surface is `Get`, `Peek`, `Reset`, `Increment`,
+  each returning a `Context{Limit, Remaining, Reset, Reached}` verdict
+  [measured ulule/limiter/v3@v3.11.2 · `grep -rhn '^func ' …/limiter.go` → those methods;
+  `sed -n '/^type Context struct/,/^}/p' …/limiter.go` → those fields].
+- Neither module defines a `Wait` method anywhere
+  [measured throttled/throttled/v2@v2.15.0 and ulule/limiter/v3@v3.11.2 ·
+  `grep -rln 'func .*) Wait(' <each module root>` → **no file in either module**].
+
+A verdict cannot answer "when may this go out?", and this transport may never drop, so that
+is the AXIOM's own "the API cannot express the requirement" row — measured rather than
+assumed. `golang.org/x/time/rate` **is** kept for the roles it does express — the burst-1
+shapers — so the argued wheel is one small counter, not a limiter library.
+
+**One property the counter has that the buckets do not: exact reclamation.** A refused or
+cancelled attempt removes the instant it inserted, because it inserted a specific value it
+can identify — so the cap leg has no hole, and D9's hole is confined to the `rate.Limiter`
+legs.
+
+#### Acquiring and waiting
+
+`Reserve` does not block and the cap's admission is a pure computation, so acquiring all
+applicable limiters is allocation-order-free and there is no lock-ordering hazard: the global
+and chat-rate reservations give a candidate instant, the cap turns that candidate into the
+granted instant, and the attempt waits once until it. Each limiter is charged exactly once
+**per attempt**. If the granted instant is past the caller's deadline, every reservation taken
+for that attempt is cancelled and the cap's inserted instant is removed, and the call returns
+the D8 error. A private chat is charged on the same terms as a group — no chat is exempt by
+construction (spec Key decisions).
+
+**A `Rate` with zero count is unbounded**, and each role expresses that in its own terms: a
+shaper leg becomes a `rate.Limiter` at `rate.Inf`, which the package documents as allowing all
+events regardless of burst
 [measured golang.org/x/time@v0.15.0:rate/rate.go · `sed -n '/^\/\/ Inf is the infinite rate limit/,/^const Inf/p' rate/rate.go` →
-"Inf is the infinite rate limit; it allows all events (even if burst is zero)"].
+"Inf is the infinite rate limit; it allows all events (even if burst is zero)"], and the cap
+leg holds no ring at all and grants every candidate instant unchanged. An unbounded class
+therefore allocates nothing per chat, which is also why the registry note below is about
+bounded classes only.
 
-**Nothing is ever discarded.** The bucket only delays; a call that cannot be emitted before
+**Nothing is ever discarded.** Every leg only delays; a call that cannot be emitted before
 its deadline returns the typed error. Silent drop is a defect, not a tuning choice (spec
 Technical constraints).
 
-**The per-key registry grows with distinct `(chat, class)` pairs, and this design does not
-evict — recorded as a known bound.** The MVP ships to one friendly chat (`docs/DESIGN.md`
-§14), the entries are small, and #43's fan-out is the trigger to revisit. One correctness
-note for whoever adds eviction: an evicted key returns a *full* bucket, so eviction must be
+**The per-key registry grows with distinct `(chat, class)` pairs of a bounded class, and this
+design does not evict — recorded as a known bound.** The MVP ships to one friendly chat
+(`docs/DESIGN.md` §14), and #43's fan-out is the trigger to revisit. An entry holds the
+shaper limiters plus the cap's ring, whose length is the class's configured `count` — so the
+per-key cost is set by configuration and is a handful of instants at the message default;
+an unbounded class allocates no ring at all. One correctness note for whoever adds eviction:
+an evicted key returns both a *full* bucket and an *empty* ring, so eviction must be
 time-based — only a key idle longer than its longest window may be dropped, or the cap it
 enforced is silently reset.
 
@@ -647,6 +789,18 @@ enforced** ("are not able to"). The global and per-minute figures also appear in
 repository already (`docs/DESIGN.md` §11: 30 msg/sec globally, ~20 msg/min into one chat);
 the per-second one does not, which is why it reaches § Open questions.
 
+**A verified figure is only half of AC13 — the mechanism has to deliver it, and the first
+draft's did not.** `_CHAT_CAP = 20/1m` read as a token bucket admitted ~40 in the first
+minute (D9, measured), so the shipped default would have doubled the one figure on this page
+whose modality is *enforced*. AC13's wording is "traceable to a figure the design document
+cites **and has verified**", and a default that the limiter does not actually impose is not
+traceable to anything. **Each row of the table above is therefore a claim about emissions,
+not about a constructor argument**, and D9's cap mechanism is what makes the `_CHAT_CAP`
+rows true: `20/1m` means no window of sixty seconds ever carries more than twenty
+message-class emissions into one chat, which is what `ai-docs/domain-invariants.md` § 6
+states. The corresponding AC12/AC13 scenarios count emissions per window for the same
+reason — an instant-list assertion cannot see this class of defect (§ Test Design).
+
 **The edit and other classes stay unbounded because the same page states no figure for
 them** — asked directly, and the answer was explicit
 [measured core.telegram.org/bots/faq, fetched 2026-09-04 · WebFetch, asked whether the page
@@ -674,7 +828,7 @@ tuning value an operator may change, which is the entire point of the key class.
   optional key is still in the recorded set. The loader therefore calls `lookup` for **every**
   transport key on every load, with no early return and no branch that skips one.
 - **"Queried unconditionally" must NOT be implemented by adding the transport keys to
-  `envKeys()`, and this is the trap in the change.** Two live tests iterate that unexported
+  `envKeys()`, and this is the trap in the change.** Live tests iterate that unexported
   helper and assert a *required*-variable failure for every member: removing a member's value
   must yield `ErrMissing`, and emptying it must yield `ErrInvalidValue`
   [measured 31736b4:internal/config/env_test.go:53,66 · `grep -n 'func TestLoadEnv_RequiredVariableUnset\|func TestLoadEnv_RequiredVariableEmpty' internal/config/env_test.go`
@@ -682,7 +836,8 @@ tuning value an operator may change, which is the entire point of the key class.
   `assertKeyError(t, err, ErrInvalidValue, key)`]. An optional key added to `envKeys()` fails
   both immediately, and the tempting repair — loosening the assertion — is a direct attack on
   AC24, which exists to keep those variables required.
-  **The correct shape is the one the package already uses for the two file paths:** a
+  **The correct shape is the one the package already uses for the balance-file and
+  world-set paths:** a
   dedicated reader. `envBalancePath` and `envWorldPath` are validated by `requiredBalancePath`
   and `resolveWorldPath` rather than by `loadEnv`, and appear in `EnvKeys()` only
   [measured 31736b4:internal/config/env.go · `sed -n '/^\/\/ envKeys returns/,/^}/p' internal/config/env.go`
@@ -691,7 +846,7 @@ tuning value an operator may change, which is the entire point of the key class.
   `sed -n '/^func EnvKeys/,/^}/p' internal/config/env.go` → `return append(envKeys(), envBalancePath, envWorldPath)`].
   So: `loadTransport(lookup)` owns the transport keys, `Load` joins its errors alongside the
   others, `EnvKeys()` appends `transportEnvKeys()`, and **`envKeys()` keeps exactly the
-  membership it has today** — leaving `env_test.go`'s two suites untouched and AC24 intact
+  membership it has today** — leaving `env_test.go`'s suites untouched and AC24 intact
   [derived → AC24, whose existing tests must still pass unmodified].
 - **`.env.example` documents each new key carrying its default as the value**, because a
   test asserts every value is non-empty
@@ -893,7 +1048,7 @@ would be dead code in the binary and an untested wiring path at once.
 | 1 | `internal/config`: the optional-with-default transport key class — the value types of D10, the key names, the compiled-in defaults, the `<count>/<duration>`\|`off` grammar and its validation, a dedicated `loadTransport` reader joined into `Load` with `EnvKeys()` extended and **`envKeys()` left exactly as it is** (D10), the falsified doc comments in `env.go` and `config.go` rewritten (AC25), **and `.env.example` carrying each new key with its default as a non-empty value** in the file's existing commented style. Tests first: absent → default, present → parsed, malformed → `*KeyError` naming the key, the three-way key-set equality, and the previously declared variables still required. | `internal/config/transport.go`, `internal/config/transport_test.go`, `internal/config/env.go`, `internal/config/config.go`, `.env.example` | — |
 | 2 | `internal/tgtest`: the in-process fake Bot API server of D13 — `net.Pipe` dialer, the `.invalid` base URL, the scripted behaviours AC19 lists, the fake token constant, and its own tests. | `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` | — |
 | 3 | `internal/tg` foundations **and the telego dependency**: package comment, `Error`, `Observation`/`Observer`, `MethodClass` + the D4 classifier, `Gate`/`Call`/`ChatRef`, `Options` + `New` + `API`. `go get github.com/mymmrac/telego@<pinned>` runs in this subtask, with the importing file, so `make tidy-check` stays green (D1). Tests: the classifier over the pinned version's method names, option validation, error rendering and unwrapping. | `go.mod`, `go.sum`, `internal/tg/doc.go`, `internal/tg/errors.go`, `internal/tg/observe.go`, `internal/tg/class.go`, `internal/tg/client.go`, `internal/tg/class_test.go`, `internal/tg/client_test.go` | 1 |
-| 4 | `internal/tg` limiters: the per-class global shaper, the per-`(chat, class)` shaping rate and window cap, the reserve/compare/wait/cancel loop of D9, `rate.Inf` for an unbounded class, and the charge-once-**per-attempt** discipline (D2). Tests: per-class global admission, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, the cap binding after the burst is spread, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go` | 2, 3 |
+| 4 | `internal/tg` limiters: the per-class global shaper and the per-`(chat, class)` shaping rate, both `rate.Limiter` at `burst 1`; the per-`(chat, class)` **window cap as a sliding-window admission counter, not a token bucket** (D9 — a bucket admits `b + r·Per` and does not bound the window); the reserve/admit/wait/cancel loop with exact removal on the cap leg; `rate.Inf` and an absent ring for an unbounded class; and the charge-once-**per-attempt** discipline (D2). Tests: per-class global admission, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, the cap binding after the burst is spread, **emissions per `Per` window over every window, not just the first**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go` | 2, 3 |
 | 5 | `internal/tg` caller: the `encoding/json` request constructor, the attempt loop with the limiters inside it, the `httptrace` write-evidence classifier, equal-jitter backoff, exact `retry_after` honouring with the deadline bound, the gate call once per call, and the single observation. Tests: no-shortened `retry_after`, strictly positive and growing delays, the ambiguous case making exactly one attempt, each retryable case, give-up field by field, deadline refusal, cancellation at every waiting site, the attempt cap, and the observation for a success, a retried success and a give-up. | `internal/tg/constructor.go`, `internal/tg/caller.go`, `internal/tg/retry.go`, `internal/tg/caller_test.go`, `internal/tg/retry_test.go` | 4 |
 | 6 | `internal/tg` package-level guard tests: the import scan over `cmd/` and `internal/` non-test files (no fasthttp, no go-json, no metrics registry), the token-absence sweep, the seam tests (a refusing gate blocks a call through the accessor, **and no non-test file outside `internal/tg` names `telego.NewBot` or a `telego.With*` option** — D2), the base-URL-appears-only-in-the-constructor source check, and the end-to-end call against `tgtest` built from a `config.Load`-produced `BotAPIBaseURL`. | `internal/tg/guards_test.go` | 5 |
 | 7 | `ai-docs/key-decisions.md`: rewrite KD-2 for the shipped reality (pinned version, the caller/constructor swap, the `stdjson` residue and why it was not taken, the toolchain ceiling), and add the decisions this task settles — the limiter package with its rejected alternatives and the reclamation property it does *not* provide, `testing/synctest` in place of a clock abstraction, and the optional-with-default key class with its boundary. | `ai-docs/key-decisions.md` | 6 |
@@ -910,7 +1065,7 @@ test gate run first
 `assertSameKeySet(t, ".env.example", exampleKeys, "config.EnvKeys()", EnvKeys())`], so a
 subtask that extends `EnvKeys()` while deferring `.env.example` leaves `go test ./...` red
 and cannot be committed at all. An earlier draft split them and depended on the split
-holding; it could not. The two files move together, and **the fix is never to relax the
+holding; it could not. The files move together, and **the fix is never to relax the
 disjointness assertion** — it is the mechanism AC23 is written against.
 
 **AC29's propagation set, and who owns each site.** Membership is decided by `AGENTS.md`
@@ -996,6 +1151,20 @@ outside its charter — `code-writer` must STOP on a predominantly-prose assignm
 - **A future `Idempotency-Key` header would silently re-send a POST inside the transport.**
   Mitigation: the caller sets no such header, and the reason is stated in its doc comment —
   `[measured Go 1.26.5 stdlib · sed -n '/func (r \*Request) isReplayable/,/^}/p' $(go env GOROOT)/src/net/http/request.go → replayable for a POST only when Idempotency-Key or X-Idempotency-Key is present]`.
+- **The window cap could be "simplified" back into a token bucket.** `rate.Limiter` with
+  `burst = count` looks like the obvious way to spell "20 per minute", reads correctly at a
+  call site, and passes an instant-list test — while admitting `b + r·W` = double the figure
+  in a window of length `Per`. This is the defect design review found in round 2 of this
+  document, and it is on the flood-ban surface. Mitigation: D9 carries the measurement and the
+  arithmetic, the decomposition names the mechanism in the subtask, and AC12's window-occupancy
+  assertion is specified to fail against the bucket —
+  `[measured golang.org/x/time@v0.15.0 · probe mycancel/fix_test.go → "SHIPPED (bucket burst=20) first-60s=39 worst-any-60s-window=39" against "CANDIDATE (sliding count) first-60s=20 worst-any-60s-window=20"]`.
+- **A test suite that asserts emission *instants* is blind to window occupancy.** The lesson
+  generalises past this one bug: the earlier AC12 scenario reproduced exactly and proved
+  nothing about the property that mattered. Mitigation: § Test Design now specifies the
+  occupancy assertion *and* how to confirm it has teeth (point it at the rejected mechanism
+  and watch it go red) — `AGENTS.md` § Patterns 2 applied to the design's own instrument —
+  `[derived → AC12 clause (ii), whose red-then-green demonstration is part of the subtask]`.
 - **A refused call leaves a hole in the limiter's schedule, and an implementor may try to
   test it away.** `Reservation.CancelAt` reclaims nothing once a later reservation exists, so
   under saturation the slot is spent. The design states the property that holds (nothing
@@ -1096,12 +1265,25 @@ the process environment, the network, or a real clock.
   - **AC11** — message chat rate `1/1s`: traffic into chat A is spaced, traffic into chat B is
     not delayed by it, and an `ClassOther` call into chat A is not delayed by the message
     class's allowance.
-  - **AC12** — chat rate `1/100ms`, chat cap `5/1s`, ten calls released into one chat: the
-    first nine are spaced by the shaping rate (`0, 100ms, …, 800ms`) and the tenth is pushed to
-    `1s` by the cap rather than to `900ms` — the cap binding once the burst is spread is the
-    difference between those two instants, and the assertion is on the exact instants.
+  - **AC12** — shape and window occupancy, and the second is the load-bearing one.
+    (i) *Shape*: chat rate `1/100ms`, chat cap `5/1s`, calls released into one chat — the
+    burst is spread by the shaping rate and the cap binds only once it has been spread, which
+    is a statement about the emission instants.
+    (ii) ***Window occupancy*, which is what an instant list cannot see**: over the same run,
+    **no window of length `Per` contains more than `count` emissions** — checked over *every*
+    window, not only the first, by sliding the window across the recorded emission instants.
+    **This assertion is mandatory and must be able to fail.** The mechanism this design
+    rejected passes clause (i) unchanged while admitting double the cap
+    [measured golang.org/x/time@v0.15.0 · probe `mycancel/fix_test.go` → the rejected bucket
+    gives `worst-any-60s-window=39` where the adopted counter gives `20`], so a test suite
+    that asserts only instants is blind to the exact defect this round of review found. The
+    implementor should confirm the assertion's teeth the same way: point it at a
+    `rate.Limiter` with `burst = count` and watch it go red before wiring the counter.
   - **AC13** — the edit class under the default configuration imposes no delay; the same class
-    with a configured bound binds.
+    with a configured bound binds; **and the message class under its shipped defaults emits at
+    most `20` into one chat in any sixty-second window**, which is the figure D10 cites as
+    enforced. That last one is where "traceable to a verified figure" becomes a test rather
+    than a claim about a constructor argument.
   - **AC14** — a positive (private) chat id is charged on the same terms as a negative one.
   - **AC15** — the same configuration under two different base URLs produces identical
     emission instants.
@@ -1205,9 +1387,11 @@ the transport renders no combat log, no narrative and no generated maze.
 - **Should the `(chat, class)` limiter map evict?** Not for one MVP chat. #43's fan-out is the
   trigger, and D9 records the one constraint a later fix must respect: eviction must be
   time-based, because a dropped key returns a full bucket.
-- **Should the limiter reserve at emission time so refused calls stop leaving holes?**
-  Reserving on arrival is what makes AC30's arrival-order guarantee cheap, and it is why a
-  cancelled reservation under saturation cannot be reclaimed (D9, measured). Reserving at
+- **Should the shaper legs reserve at emission time so refused calls stop leaving holes?**
+  The cap leg already reclaims exactly, so this question is scoped to the global shaper and
+  the per-chat shaping rate. Reserving on arrival is what makes AC30's arrival-order guarantee
+  cheap, and it is why a cancelled `rate.Reservation` under saturation cannot be reclaimed
+  (D9, measured). Reserving at
   emission time would recover the throughput and lose the ordering guarantee. Nothing has
   measured a need for that trade: the owner's answer this round keeps #19 on in-process
   pacing with #43 owning the durable queue, and the hole costs throughput in the safe
@@ -1217,6 +1401,9 @@ the transport renders no combat log, no narrative and no generated maze.
   today because the `send*` rule is deliberately fail-safe. The MVP sends none; a later
   "typing…" indicator that feels laggy is the signal to carve it out.
 - **The leaky-bucket reading, and the 5xx residue** — both carried forward from the spec
-  unchanged. This design implements the shaping reading (burst 1) and retries 5xx; if either
-  is overturned, the change is contained: `burst` is one constant per limiter role, and the
-  5xx row is one line of the D5 table.
+  unchanged. This design implements the shaping reading for the *pacing* roles (`burst 1`,
+  steady emission) and retries 5xx. The window cap is not a bucket at all (D9), so the
+  leaky-bucket question does not reach it: a quota is not a pacer, and the owner's round-3
+  choice is honoured by the legs that actually pace. If either reading is overturned the
+  change stays contained — `burst` is one constant per shaper role, and the 5xx row is one
+  line of the D5 table.
