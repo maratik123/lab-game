@@ -10,8 +10,8 @@ _Updated: 2026-09-04
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 9.5 — docs updated
-**last_passed_gate:** make verify + go test -race -count=1 ./... | 2026-09-04T09:40:52Z | d65020415f6d7a6b09b9a8349eea90245a11b6d4
+**current_step:** Step 11 — review fixes complete (Round 1)
+**last_passed_gate:** make verify + mutation re-test | 2026-09-04T09:58:29Z | 3306197831134b3228bdc26d954a22a4802e0019
 **entry_args:** 18
 
 ## Next action
@@ -69,6 +69,9 @@ _Updated: 2026-09-04
 - **Step 9.5**: context.md § Status Code claimed "cmd/bot is still the scaffold", which Group A falsified; Group B left it deliberately because this step owns that bullet. Now reworded, and AC17 closes with it.
 - **Step 9.5**: also corrected claude-tools-hierarchy.md:97, a line this PR authored — it named **/secrets* but not **/.secrets*, which settings.json also denies. In scope because the PR rewrote that sentence; not a widening.
 
+- **Step 11**: SR1-1 was found by mutation testing and is closed the same way — deleting the bindDuration tag guard now turns TestLoadBalance_NullValue_ZeroAdmittingKeys/duration_non_negative RED, and deleting the bindDecimal one turns .../decimal_unit_fraction RED. Both re-run after the last edit; balance_load.go restored byte-identical from a cp backup, never git checkout.
+- **Step 11**: the doubled prefix is fixed on the sentinel side, not the KeyError side — the sentinels lose their "config: " and KeyError keeps rendering it once, so a message reads "config: <key>: missing: required". No test asserted on sentinel text (grep confirmed before the change).
+
 ## Key discoveries (don't re-investigate)
 
 - Permission deny rules reach `Bash` by command text, not only the file tools: `ls -la .env .env.example` is refused, `ls -la .env.example` and `git check-ignore -q .env` both run. Verification commands touching `.env.example` use one path per command.
@@ -112,6 +115,54 @@ _Updated: 2026-09-04
 | D2-3 | design round 2 | minor | fixed@869cfb3 | — |
 | D2-4 | design round 2 | minor | fixed@869cfb3 | — |
 | D2-5 | design round 2 | minor | fixed@869cfb3 | `sed -n '49p' ai-docs/key-decisions.md` |
+| SR1-1 | self-review round 1 | major | ✅ fixed@3306197 | delete `bindDuration`'s `if n.Tag != "!!str"` block (`internal/config/balance_load.go:60-62`), then `go test -count=1 ./internal/config/` — must go RED; today it stays green |
+| SR1-2 | self-review round 1 | major | ✅ fixed@3306197 | `grep -n 'chunk size in cells' ai-docs/code-style.md` — must return nothing once the row is amended |
+| SR1-3 | self-review round 1 | minor | ✅ fixed@3306197 | `grep -n 'AGENTS.md §16' internal/config/repo_root_test.go` — must return nothing |
+| SR1-4 | self-review round 1 | minor | ✅ fixed@3306197 | `env -u LAB_GAME_BOT_TOKEN … go run ./cmd/bot 2>&1 \| grep -c 'config: .*: config: '` — must be 0 |
+| SR1-5 | self-review round 1 | minor | ✅ fixed@3306197 | `sed -n '63,74p' internal/config/config.go \| grep -c 'ErrMissing'` — must be >= 1 |
+| SR1-6 | self-review round 1 | nit | ✅ fixed@3306197 | `sed -n '59,61p' internal/config/config_test.go` — the `&&` conjunction replaced by a direct assertion |
+| SR1-a1 | self-review round 1 | — | accepted@1 — the leaf-alias, leaf-shape and interior-alias guards are each unprotected by the suite (deleting any one leaves it green), but none of the three is a silent accept: the value still lands in `bind`/`default` and is still rejected as `ErrInvalidValue` at the same key. Redundant defence, not a coverage hole. | for each guard: delete it, run `go test -count=1 ./internal/config/` (green) and confirm the value is still rejected |
+| SR1-a2 | self-review round 1 | — | accepted@1 — `WorldBalance`/`ChunkBalance` (`internal/config/balance.go:23-31`) do not violate AC15: they type the chunk-grid *balance* axis AC7 enumerates, not the world set's interior (lexicon/bestiary), which `Config.WorldPath` exposes as a bare string. | `grep -n 'WorldPath' internal/config/config.go` → the path string only |
+| SR1-a3 | self-review round 1 | — | accepted@1 — the `AGENTS.md` hand-rolling AXIOM (a73040b) and `ai-docs/dependency-versions.md` ride in this PR outside the spec's Scope list; authorised by the owner's recorded decision (this file, § Decisions log, "**Step 8**: owner's decision"). Not scope creep. | `git log --oneline -1 a73040b` |
+| SR1-a4 | self-review round 1 | — | accepted@1 — `cmd/bot/main.go`'s `run` doc comment avoids the literal `log.Fatal`/`panic(` substrings; the reworded text was never committed with them (first commit 250739e already carries the current wording), the comment is accurate, and the discharge is recorded in `ai-docs/learnings.md` + `ai-docs/harness-gaps.md`. Not a live instance of the dodge. | `git show 250739e:cmd/bot/main.go` |
+
+## Self-Review (Round 1)
+
+**Verdict:** REJECT
+
+**Diff window reviewed:** `3ff8c98..HEAD` (the whole branch; `3ff8c98` is `git merge-base main HEAD`), 37 files, +3283/-13.
+
+**What was checked.** Spec ACs 1-17 against the shipped tree; design D1-D13, § Decomposition (subtasks 1-9), § Handoff plan, § Risks and § Test Design (subtasks 1-7 + gate-level checks); every `.go` file in `cmd/bot` and `internal/config`; `config/balance.yaml`, `config/world/.gitkeep`, `.env.example`, `.github/workflows/ci.yml`, `.claude/settings.json`, `go.mod`/`go.sum`; the propagation edits to `AGENTS.md`, `ai-docs/context.md`, `ai-docs/context-status.md`, `ai-docs/domain-invariants.md`, `ai-docs/key-decisions.md`, `ai-docs/claude-tools-hierarchy.md`, `ai-docs/dependency-versions.md`, `ai-docs/plans/INDEX.md`, plus the `learnings.md` / `harness-gaps.md` entries.
+
+**AC-verification commands re-run against the shipped tree (design § Test Design → Gate-level checks):**
+
+| Check | Result |
+|---|---|
+| `make verify` | **PASS** — `VERIFY-GREEN`; `golangci-lint run` → `0 issues.`; file-limits, tidy-delta, `actionlint .github/workflows/*.yml`, shellcheck sweep all clean |
+| `go test -race -count=1 ./...` (uncached) | **PASS** — `ok` for `cmd/bot`, `internal/config`, `internal/store`, `internal/testdb` |
+| AC11: `rg -n -e '\bpanic\(' -e '\blog\.Fatal' $(go list -f '{{$d := .Dir}}{{range .GoFiles}}{{$d}}/{{.}}{{"\n"}}{{end}}' ./cmd/... ./internal/...)` | **PASS** — no output, exit 1 (the corrected `go list` file set, per `2ddc228`) |
+| Panic-index wider run (adds `\blog\.(Fatal\|Panic)`, `\bmust[A-Z]`) | **PASS** — no output, exit 1; no index row owed |
+| `git check-ignore -q .env.example; echo $?` | **PASS** — `1` (committable); tracked, confirmed by `git ls-files .env.example` |
+| `git check-ignore -q .env; echo $?` (own command, D13(c)) | **PASS** — `0` (still ignored) |
+| `rg -n --glob '*.go' 'internal/testdb' internal/config` + `go list -f '{{.Imports}} {{.TestImports}} {{.XTestImports}}' ./internal/config` | **PASS** — one hit, `env.go:12`, inside a comment; neither `internal/testdb` nor `testcontainers` in any of the three import lists (AC12: no database, no network) |
+| D7 honour-system: `doc.go` is the only file whose first line is a package comment | **PASS** — swept `head -1` over all 14 files in the package |
+| AC8 secret sweep over the added lines of the diff | **PASS** — every `api_id`/`api_hash`/token match is prose in the spec/design; `.env.example` carries placeholders only |
+| `go mod why -m gopkg.in/yaml.v3` | **PASS** — still `internal/store` → pgx → pgx.test → testify → `assert/yaml`, i.e. test-only indirect; `go.mod`/`go.sum` moved by exactly the two predicted direct lines |
+
+**Mutation tests run (checklist §3 / Pattern 2 — "would this test still pass if I broke the thing it names?"):** the missing-key report, the `!!int` and decimal tag guards, the unknown-key report, the non-mapping-root guard, the duplicate-key pre-pass and the `assertBalanceEqual` comparison were each deleted or perturbed in turn; every one turned the suite RED. Three guards (leaf alias, leaf shape, interior alias) leave it green but are not silent accepts — recorded as `SR1-a1`. One guard leaves it green **and** silently defaults a balance number — finding 1.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | internal/config/balance_load.go:60-62 | major | **`bindDuration`'s `!!str` tag guard is untested, and deleting it silently defaults a real balance key.** Design D6 row 1 is normative: "The walk **rejects a `!!null` node at any schema path** before binding. Without this, `cap:` with nothing after it is a silently defaulted balance number." Removing only the `if n.Tag != "!!str" { … }` block leaves the committed suite **fully green** (`ok github.com/maratik123/lab-game/internal/config 0.005s`) while a probe on `raid.death.respawn_debuff: null` reports `ACCEPTED SILENTLY: respawn_debuff = 0s` (unmutated tree, same probe: `REJECTED: config: raid.death.respawn_debuff: config: invalid value: must be a duration string, got !!null`). Neither test that looks like it covers the guard reaches it: `balance_load_test.go:182` `TestLoadBalance_NullValue` mutates `raid.stamina.cap`, whose `> 0` predicate rejects the decoded zero on its own, and `balance_load_test.go:206` `TestLoadBalance_DurationGivenBareInt` is rejected by `time.Duration`'s own decoder (D6's own measured row), so the guard is never the rejecting clause in either. `raid.death.respawn_debuff` is the one duration key whose predicate admits zero (`nonNegativeDuration`, `balance_load.go:126`), which is exactly why it is the case the table is missing. **Fix:** add a null case at `raid.death.respawn_debuff` to the balance table (and, for the same reason on the decimal side, one at `raid.afk.cruelty`, whose `0 <= x <= 1` predicate also admits zero). | ⬜ Open |
+| 2 | ai-docs/code-style.md:50 | major | **AC17 propagation miss — a live instruction file still routes a shipped balance axis into a Go constant.** The row reads "\| A structural constant (**chunk size in cells**, the number of edges of a hex, a protocol limit) \| A named Go constant next to the code that owns it \|". This diff ships chunk size **as configuration**: `config/balance.yaml:10-14` (`world.chunk.cols` / `world.chunk.rows`), `internal/config/balance_load.go:114-115`, and AC7 names "chunk size" explicitly; `docs/DESIGN.md:69` says «**Чанки** (размер — конфиг, ориентир 16×16 гексов)». The schema rejects unknown keys, so chunk size is configuration by construction now — an implementor following `code-style.md:50` would compile in the very kind of value this PR exists to move out of Go. AC17's membership criterion is `AGENTS.md` § Propagation Rule step 4 ("every LIVE doc must agree"), and the design's § Propagation targets states its own list is "illustrative of the class, not a bound on it", so this is an implementation gap, **not** a Design/Spec Amendment trigger — the fix is a prose edit to `ai-docs/code-style.md`, an instruction doc, with no `.spec.md`/`.design.md` change. | ⬜ Open |
+| 3 | internal/config/repo_root_test.go:245 | minor | **False citation offered as authority.** The comment reads "(AGENTS.md §16 style: no reliance on ambient state that a test runner may not control)". `AGENTS.md` has no numbered sections at all (`grep -n '^## ' AGENTS.md` → 15 named ones), and its only `§16` occurrences cite `docs/DESIGN.md` §16, the open-question list, which says nothing about working directories. `AGENTS.md` § Communication: "A citation offered as authority is itself a claim — open it." Drop the citation or name the real rule. | ⬜ Open |
+| 4 | internal/config/errors.go:45 | minor | **Every rendered error doubles its package prefix.** `KeyError.Error()` formats `"config: %s: %s"` while each sentinel's own text already opens `config: ` (`errors.go:14,18,22,26`), so `go run ./cmd/bot` with an empty environment prints `config: LAB_GAME_BOT_TOKEN: config: missing: required` (measured). `ai-docs/code-style.md:21` — "The prefix names the operation, not the error." No AC forbids it and Step 9 already flagged it in the Decisions log; drop `config: ` from the sentinel texts **or** from `Error()`, not both. | ⬜ Open |
+| 5 | internal/config/config.go:63-74 | minor | **DOC-3 — sentinel errors not named.** `Load` is the only exported function that can return `ErrMissing`, `ErrUnknownKey`, `ErrInvalidValue` and `ErrUnreadable`, and its doc comment names none of them. `ai-docs/doc-convention.md` DOC-3: "A function returning a sentinel error names it." (`errors.go`'s var-block comment carries the information, which is why this is `minor`, not `major`.) | ⬜ Open |
+| 6 | internal/config/config_test.go:59 | nit | **Near-vacuous secondary assertion.** `if strings.Count(err.Error(), "\n") > 0 && strings.Contains(err.Error(), "no such file")` fires only when *both* halves hold, so the "no file was read" guarantee the comment claims is not what is asserted. Assert the joined error has exactly one leaf, or that it contains no `*KeyError` other than `LAB_GAME_BALANCE_PATH`. | ⬜ Open |
+
+**Not raised, and why** (durable rows in the register above): `SR1-a1` three redundant-but-unprotected walker guards; `SR1-a2` `WorldBalance`/`ChunkBalance` vs AC15; `SR1-a3` the `AGENTS.md` hand-rolling AXIOM riding in this PR; `SR1-a4` `cmd/bot/main.go`'s gate-shaped doc comment.
+
+**AC status after this round:** AC1-AC16 hold as recorded. **AC17 does not** — finding 2. Findings 1 and 3-6 are quality defects against the design and the convention files rather than AC failures.
 
 ## Files touched
 
