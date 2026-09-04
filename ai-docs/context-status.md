@@ -78,7 +78,7 @@ Entry shape:
 
 - **Invariants this now relies on:** no balance value has a compiled-in fallback, so an empty-but-valid balance file fails rather than yielding a usable configuration; every failure names its dotted key path or variable; `main` may exit non-zero but nothing on the loader path panics; and a textual gate's hit is evidence to inspect, never a reason to reword the matched text.
 
-## Bot API transport over telego — retries, exact `retry_after`, a window-schedule rate limiter, the base-URL axis (PR #TBD-at-Step-12, 2026-09-04)
+## Bot API transport over telego — retries, exact `retry_after`, a window-schedule rate limiter, the base-URL axis (PR #53, 2026-09-04)
 
 - **What landed:** `internal/tg` — the client over `telego`'s low-level generated API with `net/http` and `encoding/json` substituted for its `fasthttp`/`go-json` defaults, the method classifier, the `Gate` seam #22 installs its allowlist into, the window-schedule rate limiter, the caller with its retry loop and typed error, and the `Observation` the §13.2 health surface reads; `internal/tgtest`, an in-process fake Bot API server over `net.Pipe` with scripted 429/5xx/delay/dial-failure behaviours; the optional-with-default `LAB_GAME_TG_*` key class in `internal/config` with `.env.example` extended; `github.com/mymmrac/telego` pinned as a direct requirement; and `key-decisions.md` rewritten for KD-2 plus KD-25/KD-26/KD-27. `cmd/bot` is deliberately untouched — constructing a client nothing feeds would be dead code and an untested wiring path at once.
 
