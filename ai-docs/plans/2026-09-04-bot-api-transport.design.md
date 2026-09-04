@@ -180,8 +180,9 @@ visible rather than implied.
 Exported shape [derived → AC1]:
 
 - `Client`, `New(Options) (*Client, error)`, `(*Client).API() *telego.Bot`
-- `Options` — base URL, bot token, the `config.Transport` settings, optional `Gate`,
-  optional `Observer`, optional jitter source, optional `*http.Client`, optional
+- `Options` — base URL, bot token, the `config.Transport` settings (which now carry the
+  per-attempt timeout as well as the retry and limiter values), optional `Gate`, optional
+  `Observer`, optional jitter source, optional `*http.Client`, optional
   `Logger telego.Logger`
 - `MethodClass`, `Call`, `ChatRef`, `Gate`, `Observation`, `Observer`, `Error`
 
@@ -308,10 +309,24 @@ chat in that one field, and a method with no `chat_id` (an inline-message edit, 
 caller, and it covers methods this project has not written yet — including everything #22
 and #43 will add.
 
-**The token is in that URL, and never leaves the caller.** The method name is the only thing
-extracted; no error message, log line or observation carries the URL
-[derived → AC26's test: the token string appears in no rendered `*Error`, no observation,
-and no fixture].
+**The token is in that URL, and never leaves through anything this package emits.** The
+method name is the only thing extracted; no error message, log line or observation carries
+the URL [derived → AC26's test: the token string appears in no rendered `*Error`, no
+observation, and no fixture].
+
+**That statement is about this package's outputs, not about the reachable surface — an
+earlier draft over-claimed it as the latter.** `Client.API()` hands out a `*telego.Bot`, and
+telego exposes the token by design through `Token()`, and inside a URL through
+`FileDownloadURL`
+[measured telego@v1.11.2:bot.go:117-119,158-161 · `sed -n '117,121p;156,162p' bot.go` →
+`// Token returns bot token` / `func (b *Bot) Token() string { return b.token }`, and
+`func (b *Bot) FileDownloadURL(filepath string) string` returning
+`b.apiURL + "/file/bot" + b.token + "/" + filepath`]. AC26 is not breached — it scopes to
+error messages, instrumentation observations and fixtures, none of which these are — and the
+exposure is in-module only, since nothing outside `internal/tg` may construct or reconfigure
+a bot (D2's guard). It is recorded here as an **accepted in-module exposure** rather than
+left as a false negative, and subtask 6's token sweep is told about both methods so a future
+reader does not mistake a legitimate hit for a leak.
 
 **Method classes** — the enum is `ClassMessage`, `ClassEdit`, `ClassOther`, and the
 classifier is a prefix rule on the method name, verified against the pinned version's own
@@ -473,15 +488,16 @@ design's to choose and no source states one — see D10.
 
 ### D9 — One schedule per key owns every window; nothing is composed
 
-**This section was rewritten after the product owner redirected the approach.** Three review
-rounds produced three defects of one shape — a mechanism that reads correctly at the call
-site while failing the property it is named for, under a configuration no acceptance
-criterion exercised. The owner's conclusion, adopted here: treat that as evidence about the
-*structure*, not about three separate bugs.
+**This section was rewritten after the product owner redirected the approach**, and has since
+been corrected again against its own first review. Every defect it has carried shares one
+recognisable shape — *a mechanism that reads correctly at the call site while failing the
+property it is named for, under a configuration no acceptance criterion exercised* — so the
+section is written to make each property checkable rather than argued.
 
-**The common cause, named so the replacement can be checked against it.** Composed legs each
-commit state at a *different* notion of "when", while the emission happens at the latest
-instant any leg produced. Every defect followed from that one gap:
+**The composed-legs cause, named so the replacement can be checked against it.** Composed
+legs each commit state at a *different* notion of "when", while the emission happens at the
+latest instant any leg produced. The defects that triggered the owner's redirect all followed
+from that one gap:
 
 | Round | Defect | The gap it came through |
 |---|---|---|
@@ -489,6 +505,15 @@ instant any leg produced. Every defect followed from that one gap:
 | 2 | `burst = count` admits `b + r·W`, double the cap | one leg's parameter does not mean what the key is named for |
 | 3a | a refusal that removes its instant shrinks the cap's memory | one leg mutates before the decision is final, then partially undoes |
 | 3b | the global bound holds on reservations, not emissions | one leg commits at the candidate instant, another moves the grant later |
+
+The replacement removed all four. Its own first review then found two more, of a *different*
+shape — not composition, but a read that is **sufficient for safety** while reading as though
+it were **optimal**, and an arithmetic rounding — and both are fixed below:
+
+| Finding | Defect | Fix, and where |
+|---|---|---|
+| head-of-line | an ordered class-global key pushes a quiet chat behind a busy chat's backlog, and refuses it outright under a deadline | the class-global key is **unordered** — § *The unification* |
+| pacing rounding | `W/N` truncates, so `N+1` emissions fit inside `W` | the pacing interval rounds **up**, and pairs with the quota window that states the figure directly — § *Configuration maps onto windows* |
 
 So the replacement is built on one rule, and everything below is a consequence of it:
 
@@ -503,22 +528,56 @@ of them.** That is what makes one mechanism able to own both windows, which is w
 asks for and what the composed design could only fake.
 
 A **schedule** is the whole state for one key: its window set, plus the emission instants it
-has already granted, held in arrival order.
+has already granted, held in ascending order.
 
-- **`blockedUntil()` — a pure read, mutating nothing.** For each window `(c, per)`: if fewer
-  than `c` grants exist, that window does not constrain. Otherwise the `c`-th newest grant
-  `g` blocks until `g + per`, because a window ending at `t` contains `g` exactly while
-  `t < g + per`. The answer is the latest such instant, or "not blocked".
-- **`commit(t)`** appends `t`.
+**The invariant, stated once, in the form the tests assert:** for every window `(c, per)`, no
+half-open interval of length `per` contains more than `c` grants. Equivalently, over the
+sorted grants, `grant[j+c] - grant[j] ≥ per` for every `j`. The second form is a local check
+an implementation can assert after every insertion, and § Test Design requires exactly that
+— **the mechanism is correct by a checkable postcondition, not by an argument in this
+document**, which is the property four rounds of review say this design most needed.
 
-Both are a walk over the window set — no scan of history, because only the `c`-th newest
-grant of each window can ever bind [derived → the limiter unit tests in § Test Design].
+- **`earliest(candidate)` — a pure read, mutating nothing.** Returns the earliest instant
+  `t ≥ candidate` at which one more grant still satisfies the invariant. Because the
+  invariant can only change where a grant's window expires, the answer is either `candidate`
+  itself or some `grant + per`; the implementation tests those instants in ascending order
+  and returns the first that holds [derived → the `earliest` unit tests and their
+  brute-force oracle in § Test Design].
+- **`commit(t)`** inserts `t` in order.
+
+**Two schedule kinds, because two different obligations exist — and the difference is one
+flag, not a second mechanism.** The commit protocol below is identical for both; only the
+answer to `earliest` differs.
+
+| Kind | Used for | `earliest` | Why |
+|---|---|---|---|
+| **ordered** | one chat key `(chat, class)` | raises `candidate` to the key's newest grant first, so grants are non-decreasing and inserts are appends | AC30 requires per-key arrival order, and non-decreasing grants are what make it hold by construction |
+| **unordered** | the class-global key | no clamp — the earliest admissible instant, inserted in order | a class ceiling has **no** ordering obligation, and imposing one is what caused cross-chat head-of-line blocking |
+
+**Why the class-global key must NOT be ordered — a defect this design had and no longer
+has.** An ordered schedule answers "after everything already granted", which is sound but is
+not the earliest admissible instant. The class-global schedule records the future emissions
+of *every* chat, so one backlogged chat would push the shared timeline minutes ahead, and a
+second chat with an empty schedule of its own would be granted behind that backlog — delayed,
+and with a caller deadline, **refused**. That is starvation, on a key whose spare capacity
+(30/s against one chat's 20/min) was never the constraint. Making the class-global key
+unordered removes it: the second chat is granted at the next free global interval regardless
+of how far another chat's backlog extends [derived → AC11's cross-chat scenario **with the
+global class bounded**, which § Test Design adds precisely because the old isolation
+scenario turned the global class off and could not see this].
+
+**The trade, stated so nobody re-derives it as a bug:** the class-global key no longer
+emits in global arrival order. No acceptance criterion asks for one — AC30 is per key, and
+per-key order is preserved by the ordered kind. What is given up is a property nothing
+needed; what is bought is that a quiet chat is never held behind a busy one.
 
 #### The decision: one lock, one instant, commit-after-decide
 
 ```
 lock the limiter                      // ONE mutex covers every schedule
-t := max(now, globalSchedule.blockedUntil(), chatSchedule.blockedUntil())
+t := now
+repeat until stable:                  // each schedule re-asked at the new t
+        t = max(t, globalSchedule.earliest(t), chatSchedule.earliest(t))
 if the caller has a deadline and t is after it:
         unlock and return the D8 error        // NOTHING has been mutated
 globalSchedule.commit(t); chatSchedule.commit(t)   // same t, every schedule
@@ -526,9 +585,12 @@ unlock
 wait until t, or until ctx is done
 ```
 
-`blockedUntil` does not depend on `t`, so `max` reaches a fixed point in one step: the
-instant that satisfies every schedule is admissible in each of them by construction. There is
-no candidate-then-granted gap for a bound to fall through.
+The loop is needed because `earliest` **does** depend on its argument once a schedule is
+unordered: raising `t` for one schedule can move it into a region the other no longer admits.
+It terminates because `t` strictly increases on every non-final pass and every schedule
+admits all sufficiently large instants; in practice it settles immediately. An implementation
+bounds the passes and treats exhaustion as a defect, not as a fallback
+[derived → the acquire unit tests in § Test Design].
 
 **Why round 3's defects are absent rather than fixed.**
 
@@ -545,24 +607,33 @@ no candidate-then-granted gap for a bound to fall through.
 **One mutex for the whole limiter, deliberately.** Per-key locks with a fixed acquisition
 order would work, but they re-introduce multi-component state commitment — the structure that
 produced every defect above. The critical section is a walk over a small window set and an
-append; at MVP scale (one chat) and at fan-out scale (one bulk sender, `docs/DESIGN.md` §11)
-that is not a contention surface worth the risk. Recorded as a decision, with contention as
-the thing to measure if it is ever revisited.
+insertion; at MVP scale (one chat) and at fan-out scale (one bulk sender, `docs/DESIGN.md`
+§11) that is not a contention surface worth the risk. Recorded as a decision, with contention
+as the thing to measure if it is ever revisited.
 
 #### Retention, and the one hole that remains
 
-A schedule keeps the newest `max(c)` grants over its window set and drops anything older,
-since no window can be constrained by a grant beyond its own `c`-th newest. **Eviction is a
-function of the window set alone — never of a refusal, a cancellation, or any call outcome.**
-That divorce is what makes round-3a structurally impossible rather than merely repaired.
+**Retention is by TIME, never by count: a schedule drops a grant once it can no longer
+constrain any window — that is, once `grant + max(per)` is in the past.** A count bound would
+be sound only for an ordered, append-only schedule, where the `c`-th newest is the oldest
+grant any window can reach; on an unordered schedule, whose inserts are sorted rather than
+appended, a count bound silently discards grants that are still inside a live window and the
+schedule then over-emits. That is a real trap and it earns a row in subtask 4's broken-variant
+table [derived → the retention unit tests and the global-ceiling occupancy assertion in
+§ Test Design].
 
-**Grants are never removed. A call cancelled *after* commit leaves its instant behind.** That
-is a hole, and the design takes it deliberately rather than reaching for the "exact
-reclamation" that produced round-3a:
+Retention stays bounded without a count: the invariant itself caps how many grants can live
+inside `max(per)`, so the retained set is a function of the configuration, not of traffic.
+**Eviction is a function of the window set and the clock alone — never of a refusal, a
+cancellation, or any call outcome.** That divorce is what makes round-3a structurally
+impossible rather than merely repaired.
 
-- Removing an interior grant would corrupt the `c`-th-newest indexing every window depends
-  on, and removing only a tail grant is the special-case reasoning that has now failed twice.
-  One rule, no exceptions.
+**Grants are never removed on a call's behalf. A call cancelled *after* commit leaves its
+instant behind.** That is a hole, and the design takes it deliberately rather than reaching
+for the "exact reclamation" that produced round-3a:
+
+- Removing a grant for a call outcome is the shape that has now failed twice; ageing out is
+  the only removal, and it depends on the clock rather than on what any caller did.
 - The hole is safe in the only direction that matters: a leftover grant can only push later
   grants **later**, so the limiter emits at or below its configured rate and never above it.
   Flood safety is preserved; throughput under saturation may dip.
@@ -576,18 +647,30 @@ window rather than to some legs and not others [derived → AC31].
 Both key roles produce window constraints on the same schedule; only the reading of
 `count/per` differs, which is exactly what the key names already say:
 
-| Key role | Reading of `N/W` | Window(s) contributed |
+| Key role | Reading of `N/W` | Windows contributed |
 |---|---|---|
-| `_GLOBAL`, `_CHAT_RATE` — **pacing** | steady emission at `N` per `W`, no burst | `(1, W/N)` |
+| `_GLOBAL`, `_CHAT_RATE` — **pacing** | steady emission at `N` per `W`, no burst | `(1, ceil(W/N))` **and** `(N, W)` |
 | `_CHAT_CAP` — **quota** | at most `N` in any window of length `W` | `(N, W)` |
 
+**Both halves of the pacing row are load-bearing, and the rounding is not a detail.**
+
+- **`ceil`, not truncation.** `W/N` in integer duration arithmetic rounds *down*, so `N`
+  intervals fall short of `W` and an `N+1`-th grant fits inside the window — the
+  over-emission direction, against the figure D10 verified as *enforced*. At the shipped
+  global default the shortfall is a few nanoseconds and the effect is a whole extra message
+  per second. Rounding up removes it [derived → AC13's global-ceiling occupancy assertion,
+  specified in § Test Design to run red against a truncating variant first].
+- **The quota window alongside it.** `(N, W)` states the figure the key is named for
+  *directly*, so the bound is asserted rather than inferred from an interval calculation.
+  This is D10's own standard applied to the mechanism: each configured row is a claim about
+  emissions, not about a constructor argument. When `N` is 1 the two windows coincide and the
+  schedule holds one.
+
 The pacing reading is the owner's round-3 choice — a leaky bucket in the shaping sense,
-steady emission, no burst — expressed directly: "at most one per interval" *is* steady
-emission, with no burst parameter to get wrong. The quota reading is what `_CHAT_CAP` is
-named for. At the message defaults the chat schedule therefore holds `{(1, 1s), (20, 60s)}`
-and the class-global schedule holds `{(1, 1s/30)}`, and both windows bind — the short one
-spreads a burst, the long one stops it after twenty [derived → AC12's shape and occupancy
-clauses].
+steady emission, no burst — expressed with no burst parameter at all: "at most one per
+interval" *is* steady emission. At the message defaults the chat schedule therefore holds
+`{(1, 1s), (20, 60s)}` and the class-global schedule holds `{(1, ceil(1s/30)), (30, 1s)}`
+[derived → AC12's shape and occupancy clauses and AC13's global-ceiling clause].
 
 **An unbounded value contributes no window.** A class configured `off` has an empty window
 set, so its schedule never blocks and never allocates history — which is why the registry
@@ -597,8 +680,14 @@ note below concerns bounded classes only [derived → AC13].
 its deadline returns the typed error. Silent drop is a defect, not a tuning choice (spec
 Technical constraints) [derived → AC31].
 
-**Arrival order is preserved.** Grants are handed out under the one mutex and are
-non-decreasing, so emission order is lock-acquisition order [derived → AC30].
+**Per-key arrival order is preserved; global arrival order is not, and is not claimed.**
+Within one **ordered** schedule the candidate is raised to that key's newest grant, so its
+grants are non-decreasing and its emission order is its arrival order — and that same
+non-decreasing property is what lets an ordered schedule read the `c`-th newest grant
+directly instead of counting occupancy. Across keys there is no such guarantee and none is
+needed: a later-arriving call into a quiet chat may be granted an earlier instant than one
+already queued for a busy chat, which is the head-of-line fix working, not a violation. AC30
+is a per-key criterion [derived → AC30, and the cross-chat scenario in § Test Design].
 
 #### The argued wheel: what was evaluated, and why none of it fits
 
@@ -642,9 +731,9 @@ unexported type behind an internal call and is replaceable without touching the 
 **The registry holds one schedule per `(chat, class)` of a bounded class, and this design does
 not evict — recorded as a known bound.** The MVP ships to one friendly chat
 (`docs/DESIGN.md` §14), and #43's fan-out is the trigger to revisit. A schedule's history is
-capped at the largest `count` in its window set, so the per-key cost is set by configuration
-and is a handful of instants at the message defaults; an unbounded class allocates no history
-at all. One correctness note for whoever adds eviction: dropping a key discards its grants
+bounded by its own invariant — at most `c` grants can live inside any `per`, so the retained
+set is a function of the configuration rather than of traffic, and it is a handful of instants
+at the message defaults; an unbounded class allocates no history at all. One correctness note for whoever adds eviction: dropping a key discards its grants
 and so resets every window it was enforcing, which means eviction must be time-based — only a
 key idle longer than its longest `per` may be dropped [derived → the § Open questions entry].
 
@@ -692,6 +781,7 @@ invalid value is a start-up `*KeyError` naming the variable, exactly like every 
 | `LAB_GAME_TG_RETRY_MAX_ATTEMPTS` | `3` | **chosen, not sourced** — see below |
 | `LAB_GAME_TG_RETRY_BASE_DELAY` | `500ms` | **chosen, not sourced** |
 | `LAB_GAME_TG_RETRY_MAX_DELAY` | `30s` | **chosen, not sourced** |
+| `LAB_GAME_TG_ATTEMPT_TIMEOUT` | `30s` | **chosen, not sourced** — see below |
 | `LAB_GAME_TG_LIMIT_MESSAGE_GLOBAL` | `30/1s` | published, verified — below |
 | `LAB_GAME_TG_LIMIT_MESSAGE_CHAT_RATE` | `1/1s` | published, verified — below |
 | `LAB_GAME_TG_LIMIT_MESSAGE_CHAT_CAP` | `20/1m` | published, verified — below |
@@ -745,6 +835,16 @@ three seconds of waiting before a give-up — long enough to ride out a transien
 short enough that a player's action does not appear to hang; `30s` caps the scale so a
 higher configured attempt count cannot grow the wait without bound. Each is an operational
 tuning value an operator may change, which is the entire point of the key class.
+
+**`LAB_GAME_TG_ATTEMPT_TIMEOUT` is an addition beyond the spec's literal criteria, and the
+design says so.** Nothing in the ACs requires it: every telego method takes a `ctx`, so a
+caller *can* bound a call. But a caller that passes `context.Background()` against a wedged
+self-hosted instance blocks for as long as the server holds the connection, and D5's
+classifier only ever sees an outcome when one arrives — which is precisely the incident
+`docs/DESIGN.md` §12.2 records as the motivation for running our own instance ("a specific
+bot times out for hours with no 429 and no error"). The timeout bounds one attempt, leaving
+the caller's context as the bound on the whole call. Recorded in § Open questions so the owner
+can drop it in one line if they would rather the caller always own it.
 
 **What this class does to the configuration layer, checked claim by claim.**
 
@@ -977,9 +1077,9 @@ would be dead code in the binary and an untested wiring path at once.
 | 1 | `internal/config`: the optional-with-default transport key class — the value types of D10, the key names, the compiled-in defaults, the `<count>/<duration>`\|`off` grammar and its validation, a dedicated `loadTransport` reader joined into `Load` with `EnvKeys()` extended and **`envKeys()` left exactly as it is** (D10), the falsified doc comments in `env.go` and `config.go` rewritten (AC25), **and `.env.example` carrying each new key with its default as a non-empty value** in the file's existing commented style. Tests first: absent → default, present → parsed, malformed → `*KeyError` naming the key, the three-way key-set equality, and the previously declared variables still required. | `internal/config/transport.go`, `internal/config/transport_test.go`, `internal/config/env.go`, `internal/config/config.go`, `.env.example` | — |
 | 2 | `internal/tgtest`: the in-process fake Bot API server of D13 — `net.Pipe` dialer, the `.invalid` base URL, the scripted behaviours AC19 lists, the fake token constant, and its own tests. | `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` | — |
 | 3 | `internal/tg` foundations **and the telego dependency**: package comment, `Error`, `Observation`/`Observer`, `MethodClass` + the D4 classifier, `Gate`/`Call`/`ChatRef`, `Options` + `New` + `API`. `go get github.com/mymmrac/telego@<pinned>` runs in this subtask, with the importing file, so `make tidy-check` stays green (D1). Tests: the classifier over the pinned version's method names, option validation, error rendering and unwrapping. | `go.mod`, `go.sum`, `internal/tg/doc.go`, `internal/tg/errors.go`, `internal/tg/observe.go`, `internal/tg/class.go`, `internal/tg/client.go`, `internal/tg/class_test.go`, `internal/tg/client_test.go` | 1 |
-| 4 | `internal/tg` limiter — **one schedule type owning every window, no composed legs and no new module** (D9): the window set, `blockedUntil` as a pure read, `commit`, retention by largest `count`; the class-global and per-`(chat, class)` registry under **one mutex**; the decide-then-commit acquire (`t = max(now, …blockedUntil…)`, deadline refusal **before** any mutation, commit to every schedule at that same `t`); the pacing-vs-quota mapping of `count/per`; and the charge-once-**per-attempt** discipline (D2). Tests, each written **red-first against the named broken variant** (§ Test Design): per-class global admission, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, burst-then-cap shape, **occupancy over every window of each configured `per`**, **the global bound holding on emissions when a chat window pushes**, **refusals leaving the schedule unchanged**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go` | 2, 3 |
+| 4 | `internal/tg` limiter — **one schedule type owning every window, no composed legs and no new module** (D9): the window set; the invariant `grant[j+c] - grant[j] ≥ per` asserted after every insertion; `earliest(candidate)` as a pure read over the window-expiry instants; `commit` as a sorted insert; **time-based retention** (never count-based); the **ordered** kind for a chat key and the **unordered** kind for the class-global key; the class-global and per-`(chat, class)` registry under **one mutex**; the decide-then-commit acquire (iterate `t` to a fixed point, deadline refusal **before** any mutation, commit to every schedule at that same `t`, bounded passes with exhaustion treated as a defect); the pacing-vs-quota mapping with `ceil` rounding; and the charge-once-**per-attempt** discipline (D2). Tests, each written **red-first against the named broken variant** (§ Test Design): per-class global admission, cross-chat non-blocking **with the global class bounded**, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, burst-then-cap shape, **occupancy over every window of each configured `per`, on the chat schedules and on the class-global schedule at its shipped default**, **the global bound holding on emissions when a chat window pushes**, **refusals leaving the schedule unchanged**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go` | 2, 3 |
 | 5 | `internal/tg` caller: the `encoding/json` request constructor, the attempt loop with the limiters inside it, the `httptrace` write-evidence classifier, equal-jitter backoff, exact `retry_after` honouring with the deadline bound, the gate call once per call, and the single observation. Tests: no-shortened `retry_after`, strictly positive and growing delays, the ambiguous case making exactly one attempt, each retryable case, give-up field by field, deadline refusal, cancellation at every waiting site, the attempt cap, and the observation for a success, a retried success and a give-up. | `internal/tg/constructor.go`, `internal/tg/caller.go`, `internal/tg/retry.go`, `internal/tg/caller_test.go`, `internal/tg/retry_test.go` | 4 |
-| 6 | `internal/tg` package-level guard tests: the import scan over `cmd/` and `internal/` non-test files (no fasthttp, no go-json, no metrics registry), the token-absence sweep, **the literal scan discharging AC21's second clause (no retry or rate-limit literal at a call site in `internal/tg` — every such value arrives from `config.Transport`)**, the seam tests (a refusing gate blocks a call through the accessor, **and no non-test file outside `internal/tg` names `telego.NewBot` or a `telego.With*` option** — D2), the base-URL-appears-only-in-the-constructor source check, and the end-to-end call against `tgtest` built from a `config.Load`-produced `BotAPIBaseURL`. | `internal/tg/guards_test.go` | 5 |
+| 6 | `internal/tg` package-level guard tests: the import scan over `cmd/` and `internal/` non-test files (no fasthttp, no go-json, no metrics registry), the token-absence sweep (**whose known surface includes telego's own `Token()` and `FileDownloadURL` — D4's accepted in-module exposure, so a hit there is not a leak**), **the literal scan discharging AC21's second clause (no retry or rate-limit literal at a call site in `internal/tg` — every such value arrives from `config.Transport`)**, the seam tests (a refusing gate blocks a call through the accessor, **and no non-test file outside `internal/tg` names `telego.NewBot` or a `telego.With*` option** — D2), the base-URL-appears-only-in-the-constructor source check, and the end-to-end call against `tgtest` built from a `config.Load`-produced `BotAPIBaseURL`. | `internal/tg/guards_test.go` | 5 |
 | 7 | `ai-docs/key-decisions.md`: rewrite KD-2 for the shipped reality (pinned version, the caller/constructor swap, the `stdjson` residue and why it was not taken, the toolchain ceiling), and add the decisions this task settles — **the project-owned window schedule: one mechanism holding every window on a key, why no maintained package fits (the rejected-alternatives table of D9), and the two properties it deliberately does *not* provide (grant reclamation, and per-key locking)**, `testing/synctest` in place of a clock abstraction, and the optional-with-default key class with its boundary. | `ai-docs/key-decisions.md` | 6 |
 
 **Why `.env.example` is inside subtask 1 rather than following it.** Each subtask is
@@ -1080,6 +1180,27 @@ outside its charter — `code-writer` must STOP on a predominantly-prose assignm
 - **A future `Idempotency-Key` header would silently re-send a POST inside the transport.**
   Mitigation: the caller sets no such header, and the reason is stated in its doc comment —
   `[measured Go 1.26.5 stdlib · sed -n '/func (r \*Request) isReplayable/,/^}/p' $(go env GOROOT)/src/net/http/request.go → replayable for a POST only when Idempotency-Key or X-Idempotency-Key is present]`.
+- **`earliest` gets "optimised" into something that inserts out of order on an ordered key,
+  or `earliest` gets replaced by an "after everything queued" read on the unordered key.**
+  The two kinds look interchangeable and are not: the ordered kind's non-decreasing grants are
+  what let it read the `c`-th newest directly and what make AC30 hold; the unordered kind's
+  earliest-admissible answer is what stops one chat's backlog blocking another. Swapping
+  either way is a silent defect. Mitigation: D9 states which kind each key uses and why, the
+  invariant is asserted after every commit, and subtask 4's variant table carries
+  `ordered-global` as a red-first target —
+  `[derived → AC11's cross-chat scenario and AC30's per-key ordering scenario]`.
+- **Retention gets "tidied" back to a count bound.** "Keep the newest `max(c)`" reads as
+  obviously sufficient and is — but only on an append-only schedule. On the unordered key it
+  discards grants still inside a live window and the ceiling silently breaks. Mitigation:
+  D9 states retention is by time and why a count bound is unsound; `count-retention` is a
+  red-first variant in subtask 4 —
+  `[derived → AC10 clause (iii), the global-ceiling occupancy assertion]`.
+- **The pacing interval rounds the wrong way.** `W/N` in integer duration arithmetic truncates,
+  so `N` intervals fall short of `W` and an `N+1`-th emission fits — over-emission against the
+  one figure D10 verified as *enforced*, invisible to every instant-based assertion.
+  Mitigation: D9's mapping table specifies `ceil` **and** pairs the pacing window with the
+  quota window that states the figure directly; `truncating-pace` is a red-first variant —
+  `[derived → AC10 clause (iii) and AC13's global-ceiling clause]`.
 - **The limiter gets re-composed.** Every defect this document went through came from a
   second component that could move an instant a first component had already committed to, and
   the cheapest-looking future change — "just use `x/time/rate` for the pacing window and keep
@@ -1105,9 +1226,13 @@ outside its charter — `code-writer` must STOP on a predominantly-prose assignm
   The leftover grant can only push later grants later, so it is safe in the only direction
   that matters, and D9 takes it deliberately. The hazard is a future repair that removes the
   grant and lands back on the round-3 defect. Mitigation: the property is stated in D9 with
-  its cost, and AC31 asserts what holds (nothing dropped, nothing starved, never an
-  over-emit) rather than reclamation —
-  `[derived → AC31]`.
+  its cost, and AC31 asserts what holds — **every submitted call ends in an emission or a
+  returned typed error, and no window ever over-emits.** It does not claim "nothing is
+  starved": starvation is a scheduling-fairness property, it was not AC31's, and an earlier
+  draft asserted it here while the mechanism did not deliver it across chats. The
+  head-of-line fix (D9's unordered class-global key) is what removes the cross-chat case, and
+  it is asserted by AC11's own scenario rather than by a sentence in this list —
+  `[derived → AC31 for the loss property, AC11 for the cross-chat one]`.
 - **A holder of `*telego.Bot` can reapply a `telego.With*` option and bypass the whole
   transport.** Executed, not inferred. Mitigation: the guard test in subtask 6 forbids any
   non-test file outside `internal/tg` from naming `telego.NewBot` or a `telego.With*` option,
@@ -1206,6 +1331,9 @@ reduced to a few lines.
 | **`commit-at-candidate`** — commit to the global schedule at the candidate instant, then let a chat window push the emission later | round-3b: a bound that holds on reservations, not emissions |
 | **`commit-then-undo`** — commit the grant, then remove it when the deadline check refuses | round-3a: a refusal that corrupts the window's memory |
 | **`bucket-cap`** — express the quota window as a token bucket sized to its count | round-2: `b + r·W`, double the configured figure |
+| **`ordered-global`** — make the class-global schedule ordered, so `earliest` answers "after everything already granted" | cross-chat head-of-line blocking and, with deadlines, starvation |
+| **`count-retention`** — retain the newest `max(c)` grants instead of retaining by time | an unordered schedule silently forgets live grants and over-emits |
+| **`truncating-pace`** — round the pacing interval down instead of up | `N+1` emissions per `W` at the shipped global default |
 
 - Scenarios and the exact configurations they use:
   - **AC10** — two parts.
@@ -1215,9 +1343,19 @@ reduced to a few lines.
     engaged, so the chat pushes an emission well past its candidate instant, and traffic from
     many other chats is released at the same moment. **No two emissions share an instant, and
     no one-second window carries more than one.** Red-first against `commit-at-candidate`.
+    (iii) **the global ceiling at its shipped default**: with `LAB_GAME_TG_LIMIT_MESSAGE_GLOBAL`
+    left at `30/1s`, a fan-out releasing one message into each of many chats emits **at most
+    thirty in any one-second window** — the figure D10 verified as enforced. Red-first against
+    `truncating-pace`, which admits thirty-one, and against `count-retention`, which admits
+    far more.
   - **AC11** — message chat rate `1/1s`: traffic into chat A is spaced, traffic into chat B is
     not delayed by it, and a `ClassOther` call into chat A is not delayed by the message
-    class's allowance.
+    class's allowance. **And the clause the old isolation test could not carry, because it
+    turned the global class off: with the global class *bounded* at its shipped default and
+    chat A saturated to a long backlog, a single call into an empty chat B is granted within
+    one global pacing interval — not behind chat A's backlog.** Red-first against
+    `ordered-global`, where chat B is pushed to the far end of chat A's queue and, with a
+    deadline, refused outright.
   - **AC12** — shape and occupancy, and the second is the load-bearing one.
     (i) *Shape*: chat rate `1/100ms`, chat cap `5/1s`, calls released into one chat — the
     burst is spread by the short window and the cap binds only once it has been spread.
@@ -1227,8 +1365,9 @@ reduced to a few lines.
     Red-first against `bucket-cap`.
   - **AC13** — the edit class under the default configuration imposes no delay and allocates
     no history; the same class with a configured bound binds; **and the message class under
-    its shipped defaults emits at most twenty into one chat in any sixty-second window and at
-    most one in any one-second window**, which are the figures D10 cites. That is where
+    its shipped defaults emits at most twenty into one chat in any sixty-second window, at
+    most one in any one-second window, and at most thirty class-wide in any one-second
+    window**, which are the figures D10 cites. That is where
     "traceable to a verified figure" becomes a test rather than a claim about a constructor
     argument.
   - **AC14** — a positive (private) chat id is charged on the same terms as a negative one.
@@ -1252,10 +1391,19 @@ reduced to a few lines.
     *later* than a perfect schedule, never earlier.
   - **AC32** — the change adds no migration directory entry and the package writes no state
     outside the process.
-- **Schedule unit tests, below the end-to-end scenarios**: `blockedUntil` returns "not
-  blocked" while a window is under-filled; it returns the `c`-th newest grant plus `per` once
-  filled; it mutates nothing (calling it repeatedly changes no later answer); retention keeps
-  exactly what the largest window needs; and an empty window set never blocks.
+- **Schedule unit tests, below the end-to-end scenarios.** The invariant
+  `grant[j+c] - grant[j] ≥ per` is asserted after **every** commit in every scenario, not only
+  in the unit tests — it is the mechanism's postcondition and the cheapest place a defect
+  surfaces. Beyond that: `earliest` returns the candidate unchanged while every window is
+  under-filled; it mutates nothing (repeated calls change no later answer); it never returns
+  an instant before its candidate; an ordered schedule's grants are non-decreasing; an
+  unordered schedule's are sorted; retention drops a grant only once `grant + max(per)` is
+  past; and an empty window set never blocks.
+- **`earliest` gets an oracle, because "earliest" is two claims.** One test asserts the
+  returned instant is admissible; a second sweeps the interval between the candidate and the
+  returned instant at fine resolution and asserts **no earlier instant is admissible**. The
+  sweep is meaningless alone — a grid scan can only ever *miss* an admissible point — so it
+  ships with a control that feeds it a deliberately late answer and confirms it goes red.
 - **Concurrency**: the acquire path is exercised from many goroutines under `-race`, since one
   mutex now guards every schedule and AC28's race gate is where a locking mistake surfaces.
 - Per-attempt charging (D2) is visible here: a scenario that forces a retry consumes more
@@ -1358,6 +1506,15 @@ the transport renders no combat log, no narrative and no generated maze.
   multi-component structure that produced three defects. Contention is the thing to measure if
   fan-out ever makes it a question — and any replacement must keep the decide-then-commit rule
   intact, not merely shard the map.
+- **Should `LAB_GAME_TG_ATTEMPT_TIMEOUT` exist at all?** D10 adds it beyond the spec's
+  literal criteria, to bound one attempt against a wedged instance when the caller passed no
+  deadline (`docs/DESIGN.md` §12.2's incident). If the owner would rather every bound come
+  from the caller's context, dropping it is one key, one field and one `.env.example` line.
+- **Should the class-global key ever emit in arrival order?** D9 makes it unordered so a
+  backlogged chat cannot hold a quiet one behind it, which costs global arrival order — a
+  property no acceptance criterion asks for. If a later mechanic ever needs class-wide
+  fairness *and* ordering, that is a queue discipline question and belongs where the queue
+  lives (#43), not in the transport's ceiling.
 - **Should `sendChatAction` leave `ClassMessage`?** It delivers no message but is throttled
   today because the `send*` rule is deliberately fail-safe. The MVP sends none; a later
   "typing…" indicator that feels laggy is the signal to carve it out.
