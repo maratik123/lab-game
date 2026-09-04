@@ -113,18 +113,25 @@ _Updated: 2026-09-04 17:50_
 | R1-18 | round 1 | nit | accepted@1 — D11 establishes no other metrics registry is reachable from this module | `go mod why -m github.com/prometheus/client_golang` |
 | R1-19 | round 1 | nit | accepted@1 — recorded open question, fail-safe direction chosen deliberately | `grep -n "sendChatAction" ai-docs/plans/2026-09-04-bot-api-transport.design.md` |
 | R1-20 | round 1 | nit | accepted@1 — AGENTS.md's balance-constant rule is scoped to game balance (`docs/DESIGN.md` §16.5); D10/KD-27 make these overridable env keys | `sed -n '/^func defaultTransport/,/^}/p' internal/config/transport.go` |
-| R2-1 | round 2 | major | fixed@fffa38b | `perl -0777 -i -pe 's/hasDeadline && waitUntilTime\.After\(deadline\)/false && hasDeadline && waitUntilTime.After(deadline)/' internal/tg/caller.go`, then `go test -count=1 -run TestRetry_DeadlineRefusalInsteadOfSleep ./internal/tg/` — must go RED (measured: PASS; a scratch probe showed the call's elapsed going 0s → 5s and its cause going `retry after: 100` → `context deadline exceeded`) |
-| R2-2 | round 2 | major | fixed@fffa38b | three independent edits, each must turn `go test -count=1 ./internal/config/ ./internal/tg/` RED (measured: GREEN for all three): `defaultTransport()` `RetryMaxAttempts: 3`→`5`; `defaultTransport()` `ChatRate: {1,1s}`→`{2,1s}`; `.env.example` `LAB_GAME_TG_RETRY_MAX_ATTEMPTS=3`→`99` and `..._MESSAGE_CHAT_RATE=1/1s`→`7/1s` |
-| R2-3 | round 2 | minor | fixed@fffa38b | delete the `c.client.observe(method, time.Since(start), 0, false, 0)` line in the gate-refusal branch (caller.go:53), then `go test -count=1 ./internal/tg/` — must go RED (measured: GREEN) |
-| R2-4 | round 2 | minor | fixed@fffa38b | disable the `AttemptTimeout` block (caller.go:172, `if to := …; false && to > 0`), then `go test -count=1 ./internal/tg/` — must go RED (measured: GREEN) |
-| R2-5 | round 2 | minor | fixed@fffa38b | replace `req.Header.Set(ta.ContentTypeHeader, data.ContentType)` (caller.go:201) with `_ = data.ContentType`, then `go test -count=1 ./internal/tg/` — must go RED (measured: GREEN) |
-| R2-6 | round 2 | minor | fixed@fffa38b | `grep -rn '\.md:[0-9]' --include=*.go internal/ cmd/` — must return nothing (measured: 3 hits; `ai-docs/doc-convention.md` DOC-4 forbids line citations) |
-| R2-7 | round 2 | minor | fixed@fffa38b | delete `sort.Strings(fieldNames)` from `writeMultipartBody` (constructor.go:68), then `go test -count=1 ./internal/tg/` — must go RED (measured: GREEN) |
-| R2-8 | round 2 | nit | fixed@fffa38b | `grep -cn '^| R1-.* | fixed@fffa38b |' ai-docs/plans/2026-09-04-bot-api-transport.progress.md` — must be 0 once the fixer marks them (measured: 16 rows still `open` although round 1's table marks all 16 `✅ Fixed`) |
+| R2-1 | round 2 | major | fixed@b1fdf70 | `perl -0777 -i -pe 's/hasDeadline && waitUntilTime\.After\(deadline\)/false && hasDeadline && waitUntilTime.After(deadline)/' internal/tg/caller.go`, then `go test -count=1 -run TestRetry_DeadlineRefusalInsteadOfSleep ./internal/tg/` — must go RED (measured: PASS; a scratch probe showed the call's elapsed going 0s → 5s and its cause going `retry after: 100` → `context deadline exceeded`) |
+| R2-2 | round 2 | major | fixed@b1fdf70 | three independent edits, each must turn `go test -count=1 ./internal/config/ ./internal/tg/` RED (measured: GREEN for all three): `defaultTransport()` `RetryMaxAttempts: 3`→`5`; `defaultTransport()` `ChatRate: {1,1s}`→`{2,1s}`; `.env.example` `LAB_GAME_TG_RETRY_MAX_ATTEMPTS=3`→`99` and `..._MESSAGE_CHAT_RATE=1/1s`→`7/1s` |
+| R2-3 | round 2 | minor | fixed@b1fdf70 | delete the `c.client.observe(method, time.Since(start), 0, false, 0)` line in the gate-refusal branch (caller.go:53), then `go test -count=1 ./internal/tg/` — must go RED (measured: GREEN) |
+| R2-4 | round 2 | minor | fixed@b1fdf70 | disable the `AttemptTimeout` block (caller.go:172, `if to := …; false && to > 0`), then `go test -count=1 ./internal/tg/` — must go RED (measured: GREEN) |
+| R2-5 | round 2 | minor | fixed@b1fdf70 | replace `req.Header.Set(ta.ContentTypeHeader, data.ContentType)` (caller.go:201) with `_ = data.ContentType`, then `go test -count=1 ./internal/tg/` — must go RED (measured: GREEN) |
+| R2-6 | round 2 | minor | fixed@b1fdf70 | `grep -rn '\.md:[0-9]' --include=*.go internal/ cmd/` — must return nothing (measured: 3 hits; `ai-docs/doc-convention.md` DOC-4 forbids line citations) |
+| R2-7 | round 2 | minor | fixed@b1fdf70 | delete `sort.Strings(fieldNames)` from `writeMultipartBody` (constructor.go:68), then `go test -count=1 ./internal/tg/` — must go RED (measured: GREEN) |
+| R2-8 | round 2 | nit | fixed@b1fdf70 | `grep -cn '^| R1-.* | fixed@fffa38b |' ai-docs/plans/2026-09-04-bot-api-transport.progress.md` — must be 0 once the fixer marks them (measured: 16 rows still `open` although round 1's table marks all 16 `✅ Fixed`) |
 | R2-9 | round 2 | minor | accepted@2 — the AC21 guard's regex is narrower than the design's Test Design sentence (it matches only `<digits> * time.Unit`, not a window count or an attempt count), but neither escape is live: a literal `attempts >= 3` and a literal `count: 30` are both killed by the functional suite | mutate caller.go's `attempts >= c.client.transport.RetryMaxAttempts` → `>= 3` and limit.go's `count: r.Count` → `count: 30`, then `go test -count=1 ./internal/tg/` |
 | R2-10 | round 2 | nit | accepted@2 — `http.Server.Serve` returns `http.ErrServerClosed` unwrapped, so the `!=` comparison is sound; `errorlint` is enabled in `.golangci.yml` and `golangci-lint run` reports 0 issues on the shipped tree | `sed -n '81p' internal/tgtest/tgtest.go` + `golangci-lint run` |
 | R2-11 | round 2 | nit | accepted@2 — a derived `ChatUnknown` always carries an empty `Key`, so splitting the reserved unknown-chat key per call is a semantically equivalent mutant, not a live escape from D4's "single reserved key" | mutate `key = chatKey{key: unknownChatKey + call.Chat.Key, …}`, then `go test -count=1 ./internal/tg/` |
 | R2-12 | round 2 | minor | accepted@2 — an over-restriction defect IS visible: widening every window by 10% goes RED, so AC30's `>= 1s` spacing assertion is not the only instrument on that axis | mutate `at(k).Sub(at(j)) < w.per` → `< w.per+w.per/10` in `schedule.holds`, then `go test -count=1 ./internal/tg/` |
+| R3-1 | round 3 | major | open | `sed -i 's/newSchedule(orderedSchedule, windows)/newSchedule(unorderedSchedule, windows)/' internal/tg/limit.go` (limit.go:260), then `go test -count=1 ./internal/tg/` — must go RED (measured: GREEN). Not an equivalent mutant under the SHIPPED chat windows `[{1,1s},{20,1m}]`: with grants at 0s and 10s, `earliest(1s)` = **11s** ordered vs **1s** unordered |
+| R3-2 | round 3 | minor | open | `New(Options{BaseURL: …, Token: …, Transport: {RetryMaxAttempts: 3, RetryBaseDelay: 500ms, RetryMaxDelay: 100ms, AttemptTimeout: 30s}})` must return an `*OptionError` naming `Transport.RetryMaxDelay` (measured: nil error; `client.go:112` tests only `<= 0`) |
+| R3-3 | round 3 | nit | open | `git show fffa38b:internal/tg/retry_test.go` \| `grep -c AttemptTimeoutAbandonsAttempt` → 0, and `git log --oneline -S 'fixed@fffa38b' -- ai-docs/plans/2026-09-04-bot-api-transport.progress.md` → `b1fdf70` — so `fixed@fffa38b` is false for rows R2-1…R2-8 |
+| R3-4 | round 3 | nit | open | `grep -n '^## Status' ai-docs/context.md` → `## Status (2026-09-02)` while `git diff c1d03fd..HEAD -- ai-docs/context.md` rewrites that section's body |
+| R3-5 | round 3 | major | accepted@3 — RETRACTED after verifying on the production path: telego's `constructAndCallRequest` defers `closer.Close()` on `data.BodyStream` around `b.api.Call` (telego@v1.11.2:bot.go:232), so every early return in our `Call` (gate refusal, limiter refusal, pre-attempt cancellation) still unblocks the multipart writer goroutine. The 20/20 and 9/9 permanent leaks measured first were an artefact of driving the unexported `caller.Call` directly, which no production path does | 20 `SendPhoto` calls through `Client.API()` under a refusing gate + 10 under a limiter deadline refusal, then `runtime.Stack(all=true)` grepped for `writeMultipartBody` (measured: before=0 after=0 in both) |
+| R3-6 | round 3 | nit | accepted@3 — design D9 predicts this survivor ("ceil rather than truncation buys evenness only — the quota window is what forbids the N+1-th emission either way"), and the Test Design says AC10(iii) is explicitly **not** red-first against a merely-truncated pacing interval | `sed -i 's\|return (w + time.Duration(n) - 1) / time.Duration(n)\|return w / time.Duration(n)\|' internal/tg/limit.go`, then `go test -count=1 ./internal/tg/` (measured: GREEN, as designed) |
+| R3-7 | round 3 | nit | accepted@3 — below severity floor: the Test Design's subtask-2 line "the server records the method path and body it received" is discharged consumer-side by handler closures (`TestCaller_RequestCarriesContentTypeHeader`, `TestCaller_DerivesChatKnownFromSendMessage`), not by a recorder inside `tgtest`; D13's own behaviour list requires none | `grep -n 'records the method path' ai-docs/plans/2026-09-04-bot-api-transport.design.md` + `grep -n 'Recorded\|record' internal/tgtest/tgtest.go` |
 
 ## Self-Review (Round 1)
 
@@ -246,3 +253,95 @@ unwrapped sentinel and `errorlint` is enabled and clean; the reserved `unknownCh
 per-call split is a semantically equivalent mutant because a derived `ChatUnknown` always
 carries an empty `Key`; and AC30's `>= 1s` spacing bound is not the only instrument on the
 over-restriction axis — widening every window by 10% goes RED.
+
+## Self-Review (Round 3)
+
+**Verdict:** REJECT
+
+**What was checked.** Diff `c1d03fd..HEAD` (32 files, 12 commits). Per instruction 7a the
+register scoped this round: every row carries `fixed@fffa38b`, so the re-examination window
+is `fffa38b..HEAD` — the round-2 fix commit `b1fdf70`, read line by line — plus anything
+newly introduced. **All eight `⬜ Open` round-2 rows re-verified by re-running each row's own
+verifying command as a mutation against the shipped tree; all eight confirmed genuinely
+fixed, none re-opened:** R2-1 (`false && hasDeadline && …` → RED, `elapsed = 5s` and
+`Err = context deadline exceeded` both now asserted), R2-2 (all three drift edits —
+`RetryMaxAttempts: 3→5`, `ChatRate: {1,1s}→{2,1s}`, and `.env.example` rewritten to
+`…RETRY_MAX_ATTEMPTS=99` / `…MESSAGE_CHAT_RATE=7/1s` — each killed by
+`TestLoadTransport_ExampleMatchesDefaults`), R2-3 (gate-refusal `observe` deleted → RED),
+R2-4 (`AttemptTimeout` block disabled → RED), R2-5 (`Content-Type` unset → RED), R2-6
+(`grep -rn '\.md:[0-9]' --include=*.go internal/ cmd/` → no hits), R2-7 (both
+`sort.Strings` calls deleted → RED, one at a time), R2-8 (all sixteen R1 rows now carry a
+`fixed@` marker).
+
+Beyond the fix round: every AC1–AC33 row re-derived against the shipped artefact; D1–D15 read
+against the code; `make verify` re-run (GATE-GREEN) plus `go test -race -count=5` over
+`./internal/tg/ ./internal/tgtest/ ./internal/config/` (GREEN — the fix round's one real-time
+test, `TestCaller_AttemptTimeoutAbandonsAttempt`, is stable across five repeats); the
+AC2 / AC3 / AC15 / AC17 / AC25 / AC29 / AC32 and D2-seam scans re-run as shell greps against
+the post-implementation tree; the panicking-call audit, `_ = err`, `context.Background()`,
+`//nolint`, `TODO` and file-size sweeps run over the whole changed set (all clean; largest
+non-test `internal/tg/limit.go` 377 / hard 1000, largest test `internal/tg/limit_test.go`
+796 / hard 1500).
+
+**Four guards were themselves put to the test** (AGENTS.md § Patterns 2 — a green instrument
+is a claim about the instrument): a planted `"github.com/valyala/fasthttp` string, a planted
+`prometheus/client_golang` string, a planted `500 * time.Millisecond` literal and a planted
+`BaseURL` reference were each added to a production file in `internal/tg`, and each guard went
+RED. All four are load-bearing, not tautologies.
+
+**Two claims the fix round asserts in prose were re-derived rather than read.**
+`TestCaller_AttemptTimeoutAbandonsAttempt`'s comment (and the Decisions-log entry beside it)
+says a `synctest` bubble deadlock-panics because `tgtest`'s handler goroutine stays blocked in
+`time.Sleep` — a scratch `synctest` version of that exact test was written and run: it
+produced `panic: deadlock: main bubble goroutine has exited but blocked goroutines remain`
+with `goroutine 18 [sleep (durable), synctest bubble 1]` inside `tgtest.Delayed`. The comment
+is accurate and the real-time choice is justified. And telego v1.11.2's whole exported `*Bot`
+surface was re-audited for an AC27 bypass — `Token`, `SecretToken`, `ID`, `Username`,
+`FileDownloadURL`, `UpdatesViaLongPolling`, `UpdatesViaWebhook` are the only non-generated
+methods, and the two update methods reach the network only through `b.api.Call`.
+
+**A twelve-mutation sweep was run on paths the earlier rounds' sweeps did not reach**
+(the per-chat/global schedule wiring, `quotaWindows`, `ceilDiv`, the per-chat `commit`, the
+reserved unknown-chat key, `New`'s validation ladder). Nine mutants were killed; three
+survived — one is finding 1 below, one is predicted by design D9 (`R3-6`), and one is the
+already-`accepted@2` equivalent mutant `R2-11`.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | internal/tg/limit.go:260 · internal/tg/limit_test.go:184 | major | **AC30's arrival-order clause is discharged by an instrument that cannot fail it.** AC30 requires that calls "leave one interval apart, **in the order they arrived**". The property rests entirely on `chatScheduleLocked` building the per-chat schedule as `orderedSchedule` (limit.go:260) — `earliest`'s clamp to the key's own newest grant. Flipping that one word to `unorderedSchedule` leaves `go test -count=1 ./internal/tg/` **fully GREEN**. It is not an equivalent mutant: under the *shipped* chat windows (`ChatRate 1/1s` → `{1,1s}`, `ChatCap 20/1m` → `{20,1m}`), with grants already at 0s and 10s, `earliest(1s)` returns **11s** ordered and **1s** unordered — a later-arriving call jumps ahead of an already-granted one. `TestLimiter_SteadyOrderedEmission` cannot see it because it configures `ChatRate` alone, and with the single deduped `{1,1s}` window the two kinds coincide; `TestSchedule_OrderedEmissionIsNonDecreasing` tests the schedule type with a **hand-built** `orderedSchedule` and never exercises the wiring. Every other `orderedSchedule` in the test files is likewise hand-built. Fix: one limiter-level test with both shipped chat windows configured, whose acquires are separated in real "now" so a hole opens, asserting the grant sequence is non-decreasing. | ⬜ Open |
+| 2 | internal/tg/client.go:112 | minor | **`New` does not reject a max delay below the base, which the design names as one of its validation cases.** Design § Test Design, subtask 3: "`New` rejects a zero attempt count, a non-positive base delay, **a max delay below the base**, and an empty base URL, each naming the field". `client.go:106-117` tests `RetryMaxAttempts < 1`, `RetryBaseDelay <= 0`, `RetryMaxDelay <= 0` and `AttemptTimeout <= 0` — there is no cross-field check, and `TestNew_ValidatesEachField`'s nine cases contain none. Nothing in `loadTransport` catches it either, since it is a cross-key inconsistency rather than a per-key one. Consequence: `LAB_GAME_TG_RETRY_MAX_DELAY=100ms` with `LAB_GAME_TG_RETRY_BASE_DELAY=500ms` starts cleanly and silently yields every backoff in `[50ms, 100ms)` — shorter than the configured base, and flat rather than growing, which is the half of AC5 that says "successive delays … grow rather than repeat". The flood-ban-relevant half (strictly positive, no tight loop) still holds, which is why this is `minor` and not `major`. Fix: the cross-field check plus its `TestNew_ValidatesEachField` row. | ⬜ Open |
+| 3 | (this file) `## Review register` | nit | **Rows R2-1 … R2-8 carry `fixed@fffa38b`, but those fixes landed in `b1fdf70`.** `fffa38b` is round 1's fix commit and predates every round-2 fix: `git show fffa38b:internal/tg/retry_test.go` contains no `AttemptTimeoutAbandonsAttempt` and no `elapsed != 0`, and `git log -S 'fixed@fffa38b'` on this file returns `b1fdf70` — the commit that both applied the fixes and wrote the (wrong) sha. Instruction 7a scopes the next round on that sha, so the error is in the safe direction (a wider window), which is why it is a `nit` and not higher. The eight rows should read `fixed@b1fdf70`; the sixteen `R1-*` rows are correct as they stand. | ⬜ Open |
+| 4 | ai-docs/context.md:40 | nit | **`## Status (2026-09-02)` is stale by its own diff.** This change rewrites that section's body — the "no Telegram client" clause became the transport plus `internal/tgtest` — but leaves the date in the heading. A reader who trusts the heading dates the transport claim two days before the transport existed. Fix: `## Status (2026-09-04)`. | ⬜ Open |
+
+**No Design/Spec Amendment trigger.** Findings 1 and 2 are a test addition and a validation
+plus its test row: in both cases the design says the right thing and the shipped artefact
+falls short of it — no criterion has changed and no design decision is contradicted. Findings
+3 and 4 are a progress-file field and a documentation heading.
+
+**Gate results re-run against the shipped artefact (not quoted from drafting):**
+
+- `make verify` → GATE-GREEN (fmt, build, vet, `golangci-lint run` 0 issues, file-limits, `go test`, `go test -race`, tidy-check, actionlint, shellcheck).
+- `go test -race -count=5 ./internal/tg/ ./internal/tgtest/ ./internal/config/` → REPEAT-GREEN.
+- AC2: `grep -rnE 'fasthttp|go-json|goccy|grbit|fastjson' --include=*.go cmd/ internal/` minus tests → one comment hit at `client.go:136`. PASS. Guard verified live against a planted import.
+- AC3: `go.mod:9 github.com/mymmrac/telego v1.11.2`, direct; tidy-check clean. PASS.
+- AC15 source half: `BaseURL` appears in exactly one non-test file, `internal/tg/client.go`. PASS. Guard verified live against a planted reference.
+- AC17: no metrics-registry reference in any `internal/tg` non-test file. PASS. Guard verified live.
+- AC21 literal scan: guard verified live against a planted `500 * time.Millisecond`. PASS.
+- AC25/AC29: the requiredness sweep over the live tree finds `internal/config/env.go:13` correctly narrowed ("Every variable declared here is required … the Bot API transport's tuning variables (transport.go) are a separate, optional-with-default class"); `context.md`, `context-status.md`, `key-decisions.md` KD-27, `doc.go`, `config.go`, `.env.example` all updated. `INDEX.md` remains Step 12's by the design's ownership table. PASS (with finding 4's heading nit).
+- AC26: no `api_id`/`api_hash` and no real-token-shaped literal in any added line. PASS.
+- AC27: telego's full exported `*Bot` surface re-audited — no non-generated method reaches the network outside `b.api.Call`. PASS.
+- AC32: no `*.sql` and no migration file in the range. PASS.
+- D2 seam: `telego.NewBot` / `telego.With*` call sites exist only in `internal/tg/client.go`. PASS.
+- Panicking-call audit over all 15 changed non-test `.go` files → no `panic(` / `log.Fatal*` / `log.Panic*`. No panic-index row owed. PASS.
+- Error handling / context discipline: no `_ = err`, no `context.Background()` in production, no `TODO`, three `//nolint` directives all with a specific linter and a stated reason. `ctx context.Context` first on every outbound-path function; no struct field of type `context.Context`. PASS.
+- File sizes: `internal/tg/limit.go` 377 / hard 1000; `internal/tg/limit_test.go` 796 / hard 1500. PASS.
+- Progress-file required fields (`Branch`, `base_commit`, `Last build`, `current_step`, `last_passed_gate`, `entry_args`, `## Decisions log`) present; `parent_skill` correctly omitted (`/task` is the parent flow). PASS.
+
+**Recorded, not raised** (entered in the register as `accepted@3` — R3-5 … R3-7): a suspected
+permanent goroutine leak on every early return of `caller.Call` for a multipart request —
+**raised, probed, and retracted** once it was driven through the production path instead of
+through the unexported `caller.Call` directly, because telego's own
+`constructAndCallRequest` defers `closer.Close()` on `data.BodyStream` around `b.api.Call`;
+`ceilDiv`'s truncation mutant surviving, which design D9 predicts in as many words; and
+`tgtest` not itself recording the request path and body, which consumer-side handler closures
+discharge and D13's behaviour list never asks for.
