@@ -10,18 +10,18 @@ _Updated: 2026-09-04
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** go build ./... | 2026-09-04T04:26:20Z | 869cfb37a773cc24aa2a0f3f705ced93f847422a
+**current_step:** Step 8 — subtask 1 of 8 complete
+**last_passed_gate:** golangci-lint run ./internal/config/... | 2026-09-04T00:00:00Z | (pre-commit)
 **entry_args:** 18
 
 ## Next action
 
-**Do this immediately:** hand off Group A (subtasks 1–8) to `code-writer` via `/context-reset`, starting with subtask 1 — `internal/config/doc.go` (provisional package comment), the `Balance` types, the schema entries, the duplicate-key pre-pass and the node walk, adding `go.yaml.in/yaml/v3`.
+**Do this immediately:** subtask 2 — the tracked balance set at `config/balance.yaml`, placeholder per schema key, one comment per curve, plus the both-directions agreement test.
 
 ## Subtasks
 
-- [ ] 1. Balance schema + walker; provisional package comment in `doc.go`; adds the YAML parser  ← CURRENT
-- [ ] 2. Tracked balance set at the default path, placeholder per schema key + curve comments
+- [x] 1. Balance schema + walker; provisional package comment in `doc.go`; adds the YAML parser
+- [ ] 2. Tracked balance set at the default path, placeholder per schema key + curve comments  ← CURRENT
 - [ ] 3. Environment layer: `Lookup`, `EnvKeys`, name constants, token/DSN/base-URL/chat-id validation
 - [ ] 4. World-set path resolution: required variable, readability probe, both errors handled
 - [ ] 5. `Load`: `Config`, `Secret`, joined error; rewrites `doc.go`'s comment body to AC13 wording
@@ -33,6 +33,10 @@ _Updated: 2026-09-04
 ## Decisions log
 
 - **Step 8**: entering implementation at design `869cfb3` (round-2 GO plus the mandated notes fold-in), spec `5285f4c`.
+- **Step 8, subtask 1**: `go get go.yaml.in/yaml/v3@v3.0.5` + `go mod tidy` produced the single-line `go.mod`/`go.sum` diff D2 predicted; `gopkg.in/yaml.v3 v3.0.1 // indirect` untouched, confirmed after tidy.
+- **Step 8, subtask 1**: the walker unifies "root absent" and "root is an empty mapping" (`{}`) through one code path — `loadBalance` resolves `root *yaml.Node` to `doc.Content[0]` (nil when the parsed document is zero or has no content) and calls `walkNode(root, tree, nil)` unconditionally; `walkInterior`'s `doc == nil` branch recurses `walkNode(nil, child, …)` into every schema child, so both empty/whitespace input and `{}` report every path missing via the same "value node absent for this child" mechanism, and a non-mapping root (a YAML sequence) is rejected by the same function's Kind check — no separate resolveRootMapping function was needed, simplifying design D6's stated approach without changing its observable behaviour (verified: all three `TestLoadBalance_EmptyDocumentReportsEveryPathMissing` subtests plus `TestLoadBalance_NonMappingRoot` pass).
+- **Step 8, subtask 1**: found and fixed two bugs while running the fixture tests (not carried in from the design): `raid.monster_budget.distance_exponent`'s predicate was miswired to the open interval (0,1) instead of D9's stated (0,1], caught by `TestLoadBalance_HappyPath` using the design's own placeholder value 1; and the AC6 whitespace-only fixture originally used a tab character, which YAML rejects for indentation and turned the case into a parse-error path rather than a missing-path path — replaced with space-only whitespace.
+- **Step 8, subtask 1**: `bindInt`'s `want` parameter trips `unparam` today because every int-typed key in D9 happens to use "positive" — kept (not simplified away) for symmetry with `bindDuration`/`bindDecimal` and because a future int key need not share that predicate; annotated `//nolint:unparam` with that reason rather than dropping the parameter.
 
 ## Key discoveries (don't re-investigate)
 
@@ -80,4 +84,9 @@ _Updated: 2026-09-04
 
 ## Files touched
 
-- (none yet — Step 8 has not produced code)
+- `internal/config/doc.go` — provisional package comment (D7; subtask 5 rewrites the body)
+- `internal/config/balance.go` — `Balance` and its nested sub-structs, mirroring the YAML tree
+- `internal/config/errors.go` — `ErrMissing`/`ErrUnknownKey`/`ErrInvalidValue`/`ErrUnreadable` sentinels, `*KeyError`
+- `internal/config/balance_load.go` — the schema (`balanceSchema`), the schema tree, the duplicate-key pre-pass, and the node walk (`loadBalance`)
+- `internal/config/balance_load_test.go` — subtask 1's table tests plus `assertBalanceEqual`/`compareBalanceValue` (the field-wise `decimal.Decimal` comparison helper subtask 6 reuses)
+- `go.mod`, `go.sum` — `go.yaml.in/yaml/v3 v3.0.5` added as a direct requirement
