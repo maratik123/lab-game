@@ -162,3 +162,10 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **at:** ab505d7
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-04 — testing — a test named as an AC's verifier that never exercises the wiring it is named for
+**What happened:** Four self-review rounds on #19 each surfaced the same shape, and the fix for one instance produced the next. `TestLimiter_SteadyOrderedEmission` configured a single window where the ordered and unordered schedule kinds coincide, so it could not distinguish them; `TestSchedule_OrderedEmissionIsNonDecreasing` hand-built an `orderedSchedule` and so never exercised the code that chooses the kind; `TestLoadTransport_AllAbsentYieldsDefaults` compared `defaultTransport()` to itself; `TestRetry_DeadlineRefusalInsteadOfSleep` bounded elapsed time from below where the criterion was the absence of a sleep; and `TestSchedule_EvictBoundsMemoryAcrossManyAcquires` — written in an earlier fix round for exactly this property — hand-rolled the schedule instead of driving `Limiter.acquire`, so deleting both live `evict` call sites left the suite green. Every one passed on the shipped code and passed on the mutant.
+**Rule:** A test earns its name as an AC's verifier only after the assertion has been pointed at the broken mechanism and seen RED. Two failure modes recur and both look like coverage: a fixture configured where the two branches coincide, and a test that hand-builds the object under test instead of going through the wiring that constructs it. Prefer driving the public entry point over constructing internals, and when a test is named for a property, mutate that property before trusting the green.
+**at:** 5c94c78
+**Kind:** validation
+**Escalated?** no
