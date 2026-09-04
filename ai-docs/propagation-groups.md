@@ -27,6 +27,7 @@ Per-file sync groups behind `AGENTS.md` § *Propagation Rule*. **Editing any fil
 | `.claude/skills/pr-ci-failed/SKILL.md` | `.claude/skills/main-ci-failed/SKILL.md` AND `.claude/skills/dependabot-pr/reference.md` (CI group — the failure-class taxonomy and the per-class reproducers must agree) |
 | `.claude/skills/main-ci-failed/SKILL.md` | See the *CI group* anchor row above |
 | `.github/workflows/ci.yml` (a job added, renamed, or removed) | The CI group's class tables AND `AGENTS.md` § *Build & Test* AND `ai-docs/claude-tools-hierarchy.md` — a class with no job, or a job with no class, is how a red run becomes unclassifiable |
+| A reviewer spawn template — `.claude/skills/task/SKILL.md` Step 10, `.claude/skills/task/reference.md` (both amendment recipes), `.claude/skills/bugfix/SKILL.md`, `.claude/skills/project-review/SKILL.md` | The closed-list contract in `.claude/agents/self-review.md` AND `.claude/agents/design-review.md` AND the reviewer-spawn-contract hook in `.claude/settings.json` AND `.claude/skills/ai-audit/scripts/test-spawn-contract-guard.sh` (Spawn group — a template the guard refuses is a template no round can use, and a permitted item the guard does not know is a contract the guard silently narrows) |
 | `.claude/skills/pr-commented/SKILL.md` | `.claude/skills/pr-ci-failed/SKILL.md` (shared Step-5 self-review + Step-6 push/PR-body contract) |
 
 Groups are added here as their files land. Every group the harness declares is now live.

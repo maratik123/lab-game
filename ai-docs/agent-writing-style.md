@@ -146,39 +146,6 @@ The canonical cross-link target — every callout body ends with a `See ... § C
 
 When adding the callout to a new code-side skill, pick the variant matching the skill's durable-state shape; copy the live full body from a sibling that already uses that variant; do not invent a 4th variant without first updating this section and the cross-link target.
 
-### 8. 40k byte-cap on instruction files, with hysteresis
-
-Source-of-truth AXIOM lives in `AGENTS.md § Build & Test`. Pattern 8 is the
-style-guide-side restatement so the rule is discoverable from the writing
-conventions reference and audit-able via `/ai-audit` Phase 2 Checklist M.
-
-> **AXIOM — Every covered instruction file stays under 40,000 bytes, and `/ai-audit` is the only surface allowed to know that.**
-> Measured by `wc -c` — **bytes, not characters**: a character count under-counts multibyte punctuation (every `—`, `§`, `≥` in these files is 2–3 bytes), so a char-based reading silently reports a file as smaller than the gate sees it. The harness applies a soft cap on per-invocation instruction-file load; crossing 40,000 bytes imposes measurable per-invocation cost on every Subagent spawn and Skill invocation.
->
-> | Who | Obligation |
-> |---|---|
-> | `/ai-audit` Checklist K1 | Propose extraction for every `SKILL.md` over 200 lines, every pass — the routine relief that keeps files away from the gate. |
-> | `/ai-audit` Checklist M9 | Make extraction mandatory at `≥ 40,000` bytes; postcondition is the file landing **below 35,000**, not merely back under the cap. |
-> | Every other flow, CI included | **FORBIDDEN** to measure, report or plan around instruction-file size. No spec constraint, no AC, no design risk row, no review finding may name a file size or byte budget, at any threshold. A flow whose edits push a file past a threshold ships anyway and says nothing. |
-
-**Covered file set** (enumerate verbatim; no glob-as-the-entire-list per Pattern 4):
-
-- `AGENTS.md`
-- `CLAUDE.md`
-- `.claude/skills/**/*.md` (every markdown file under this directory — `SKILL.md` + `reference.md` siblings)
-- `.claude/agents/**.md` (every file under this directory)
-- `.claude/rules/*.md` (flat — `.claude/rules/` has no subdirectories today)
-- `ai-docs/code-style.md`
-- `ai-docs/doc-convention.md`
-- `ai-docs/context.md`
-- `ai-docs/agent-writing-style.md`
-- `ai-docs/corrections-log.md`
-
-**Extraction model.** The canonical extraction pattern for `AGENTS.md`:
-verbose subsections moved into `ai-docs/<topic>.md` reference pages with
-anchored links from the source file. `/ai-audit` applies the same model in
-both its extraction passes — K1's routine proposal and M9's mandatory one.
-
 ## Writing checklist
 
 Before submitting a rule paragraph, check:

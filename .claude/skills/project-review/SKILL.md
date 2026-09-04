@@ -111,13 +111,13 @@ After every 3 fixes (or when all findings in a subtask are resolved):
 
 ### Step 5: Self-review loop (max 3 rounds)
 
+**The prompt is the closed list and nothing else** (`self-review.md` § *Spawn prompt contract*, enforced by a `PreToolUse` hook). That there is no spec and no design doc, and that the progress file's `## AC Status` table serves as the acceptance criteria, is derived by the reviewer from the paths it receives — `self-review.md` § *What the prompt paths already tell you* — not asserted in the prompt. Substitute `<base_commit>` with the value recorded in the progress-file header:
+
 ```
 Agent(subagent_type="self-review", prompt="
   Read .claude/agents/self-review.md and follow it.
   Progress: ai-docs/plans/YYYY-MM-DD-project-review.progress.md
-  base_commit is recorded in the progress file.
-  There is no spec or design doc — this is a review-driven task.
-  Treat the findings table in ## AC Status as the acceptance criteria.
+  <base_commit>..HEAD
 ")
 ```
 
