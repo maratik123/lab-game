@@ -11,19 +11,19 @@ import (
 var (
 	// ErrMissing is returned when a required key or environment variable is
 	// absent.
-	ErrMissing = errors.New("config: missing")
+	ErrMissing = errors.New("missing")
 
 	// ErrUnknownKey is returned when a balance file contains a key the
 	// schema does not declare.
-	ErrUnknownKey = errors.New("config: unknown key")
+	ErrUnknownKey = errors.New("unknown key")
 
 	// ErrInvalidValue is returned when a key is present but its value has
 	// the wrong shape, the wrong YAML tag, or fails its predicate.
-	ErrInvalidValue = errors.New("config: invalid value")
+	ErrInvalidValue = errors.New("invalid value")
 
 	// ErrUnreadable is returned when a file-system path named by
 	// configuration cannot be opened.
-	ErrUnreadable = errors.New("config: unreadable path")
+	ErrUnreadable = errors.New("unreadable path")
 )
 
 // KeyError names the dotted balance-file key path or environment-variable

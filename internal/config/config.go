@@ -71,6 +71,14 @@ type Config struct {
 // Configuration is read once, at start-up: there is no reload path and no
 // mechanism to pick up a changed balance file or environment variable
 // without restarting the process.
+//
+// Every returned error wraps one or more *KeyError, each naming the
+// environment variable or dotted balance-file path it belongs to and
+// classifying the failure as ErrMissing (required key absent or empty),
+// ErrInvalidValue (present but the wrong shape, tag, or failing its
+// predicate), ErrUnknownKey (a balance key the schema does not declare), or
+// ErrUnreadable (a path named by configuration that cannot be opened).
+// Compare with errors.Is.
 func Load(lookup Lookup) (*Config, error) {
 	var errs []error
 

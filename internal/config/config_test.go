@@ -56,7 +56,7 @@ func TestLoad_EnvironmentFailureNoFileRead(t *testing.T) {
 		t.Errorf("Load: expected a nil *Config on error, got %+v", cfg)
 	}
 	assertKeyError(t, err, ErrMissing, envBalancePath)
-	if strings.Count(err.Error(), "\n") > 0 && strings.Contains(err.Error(), "no such file") {
+	if strings.Contains(err.Error(), "no such file") {
 		t.Errorf("Load: error mentions a file-read attempt that should never have happened: %v", err)
 	}
 }

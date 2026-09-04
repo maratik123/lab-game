@@ -10,7 +10,7 @@ import (
 // against the repository root, regardless of the test binary's working
 // directory. internal/config is exactly two directories below the root, so
 // the root is derived from this file's own location rather than assumed
-// from os.Getwd (AGENTS.md §16 style: no reliance on ambient state that a
+// from os.Getwd (AGENTS.md § Code Style — Determinism: no reliance on ambient state that a
 // test runner may not control).
 func repoRootPath(t *testing.T, rel string) string {
 	t.Helper()

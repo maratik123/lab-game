@@ -187,6 +187,36 @@ func TestLoadBalance_NullValue(t *testing.T) {
 	assertKeyError(t, err, ErrInvalidValue, "raid.stamina.cap")
 }
 
+// TestLoadBalance_NullValue_ZeroAdmittingKeys covers the two keys whose
+// predicate accepts the zero value a !!null node decodes into, so the tag
+// check is the only thing rejecting them. TestLoadBalance_NullValue above
+// uses raid.stamina.cap, whose "> 0" predicate would reject the decoded zero
+// on its own — deleting the tag guard leaves that test green while a real
+// balance key silently defaults (design D6 row 1).
+func TestLoadBalance_NullValue_ZeroAdmittingKeys(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		old     string
+		want    string
+		wantKey string
+	}{
+		{"duration_non_negative", "    respawn_debuff: 1m\n", "    respawn_debuff: null\n", "raid.death.respawn_debuff"},
+		{"decimal_unit_fraction", "    cruelty: 0.5\n", "    cruelty: null\n", "raid.afk.cruelty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			yaml := strings.Replace(validBalanceYAML, tc.old, tc.want, 1)
+			if yaml == validBalanceYAML {
+				t.Fatalf("fixture line %q not found — the test would assert nothing", tc.old)
+			}
+			path := writeBalanceFile(t, yaml)
+			_, err := loadBalance(path)
+			assertKeyError(t, err, ErrInvalidValue, tc.wantKey)
+		})
+	}
+}
+
 func TestLoadBalance_IntGivenFloat(t *testing.T) {
 	t.Parallel()
 	yaml := strings.Replace(validBalanceYAML, "    cols: 16\n", "    cols: 16.5\n", 1)
