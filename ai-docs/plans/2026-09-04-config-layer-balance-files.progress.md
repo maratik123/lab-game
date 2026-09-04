@@ -127,8 +127,8 @@ _Updated: 2026-09-04
 | SR1-a2 | self-review round 1 | — | accepted@1 — `WorldBalance`/`ChunkBalance` (`internal/config/balance.go:23-31`) do not violate AC15: they type the chunk-grid *balance* axis AC7 enumerates, not the world set's interior (lexicon/bestiary), which `Config.WorldPath` exposes as a bare string. | `grep -n 'WorldPath' internal/config/config.go` → the path string only |
 | SR1-a3 | self-review round 1 | — | accepted@1 — the `AGENTS.md` hand-rolling AXIOM (a73040b) and `ai-docs/dependency-versions.md` ride in this PR outside the spec's Scope list; authorised by the owner's recorded decision (this file, § Decisions log, "**Step 8**: owner's decision"). Not scope creep. | `git log --oneline -1 a73040b` |
 | SR1-a4 | self-review round 1 | — | accepted@1 — `cmd/bot/main.go`'s `run` doc comment avoids the literal `log.Fatal`/`panic(` substrings; the reworded text was never committed with them (first commit 250739e already carries the current wording), the comment is accurate, and the discharge is recorded in `ai-docs/learnings.md` + `ai-docs/harness-gaps.md`. Not a live instance of the dodge. | `git show 250739e:cmd/bot/main.go` |
-| SR2-1 | self-review round 2 | minor | accepted@2 — below severity floor | `grep -n 'DESIGN.md.:69' ai-docs/code-style.md` — must return nothing (cite `§2.2.2`), and the row must quote «размер — конфиг», not *ориентир* |
-| SR2-2 | self-review round 2 | nit | accepted@2 — below severity floor | `sed -n '/ZeroAdmittingKeys/,/^}/p' internal/config/balance_load_test.go` — the field holding the replacement fixture text is not called `want` |
+| SR2-1 | self-review round 2 | minor | fixed@2a3ce41 — raised as below-floor; below severity floor | `grep -n 'DESIGN.md.:69' ai-docs/code-style.md` — must return nothing (cite `§2.2.2`), and the row must quote «размер — конфиг», not *ориентир* |
+| SR2-2 | self-review round 2 | nit | fixed@2a3ce41 — raised as below-floor; below severity floor | `sed -n '/ZeroAdmittingKeys/,/^}/p' internal/config/balance_load_test.go` — the field holding the replacement fixture text is not called `want` |
 
 ## Self-Review (Round 1)
 
