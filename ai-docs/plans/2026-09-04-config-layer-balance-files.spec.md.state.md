@@ -59,7 +59,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 3
 agent_id: a1ec125d6a209b32b
 prior_qa:
   - round: 0
@@ -82,4 +82,11 @@ prior_qa:
     answer: |
       Paths only — "The loader resolves and validates where the world set lives and how it
       layers with the other two sources. No world decode at all; #28 adds the typed schema."
+  - round: 2
+    question: "Owner correction, unprompted — the standing of the 'balance moves without a deploy' constraint in the Reload-policy key decision."
+    answer: |
+      Verbatim: "когда сезоны появятся, мы подумаем на апгрейдом хранения настроек
+      (как это делать без деплоя), сейчас это не в мвп".
+      Seasons are not MVP, so the storage-upgrade question (how to move balance without
+      a deploy) is deferred, not a constraint this task's design must honour.
 ```
