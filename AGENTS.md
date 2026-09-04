@@ -245,6 +245,16 @@ Interpret user phrasing literally and conservatively. When uncertain — ask, do
 
 Validated in the sibling **graphite-gp** project (`ai-docs/learnings.md`, 2026-07-16 — *treating a reviewer's retractions and suggestions as skeptically as its findings*, `Kind: validation`, escalated there to `AGENTS.md`; this harness was adapted from that project, which is where the pattern was earned). Six `self-review` rounds in which the reviewer withdrew a finding built on an unrun premise, offered a salvage anchor that false-positived on the prose it was written to spare, and waved through a false claim as a "harmless lay gloss" that compiling refuted — every override went toward *more* verification. The delegate half is the same log's 2026-07-23 pair: a design-blocking `code-writer` STOP whose premise verification confirmed, and a Step-9 per-AC sweep that refused a delegate's "untestable judgment call" wave-through and built the missing fixture instead.
 
+### 2. A green instrument is a claim about the instrument until you have seen it go red
+
+*Default to* treating a clean result from any verification apparatus — a control, a negative test, a baseline, a guard suite, a set intersection — as evidence about the **apparatus** first and the **subject** second. A genuinely absent effect and an instrument that cannot detect one look identical from the result alone, and only one of them is worth acting on.
+
+**Three shapes, each cheap to rule out.** *Prefer* running a changed guard's own fixtures against the **pre-change** artefact (`git show HEAD:<file>`) — the set of rows that flip, and only that set, is what distinguishes a load-bearing edit from a tautological test. *Prefer* reading the **cardinality of every input** before the verdict of any check shaped as *intersect two sets* / *diff against a baseline* / *grep a corpus* — an empty right-hand side makes `comm -12`, `grep -f` and `diff` report the clean answer for every possible left-hand side. And where a control comes back clean across **every** variation tried, *default to* spending the next step on the channel rather than the conclusion: look for a specific in the output that could only have come from the channel you meant to close — a date, a count, or a proper noun the subject had no other way to know is the cheapest such probe.
+
+**Where the check is written down, make it structural.** *Prefer* giving a recipe an explicit `inconclusive` outcome for the empty-corpus case, so a later reader cannot record a pass the instrument never earned. And a checklist naming a `§`-anchor or an AXIOM as its authority is making a citation — resolve it (§ *Communication*); both of one checklist's were fabricated at import, surviving because nothing downstream had ever needed them to be real.
+
+Validated in this project (`ai-docs/learnings.md`, 2026-08-30 and 2026-08-31 ×2, all `Kind: validation`): a piped-gate guard whose pre-edit re-run flipped exactly the eleven expected rows; four `/improve` eval baselines whose uniform GREEN was traced to the pre-change tree instructing every baseline agent to read the source correction — caught by a date in a returned answer that the cited command does not print; and an `/ai-audit` Checklist O whose `comm -12` had always been empty because its extractor had never matched anything.
+
 ## Agent Docs
 
 Read on nearly every task:
