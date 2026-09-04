@@ -3,6 +3,7 @@ package tg
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/mymmrac/telego"
 
@@ -76,13 +77,14 @@ func optionErrorf(field, format string, args ...any) *OptionError {
 // telegoapi.Caller — the retry loop, the retry_after wait, both rate
 // limiters, the outbound gate and the observation point.
 type Client struct {
-	bot        *telego.Bot
-	transport  config.Transport
-	gate       Gate
-	observer   Observer
-	jitter     func() float64
-	httpClient *http.Client
-	limiter    *Limiter
+	bot           *telego.Bot
+	transport     config.Transport
+	gate          Gate
+	observer      Observer
+	jitter        func() float64
+	httpClient    *http.Client
+	limiter       *Limiter
+	tokenReplacer *strings.Replacer
 }
 
 // New validates opts and constructs a Client. It returns an *OptionError
@@ -109,13 +111,19 @@ func New(opts Options) (*Client, error) {
 		return nil, optionErrorf("Transport.AttemptTimeout", "must be positive, got %s", opts.Transport.AttemptTimeout)
 	}
 
+	jitter := opts.Jitter
+	if jitter == nil {
+		jitter = defaultJitter
+	}
+
 	c := &Client{
-		transport:  opts.Transport,
-		gate:       opts.Gate,
-		observer:   opts.Observer,
-		jitter:     opts.Jitter,
-		httpClient: opts.HTTPClient,
-		limiter:    newLimiter(opts.Transport.Limits),
+		transport:     opts.Transport,
+		gate:          opts.Gate,
+		observer:      opts.Observer,
+		jitter:        jitter,
+		httpClient:    opts.HTTPClient,
+		limiter:       newLimiter(opts.Transport.Limits),
+		tokenReplacer: strings.NewReplacer(opts.Token, "[REDACTED_TOKEN]"),
 	}
 
 	// WithAPICaller and WithRequestConstructor are the whole net/http +

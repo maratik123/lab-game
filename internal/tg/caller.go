@@ -8,29 +8,33 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"path"
+	"sync/atomic"
 	"time"
 
 	ta "github.com/mymmrac/telego/telegoapi"
 )
 
 // caller implements telego's telegoapi.Caller — the one seam every
-// outbound Bot API call in this project passes through (design D2).
-// Subtask 4 wires the gate, the limiter and a single HTTP attempt;
-// subtask 5 extends Call into a full attempt loop with backoff,
-// retry_after and observation.
+// outbound Bot API call in this project passes through (design D2). It
+// derives the method name and ChatRef from the request (design D4),
+// consults the gate (design D12), runs the attempt loop with the limiter
+// charged once per attempt (design D2), classifies each attempt's
+// evidence (design D5), honours retry_after exactly (design D7), backs
+// off between attempts (design D6), and reports exactly one Observation
+// per call (design D11).
 type caller struct {
 	client *Client
 }
 
 var _ ta.Caller = (*caller)(nil)
 
-// Call derives the method name and ChatRef from url and data (design D4),
-// consults the gate (design D12), acquires from the limiter (design D9)
-// and waits until the granted instant — honoring ctx the whole way — then
-// performs one HTTP attempt and decodes the Bot API envelope.
+// Call is the one method telego's generated API surface reaches this
+// package's whole policy through.
 func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) (*ta.Response, error) {
+	start := time.Now()
 	method := methodFromURL(rawURL)
 	call := Call{
 		Method: method,
@@ -40,33 +44,118 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 
 	if c.client.gate != nil {
 		if err := c.client.gate.AllowCall(ctx, call); err != nil {
-			return nil, &Error{Method: method, Err: fmt.Errorf("gate: %w", err)}
+			tgErr := c.client.giveUpError(method, 0, "", 0, 0, false, fmt.Errorf("gate: %w", err))
+			c.client.observe(method, time.Since(start), 0, false, 0)
+			return nil, tgErr
 		}
 	}
 
-	deadline, hasDeadline := ctx.Deadline()
-	t, ok := c.client.limiter.acquire(call, time.Now(), deadline, hasDeadline)
-	if !ok {
-		return nil, &Error{Method: method, Err: errors.New("limiter: required wait ends after the context deadline")}
-	}
+	var (
+		lastStatus      int
+		lastDescription string
+		lastRetryAfter  time.Duration
+		lastAmbiguous   bool
+		lastCause       error
+		rateLimited     bool
+		attempts        int
+	)
 
-	if err := waitUntil(ctx, t); err != nil {
-		return nil, &Error{Method: method, Err: err}
-	}
+	for {
+		deadline, hasDeadline := ctx.Deadline()
+		t, ok := c.client.limiter.acquire(call, time.Now(), deadline, hasDeadline)
+		if !ok {
+			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous,
+				errors.New("limiter: required wait ends after the context deadline"))
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, attempts)
+			return nil, tgErr
+		}
+		if err := waitUntil(ctx, t); err != nil {
+			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous, err)
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, attempts)
+			return nil, tgErr
+		}
 
-	return c.attempt(ctx, rawURL, data, method)
+		resp, httpStatus, wrote, attemptErr := c.doAttempt(ctx, rawURL, data)
+		attempts++
+
+		if attemptErr == nil && resp != nil && resp.Ok {
+			c.client.observe(method, time.Since(start), httpStatus, rateLimited, attempts-1)
+			return resp, nil
+		}
+
+		lastStatus = httpStatus
+		if resp != nil && resp.Error != nil {
+			lastDescription = resp.Description
+		}
+		if httpStatus == http.StatusTooManyRequests {
+			rateLimited = true
+		}
+		switch {
+		case attemptErr != nil:
+			lastCause = attemptErr
+		case resp != nil && resp.Error != nil:
+			lastCause = errors.New(resp.Error.Error())
+		default:
+			lastCause = errors.New("tg: attempt failed with no further detail")
+		}
+
+		out := classifyAttempt(httpStatus, resp, wrote)
+		lastAmbiguous = out.ambiguous
+		lastRetryAfter = out.retryAfter
+
+		if !out.retryable || attempts >= c.client.transport.RetryMaxAttempts {
+			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous, lastCause)
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, attempts-1)
+			return nil, tgErr
+		}
+
+		// The wait before the next attempt: retry_after is honoured
+		// exactly and never shortened or replaced by backoff (design D7);
+		// otherwise equal-jitter backoff (design D6). Either way it costs
+		// exactly one attempt, never a time budget (design D7).
+		var wait time.Duration
+		if out.retryAfter > 0 {
+			wait = out.retryAfter
+		} else {
+			wait = backoffDelay(c.client.transport.RetryBaseDelay, c.client.transport.RetryMaxDelay, attempts-1, c.client.jitter)
+		}
+		waitUntilTime := time.Now().Add(wait)
+
+		if deadline, hasDeadline := ctx.Deadline(); hasDeadline && waitUntilTime.After(deadline) {
+			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous, lastCause)
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, attempts-1)
+			return nil, tgErr
+		}
+		if err := waitUntil(ctx, waitUntilTime); err != nil {
+			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous, err)
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, attempts-1)
+			return nil, tgErr
+		}
+	}
 }
 
-// attempt performs exactly one HTTP round trip and decodes its Bot API
+// doAttempt performs exactly one HTTP round trip and decodes its Bot API
 // envelope, bounded by the client's configured AttemptTimeout on top of
-// ctx (design D10's AttemptTimeout).
-func (c *caller) attempt(ctx context.Context, rawURL string, data *ta.RequestData, method string) (*ta.Response, error) {
+// ctx (design D10's AttemptTimeout). It always reports the real HTTP
+// status code received (0 when none) and whether httptrace observed the
+// request being fully written — design D5's classifier evidence — even
+// when it also returns an error.
+func (c *caller) doAttempt(ctx context.Context, rawURL string, data *ta.RequestData) (resp *ta.Response, httpStatus int, wrote bool, err error) {
 	attemptCtx := ctx
 	if to := c.client.transport.AttemptTimeout; to > 0 {
 		var cancel context.CancelFunc
 		attemptCtx, cancel = context.WithTimeout(ctx, to)
 		defer cancel()
 	}
+
+	var wroteFlag atomic.Bool
+	attemptCtx = httptrace.WithClientTrace(attemptCtx, &httptrace.ClientTrace{
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			if info.Err == nil {
+				wroteFlag.Store(true)
+			}
+		},
+	})
 
 	var body io.Reader
 	switch {
@@ -75,35 +164,38 @@ func (c *caller) attempt(ctx context.Context, rawURL string, data *ta.RequestDat
 	case data.BodyStream != nil:
 		body = data.BodyStream
 	default:
-		return nil, &Error{Method: method, Err: errors.New("tg: request has no body")}
+		return nil, 0, false, errors.New("tg: request has no body")
 	}
 
 	req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, rawURL, body)
 	if err != nil {
-		return nil, &Error{Method: method, Err: fmt.Errorf("build request: %w", err)}
+		return nil, 0, false, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set(ta.ContentTypeHeader, data.ContentType)
 
-	resp, err := c.httpClient().Do(req)
+	httpResp, err := c.httpClient().Do(req)
 	if err != nil {
-		return nil, &Error{Method: method, Err: fmt.Errorf("do request: %w", err)}
+		return nil, 0, wroteFlag.Load(), fmt.Errorf("do request: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = httpResp.Body.Close() }()
+	httpStatus = httpResp.StatusCode
+	wrote = wroteFlag.Load()
 
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(httpResp.Body)
 	if err != nil {
-		return nil, &Error{Method: method, StatusCode: resp.StatusCode, Err: fmt.Errorf("read body: %w", err)}
+		return nil, httpStatus, wrote, fmt.Errorf("read body: %w", err)
 	}
 
 	env := &ta.Response{}
 	if err := json.Unmarshal(raw, env); err != nil {
-		return nil, &Error{Method: method, StatusCode: resp.StatusCode, Err: fmt.Errorf("decode json: %w", err)}
+		return nil, httpStatus, wrote, fmt.Errorf("decode json: %w", err)
 	}
-	return env, nil
+	return env, httpStatus, wrote, nil
 }
 
-// httpClient returns the client's configured *http.Client, or a fresh
-// default one when none was supplied (design D2's Options.HTTPClient).
+// httpClient returns the client's configured *http.Client, or
+// http.DefaultClient when none was supplied (design D2's
+// Options.HTTPClient).
 func (c *caller) httpClient() *http.Client {
 	if c.client.httpClient != nil {
 		return c.client.httpClient
@@ -111,9 +203,9 @@ func (c *caller) httpClient() *http.Client {
 	return http.DefaultClient
 }
 
-// methodFromURL returns the Bot API method name from u — the last path
-// segment, whether or not telego's test-server path inserts a "/test/"
-// segment before it (design D4).
+// methodFromURL returns the Bot API method name from rawURL — the last
+// path segment, whether or not telego's test-server path inserts a
+// "/test/" segment before it (design D4).
 func methodFromURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {

@@ -1,0 +1,462 @@
+package tg
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+	"sync"
+	"testing"
+	"testing/synctest"
+	"time"
+
+	"github.com/maratik123/lab-game/internal/tgtest"
+)
+
+// newRetryTestClient builds a Client against srv with tr as its transport
+// tuning — used throughout this file so every retry-loop scenario shares
+// one construction path.
+func newRetryTestClient(t *testing.T, srv *tgtest.Server, tr func(*Options)) *Client {
+	t.Helper()
+	return newTestClient(t, srv, tr)
+}
+
+// countingHandler records the real time (the bubble's virtual clock) of
+// every request it answers, then delegates to next.
+type countingHandler struct {
+	mu    sync.Mutex
+	times []time.Time
+	next  tgtest.Handler
+}
+
+func (h *countingHandler) handle(w http.ResponseWriter, r *http.Request) {
+	h.mu.Lock()
+	h.times = append(h.times, time.Now())
+	h.mu.Unlock()
+	h.next(w, r)
+}
+
+func (h *countingHandler) count() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.times)
+}
+
+func (h *countingHandler) timestamps() []time.Time {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]time.Time(nil), h.times...)
+}
+
+func TestRetry_RetryAfterHonouredExactly(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		first := true
+		h := &countingHandler{next: func(w http.ResponseWriter, r *http.Request) {
+			if first {
+				first = false
+				tgtest.TooManyRequests(2)(w, r)
+				return
+			}
+			tgtest.Success(nil)(w, r)
+		}}
+		srv := tgtest.New(t, h.handle)
+		c := newRetryTestClient(t, srv, nil)
+
+		start := time.Now()
+		if _, err := c.API().GetMe(context.Background()); err != nil {
+			t.Fatalf("GetMe: %v", err)
+		}
+		elapsed := time.Since(start)
+		if elapsed < 2*time.Second {
+			t.Errorf("elapsed = %v, want >= 2s (retry_after must never be shortened)", elapsed)
+		}
+		if elapsed > 2*time.Second+50*time.Millisecond {
+			t.Errorf("elapsed = %v, want close to 2s (retry_after must not be extended by backoff too)", elapsed)
+		}
+	})
+}
+
+func TestRetry_DelaysGrowAndStayPositive(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h := &countingHandler{next: tgtest.ServerError(http.StatusInternalServerError)}
+		srv := tgtest.New(t, h.handle)
+		tr := validTransport()
+		tr.RetryMaxAttempts = 4
+		tr.RetryBaseDelay = 100 * time.Millisecond
+		tr.RetryMaxDelay = 10 * time.Second
+		c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+		_, err := c.API().GetMe(context.Background())
+		if err == nil {
+			t.Fatal("GetMe: expected a give-up error")
+		}
+		times := h.timestamps()
+		if len(times) != 4 {
+			t.Fatalf("attempts = %d, want 4", len(times))
+		}
+		var lastDelay time.Duration
+		for i := 1; i < len(times); i++ {
+			delay := times[i].Sub(times[i-1])
+			if delay <= 0 {
+				t.Fatalf("delay[%d] = %v, want strictly positive (no immediate re-attempt)", i, delay)
+			}
+			if i > 1 && delay < lastDelay {
+				t.Errorf("delay[%d] = %v, want >= previous delay %v (growing)", i, delay, lastDelay)
+			}
+			lastDelay = delay
+		}
+	})
+}
+
+func TestRetry_AmbiguousMakesExactlyOneAttempt(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		srv := tgtest.New(t, nil)
+		h := &countingHandler{next: srv.CloseWithoutResponse()}
+		srv.SetHandler(h.handle)
+		c := newRetryTestClient(t, srv, nil)
+
+		_, err := c.API().GetMe(context.Background())
+		if err == nil {
+			t.Fatal("GetMe: expected an error")
+		}
+		var tgErr *Error
+		if !errors.As(err, &tgErr) {
+			t.Fatalf("error %v is not a *tg.Error", err)
+		}
+		if !tgErr.Ambiguous {
+			t.Error("Ambiguous = false, want true")
+		}
+		if tgErr.Attempts != 1 {
+			t.Errorf("Attempts = %d, want 1 (ambiguous failures are never retried)", tgErr.Attempts)
+		}
+		if got := h.count(); got != 1 {
+			t.Errorf("server saw %d requests, want 1", got)
+		}
+	})
+}
+
+func TestRetry_RetryableCasesAreRetried(t *testing.T) {
+	t.Parallel()
+
+	t.Run("never_reached", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			h := &countingHandler{next: tgtest.Success(nil)}
+			srv := tgtest.New(t, h.handle)
+			srv.FailNextDial()
+			tr := validTransport()
+			tr.RetryMaxAttempts = 2
+			c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+			if _, err := c.API().GetMe(context.Background()); err != nil {
+				t.Fatalf("GetMe: %v", err)
+			}
+			if got := h.count(); got != 1 {
+				t.Errorf("server saw %d requests, want 1 (the failed dial made no request)", got)
+			}
+		})
+	})
+
+	t.Run("429", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			h := &countingHandler{next: tgtest.TooManyRequests(0)}
+			srv := tgtest.New(t, h.handle)
+			tr := validTransport()
+			tr.RetryMaxAttempts = 3
+			c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+			if _, err := c.API().GetMe(context.Background()); err == nil {
+				t.Fatal("GetMe: expected a give-up error")
+			}
+			if got := h.count(); got <= 1 {
+				t.Errorf("server saw %d requests, want more than 1", got)
+			}
+		})
+	})
+
+	t.Run("5xx", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			h := &countingHandler{next: tgtest.ServerError(http.StatusBadGateway)}
+			srv := tgtest.New(t, h.handle)
+			tr := validTransport()
+			tr.RetryMaxAttempts = 3
+			c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+			if _, err := c.API().GetMe(context.Background()); err == nil {
+				t.Fatal("GetMe: expected a give-up error")
+			}
+			if got := h.count(); got <= 1 {
+				t.Errorf("server saw %d requests, want more than 1", got)
+			}
+		})
+	})
+}
+
+func TestRetry_GiveUpFieldsByField(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		srv := tgtest.New(t, tgtest.TooManyRequests(1))
+		tr := validTransport()
+		tr.RetryMaxAttempts = 2
+		c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+		_, err := c.API().GetMe(context.Background())
+		if err == nil {
+			t.Fatal("GetMe: expected a give-up error")
+		}
+		var tgErr *Error
+		if !errors.As(err, &tgErr) {
+			t.Fatalf("error %v is not a *tg.Error", err)
+		}
+		if tgErr.Method != "getMe" {
+			t.Errorf("Method = %q, want %q", tgErr.Method, "getMe")
+		}
+		if tgErr.StatusCode != http.StatusTooManyRequests {
+			t.Errorf("StatusCode = %d, want 429", tgErr.StatusCode)
+		}
+		if tgErr.Attempts != 2 {
+			t.Errorf("Attempts = %d, want 2", tgErr.Attempts)
+		}
+		if tgErr.RetryAfter != time.Second {
+			t.Errorf("RetryAfter = %v, want 1s", tgErr.RetryAfter)
+		}
+		if tgErr.Ambiguous {
+			t.Error("Ambiguous = true, want false (429 is never ambiguous)")
+		}
+	})
+}
+
+func TestRetry_DeadlineRefusalInsteadOfSleep(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		srv := tgtest.New(t, tgtest.TooManyRequests(100))
+		tr := validTransport()
+		tr.RetryMaxAttempts = 3
+		c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		start := time.Now()
+		_, err := c.API().GetMe(ctx)
+		elapsed := time.Since(start)
+		if err == nil {
+			t.Fatal("GetMe: expected an error")
+		}
+		if elapsed >= 100*time.Second {
+			t.Errorf("elapsed = %v, must not sleep the full 100s retry_after past the 5s deadline", elapsed)
+		}
+		var tgErr *Error
+		if !errors.As(err, &tgErr) {
+			t.Fatalf("error %v is not a *tg.Error", err)
+		}
+		if tgErr.RetryAfter != 100*time.Second {
+			t.Errorf("RetryAfter = %v, want 100s (still carried even though not honoured)", tgErr.RetryAfter)
+		}
+	})
+}
+
+func TestRetry_CancellationAtEveryWaitingSite(t *testing.T) {
+	t.Parallel()
+
+	t.Run("backoff_wait", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			srv := tgtest.New(t, tgtest.ServerError(http.StatusInternalServerError))
+			tr := validTransport()
+			tr.RetryMaxAttempts = 5
+			tr.RetryBaseDelay = time.Hour
+			c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				time.Sleep(10 * time.Millisecond)
+				cancel()
+			}()
+			start := time.Now()
+			_, err := c.API().GetMe(ctx)
+			elapsed := time.Since(start)
+			if err == nil {
+				t.Fatal("GetMe: expected an error")
+			}
+			if elapsed >= time.Hour {
+				t.Errorf("elapsed = %v, must return promptly on cancellation rather than after the full backoff", elapsed)
+			}
+		})
+	})
+
+	t.Run("retry_after_wait", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			srv := tgtest.New(t, tgtest.TooManyRequests(3600))
+			c := newRetryTestClient(t, srv, nil)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				time.Sleep(10 * time.Millisecond)
+				cancel()
+			}()
+			start := time.Now()
+			_, err := c.API().GetMe(ctx)
+			elapsed := time.Since(start)
+			if err == nil {
+				t.Fatal("GetMe: expected an error")
+			}
+			if elapsed >= time.Hour {
+				t.Errorf("elapsed = %v, must return promptly on cancellation rather than after the full retry_after", elapsed)
+			}
+		})
+	})
+
+	t.Run("limiter_wait", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			srv := tgtest.New(t, tgtest.Success(nil))
+			tr := validTransport()
+			c := newRetryTestClient(t, srv, func(o *Options) {
+				o.Transport = tr
+				o.Transport.Limits.Other.Global.Count = 1
+				o.Transport.Limits.Other.Global.Per = time.Hour
+			})
+			if _, err := c.API().GetMe(context.Background()); err != nil {
+				t.Fatalf("GetMe (1st): %v", err)
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				time.Sleep(10 * time.Millisecond)
+				cancel()
+			}()
+			start := time.Now()
+			_, err := c.API().GetMe(ctx)
+			elapsed := time.Since(start)
+			if err == nil {
+				t.Fatal("GetMe (2nd): expected an error")
+			}
+			if elapsed >= time.Hour {
+				t.Errorf("elapsed = %v, must return promptly on cancellation rather than after the full limiter wait", elapsed)
+			}
+		})
+	})
+}
+
+func TestRetry_AttemptCap(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h := &countingHandler{next: tgtest.ServerError(http.StatusInternalServerError)}
+		srv := tgtest.New(t, h.handle)
+		tr := validTransport()
+		tr.RetryMaxAttempts = 5
+		c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+		_, err := c.API().GetMe(context.Background())
+		if err == nil {
+			t.Fatal("GetMe: expected a give-up error")
+		}
+		if got := h.count(); got != 5 {
+			t.Errorf("attempts = %d, want exactly 5", got)
+		}
+		var tgErr *Error
+		if !errors.As(err, &tgErr) {
+			t.Fatalf("error %v is not a *tg.Error", err)
+		}
+		if tgErr.Attempts != 5 {
+			t.Errorf("Error.Attempts = %d, want 5", tgErr.Attempts)
+		}
+	})
+}
+
+func TestRetry_TokenAbsentFromRenderedError(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		srv := tgtest.New(t, tgtest.Success(nil))
+		srv.FailNextDial()
+		tr := validTransport()
+		tr.RetryMaxAttempts = 1
+		c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+		_, err := c.API().GetMe(context.Background())
+		if err == nil {
+			t.Fatal("GetMe: expected an error from the failed dial")
+		}
+		rendered := err.Error()
+		if strings.Contains(rendered, tgtest.Token) {
+			t.Errorf("rendered error %q contains the bot token", rendered)
+		}
+	})
+}
+
+// recordingObserver collects every Observation reported to it.
+type recordingObserver struct {
+	mu  sync.Mutex
+	obs []Observation
+}
+
+func (o *recordingObserver) ObserveCall(ob Observation) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.obs = append(o.obs, ob)
+}
+
+func (o *recordingObserver) all() []Observation {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return append([]Observation(nil), o.obs...)
+}
+
+func TestRetry_Observation(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		obs := &recordingObserver{}
+		srv := tgtest.New(t, tgtest.Success(nil))
+		c := newRetryTestClient(t, srv, func(o *Options) { o.Observer = obs })
+
+		// A plain success.
+		if _, err := c.API().GetMe(context.Background()); err != nil {
+			t.Fatalf("GetMe: %v", err)
+		}
+
+		// A retried success.
+		first := true
+		srv.SetHandler(func(w http.ResponseWriter, r *http.Request) {
+			if first {
+				first = false
+				tgtest.TooManyRequests(1)(w, r)
+				return
+			}
+			tgtest.Success(nil)(w, r)
+		})
+		if _, err := c.API().GetMe(context.Background()); err != nil {
+			t.Fatalf("GetMe (retried): %v", err)
+		}
+
+		// A give-up.
+		srv.SetHandler(tgtest.ServerError(http.StatusInternalServerError))
+		if _, err := c.API().GetMe(context.Background()); err == nil {
+			t.Fatal("GetMe (give-up): expected an error")
+		}
+
+		got := obs.all()
+		if len(got) != 3 {
+			t.Fatalf("observations = %d, want 3", len(got))
+		}
+		if got[0].Retries != 0 || got[0].RateLimited {
+			t.Errorf("success observation = %+v, want Retries 0, RateLimited false", got[0])
+		}
+		if got[1].Retries != 1 || !got[1].RateLimited {
+			t.Errorf("retried-success observation = %+v, want Retries 1, RateLimited true", got[1])
+		}
+		if got[2].Retries == 0 {
+			t.Errorf("give-up observation = %+v, want Retries > 0", got[2])
+		}
+		for i, ob := range got {
+			if ob.Method != "getMe" {
+				t.Errorf("observation[%d].Method = %q, want getMe", i, ob.Method)
+			}
+		}
+	})
+}
