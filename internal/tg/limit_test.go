@@ -317,6 +317,56 @@ func TestLimiter_SaturationEndsInEmissionOrError(t *testing.T) {
 	}
 }
 
+// TestLimiter_EvictRunsInsideAcquireBoundingMemory is self-review round
+// 4 finding 1's fix: D9's bounded-retention claim ("retention is
+// O(calls in flight), bounded by concurrency rather than by the window
+// set alone") is a claim about Limiter.acquire, the only production
+// caller of schedule.evict — not about schedule.evict in isolation.
+// TestSchedule_EvictBoundsMemoryAcrossManyAcquires (schedule_test.go)
+// hand-rolls s.evict/s.earliest/s.commit on a bare *schedule and never
+// calls Limiter.acquire, so it cannot see acquire's two evict(now) call
+// sites (limit.go: global.evict(now) and, when chat != nil,
+// chat.evict(now)) go missing. This test drives real-time-separated
+// calls through l.acquire itself — under the shipped message defaults'
+// shape (Global 30/1s, ChatRate 1/1s, ChatCap 20/1m) — and asserts both
+// the class-global schedule's and the per-chat schedule's retained
+// grant counts stay small and bounded, never growing with the number of
+// calls made.
+//
+// Mutation-verified: deleting either `global.evict(now)` (limit.go:318)
+// or the `if chat != nil { chat.evict(now) }` block (limit.go:319-321)
+// makes this test fail — grants then accumulate one per call (500,
+// unbounded) instead of staying within the asserted bound.
+func TestLimiter_EvictRunsInsideAcquireBoundingMemory(t *testing.T) {
+	t.Parallel()
+	limits := config.TransportLimits{Message: config.ClassLimits{
+		Global:   rate(30, time.Second),
+		ChatRate: rate(1, time.Second),
+		ChatCap:  rate(20, time.Minute),
+	}}
+	l := newLimiter(limits)
+	key := chatKey{key: "chat", class: ClassMessage}
+
+	now := epoch
+	const iterations = 500
+	const warmup = 20 // let the per-chat 1-minute cap window fill once before asserting.
+	for i := 0; i < iterations; i++ {
+		if _, ok := acquireOK(t, l, chatCall(ClassMessage, "chat"), now, time.Time{}, false); !ok {
+			t.Fatalf("acquire[%d]: refused unexpectedly", i)
+		}
+		if i >= warmup {
+			if got := len(l.global[ClassMessage].grants); got > 5 {
+				t.Fatalf("step %d: global grants retained = %d, want a small bounded count — evict(now) must run inside Limiter.acquire (design D9)", i, got)
+			}
+			chatGrants := len(l.chats[key].grants)
+			if chatGrants > 15 {
+				t.Fatalf("step %d: chat grants retained = %d, want a small bounded count — evict(now) must run inside Limiter.acquire (design D9)", i, chatGrants)
+			}
+		}
+		now = now.Add(10 * time.Second) // real time advances well past every window's maxPer before the next acquire.
+	}
+}
+
 // TestLimiter_IdenticalBehaviourAcrossBaseURLs builds two real Clients
 // through New, differing ONLY in BaseURL, and asserts their limiters
 // produce byte-identical acquire results (AC15) — unlike a test that

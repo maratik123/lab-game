@@ -3,13 +3,99 @@ package tg
 import (
 	"context"
 	"errors"
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
+
+// installedConstructorTypeName reads the dynamic type name of the
+// *telego.Bot's own unexported `constructor` field — telego exposes no
+// accessor for it — via reflection over the addressable struct field
+// (design D3/finding 2: the two codecs' output bytes are equivalent, so
+// only the installed seam itself, not any request body, can distinguish
+// jsonConstructor from telego's default). Test-only: gosec is excluded
+// on _test.go files (.golangci.yml), and unsafe.Pointer here only lifts
+// reflect's own read-only restriction on an already-addressable field —
+// it never mutates anything.
+func installedConstructorTypeName(t *testing.T, c *Client) string {
+	t.Helper()
+	bot := reflect.ValueOf(c.API()).Elem()
+	field := bot.FieldByName("constructor")
+	if !field.IsValid() {
+		t.Fatal("installedConstructorTypeName: *telego.Bot has no field named \"constructor\" — telego's internal layout changed")
+	}
+	readable := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+	return fmt.Sprintf("%T", readable.Interface())
+}
+
+// installedLoggerFields reads the exported DebugMode/PrintErrors fields
+// off the *telego.Bot's own installed telego.Logger, via
+// (*telego.Bot).Logger() — an exported accessor, so no reflection over
+// an unexported field is needed here (unlike installedConstructorTypeName
+// above, whose target field telego exposes no accessor for at all).
+func installedLoggerFields(t *testing.T, c *Client) (debugMode, printErrors bool) {
+	t.Helper()
+	v := reflect.ValueOf(c.API().Logger())
+	for v.Kind() == reflect.Pointer {
+		v = v.Elem()
+	}
+	debugField := v.FieldByName("DebugMode")
+	printField := v.FieldByName("PrintErrors")
+	if !debugField.IsValid() || !printField.IsValid() {
+		t.Fatalf("installedLoggerFields: logger type %s has no DebugMode/PrintErrors fields — telego's default logger layout changed", v.Type())
+	}
+	return debugField.Bool(), printField.Bool()
+}
+
+// TestNew_InstallsPackageJSONConstructor is self-review round 4 finding
+// 2's fix: deleting telego.WithRequestConstructor(jsonConstructor{})
+// (client.go) leaves the suite green because telego then falls back to
+// its own default constructor, which produces byte-equivalent JSON —
+// AC2's import guard cannot see it either, since it is scoped to this
+// project's own imports (design D3), and telego's marshal path is not
+// one of them. The only thing that can distinguish the two is the
+// installed seam itself.
+func TestNew_InstallsPackageJSONConstructor(t *testing.T) {
+	t.Parallel()
+	c, err := New(validOptions())
+	if err != nil {
+		t.Fatalf("New: unexpected error: %v", err)
+	}
+	const want = "tg.jsonConstructor"
+	if got := installedConstructorTypeName(t, c); got != want {
+		t.Errorf("installed request constructor = %s, want %s (design D3/KD-2: every outbound body must marshal through this package's own encoding/json constructor)", got, want)
+	}
+}
+
+// TestNew_InstallsDiscardLoggerByDefault is self-review round 4 finding
+// 6's fix: Options.Logger's doc comment (client.go) promises "Nil means
+// telego.WithDiscardLogger()"; replacing the nil-Logger else branch's
+// telego.WithDiscardLogger() call with a no-op leaves the suite green,
+// silently reverting to telego's own default logger (PrintErrors: true)
+// instead of the discard logger (PrintErrors: false) this package's own
+// typed Error and Observer are meant to be the sole real output for.
+func TestNew_InstallsDiscardLoggerByDefault(t *testing.T) {
+	t.Parallel()
+	opts := validOptions()
+	opts.Logger = nil
+	c, err := New(opts)
+	if err != nil {
+		t.Fatalf("New: unexpected error: %v", err)
+	}
+	debugMode, printErrors := installedLoggerFields(t, c)
+	if debugMode {
+		t.Error("installed logger DebugMode = true, want false (telego.WithDiscardLogger())")
+	}
+	if printErrors {
+		t.Error("installed logger PrintErrors = true, want false (telego.WithDiscardLogger()) — a nil Options.Logger must not fall back to telego's own noisy default logger")
+	}
+}
 
 // validTransport returns a config.Transport that passes New's validation
 // — every retry field positive, every rate-limit class unbounded (the

@@ -111,6 +111,52 @@ func TestRetry_DelaysGrowAndStayPositive(t *testing.T) {
 	})
 }
 
+// TestRetry_JitterOptionThreadedThroughToBackoff is self-review round 4
+// finding 3's fix: Options.Jitter (client.go) is documented to supply
+// design D6's backoff formula's random factor, but no test ever set it —
+// TestBackoffDelay_JitterBoundsExactly calls backoffDelay directly with
+// its own function value, and TestRetry_DelaysGrowAndStayPositive above
+// asserts only "delay > 0 and non-decreasing", which D6's formula
+// guarantees for EVERY draw (real or fixed) and so cannot distinguish an
+// injected jitter source from client.go's real one. This test sets a
+// fixed jitter=0 through Options and asserts the exact delays D6's
+// formula predicts (base/2, doubling), the shape the design's own Test
+// Design calls for AC5.
+func TestRetry_JitterOptionThreadedThroughToBackoff(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h := &countingHandler{next: tgtest.ServerError(http.StatusInternalServerError)}
+		srv := tgtest.New(t, h.handle)
+		tr := validTransport()
+		tr.RetryMaxAttempts = 4
+		tr.RetryBaseDelay = 100 * time.Millisecond
+		tr.RetryMaxDelay = 10 * time.Second
+		c := newRetryTestClient(t, srv, func(o *Options) {
+			o.Transport = tr
+			o.Jitter = func() float64 { return 0 }
+		})
+
+		_, err := c.API().GetMe(context.Background())
+		if err == nil {
+			t.Fatal("GetMe: expected a give-up error")
+		}
+		times := h.timestamps()
+		if len(times) != 4 {
+			t.Fatalf("attempts = %d, want 4", len(times))
+		}
+		// D6: delay_i = d_i/2 + u*d_i/2, d_i = min(base*2^i, maxDelay).
+		// With jitter fixed at 0, delay_i = d_i/2 exactly: 50ms, 100ms,
+		// 200ms for i = 0, 1, 2.
+		want := []time.Duration{50 * time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond}
+		for i := 1; i < len(times); i++ {
+			got := times[i].Sub(times[i-1])
+			if got != want[i-1] {
+				t.Errorf("delay[%d] = %v, want exactly %v (fixed jitter=0 threaded through Options.Jitter)", i, got, want[i-1])
+			}
+		}
+	})
+}
+
 func TestRetry_AmbiguousMakesExactlyOneAttempt(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
