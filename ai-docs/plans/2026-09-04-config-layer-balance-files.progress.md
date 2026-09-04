@@ -10,13 +10,13 @@ _Updated: 2026-09-04
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 8 — subtask 5 of 8 complete
-**last_passed_gate:** golangci-lint run ./internal/config/... | 2026-09-04T00:00:00Z | (pre-commit)
+**current_step:** Step 8 — subtask 6 of 8 complete
+**last_passed_gate:** go test ./... | 2026-09-04T00:00:00Z | (pre-commit)
 **entry_args:** 18
 
 ## Next action
 
-**Do this immediately:** subtask 6 — `.env.example` and the disjointness tests (`internal/config/disjoint_test.go`); adds `github.com/joho/godotenv` as a test-only requirement.
+**Do this immediately:** subtask 7 — wire `cmd/bot` to load and validate configuration before any other work; `main` delegates to a testable `run`.
 
 ## Subtasks
 
@@ -25,8 +25,8 @@ _Updated: 2026-09-04
 - [x] 3. Environment layer: `Lookup`, `EnvKeys`, name constants, token/DSN/base-URL/chat-id validation
 - [x] 4. World-set path resolution: required variable, readability probe, both errors handled
 - [x] 5. `Load`: `Config`, `Secret`, joined error; rewrites `doc.go`'s comment body to AC13 wording
-- [ ] 6. `.env.example` + disjointness tests; adds `godotenv` as a test-only requirement  ← CURRENT
-- [ ] 7. `cmd/bot` wired to load and validate before any other work; `main` delegates to `run`
+- [x] 6. `.env.example` + disjointness tests; adds `godotenv` as a test-only requirement
+- [ ] 7. `cmd/bot` wired to load and validate before any other work; `main` delegates to `run`  ← CURRENT
 - [ ] 8. CI paths-filter: tracked config artefacts added to the `go` filter; actionlint
 - [ ] 9. Propagation sweep over the prose sites the diff falsifies
 
@@ -46,6 +46,9 @@ _Updated: 2026-09-04
 - **Step 8, subtask 5**: `Load` runs `loadEnv`, `resolveWorldPath` and the `LAB_GAME_BALANCE_PATH` presence check unconditionally against the same `lookup`, joining every failure — none of the three needs another to succeed first, since each takes `lookup` directly rather than another's result; `loadBalance` is the only step gated (on `LAB_GAME_BALANCE_PATH` itself resolving), matching the design's "no file is read" case.
 - **Step 8, subtask 5**: verified `doc.go` is still the only file in the package whose first line is a package comment (`head -3` swept across every file) before staging — D7's honour-system gate for a second, unnoticed package comment.
 - **Step 8, subtask 5**: `Secret`'s `%s` redaction test triggers `staticcheck` S1025 ("should use String() instead of fmt.Sprintf") — a correct suggestion for production code, but the test's whole point is exercising the `%s` verb through `fmt`, not calling `.String()` directly; annotated `//nolint:staticcheck` with that reason.
+- **Step 8, subtask 6**: verified `.env.example` is committable before writing it: `git check-ignore -q .env.example; echo $?` → `1` (one path per command, D13(c)) — same result the design measured, re-confirmed live rather than trusted from the design text.
+- **Step 8, subtask 6**: `go get github.com/joho/godotenv@v1.5.1` + `go mod tidy` produced the single-line diff design D2/§ Risks predicted; no other module moved.
+- **Step 8, subtask 6**: all six disjointness/agreement tests passed on the first run with no fixture bugs — unlike subtask 1's fixture, `.env.example`'s values and `config/balance.yaml` were both already exercised by earlier subtasks' own tests, so this subtask mainly wired existing, already-verified fixtures together.
 
 ## Key discoveries (don't re-investigate)
 
@@ -110,3 +113,6 @@ _Updated: 2026-09-04
 - `internal/config/doc.go` — package comment rewritten to AC13's wording (reload policy + each source's exclusive domain), replacing subtask 1's provisional text
 - `internal/config/config.go` — `Secret`, `Config`, `Load`, `requiredBalancePath`
 - `internal/config/config_test.go` — subtask 5's scenarios plus `validConfigEnv`
+- `.env.example` — a placeholder for every `EnvKeys()` variable, opened by the header comment D13(b) specifies
+- `internal/config/disjoint_test.go` — the two-direction key-set agreement test, the non-empty-values test, the example-environment load, and the balance-independent-of-other-variables test
+- `go.mod`, `go.sum` — `github.com/joho/godotenv v1.5.1` added (test-only import, `internal/config/disjoint_test.go`)
