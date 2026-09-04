@@ -248,27 +248,14 @@ After `code-writer` returns, the **orchestrator** applies the bail rules below �
    - **Standalone `/bugfix`** (entry point was a user bug report): `<base>` is the branch's merge-base against `origin/main` when no commits exist yet; once N commits are staged or committed (but not pushed) on the branch, `<base>` is `HEAD~N` against the pre-fix tip. Pass the resolved base as the `base_commit` to the Subagent.
    - **`/bugfix` invoked from `/task` Steps 8–12** (per the task SKILL Step 8 "Bug report during impl → activate `/bugfix`" hand-off): the diff window is the bugfix's own staged-but-not-pushed commits — NOT the entire `/task` diff. Parent `/task` Step 10 covers the full task diff later; the per-bugfix self-review catches nits inside the bug's window before they get conflated with task-scope feedback.
 
-2. Spawn the `self-review` Subagent with the trace artifact as the spec-equivalent input:
+2. Spawn the `self-review` Subagent with the trace artifact as the spec-equivalent input. **The prompt is the closed list and nothing else** (`self-review.md` § *Spawn prompt contract*) — the trace's role as the AC-equivalent, the fitness-against-the-bug scope, the findings destination and the round-numbering rule are all stated in that agent file under § *What the prompt paths already tell you*, keyed on the `Spec-equivalent:` path this template sends. A `PreToolUse` hook refuses a spawn that adds anything, and `<base_commit>` is substituted with the base resolved in item 1 — an unsubstituted placeholder is refused too:
 
    ```
    Agent(subagent_type="self-review", prompt="
      Read .claude/agents/self-review.md and follow it.
-     This is a /bugfix self-review (no /task spec; no design doc).
-
      Spec-equivalent: ai-docs/bugfix/trace-YYYY-MM-DD-<name>.md
-       — use the trace's 'Actual behaviour', 'Expected behaviour', and
-         'Root Cause' sections as the AC-equivalent. The fix is correct iff
-         the diff makes Actual match Expected at the labelled divergence
-         point and addresses exactly the documented Root Cause.
-
-     Out-of-scope reminder: this self-review is scoped to fitness-against-
-     the-bug, NOT fitness-against-some-broader-task. Do not raise findings
-     about pre-existing code outside the bug's diff window.
-
-     Diff window: git diff <base_commit>..HEAD
-     Progress file (write findings here): ai-docs/bugfix/trace-YYYY-MM-DD-<name>.md
-       — append a '## Self-Review (Round N)' section in the canonical format;
-         count existing sections in the trace artifact to determine N.
+     Progress: ai-docs/bugfix/trace-YYYY-MM-DD-<name>.md
+     <base_commit>..HEAD
    ")
    ```
 

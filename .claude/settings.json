@@ -56,6 +56,17 @@
             "statusMessage": "Checking piped gate exit status..."
           }
         ]
+      },
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); st=$(printf '%s' \"$input\" | jq -r '.tool_input.subagent_type // empty' 2>/dev/null) || exit 0; case \"$st\" in self-review|design-review) ;; *) exit 0 ;; esac; prompt=$(printf '%s' \"$input\" | jq -r '.tool_input.prompt // empty' 2>/dev/null) || exit 0; [ -n \"$prompt\" ] || exit 0; extra=$(printf '%s\\n' \"$prompt\" | grep -vE -e '^[[:space:]]*$' -e '^[[:space:]]*Read \\.claude/agents/(self-review|design-review)\\.md and follow it\\.[[:space:]]*$' -e '^[[:space:]]*(Spec|Spec-equivalent|Design|Progress):[[:space:]]*[A-Za-z0-9._/-]+\\.md[[:space:]]*$' -e '^[[:space:]]*[A-Za-z0-9._/-]+\\.md[[:space:]]*$' -e '^[[:space:]]*((Commits|Commit range|Diff window):[[:space:]]*)?(git diff[[:space:]]+)?[0-9a-f]{7,40}\\.\\.(HEAD|[0-9a-f]{7,40})[[:space:]]*$' -e '^[[:space:]]*Round:[[:space:]]*[0-9]+[[:space:]]*$'); [ -n \"$extra\" ] || exit 0; printf 'BLOCKED: %s spawn prompt carries content beyond the closed list (.claude/agents/%s.md > Spawn prompt contract).\\n\\nLine(s) outside the list:\\n%s\\n\\nPermitted, one per line, nothing else:\\n  Read .claude/agents/%s.md and follow it.\\n  Spec: <path>.md          -- or Spec-equivalent: <path>.md\\n  Design: <path>.md        -- omit the line when there is no design doc\\n  Progress: <path>.md\\n  <sha>..HEAD              -- real SHAs, self-review\\n  Round: <N>               -- design-review\\n\\nRe-spawn with those lines only. Round history, gate results, a description or defence of the fixes, scope reminders and routing questions are contamination -- the reviewer re-derives all of it from the tree, and what it needs about a no-spec or no-design run is in the agent file, under What the prompt paths already tell you.\\n' \"$st\" \"$st\" \"$extra\" \"$st\" >&2; exit 2",
+            "timeout": 10,
+            "statusMessage": "Checking reviewer spawn prompt..."
+          }
+        ]
       }
     ],
     "PostToolUse": [
