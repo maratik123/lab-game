@@ -62,7 +62,17 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: a80e8c5c04428a94f
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "How does a `scheduled_task` row carry its type-specific data? (§11 names `payload` as a column, but not its representation.)"
+    answer: "JSONB payload — one `payload jsonb` column; each handler decodes its own shape. A new task type needs no migration."
+  - round: 1
+    question: "What happens to a `scheduled_task` row once it completes successfully?"
+    answer: "Delete on done — the completing transaction deletes the row. The table holds only pending and dead tasks; history lives in the basis documents and postings."
+  - round: 1
+    question: "Where does a recurrent task's next `run_at` come from?"
+    answer: "how kagkarlsson/db-scheduler works with recurrent tasks?"
+    note: "Not a choice — the owner asked for the prior art before deciding. Researched facts passed as extra_context in round 2; the question is to be re-asked informed by them."
 ```
