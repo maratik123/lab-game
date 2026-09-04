@@ -49,6 +49,13 @@ For any hook keyed on a harness-supplied field (`agent_type`, `subagent_type`,
 `tool_input.*`), deploy a temporary **non-blocking** hook that LOGS the field on a benign
 allowed action (`git status`), read the log, then revert the diagnostic.
 
+**The revert takes effect in the same session, so the diagnostic leaves nothing behind.**
+Measured 2026-09-04 on `29fcdd1`: a probe stopped firing the moment `git restore` removed
+it, silent across every tool call that followed — an edited `.claude/settings.json` is live
+in both directions, not only on installation (`ai-docs/claude-tools-hierarchy.md`, the
+2026-09-04 paragraph). No session restart is needed to clean up after this step, and a probe
+left installed is a probe you forgot, never one the session is still holding open.
+
 > **NEVER** verify by instructing a compliant actor to issue the action the guard blocks.
 > If the guard is inert, the action really executes — a real push, a real PR, a real spawn.
 > And if the actor is compliant it refuses at its charter, *upstream* of the hook, so the
