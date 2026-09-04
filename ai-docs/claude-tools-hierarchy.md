@@ -102,7 +102,7 @@ All four regression suites must pass `shellcheck -s bash` and run green before `
 | Build | `go` paths changed | `make build`, `make vet`, `make tidy-check` (`go mod tidy` leaves no delta) |
 | Test | `go` paths changed | `make test` then `make test-race` |
 | Lint | `go` paths changed | `make lint` at the pinned `golangci-lint` version, then `make file-limits` (hard 1000 / 1500 line limits) |
-| Harness guards | `.claude/**`, `ai-docs/**`, `AGENTS.md`, `CLAUDE.md` changed | shellcheck on every script **and** every hook body; the citation guard; all four guard suites; every relative markdown link resolves. **No size check**: instruction-file bytes are `/ai-audit`'s exclusive property per the AXIOM in `AGENTS.md § Build & Test`, and CI deliberately carries no gate over them |
+| Harness guards | `.claude/**`, `ai-docs/**`, `AGENTS.md`, `CLAUDE.md` changed | shellcheck on every script **and** every hook body; the citation guard; the `context-status.md` PR-locator check; all four guard suites; every relative markdown link resolves. **No size check**: instruction-file bytes are `/ai-audit`'s exclusive property per the AXIOM in `AGENTS.md § Build & Test`, and CI deliberately carries no gate over them |
 | Actionlint | `.github/workflows/**` changed | `actionlint` via reviewdog |
 
 **A filtered-out job is not a passing job.** `dorny/paths-filter` decides what runs; a new artefact class must be added to its filter in the same PR that introduces it, or its gate silently stops running.

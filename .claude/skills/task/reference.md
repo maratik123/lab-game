@@ -132,7 +132,7 @@ The `**entry_args:**` field is recorded ONCE at Step 8 creation and **read-only 
 
 Update content files only — **do not move spec/design to `done/` yet** (that happens at Step 12):
 
-1. **`ai-docs/context-status.md`** (detailed per-issue log) — append this task's implementation-status entry: the per-issue bullet capturing design decisions, traps, and invariants worth not rediscovering (the same shape as the existing `## Status` bullets there). This is where the growing per-issue log lives — **not** `context.md`, which stays a thin orientation page.
+1. **`ai-docs/context-status.md`** (detailed per-issue log) — append this task's implementation-status entry: the per-issue bullet capturing design decisions, traps, and invariants worth not rediscovering (the same shape as the existing `## Status` bullets there). This is where the growing per-issue log lives — **not** `context.md`, which stays a thin orientation page. The heading's PR locator is written as the literal `#TBD-at-Step-12` and filled by Step 12 sub-step 10a — the value does not exist at this step, and the placeholder is the token that sub-step and the CI guard both key on.
 2. **`ai-docs/context.md`** (orientation) — update only if a block's high-level state changed: bump the `## Status` summary bullet for the affected block, resolve open questions answered during implementation, keep the Architecture / Track-artifact orientation current.
 3. **Repo-root user-facing docs** — update any that this change contradicts (a README status line, a runbook). Skip when the change touches none.
 

@@ -149,6 +149,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash .claude/skills/ai-audit/scripts/check-citations.sh
+      - name: context-status PR locators are filled
+        run: |
+          set -euo pipefail
+          test -f ai-docs/context-status.md
+          if grep -n 'TBD-at-Step-12' ai-docs/context-status.md; then
+            echo "::error file=ai-docs/context-status.md::an entry heading still carries the #TBD-at-Step-12 placeholder; /task Step 12 sub-step 10a fills it after gh pr create"
+            exit 1
+          fi
       - name: guard regression suites
         env:
           GH_TOKEN: ${{ github.token }}
