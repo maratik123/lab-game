@@ -308,8 +308,8 @@ called this rule "total across the Bot API by construction", which was wrong in 
 mattered:
 
 - **No `chat_id` in the body.** An inline-message edit, `getMe`, `getUpdates`. There is
-  genuinely no destination chat, so no per-chat schedule applies. `Chat.Known` is false and
-  the call charges its class-global schedule only. Correct, and not a gap.
+  genuinely no destination chat, so no per-chat schedule applies. Its `Chat.Target` is
+  `ChatNone` and the call charges its class-global schedule only. Correct, and not a gap.
 - **No body to read at all — `BodyRaw == nil`.** telego routes a request through
   `MultipartRequest` whenever a parameter carries a file, and that constructor returns a
   `RequestData` whose `BodyStream` is an `io.Pipe` and whose `BodyRaw` is **nil**; the
@@ -328,15 +328,17 @@ no test would notice", and `ai-docs/domain-invariants.md` § 6 exists to prevent
 decided here rather than at implementation time.
 
 **Decision: a call with no decodable body is charged against a single reserved unknown-chat
-key of its class, and `Chat.Known` is false.**
+key of its class, and its `Chat.Target` is `ChatUnknown` — distinct from the `ChatNone` of a
+method that addresses no chat at all (D12).**
 
 - It is **bounded, never exempt**: such calls share one per-chat schedule, so the class's
   rate and cap both apply to them. Sharing one key across destinations is conservative — it
   over-restricts if several such calls ever went to different chats — and conservative is the
   right direction for a bound whose failure mode is a flood ban.
-- `Chat.Known == false` is carried to the gate (D12), so #22 can refuse a call whose
-  destination it cannot check against `ALLOWED_CHAT_IDS`. This task installs no allowlist; it
-  makes refusing this case *expressible*, which is its obligation.
+- `ChatUnknown` is carried to the gate (D12), so #22 can refuse a call whose destination it
+  cannot check against `ALLOWED_CHAT_IDS` **without also refusing `getMe` or `getUpdates`,
+  which report `ChatNone`**. This task installs no allowlist; it makes refusing exactly this
+  case *expressible*, which is its obligation.
 - The branch is **exercised by a test even though the MVP never reaches it**, so it is not an
   untested path [derived → the classifier and limiter scenarios in § Test Design].
 
@@ -352,10 +354,11 @@ that hand-off is the media mechanic's work, not this task's.
 caller, and it covers methods this project has not written yet — including everything #22
 and #43 will add.
 
-**The token is in that URL, and never leaves through anything this package emits.** The
-method name is the only thing extracted; no error message, log line or observation carries
-the URL [derived → AC26's test: the token string appears in no rendered `*Error`, no
-observation, and no fixture].
+**The token is in that URL, and the method name is the only thing extracted from it.** No
+observation carries the URL, and no error carries it either — but that second half is *made
+true by a named mechanism*, not merely asserted: the standard library would otherwise put the
+whole URL into every transport error, so D8 specifies the sanitisation and AC26's test
+verifies it [derived → AC26, and D8's sanitisation mechanism].
 
 **That statement is about this package's outputs, not about the reachable surface — an
 earlier draft over-claimed it as the latter.** `Client.API()` hands out a `*telego.Bot`, and
@@ -408,13 +411,20 @@ An attempt's outcome is classified as:
 
 | Evidence | Retryable? | `Ambiguous` |
 |---|---|---|
-| HTTP response, status 429 | yes, after `retry_after` (D7) | no |
+| HTTP response, status 429 **with** `retry_after` | yes, after `retry_after` (D7) | no |
+| HTTP response, status 429 **without** `retry_after` | yes, after the D6 backoff | no |
 | HTTP response, status ≥ 500 | yes | no |
 | HTTP response, any other non-success or `ok:false` | no — terminal | no |
 | HTTP response, `ok:true` | success | — |
 | No response, and no successful request write | yes | no |
 | No response, and the request **was** fully written | **no — terminal** | **yes** |
 | Context cancelled or deadline passed | no — terminal | per the write evidence above |
+
+A 429 need not carry `parameters.retry_after`: the field is optional, and a proxy in front of
+the self-hosted instance (`docs/DESIGN.md` §12.2's deployment) can emit a bare 429 of its
+own. Telegram has still said "not now", so the attempt is retryable; without a stated wait the
+transport falls back to D6's backoff rather than retrying immediately or inventing a duration
+[derived → AC7, whose 429 case is driven both with and without the field].
 
 The mechanism is `net/http/httptrace`: `WroteRequest` is called with a
 `WroteRequestInfo{Err error}` after the transport has finished writing the request
@@ -506,9 +516,48 @@ type Error struct {
     RetryAfter  time.Duration // from retry_after seconds; 0 when none
     Attempts    int
     Ambiguous   bool
-    Err         error         // underlying cause: net error, context error, gate refusal
+    Err         error         // underlying cause, TOKEN-SANITISED — see below
 }
 ```
+
+#### The cause is sanitised at construction, and that is a mechanism, not a test obligation
+
+**The bot token is in the request URL's path, and the standard library puts that URL into
+every transport error verbatim.** `http.Client.Do` wraps whatever went wrong in a
+`*url.Error`, and `url.Error.Error()` formats the URL with `%q`; the only redaction the
+stdlib performs is on *userinfo*, so a path of `/bot<TOKEN>/sendMessage` survives intact
+[measured Go 1.26.5 stdlib · `sed -n '/^func (e \*Error) Error() string/,/^}/p' $(go env GOROOT)/src/net/url/url.go` →
+`return fmt.Sprintf("%s %q: %s", e.Op, e.URL, e.Err)`;
+`sed -n '/func stripPassword/,/^}/p' $(go env GOROOT)/src/net/http/client.go` → it replaces
+only `u.User.String()+"@"` when a password is set and otherwise returns `u.String()` whole;
+`grep -n 'uerr := func' -A 12 …/client.go` → `urlStr = stripPassword(req.URL)` then
+`return &url.Error{…}`]. Storing that error as `Err` and rendering it would print the token —
+an incident under `AGENTS.md` § Permissions, where a leaked token is rotated through BotFather
+rather than edited out of a log.
+
+An earlier draft asserted the negative ("no error message carries the URL") and left it to
+AC26's test. That is the wrong shape: **a test verifies a mechanism; it cannot be the
+mechanism.** So the transport names one, in two layers:
+
+- **The stored cause is never the `*url.Error`.** When `http.Client.Do` returns one, the
+  transport stores its `Unwrap()` — the underlying `*net.OpError`, `context` error or
+  transport error — which carries no URL. The error chain is unaffected for callers, because
+  `url.Error.Unwrap` returns exactly that value
+  [measured Go 1.26.5 stdlib · `sed -n '/^func (e \*Error) Unwrap() error/,/^}/p' $(go env GOROOT)/src/net/url/url.go` →
+  `return e.Err`], so `errors.Is(err, context.DeadlineExceeded)` still reaches through for
+  AC18 and `errors.As` still reaches `*Error` for AC8. Nothing needs the discarded
+  `*url.Error` itself.
+- **Every string the transport renders passes a token replacer**, built once from the
+  configured token, as a second layer that does not depend on having predicted every path a
+  token could take. telego's own logger is the in-repo precedent for exactly this
+  [measured telego@v1.11.2:logger.go · `sed -n '/func defaultReplacer/,/^}/p' logger.go` →
+  `strings.NewReplacer(token, DefaultLoggerTokenReplacement)`].
+
+Sanitisation happens **at construction**, so a `*Error` value is safe for the rest of its
+life and does not depend on the client that made it still existing. AC26's test then verifies
+this mechanism rather than establishing the property
+[derived → AC26, whose test drives a transport-level failure and asserts the token appears in
+no rendered error].
 
 `Error` implements `error` and `Unwrap`, so `errors.Is(err, context.DeadlineExceeded)` and
 `errors.As(err, &tgErr)` both see through telego's own wrapping — telego wraps our return
@@ -665,8 +714,11 @@ schedule then over-emits. That is a real trap and it earns a row in subtask 4's 
 table [derived → the retention unit tests and the global-ceiling occupancy assertion in
 § Test Design].
 
-Retention stays bounded without a count: the invariant itself caps how many grants can live
-inside `max(per)`, so the retained set is a function of the configuration, not of traffic.
+Retention stays bounded without a count, though not by the configuration alone: the invariant
+caps how many *past* grants can live inside `max(per)`, while grants still ahead of now are
+all retained, so the retained set is **O(calls in flight)** — bounded by concurrency. The
+Registry subsection below states the same bound; it is stated once here and once there and
+they agree.
 **Eviction is a function of the window set and the clock alone — never of a refusal, a
 cancellation, or any call outcome.** That divorce is what makes round-3a structurally
 impossible rather than merely repaired.
@@ -887,10 +939,13 @@ the reactive path already covers it. An operator bounds any class from the envir
 no code change [derived → AC13].
 
 **The retry defaults are chosen, and the design says so rather than dressing them as
-sourced.** `3` attempts with a `500ms` base and equal jitter puts the worst case at roughly
-three seconds of waiting before a give-up — long enough to ride out a transient blip,
-short enough that a player's action does not appear to hang; `30s` caps the scale so a
-higher configured attempt count cannot grow the wait without bound. Each is an operational
+sourced.** An attempt cap of `3` means at most two waits, and under D6's formula with a
+`500ms` base those fall in `[250ms, 500ms)` and `[500ms, 1s)` — so a give-up costs under a
+second and a half of waiting: long enough to ride out a transient blip, short enough that a
+player's action does not appear to hang. `30s` caps the scale so a higher configured attempt
+count cannot grow the wait without bound. The bound is arithmetic over D6's formula and the
+chosen values, not a measurement, and it is stated because it is the rationale — an earlier
+draft asserted roughly double it by counting waits as attempts. Each is an operational
 tuning value an operator may change, which is the entire point of the key class.
 
 **`LAB_GAME_TG_ATTEMPT_TIMEOUT` is an addition beyond the spec's literal criteria, and the
@@ -1018,10 +1073,33 @@ today [measured 31736b4:go.mod · `go mod why -m github.com/prometheus/client_go
 ### D12 — The outbound gate seam #22 installs into
 
 ```
-type ChatRef struct { Key string; Known bool }
+type ChatTarget int   // what the transport could determine about the destination
+const (
+    ChatNone    ChatTarget = iota // the method addresses no chat at all
+    ChatUnknown                   // it addresses a chat the transport could not read
+    ChatKnown                     // Key holds the chat id
+)
+type ChatRef struct { Key string; Target ChatTarget }
 type Call    struct { Method string; Class MethodClass; Chat ChatRef }
 type Gate    interface{ AllowCall(ctx context.Context, call Call) error }
 ```
+
+**Three states, not a boolean, because the two "no chat id" branches of D4 need opposite
+treatment from #22 and a `bool` collapses them.** This is the one seam whose failure mode is
+*messaging the wrong chat*, so the discriminator is explicit rather than implied by whether
+`Key` happens to be empty:
+
+| `Target` | When | What #22's allowlist gate must do |
+|---|---|---|
+| `ChatNone` | `getMe`, `getUpdates`, an inline-message edit — the method addresses no chat | **Allow.** There is no destination to check, and refusing here would break the update loop. |
+| `ChatUnknown` | no decodable body (D4: `BodyRaw == nil`), so a destination exists but the transport could not read it | **Refuse.** An unverifiable destination is precisely what `ALLOWED_CHAT_IDS` exists to stop, and the MVP sends nothing that reaches this state. |
+| `ChatKnown` | `Key` holds the chat id | Check `Key` against the allowlist. |
+
+Under the previous boolean, one reading made #22 refuse `getUpdates` and the other let a
+`sendPhoto` reach an unchecked chat silently. `ChatTarget` is also what the limiter switches
+on (D9: no per-chat schedule, the reserved unknown-chat key, or the chat's own key), and
+`exhaustive` requires any switch over it to be total or carry a `default`
+[derived → AC27's gate scenarios, which cover each `Target` value].
 
 `Options.Gate` is optional and is consulted **before any attempt and before any limiter
 wait**, so a refused call costs no allowance. A refusal returns the D8 error with
@@ -1097,11 +1175,17 @@ assertions. It also matters more under D9's redesign than it did before: the sch
 contract is a statement about instants, so a test that cannot pin instants exactly cannot
 check it [derived → the limiter scenarios in § Test Design].
 
-Demonstrated on this exact stack before adopting it: a handler sleeping two virtual seconds
-over a real `http.Transport`, with `httptrace` firing and `retry_after` decoded, in `0.00s`
-of wall time
-[measured Go 1.26.5 stdlib · scratchpad probe `p4`, `go test -v -run TestSynctestHTTP` →
+Demonstrated on **the exact stack D13 specifies**, not a nearby one: a real `*http.Transport`
+whose `DialContext` returns a `net.Pipe` connection with `DisableKeepAlives` set — no
+listener, no socket — serving a handler that sleeps two virtual seconds, with `httptrace`
+firing and `retry_after` decoded, in `0.00s` of wall time and clean under `-race`
+[measured Go 1.26.5 stdlib · scratchpad probe `p4`,
+`grep -n 'DialContext\|net.Pipe\|DisableKeepAlives' probe_test.go` → the transport is
+constructed with `DisableKeepAlives: true` and a `DialContext` returning `net.Pipe()`;
+`go test -race -v -run TestSynctestHTTP` →
 `status 429 body {"ok":false,…} wrote true elapsed 2s` / `--- PASS: TestSynctestHTTP (0.00s)`].
+That matters because the whole strategy turns on a pipe conn being durably blockable inside a
+bubble while a real listener is not; a probe over a real socket would not have shown it.
 
 **The bubble rules the test code must obey, each measured:**
 
@@ -1143,8 +1227,8 @@ would be dead code in the binary and an untested wiring path at once.
 | 1 | `internal/config`: the optional-with-default transport key class — the value types of D10, the key names, the compiled-in defaults, the `<count>/<duration>`\|`off` grammar and its validation, a dedicated `loadTransport` reader joined into `Load` with `EnvKeys()` extended and **`envKeys()` left exactly as it is** (D10), the falsified doc comments in `env.go` and `config.go` rewritten (AC25), **`doc.go`'s package comment extended — its no-fallback clause stays untouched and correct, but its *enumeration* of what the environment supplies becomes incomplete once the transport keys land, so it is in AC29's set and is decided here rather than left to the implementor**, **and `.env.example` carrying each new key with its default as a non-empty value** in the file's existing commented style. Tests first: absent → default, present → parsed, malformed → `*KeyError` naming the key, the three-way key-set equality, and the previously declared variables still required. | `internal/config/transport.go`, `internal/config/transport_test.go`, `internal/config/env.go`, `internal/config/config.go`, `internal/config/doc.go`, `.env.example` | — |
 | 2 | `internal/tgtest`: the in-process fake Bot API server of D13 — `net.Pipe` dialer, the `.invalid` base URL, the scripted behaviours AC19 lists, the fake token constant, and its own tests. | `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` | — |
 | 3 | `internal/tg` foundations **and the telego dependency**: package comment, `Error`, `Observation`/`Observer`, `MethodClass` + the D4 classifier, `Gate`/`Call`/`ChatRef`, `Options` + `New` + `API`. `go get github.com/mymmrac/telego@<pinned>` runs in this subtask, with the importing file, so `make tidy-check` stays green (D1). Tests: the classifier over the pinned version's method names, option validation, error rendering and unwrapping. | `go.mod`, `go.sum`, `internal/tg/doc.go`, `internal/tg/errors.go`, `internal/tg/observe.go`, `internal/tg/class.go`, `internal/tg/client.go`, `internal/tg/class_test.go`, `internal/tg/client_test.go` | 1 |
-| 4 | `internal/tg` limiter — **one schedule type owning every window, no composed legs and no new module** (D9): the window set; the invariant `grant[j+c] - grant[j] ≥ per` asserted after every insertion; `earliest(candidate)` as a pure read over the window-expiry instants; `commit` as a sorted insert; **time-based retention** (never count-based); the **ordered** kind for a chat key and the **unordered** kind for the class-global key; the class-global and per-`(chat, class)` registry under **one mutex**; the decide-then-commit acquire (iterate `t` to a fixed point, deadline refusal **before** any mutation, commit to every schedule at that same `t`, bounded passes with exhaustion treated as a defect); the pacing-vs-quota mapping with `ceil` rounding; and the charge-once-**per-attempt** discipline (D2). Tests, each written **red-first against the named broken variant** (§ Test Design): per-class global admission, cross-chat non-blocking **with the global class bounded**, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, burst-then-cap shape, **occupancy over every window of each configured `per`, on the chat schedules and on the class-global schedule at its shipped default**, **the global bound holding on emissions when a chat window pushes**, **refusals leaving the schedule unchanged**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go`, `internal/tg/schedule_test.go` | 2, 3 |
-| 5 | `internal/tg` caller: the `encoding/json` request constructor, the attempt loop with the limiters inside it, the `httptrace` write-evidence classifier, equal-jitter backoff, exact `retry_after` honouring with the deadline bound, the gate call once per call, and the single observation. Tests: no-shortened `retry_after`, strictly positive and growing delays, the ambiguous case making exactly one attempt, each retryable case, give-up field by field, deadline refusal, cancellation at every waiting site, the attempt cap, and the observation for a success, a retried success and a give-up. | `internal/tg/constructor.go`, `internal/tg/caller.go`, `internal/tg/retry.go`, `internal/tg/caller_test.go`, `internal/tg/retry_test.go` | 4 |
+| 4 | `internal/tg` limiter — **one schedule type owning every window, no composed legs and no new module** (D9): the window set; the invariant `grant[j+c] - grant[j] ≥ per` asserted after every insertion; `earliest(candidate)` as a pure read over the window-expiry instants; `commit` as a sorted insert; **time-based retention** (never count-based); the **ordered** kind for a chat key and the **unordered** kind for the class-global key; the class-global and per-`(chat, class)` registry under **one mutex**; the decide-then-commit acquire (iterate `t` to a fixed point, deadline refusal **before** any mutation, commit to every schedule at that same `t`, bounded passes with exhaustion treated as a defect); the pacing-vs-quota mapping with `ceil` rounding. **Plus the minimal caller its end-to-end scenarios require** — the `encoding/json` request constructor, and a `Caller.Call` that derives the method name and `ChatRef` (D4), calls the gate, acquires from the limiter, waits, performs **exactly one** attempt and decodes the envelope. **No retry loop, no backoff, no `retry_after`, no observation — those are subtask 5, which extends the same file.** Tests, each written **red-first against the named broken variant** (§ Test Design): per-class global admission, cross-chat non-blocking **with the global class bounded**, per-chat isolation, the undecodable-body branch, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, burst-then-cap shape, **occupancy over every window of each configured `per`, on the chat schedules and on the class-global schedule at its shipped default**, **the global bound holding on emissions when a chat window pushes**, **refusals leaving the schedule unchanged**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/constructor.go`, `internal/tg/caller.go`, `internal/tg/limit_test.go`, `internal/tg/schedule_test.go` | 2, 3 |
+| 5 | `internal/tg` caller — **extends subtask 4's `Call`, it does not create it**: the attempt loop with the limiter acquire moved inside it (D2's per-attempt charging), the `httptrace` write-evidence classifier, equal-jitter backoff, exact `retry_after` honouring with the deadline bound and the bare-429 fallback, the D8 typed error with its token sanitisation, and the single observation. Tests: no-shortened `retry_after`, strictly positive and growing delays, the ambiguous case making exactly one attempt, each retryable case (including a 429 with and without `retry_after`), give-up field by field, deadline refusal, cancellation at every waiting site, the attempt cap, the token absent from a rendered transport error, and the observation for a success, a retried success and a give-up. | `internal/tg/caller.go`, `internal/tg/retry.go`, `internal/tg/caller_test.go`, `internal/tg/retry_test.go` | 4 |
 | 6 | `internal/tg` package-level guard tests: the import scan over `cmd/` and `internal/` non-test files (no fasthttp, no go-json, no metrics registry), the token-absence sweep (**whose known surface includes telego's own `Token()` and `FileDownloadURL` — D4's accepted in-module exposure, so a hit there is not a leak**), **the literal scan discharging AC21's second clause (no retry or rate-limit literal at a call site in `internal/tg` — every such value arrives from `config.Transport`)**, the seam tests (a refusing gate blocks a call through the accessor, **and no non-test file outside `internal/tg` names `telego.NewBot` or a `telego.With*` option** — D2), the base-URL-appears-only-in-the-constructor source check, and the end-to-end call against `tgtest` built from a `config.Load`-produced `BotAPIBaseURL`. | `internal/tg/guards_test.go` | 5 |
 | 7 | `ai-docs/key-decisions.md`: rewrite KD-2 for the shipped reality (pinned version, the caller/constructor swap, the `stdjson` residue and why it was not taken, the toolchain ceiling), and add the decisions this task settles — **the project-owned window schedule: one mechanism holding every window on a key, why no maintained package fits (the rejected-alternatives table of D9), and the two properties it deliberately does *not* provide (grant reclamation, and per-key locking)**, `testing/synctest` in place of a clock abstraction, and the optional-with-default key class with its boundary. | `ai-docs/key-decisions.md` | 6 |
 
@@ -1203,6 +1287,16 @@ boundary. Here the change-type switch is what ends Group A, well below the cap.
   [measured 31736b4:.github/workflows/ci.yml · `sed -n '/            go:/,/            harness:/p' .github/workflows/ci.yml` →
   `- '**/*.go'`, `- '**/*.sql'`, `- 'go.mod'`, `- 'go.sum'`, `- '.golangci.yml'`, `- 'Makefile'`,
   `- '.github/workflows/**'`, `- 'config/**'`, `- '.env.example'`].
+- **Spawn-contract note for Group A, binding on whoever writes the prompt:** subtask 4's
+  **red-first broken-variant table must be passed verbatim, not summarised**. Group A carries
+  the schedule — the most defect-prone code in this task, and the place where four historical
+  defects were each invisible to an assertion that reproduced perfectly — into a
+  `sonnet`/`medium` implementor, which is the routing `design-writer.md` § Rules (g) mandates
+  for a code group and is not a defect. The variant table is what stands between that
+  implementor and those defects: each row names a wrong mechanism *and* the assertion it must
+  break, so a row that stays green is itself a finding. A summary loses the pairing, which is
+  the only part that works.
+
 - **Handoff after Group A:** spawn `/context-reset` per
   `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry). Parent `/task`
   resumes in Group B with fresh context.
@@ -1396,6 +1490,14 @@ the process environment, the network, or a real clock.
   implementor from having to make a decomposition call mid-flight.
 - Entry point: the schedule and the limiter's acquire function directly, plus end-to-end
   calls through `Client.API()` against `tgtest`.
+- **The end-to-end half is why subtask 4 carries the minimal `Caller.Call` in its file list.**
+  A limiter scenario driven through `Client.API()` needs a caller, and the caller is otherwise
+  subtask 5, which depends on 4 — a cycle that would leave subtask 4 unable to commit on a
+  green gate under `code-writer` Mode A. The design refused exactly this shape for
+  `.env.example` and refuses it here: the dependency is broken in the file list, not left for
+  the implementor to improvise, and the improvisation it would otherwise invite — demoting
+  these scenarios to unit level — would drop end-to-end coverage of AC10–AC15 and AC30–AC32
+  that subtask 5 does not pick up.
 
 **Binding method for this subtask: every assertion below is written red-first.** Point it at
 the named broken variant, watch it fail, then wire the real mechanism and watch it pass. A
@@ -1454,7 +1556,8 @@ reduced to a few lines.
   - **AC14** — a positive (private) chat id is charged on the same terms as a negative one.
   - **The undecodable-body branch (D4)** — a request whose `BodyRaw` is nil is charged against
     the reserved unknown-chat key of its class, so the class's rate and cap both bind, and its
-    `Call.Chat.Known` is false when the gate sees it. **Not** exempt from the per-chat windows:
+    `Call.Chat.Target` is `ChatUnknown` when the gate sees it — not `ChatNone`, which is what a
+    method addressing no chat reports. **Not** exempt from the per-chat windows:
     the red-first variant here is "treat an unknown chat as no chat", under which the same run
     shows the per-chat windows never binding at all. The MVP sends no media so this branch is
     not reached in production, which is exactly why it gets a test rather than a comment.
