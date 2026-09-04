@@ -10,13 +10,13 @@ _Updated: 2026-09-04
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 8 — subtask 6 of 8 complete
-**last_passed_gate:** go test ./... | 2026-09-04T00:00:00Z | (pre-commit)
+**current_step:** Step 8 — subtask 7 of 8 complete
+**last_passed_gate:** golangci-lint run ./... | 2026-09-04T00:00:00Z | (pre-commit)
 **entry_args:** 18
 
 ## Next action
 
-**Do this immediately:** subtask 7 — wire `cmd/bot` to load and validate configuration before any other work; `main` delegates to a testable `run`.
+**Do this immediately:** subtask 8 — CI paths-filter: add the tracked config artefacts (`config/**`, `.env.example`) to `.github/workflows/ci.yml`'s `go` filter; run `actionlint` before staging.
 
 ## Subtasks
 
@@ -26,7 +26,8 @@ _Updated: 2026-09-04
 - [x] 4. World-set path resolution: required variable, readability probe, both errors handled
 - [x] 5. `Load`: `Config`, `Secret`, joined error; rewrites `doc.go`'s comment body to AC13 wording
 - [x] 6. `.env.example` + disjointness tests; adds `godotenv` as a test-only requirement
-- [ ] 7. `cmd/bot` wired to load and validate before any other work; `main` delegates to `run`  ← CURRENT
+- [x] 7. `cmd/bot` wired to load and validate before any other work; `main` delegates to `run`
+- [ ] 8. CI paths-filter: tracked config artefacts added to the `go` filter; actionlint  ← CURRENT
 - [ ] 8. CI paths-filter: tracked config artefacts added to the `go` filter; actionlint
 - [ ] 9. Propagation sweep over the prose sites the diff falsifies
 
@@ -49,6 +50,8 @@ _Updated: 2026-09-04
 - **Step 8, subtask 6**: verified `.env.example` is committable before writing it: `git check-ignore -q .env.example; echo $?` → `1` (one path per command, D13(c)) — same result the design measured, re-confirmed live rather than trusted from the design text.
 - **Step 8, subtask 6**: `go get github.com/joho/godotenv@v1.5.1` + `go mod tidy` produced the single-line diff design D2/§ Risks predicted; no other module moved.
 - **Step 8, subtask 6**: all six disjointness/agreement tests passed on the first run with no fixture bugs — unlike subtask 1's fixture, `.env.example`'s values and `config/balance.yaml` were both already exercised by earlier subtasks' own tests, so this subtask mainly wired existing, already-verified fixtures together.
+- **Step 8, subtask 7 — found a bug in design § Test Design's own AC11 verification command.** `rg -n --glob '!*_test.go' --glob '*.go' -e '\bpanic\(' -e '\blog\.Fatal' cmd internal` (as written, negation glob first) does **not** exclude `_test.go` files in this ripgrep build (15.2.0): ripgrep applies globs in argument order and the *last* matching glob wins, so the trailing `--glob '*.go'` re-includes every `_test.go` file the leading negation excluded. The design's own measured "no output, exit 1" was taken before any `_test.go` file under `cmd`/`internal` contained `panic(` or `log.Fatal`, so the bug had nothing to expose at measurement time; `internal/config/balance_load_test.go`'s `dec` helper (subtask 1, `panic(err)` on a hard-coded-valid literal) is what surfaced it. Verified by re-running with the glob order flipped (`--glob '*.go' --glob '!*_test.go'`), which correctly drops `_test.go` files — re-confirmed against a positive-control scratch file in both orders. Fixed on the production side too: `cmd/bot/main.go`'s doc comment originally read "…Never panics and never calls log.Fatal (AC11)…", which the *broken* order's own false-negative test would have matched as a real hit had the doc comment run through the correct-order command — reworded to avoid the literal substring "log.Fatal". The corrected-order command now returns exit 1 with no output over `cmd internal`, matching the design's stated result. This is a harness-gap finding (a design's grep recipe, not project code) — recorded here per `Kind: correction`; `ai-docs/harness-gaps.md` is out of scope for a `code-writer` Mode A subtask to write, so it is left for `/task` Step 9's propagation/self-review pass to route.
+- **Step 8, subtask 7**: `run` takes `config.Lookup` directly (not `os.LookupEnv` baked in), so `main` is the only place that ever touches the process environment — `main_test.go` never calls `os.Exit` or spawns a binary, matching the design's "no test invokes a compiled artefact by bare path" constraint.
 
 ## Key discoveries (don't re-investigate)
 
@@ -116,3 +119,5 @@ _Updated: 2026-09-04
 - `.env.example` — a placeholder for every `EnvKeys()` variable, opened by the header comment D13(b) specifies
 - `internal/config/disjoint_test.go` — the two-direction key-set agreement test, the non-empty-values test, the example-environment load, and the balance-independent-of-other-variables test
 - `go.mod`, `go.sum` — `github.com/joho/godotenv v1.5.1` added (test-only import, `internal/config/disjoint_test.go`)
+- `cmd/bot/main.go` — `main` now delegates to `run(lookup, stderr, stdout) int`, loading and validating configuration before any other work (AC11)
+- `cmd/bot/main_test.go` — subtask 7's scenarios, plus a local `repoRootPath`/`mapLookup`/`validEnv` (cmd/bot cannot import internal/config's unexported test helpers)
