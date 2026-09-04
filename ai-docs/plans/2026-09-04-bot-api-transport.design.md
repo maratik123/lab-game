@@ -130,7 +130,7 @@ telego.Bot (generated methods)  →  tg.caller.Call(ctx, url, data)  →  net/ht
 **The limiters are charged per attempt, not per call, and the nesting above is the whole
 statement of that choice.** A retried call issues more than one request to Telegram, and the
 flood ban this package exists to prevent is counted in *requests*, not in caller-visible
-calls: charging once per call would let a saturated global shaper admit its configured rate
+calls: charging once per call would let a saturated global schedule admit its configured rate
 in calls while emitting a multiple of it in requests. Backoff and `retry_after` already
 space the attempts of a *single* call, but they say nothing about many concurrent calls each
 retrying at once — which is exactly the incident shape. Per-attempt charging costs nothing
@@ -471,260 +471,187 @@ branches the spec's Key decisions demand: *retry later at T* is `RetryAfter > 0`
 **The retry budget is `RetryMaxAttempts`, a count** (owner, round 3). Its default is the
 design's to choose and no source states one — see D10.
 
-### D9 — The shaper roles use `golang.org/x/time/rate`; the window cap is a counter, and the wait is ours
+### D9 — One schedule per key owns every window; nothing is composed
 
-**Read § Structure below first if you only read one part of this section:** the per-chat
-*window cap* is deliberately **not** a token bucket, and the reason is a measurement, not a
-preference.
+**This section was rewritten after the product owner redirected the approach.** Three review
+rounds produced three defects of one shape — a mechanism that reads correctly at the call
+site while failing the property it is named for, under a configuration no acceptance
+criterion exercised. The owner's conclusion, adopted here: treat that as evidence about the
+*structure*, not about three separate bugs.
 
-**Adopted for the shaper roles: `golang.org/x/time/rate`** as a new direct requirement,
-published through `v0.15.0`
-[measured · `go list -m -versions golang.org/x/time` → `… v0.13.0 v0.14.0 v0.15.0`] and not
-reachable from this module today
-[measured 31736b4:go.mod · `go mod why -m golang.org/x/time` → `# golang.org/x/time` /
-`(main module does not need module golang.org/x/time)`; `grep -c 'golang.org/x/time' go.mod` → `0`].
+**The common cause, named so the replacement can be checked against it.** Composed legs each
+commit state at a *different* notion of "when", while the emission happens at the latest
+instant any leg produced. Every defect followed from that one gap:
 
-**The claim about its algorithm was checked against its source, not its name**, as the spec
-required. `rate.Limiter` is a token bucket of size `b` refilled at `r`
-[measured golang.org/x/time@v0.15.0:rate/rate.go · `sed -n '/^\/\/ A Limiter controls/,/^type Limiter struct/p' rate/rate.go` →
-"It implements a \"token bucket\" of size b, initially full and refilled at rate r tokens per second"].
-**A token bucket with `burst == 1` is a shaping leaky bucket at rate `r`** — emission is one
-event per interval with no burst beyond the first — which is the mechanism the owner chose
-in round 3, and the equivalence is the article's own (the spec's Key-decisions row records
-the meter/token-bucket equivalence). This is not a rename of the rejected option: the
-rejected option is the *burst-allowing* configuration, and `burst` is ours to set.
+| Round | Defect | The gap it came through |
+|---|---|---|
+| 1 | `CancelAt` reclaims nothing once a later reservation exists | one leg's undo is not the inverse of its do |
+| 2 | `burst = count` admits `b + r·W`, double the cap | one leg's parameter does not mean what the key is named for |
+| 3a | a refusal that removes its instant shrinks the cap's memory | one leg mutates before the decision is final, then partially undoes |
+| 3b | the global bound holds on reservations, not emissions | one leg commits at the candidate instant, another moves the grant later |
 
-**That equivalence is about a *rate*, and it does not extend to a *window bound* — this is
-the sentence that stops the round-2 defect being re-derived.** Whatever `burst` is set to, a
-token bucket admits `b + r·W` in a window of length `W`; there is no `burst` that makes it
-mean "at most `count` per `Per`" while leaving the short-window rate free to bind. § Structure
-below carries the measurement and the mechanism that does.
+So the replacement is built on one rule, and everything below is a consequence of it:
 
-Measured, not argued: with `rate.Every(time.Second)` and `burst 1`, successive `Wait` calls
-returned at exactly `0s`, `1s`, `2s`
-[measured golang.org/x/time@v0.15.0 · scratchpad probe `p4` inside a `testing/synctest`
-bubble → `emit 0 at 0s` / `emit 1 at 1s` / `emit 2 at 2s`]. That is AC30's steady emission,
-demonstrated on the candidate before adopting it.
+> **Decide the emission instant against every constraint first; commit to every constraint
+> at that same instant; never commit before the answer is final and never partially undo.**
 
-**What the package cannot express, and is therefore ours:** the exported `Wait`/`WaitN`
-return the package's own "would exceed context deadline" error rather than a context error
-or ours
-[measured golang.org/x/time@v0.15.0:rate/rate.go · `sed -n '/^func (lim \*Limiter) wait(/,/^}/p' rate/rate.go` →
-`r := lim.reserveN(t, n, waitLimit)` / `if !r.ok { return fmt.Errorf("rate: Wait(n=%d) would exceed context deadline", n) }`].
-AC9 and AC18 need our typed error and a context error respectively, so the wait is written
-on the package's **documented reserve-and-wait pattern**
-[measured golang.org/x/time@v0.15.0:rate/rate.go · `sed -n '/^\/\/ ReserveN returns a Reservation/,/^func (lim \*Limiter) ReserveN/p' rate/rate.go` →
-the usage example `r := lim.ReserveN(time.Now(), 1)` / `time.Sleep(r.Delay())` / `Act()`, and
-"Use this method if you wish to wait and slow down in accordance with the rate limit without dropping events"]:
-reserve, compare the delay against the deadline, sleep or cancel. `Reservation.Cancel`
-is called on every abandoned reservation. **What that cancellation does and does not buy is
-measured below, because the doc comment's "as much as possible" is weaker than it reads and
-an earlier draft of this document over-read it.**
+#### The unification: a pacing rate and a quota cap are the same kind of constraint
 
-**Scope of everything in this subsection: the `rate.Limiter` legs only** — the global
-shaper and the per-chat shaping rate. The cap leg is the sliding-window counter above, whose
-reclamation is exact and which none of the findings below touch.
+"At most one message per second" is `(count 1, per 1s)`. "At most twenty per minute" is
+`(count 20, per 60s)`. **Both are window constraints, and a single mechanism can hold any set
+of them.** That is what makes one mechanism able to own both windows, which is what Scope 6
+asks for and what the composed design could only fake.
 
-**Measured behaviour of `Reservation.CancelAt` under `rate.Every(1s)`, burst 1.** Reserving
-`a`, `b`, `c` at one instant yields delays `0s`, `1s`, `2s`. Cancelling the **middle** one
-restores nothing: `c` stays at `2s` and the next arrival lands at `3s`, not `2s`
-[measured golang.org/x/time@v0.15.0 · scratchpad probe `mycancel`, `go test -v` →
-`a=0s b=1s c=2s` / `after b.CancelAt: c delay = 2s` / `next arrival d delay = 3s`].
-The instrument is not blind: cancelling the **last** reservation does restore, in both the
-two-reservation and the three-reservation case
-[measured golang.org/x/time@v0.15.0 · same probe →
-`after cancelling the LAST reservation, next arrival = 1s (1s => restored)` and
-`cancelled the LAST of three; next arrival = 2s (2s => restored, 3s => not)`].
-The rule that fits both results, and the source explains it — `CancelAt` returns early
-whenever `restoreTokens = r.tokens - tokensFromDuration(lastEvent - timeToAct) <= 0`
-[measured golang.org/x/time@v0.15.0:rate/rate.go · `sed -n '/^\/\/ CancelAt indicates/,/^func (r \*Reservation) CancelAt/p' rate/rate.go`
-plus the body's `if restoreTokens <= 0 { return }`] — is: **a cancellation reclaims its slot
-only while no later reservation has been taken on that limiter. Under saturation, which is
-AC31's own scenario, there always is one, so the slot is spent and later callers are not
-pulled forward.**
+A **schedule** is the whole state for one key: its window set, plus the emission instants it
+has already granted, held in arrival order.
 
-**So the design guarantees the flood-safety property and not the throughput one, and says
-which is which.**
+- **`blockedUntil()` — a pure read, mutating nothing.** For each window `(c, per)`: if fewer
+  than `c` grants exist, that window does not constrain. Otherwise the `c`-th newest grant
+  `g` blocks until `g + per`, because a window ending at `t` contains `g` exactly while
+  `t < g + per`. The answer is the latest such instant, or "not blocked".
+- **`commit(t)`** appends `t`.
 
-- **Guaranteed, and what AC31 exists for:** nothing is dropped and nothing is starved —
-  every submitted call ends in an emission or a returned `*Error`. A cancellation can never
-  push a bucket *above* its burst, so a hole only ever leaves the limiter emitting **below**
-  its configured rate; over-emission is unreachable by any cancellation sequence. Measured:
-  cancelling every outstanding reservation in a saturated batch left the bucket **below**
-  zero rather than at burst, and the next arrivals were still one full interval apart
-  [measured golang.org/x/time@v0.15.0 · same probe →
-  `tokens after cancelling every reservation = -3 (burst is 1; >1 would be an over-emit)` /
-  `next two arrivals: 4s then 5s (second must be >= 1s apart)`].
-- **Not guaranteed:** slot reclamation. A call refused at its deadline leaves a hole in the
-  schedule; effective throughput under saturation can therefore sit below the configured
-  rate. That is a throughput cost, paid in the safe direction, and the owner's standing
-  answer this round keeps pacing in-process (#43 owns durability), so it is accepted rather
-  than engineered around.
-- **What would actually reclaim slots** is a mechanism change, not a wording change:
-  reserving at emission time instead of on arrival. Not taken — it trades the arrival-order
-  guarantee AC30 rests on for throughput nobody has measured a need for. Recorded in
-  § Open questions.
+Both are a walk over the window set — no scan of history, because only the `c`-th newest
+grant of each window can ever bind [derived → the limiter unit tests in § Test Design].
 
-`CancelAt` is still called on every abandoned reservation, because it *does* reclaim in the
-uncontended case the control demonstrates, and it is free when it does not.
+#### The decision: one lock, one instant, commit-after-decide
 
-**Rejected — `go.uber.org/ratelimit`.** It is a genuine leaky-bucket shaper with an
-injectable clock, but its `Take()` takes no `context.Context`, so a call parked behind it
-cannot be cancelled — a direct contradiction of Scope 10 and AC18. Not adopted, and not
-probed further once that blocked it.
+```
+lock the limiter                      // ONE mutex covers every schedule
+t := max(now, globalSchedule.blockedUntil(), chatSchedule.blockedUntil())
+if the caller has a deadline and t is after it:
+        unlock and return the D8 error        // NOTHING has been mutated
+globalSchedule.commit(t); chatSchedule.commit(t)   // same t, every schedule
+unlock
+wait until t, or until ctx is done
+```
 
-**Rejected — hand-rolling the bucket.** `AGENTS.md` § Dependency Versions refuses both "it's
-only a few lines" and bare dependency aversion outright
-[measured 31736b4:AGENTS.md:138-139 · `sed -n '138,139p' AGENTS.md` → "*\"It's only 10–20
-lines — cheaper than writing the import\"* | **REFUSED.** Line count is not the cost." and
-"*\"Better to write our own than to pull in an established dependency\"* | **REFUSED.**
-Dependency aversion is not a reason by itself."], and for the **pacing** roles neither escape
-the same table allows applies: `x/time/rate` is maintained, and its API *does* express
-token-bucket accounting. Only the wait needed writing, and the package documents that split
-itself.
+`blockedUntil` does not depend on `t`, so `max` reaches a fixed point in one step: the
+instant that satisfies every schedule is admissible in each of them by construction. There is
+no candidate-then-granted gap for a bound to fall through.
 
-The **window cap** is the one place this design does write its own mechanism, and it clears
-the same bar by the table's own "the API cannot express the requirement" row rather than by
-line count — the argument, with the measurements and the packages that were read and
-rejected, is in § Structure below. Keeping the decisions apart matters: the bucket is
-imported, the counter is written, and each carries its own justification.
+**Why round 3's defects are absent rather than fixed.**
 
-**Structure.** Every *attempt* charges its class's limiters (D2), so there is no special case
-for "what charges the limiters" — the class table is the whole answer. **The pacing roles are
-token buckets and the cap role is not**, and that split is the substance of this
-section:
+- **A refusal cannot corrupt anything, because a refusal happens before any mutation.** There
+  is no reclamation path, so there is nothing for a reclamation path to get wrong — the
+  round-3a defect has no surface to exist on [derived → AC31's refusal scenario, specified
+  in § Test Design to run red against a "commit-then-undo" variant first].
+- **Every bound holds on the emission instant, because every schedule is committed at the
+  instant the call actually goes out.** The round-3b defect required a leg to be charged at a
+  candidate the other legs then moved; here there is one instant and it is the emission
+  [derived → AC10's cross-chat scenario, specified to run red against a
+  "commit-at-candidate" variant first].
 
-- **global**, one `rate.Limiter` shaper per class, `burst 1`;
-- **per chat**, keyed on `(chat key, class)`:
-  - a **shaping rate** — a `rate.Limiter`, `burst 1`;
-  - a **window cap** — **NOT a `rate.Limiter`.** A sliding-window admission counter; see
-    below for why a bucket cannot hold this role.
+**One mutex for the whole limiter, deliberately.** Per-key locks with a fixed acquisition
+order would work, but they re-introduce multi-component state commitment — the structure that
+produced every defect above. The critical section is a walk over a small window set and an
+append; at MVP scale (one chat) and at fan-out scale (one bulk sender, `docs/DESIGN.md` §11)
+that is not a contention surface worth the risk. Recorded as a decision, with contention as
+the thing to measure if it is ever revisited.
 
-#### The cap role is a counter, because a token bucket does not bound a window
+#### Retention, and the one hole that remains
 
-**A token bucket of size `b` refilled at `r` admits `b + r·W` in a window of length `W`.**
-With the natural-looking parameters `b = count`, `r = count/Per`, a window of length `Per`
-admits `2·count` — double the figure the key is named after. An earlier draft of this
-document specified exactly that and shipped `20/1m` as the message class's per-chat cap,
-i.e. **~40 messages per minute into one chat against a figure `docs/DESIGN.md` §11 and
-`ai-docs/domain-invariants.md` § 6 both state as ~20**, and which D10 verified upstream as
-*enforced* ("bots are not be able to send more than 20 messages per minute"). That is the
-flood-ban surface this package exists to prevent, so the mechanism is replaced rather than
-re-documented.
+A schedule keeps the newest `max(c)` grants over its window set and drops anything older,
+since no window can be constrained by a grant beyond its own `c`-th newest. **Eviction is a
+function of the window set alone — never of a refusal, a cancellation, or any call outcome.**
+That divorce is what makes round-3a structurally impossible rather than merely repaired.
 
-**Measured, on the exact composition and the exact defaults**, releasing calls into one chat
-and counting emissions rather than listing instants
-[measured golang.org/x/time@v0.15.0 · scratchpad probe `mycancel/fix_test.go`, `go test -v -run TestCapMechanisms` →
-`SHIPPED (bucket burst=20)    first-60s=39   worst-any-60s-window=39   last=2m0s` /
-`CONTROL (bucket burst=1)     first-60s=20   worst-any-60s-window=20   last=2m57s` /
-`CANDIDATE (sliding count)    first-60s=20   worst-any-60s-window=20   last=2m19s`]:
+**Grants are never removed. A call cancelled *after* commit leaves its instant behind.** That
+is a hole, and the design takes it deliberately rather than reaching for the "exact
+reclamation" that produced round-3a:
 
-| cap mechanism | emissions in the first `Per` | worst over **any** `Per` window | time to drain 60 calls |
-|---|---|---|---|
-| `rate.Limiter`, `burst = count` (rejected) | **39** | **39** | 2m0s |
-| `rate.Limiter`, `burst = 1` | 20 | 20 | 2m57s |
-| **sliding-window counter (adopted)** | **20** | **20** | **2m19s** |
+- Removing an interior grant would corrupt the `c`-th-newest indexing every window depends
+  on, and removing only a tail grant is the special-case reasoning that has now failed twice.
+  One rule, no exceptions.
+- The hole is safe in the only direction that matters: a leftover grant can only push later
+  grants **later**, so the limiter emits at or below its configured rate and never above it.
+  Flood safety is preserved; throughput under saturation may dip.
+- It is bounded: a hole ages out after `per` like any other grant.
 
-Both candidates deliver the figure; they differ in what else they cost.
+This is the same trade round 2 recorded, kept honest and now applying uniformly to every
+window rather than to some legs and not others [derived → AC31].
 
-**Rejected — deriving the burst from the window (`burst = 1` on the cap).** It bounds the
-window correctly, but the cap's interval (`Per/count`, i.e. 3s at the message default) is
-then always slower than the short-window rate (1s), so **the `_CHAT_RATE` key can never
-bind — it becomes dead configuration**, and Scope 6's two-window requirement collapses to
-one. It is also worse for the game: a quiet chat would trickle at one message every three
-seconds, so a raid narration reads as broken. The probe shows the cost directly — the same
-sixty calls take 2m57s rather than 2m19s.
+#### Configuration maps onto windows, and the key's role fixes the mapping
 
-**Adopted — a sliding-window admission counter, which is what the spec named.** Its
-Technical constraints already prescribed it: *"a bucket whose interval satisfies the short
-window will still pass far more than the longer-window cap allows over a minute … a bucket
-**plus a counter** for the longer window"*. The earlier draft took the "buckets in series"
-half without checking that the series enforces the longer window; it does not.
+Both key roles produce window constraints on the same schedule; only the reading of
+`count/per` differs, which is exactly what the key names already say:
 
-Per `(chat, class)` key the cap holds a ring of at most `count` **planned emission instants**.
-Admission of a candidate instant `t`: if the ring is full, the emission is pushed to
-`max(t, oldest + Per)` and the oldest entry is evicted; the granted instant is then appended.
-Because entries are appended in non-decreasing order under the key's mutex, the head is
-always the oldest, so the answer is one comparison rather than a scan. The invariant that
-falls out is the one the ACs must assert: **no window of length `Per` ever contains more than
-`count` emissions** — every window, not merely the first. (The rejected bucket fails both
-readings equally, at `39`; what it *passed* was the instant-list assertion, which is why
-AC12 gains an occupancy clause rather than more instants.)
+| Key role | Reading of `N/W` | Window(s) contributed |
+|---|---|---|
+| `_GLOBAL`, `_CHAT_RATE` — **pacing** | steady emission at `N` per `W`, no burst | `(1, W/N)` |
+| `_CHAT_CAP` — **quota** | at most `N` in any window of length `W` | `(N, W)` |
 
-The emission shape this produces is exactly what Scope 6 and AC12 describe — the burst is
-spread by the short-window rate, and the cap binds only once it has been spread
-[measured golang.org/x/time@v0.15.0 · same probe →
-`CANDIDATE first emissions: [0s 1s 2s 3s 4s 5s 6s 7s 8s 9s 10s 11s 12s 13s 14s 15s 16s 17s 18s 19s 1m0s 1m1s 1m2s]`].
+The pacing reading is the owner's round-3 choice — a leaky bucket in the shaping sense,
+steady emission, no burst — expressed directly: "at most one per interval" *is* steady
+emission, with no burst parameter to get wrong. The quota reading is what `_CHAT_CAP` is
+named for. At the message defaults the chat schedule therefore holds `{(1, 1s), (20, 60s)}`
+and the class-global schedule holds `{(1, 1s/30)}`, and both windows bind — the short one
+spreads a burst, the long one stops it after twenty [derived → AC12's shape and occupancy
+clauses].
 
-**Why this counter is written here rather than imported**, against `AGENTS.md` § Dependency
-Versions. The requirement is a limiter that **shapes** — answers *when may this go out* — and
-never drops; the spec is explicit that "discarding is not available to this transport in any
-form". The maintained Go packages in this space are **policing** limiters, which answer *is this
-allowed right now*, and neither package read for this decision contains a waiting form at
-all:
+**An unbounded value contributes no window.** A class configured `off` has an empty window
+set, so its schedule never blocks and never allocates history — which is why the registry
+note below concerns bounded classes only [derived → AC13].
 
-- `throttled/throttled/v2` — its current interface is
-  `RateLimitCtx(ctx context.Context, key string, quantity int) (bool, RateLimitResult, error)`,
-  documented as "checks whether a particular key has exceeded a rate limit", and its quota is
-  `RateQuota{MaxRate Rate; MaxBurst int}` — the same burst parameter, so its GCRA would
-  reproduce the overshoot being fixed
-  [measured throttled/throttled/v2@v2.15.0 ·
-  `sed -n '/type RateLimiterCtx interface/,/^}/p' …/rate.go` → that method and doc comment;
-  `sed -n '/^type RateQuota struct/,/^}/p' …/rate.go` → `MaxRate Rate` / `MaxBurst int`].
-- `ulule/limiter/v3` — its whole `*Limiter` surface is `Get`, `Peek`, `Reset`, `Increment`,
-  each returning a `Context{Limit, Remaining, Reset, Reached}` verdict
-  [measured ulule/limiter/v3@v3.11.2 · `grep -rhn '^func ' …/limiter.go` → those methods;
-  `sed -n '/^type Context struct/,/^}/p' …/limiter.go` → those fields].
-- Neither module defines a `Wait` method anywhere
-  [measured throttled/throttled/v2@v2.15.0 and ulule/limiter/v3@v3.11.2 ·
-  `grep -rln 'func .*) Wait(' <each module root>` → **no file in either module**].
-
-A verdict cannot answer "when may this go out?", and this transport may never drop, so that
-is the AXIOM's own "the API cannot express the requirement" row — measured rather than
-assumed. `golang.org/x/time/rate` **is** kept for the roles it does express — the burst-1
-shapers — so the argued wheel is one small counter, not a limiter library.
-
-**One property the counter has that the buckets do not: exact reclamation.** A refused or
-cancelled attempt removes the instant it inserted, because it inserted a specific value it
-can identify — so the cap leg has no hole, and D9's hole is confined to the `rate.Limiter`
-legs.
-
-#### Acquiring and waiting
-
-`Reserve` does not block and the cap's admission is a pure computation, so acquiring all
-applicable limiters is allocation-order-free and there is no lock-ordering hazard: the global
-and chat-rate reservations give a candidate instant, the cap turns that candidate into the
-granted instant, and the attempt waits once until it. Each limiter is charged exactly once
-**per attempt**. If the granted instant is past the caller's deadline, every reservation taken
-for that attempt is cancelled and the cap's inserted instant is removed, and the call returns
-the D8 error. A private chat is charged on the same terms as a group — no chat is exempt by
-construction (spec Key decisions).
-
-**A `Rate` with zero count is unbounded**, and each role expresses that in its own terms: a
-shaper leg becomes a `rate.Limiter` at `rate.Inf`, which the package documents as allowing all
-events regardless of burst
-[measured golang.org/x/time@v0.15.0:rate/rate.go · `sed -n '/^\/\/ Inf is the infinite rate limit/,/^const Inf/p' rate/rate.go` →
-"Inf is the infinite rate limit; it allows all events (even if burst is zero)"], and the cap
-leg holds no ring at all and grants every candidate instant unchanged. An unbounded class
-therefore allocates nothing per chat, which is also why the registry note below is about
-bounded classes only.
-
-**Nothing is ever discarded.** Every leg only delays; a call that cannot be emitted before
+**Nothing is ever discarded.** The schedule only delays; a call that cannot be emitted before
 its deadline returns the typed error. Silent drop is a defect, not a tuning choice (spec
-Technical constraints).
+Technical constraints) [derived → AC31].
 
-**The per-key registry grows with distinct `(chat, class)` pairs of a bounded class, and this
-design does not evict — recorded as a known bound.** The MVP ships to one friendly chat
-(`docs/DESIGN.md` §14), and #43's fan-out is the trigger to revisit. An entry holds the
-shaper limiters plus the cap's ring, whose length is the class's configured `count` — so the
-per-key cost is set by configuration and is a handful of instants at the message default;
-an unbounded class allocates no ring at all. One correctness note for whoever adds eviction:
-an evicted key returns both a *full* bucket and an *empty* ring, so eviction must be
-time-based — only a key idle longer than its longest window may be dropped, or the cap it
-enforced is silently reset.
+**Arrival order is preserved.** Grants are handed out under the one mutex and are
+non-decreasing, so emission order is lock-acquisition order [derived → AC30].
+
+#### The argued wheel: what was evaluated, and why none of it fits
+
+`AGENTS.md` § Dependency Versions requires this comparison for a hand-rolled mechanism, with
+KD-4 as the model. **The requirement is unusual and specific: shape (answer *when*), never
+drop; honour a context deadline and report refusal as our own typed error; and hold more than
+one window on one key.** Every maintained candidate read for this decision fails the first
+clause, the third, or both.
+
+| Package | What it offers | Why it does not fit |
+|---|---|---|
+| `golang.org/x/time/rate` | token bucket, `Reserve`/`Wait`, context-aware | a bucket of size `b` refilled at `r` admits `b + r·W` in a window of length `W`, so no `burst` makes it mean "at most `c` per `per`"; and using it for one window while owning another is the composition this design forbids |
+| `throttled/throttled/v2` | GCRA over a store | **policing**: `RateLimitCtx(...) (bool, RateLimitResult, error)` answers *allowed?*, not *when*; quota is `RateQuota{MaxRate, MaxBurst}`, the same burst parameter |
+| `ulule/limiter/v3` | fixed-window counter over a store | **policing**: the whole `*Limiter` surface is `Get`/`Peek`/`Reset`/`Increment`, each returning a `Context{Limit, Remaining, Reset, Reached}` verdict |
+| `go.uber.org/ratelimit` | a genuine shaping leaky bucket | `Take() time.Time` takes **no context** — a call parked behind it cannot be cancelled, contradicting Scope 10 and AC18 |
+| `github.com/sethvargo/go-limiter` | store-backed token bucket | **policing**: `Take(ctx, key) (tokens, remaining, reset uint64, ok bool, err error)`, documented "If `ok` is false … the caller should NOT service the request" |
+
+Measured, not recalled
+[measured golang.org/x/time@v0.15.0:rate/rate.go · `sed -n '/^\/\/ A Limiter controls/,/^type Limiter struct/p' rate/rate.go` →
+"It implements a \"token bucket\" of size b, initially full and refilled at rate r tokens per second";
+throttled/throttled/v2@v2.15.0 · `sed -n '/type RateLimiterCtx interface/,/^}/p' …/rate.go` → that method with the doc comment "checks whether a particular key has exceeded a rate limit", and `sed -n '/^type RateQuota struct/,/^}/p' …/rate.go` → `MaxRate Rate` / `MaxBurst int`;
+ulule/limiter/v3@v3.11.2 · `grep -rhn '^func ' …/limiter.go` → `Get`, `Peek`, `Reset`, `Increment`, and `sed -n '/^type Context struct/,/^}/p' …/limiter.go` → those fields;
+go.uber.org/ratelimit@v0.3.1 · `sed -n '/^type Limiter interface/,/^}/p' ratelimit.go` → `Take() time.Time`, and `grep -rn 'context\.' *.go` outside tests → **no match in the package**;
+github.com/sethvargo/go-limiter@v1.2.0 · `sed -n '/^type Store interface/,/^}/p' store.go` → that `Take` signature and that doc comment;
+`grep -rln 'func .*) Wait(' <each module root>` → **no file in throttled, ulule or sethvargo**].
+
+**The composition escape is the one this round closes off.** Keeping `x/time/rate` for the
+pacing windows and owning only the quota window is exactly the composed-legs structure the
+owner rejected after three rounds, and round-3b is the measurement showing why: the moment
+one component commits at an instant another component can move, a bound stops applying to
+emissions. A package that owns *part* of the decision cannot satisfy the one rule this design
+is built on. **`golang.org/x/time` is therefore not taken as a dependency at all** — this task
+adds no module beyond telego (D1).
+
+*Escape hatch, in KD-4's spirit:* if a maintained package appears that shapes to a deadline
+with a context and expresses more than one window on a key, the schedule is a single
+unexported type behind an internal call and is replaceable without touching the caller.
+
+#### Registry, lifetime and persistence
+
+**The registry holds one schedule per `(chat, class)` of a bounded class, and this design does
+not evict — recorded as a known bound.** The MVP ships to one friendly chat
+(`docs/DESIGN.md` §14), and #43's fan-out is the trigger to revisit. A schedule's history is
+capped at the largest `count` in its window set, so the per-key cost is set by configuration
+and is a handful of instants at the message defaults; an unbounded class allocates no history
+at all. One correctness note for whoever adds eviction: dropping a key discards its grants
+and so resets every window it was enforcing, which means eviction must be time-based — only a
+key idle longer than its longest `per` may be dropped [derived → the § Open questions entry].
 
 **Nothing here persists.** The state is in-process, lives with the calls in flight, and
-touches no table, no disk and no migration [derived → AC32].
+touches no table, no disk and no migration [derived → AC32]. The owner was asked this round
+whether durability should move into #19 and answered leave as designed: #43 keeps the durable
+Postgres queue on `scheduled_tasks`, and this transport keeps in-process pacing.
 
 ### D10 — Configuration: one optional-with-default key class, in `internal/config`
 
@@ -789,17 +716,17 @@ enforced** ("are not able to"). The global and per-minute figures also appear in
 repository already (`docs/DESIGN.md` §11: 30 msg/sec globally, ~20 msg/min into one chat);
 the per-second one does not, which is why it reaches § Open questions.
 
-**A verified figure is only half of AC13 — the mechanism has to deliver it, and the first
-draft's did not.** `_CHAT_CAP = 20/1m` read as a token bucket admitted ~40 in the first
-minute (D9, measured), so the shipped default would have doubled the one figure on this page
-whose modality is *enforced*. AC13's wording is "traceable to a figure the design document
-cites **and has verified**", and a default that the limiter does not actually impose is not
-traceable to anything. **Each row of the table above is therefore a claim about emissions,
-not about a constructor argument**, and D9's cap mechanism is what makes the `_CHAT_CAP`
-rows true: `20/1m` means no window of sixty seconds ever carries more than twenty
-message-class emissions into one chat, which is what `ai-docs/domain-invariants.md` § 6
-states. The corresponding AC12/AC13 scenarios count emissions per window for the same
-reason — an instant-list assertion cannot see this class of defect (§ Test Design).
+**A verified figure is only half of AC13 — the mechanism has to deliver it, and earlier
+drafts of this document twice shipped one that did not.** AC13's wording is "traceable to a
+figure the design document cites **and has verified**", and a default the limiter does not
+actually impose is not traceable to anything. **Each row of the table above is therefore a
+claim about emissions, not about a constructor argument**, and D9's window model is what
+makes the rows true by construction: a key's `N/W` becomes window constraints on one
+schedule, so `_CHAT_CAP = 20/1m` means no window of sixty seconds ever carries more than
+twenty message-class emissions into one chat — which is what `ai-docs/domain-invariants.md`
+§ 6 states — and `_CHAT_RATE = 1/1s` means no one-second window carries more than one. The
+AC12/AC13 scenarios assert occupancy per window for that reason: an instant-list assertion
+cannot see this class of defect, which is how it survived two rounds (§ Test Design).
 
 **The edit and other classes stay unbounded because the same page states no figure for
 them** — asked directly, and the answer was explicit
@@ -996,17 +923,19 @@ package is a fake clock
 [measured Go 1.26.5 stdlib · `go doc testing/synctest` → "Within a bubble, the time package
 uses a fake clock. Each bubble has its own clock. The initial time is midnight UTC
 2000-01-01." and "Time in a bubble only advances when every goroutine in the bubble is
-durably blocked."]. Production code therefore uses `time.Now`, `time.NewTimer` and
-`x/time/rate` **directly**, with no clock interface threaded through the transport — and the
-tests still get exact, instantaneous virtual time. That is fewer moving parts in production
-*and* stronger assertions.
+durably blocked."]. Production code therefore uses `time.Now` and `time.NewTimer`
+**directly** — the schedule of D9 reads the clock and the caller sleeps on a timer, with no
+clock interface threaded through the transport — and the tests still get exact,
+instantaneous virtual time. That is fewer moving parts in production *and* stronger
+assertions. It also matters more under D9's redesign than it did before: the schedule's whole
+contract is a statement about instants, so a test that cannot pin instants exactly cannot
+check it [derived → the limiter scenarios in § Test Design].
 
 Demonstrated on this exact stack before adopting it: a handler sleeping two virtual seconds
-over a real `http.Transport`, `httptrace` firing, `retry_after` decoded, and the limiter
-emitting at exact one-second boundaries — all in `0.00s` of wall time
-[measured Go 1.26.5 + golang.org/x/time@v0.15.0 · scratchpad probe `p4`,
-`go test -v -run TestSynctestHTTP` → `status 429 … wrote true elapsed 2s` /
-`emit 0 at 0s` / `emit 1 at 1s` / `emit 2 at 2s` / `--- PASS: TestSynctestHTTP (0.00s)`].
+over a real `http.Transport`, with `httptrace` firing and `retry_after` decoded, in `0.00s`
+of wall time
+[measured Go 1.26.5 stdlib · scratchpad probe `p4`, `go test -v -run TestSynctestHTTP` →
+`status 429 body {"ok":false,…} wrote true elapsed 2s` / `--- PASS: TestSynctestHTTP (0.00s)`].
 
 **The bubble rules the test code must obey, each measured:**
 
@@ -1048,10 +977,10 @@ would be dead code in the binary and an untested wiring path at once.
 | 1 | `internal/config`: the optional-with-default transport key class — the value types of D10, the key names, the compiled-in defaults, the `<count>/<duration>`\|`off` grammar and its validation, a dedicated `loadTransport` reader joined into `Load` with `EnvKeys()` extended and **`envKeys()` left exactly as it is** (D10), the falsified doc comments in `env.go` and `config.go` rewritten (AC25), **and `.env.example` carrying each new key with its default as a non-empty value** in the file's existing commented style. Tests first: absent → default, present → parsed, malformed → `*KeyError` naming the key, the three-way key-set equality, and the previously declared variables still required. | `internal/config/transport.go`, `internal/config/transport_test.go`, `internal/config/env.go`, `internal/config/config.go`, `.env.example` | — |
 | 2 | `internal/tgtest`: the in-process fake Bot API server of D13 — `net.Pipe` dialer, the `.invalid` base URL, the scripted behaviours AC19 lists, the fake token constant, and its own tests. | `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` | — |
 | 3 | `internal/tg` foundations **and the telego dependency**: package comment, `Error`, `Observation`/`Observer`, `MethodClass` + the D4 classifier, `Gate`/`Call`/`ChatRef`, `Options` + `New` + `API`. `go get github.com/mymmrac/telego@<pinned>` runs in this subtask, with the importing file, so `make tidy-check` stays green (D1). Tests: the classifier over the pinned version's method names, option validation, error rendering and unwrapping. | `go.mod`, `go.sum`, `internal/tg/doc.go`, `internal/tg/errors.go`, `internal/tg/observe.go`, `internal/tg/class.go`, `internal/tg/client.go`, `internal/tg/class_test.go`, `internal/tg/client_test.go` | 1 |
-| 4 | `internal/tg` limiters: the per-class global shaper and the per-`(chat, class)` shaping rate, both `rate.Limiter` at `burst 1`; the per-`(chat, class)` **window cap as a sliding-window admission counter, not a token bucket** (D9 — a bucket admits `b + r·Per` and does not bound the window); the reserve/admit/wait/cancel loop with exact removal on the cap leg; `rate.Inf` and an absent ring for an unbounded class; and the charge-once-**per-attempt** discipline (D2). Tests: per-class global admission, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, the cap binding after the burst is spread, **emissions per `Per` window over every window, not just the first**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go` | 2, 3 |
+| 4 | `internal/tg` limiter — **one schedule type owning every window, no composed legs and no new module** (D9): the window set, `blockedUntil` as a pure read, `commit`, retention by largest `count`; the class-global and per-`(chat, class)` registry under **one mutex**; the decide-then-commit acquire (`t = max(now, …blockedUntil…)`, deadline refusal **before** any mutation, commit to every schedule at that same `t`); the pacing-vs-quota mapping of `count/per`; and the charge-once-**per-attempt** discipline (D2). Tests, each written **red-first against the named broken variant** (§ Test Design): per-class global admission, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, burst-then-cap shape, **occupancy over every window of each configured `per`**, **the global bound holding on emissions when a chat window pushes**, **refusals leaving the schedule unchanged**, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go` | 2, 3 |
 | 5 | `internal/tg` caller: the `encoding/json` request constructor, the attempt loop with the limiters inside it, the `httptrace` write-evidence classifier, equal-jitter backoff, exact `retry_after` honouring with the deadline bound, the gate call once per call, and the single observation. Tests: no-shortened `retry_after`, strictly positive and growing delays, the ambiguous case making exactly one attempt, each retryable case, give-up field by field, deadline refusal, cancellation at every waiting site, the attempt cap, and the observation for a success, a retried success and a give-up. | `internal/tg/constructor.go`, `internal/tg/caller.go`, `internal/tg/retry.go`, `internal/tg/caller_test.go`, `internal/tg/retry_test.go` | 4 |
-| 6 | `internal/tg` package-level guard tests: the import scan over `cmd/` and `internal/` non-test files (no fasthttp, no go-json, no metrics registry), the token-absence sweep, the seam tests (a refusing gate blocks a call through the accessor, **and no non-test file outside `internal/tg` names `telego.NewBot` or a `telego.With*` option** — D2), the base-URL-appears-only-in-the-constructor source check, and the end-to-end call against `tgtest` built from a `config.Load`-produced `BotAPIBaseURL`. | `internal/tg/guards_test.go` | 5 |
-| 7 | `ai-docs/key-decisions.md`: rewrite KD-2 for the shipped reality (pinned version, the caller/constructor swap, the `stdjson` residue and why it was not taken, the toolchain ceiling), and add the decisions this task settles — the limiter package with its rejected alternatives and the reclamation property it does *not* provide, `testing/synctest` in place of a clock abstraction, and the optional-with-default key class with its boundary. | `ai-docs/key-decisions.md` | 6 |
+| 6 | `internal/tg` package-level guard tests: the import scan over `cmd/` and `internal/` non-test files (no fasthttp, no go-json, no metrics registry), the token-absence sweep, **the literal scan discharging AC21's second clause (no retry or rate-limit literal at a call site in `internal/tg` — every such value arrives from `config.Transport`)**, the seam tests (a refusing gate blocks a call through the accessor, **and no non-test file outside `internal/tg` names `telego.NewBot` or a `telego.With*` option** — D2), the base-URL-appears-only-in-the-constructor source check, and the end-to-end call against `tgtest` built from a `config.Load`-produced `BotAPIBaseURL`. | `internal/tg/guards_test.go` | 5 |
+| 7 | `ai-docs/key-decisions.md`: rewrite KD-2 for the shipped reality (pinned version, the caller/constructor swap, the `stdjson` residue and why it was not taken, the toolchain ceiling), and add the decisions this task settles — **the project-owned window schedule: one mechanism holding every window on a key, why no maintained package fits (the rejected-alternatives table of D9), and the two properties it deliberately does *not* provide (grant reclamation, and per-key locking)**, `testing/synctest` in place of a clock abstraction, and the optional-with-default key class with its boundary. | `ai-docs/key-decisions.md` | 6 |
 
 **Why `.env.example` is inside subtask 1 rather than following it.** Each subtask is
 committed on a green gate, and `code-writer` Mode A commits per subtask with the **full**
@@ -1151,29 +1080,34 @@ outside its charter — `code-writer` must STOP on a predominantly-prose assignm
 - **A future `Idempotency-Key` header would silently re-send a POST inside the transport.**
   Mitigation: the caller sets no such header, and the reason is stated in its doc comment —
   `[measured Go 1.26.5 stdlib · sed -n '/func (r \*Request) isReplayable/,/^}/p' $(go env GOROOT)/src/net/http/request.go → replayable for a POST only when Idempotency-Key or X-Idempotency-Key is present]`.
-- **The window cap could be "simplified" back into a token bucket.** `rate.Limiter` with
-  `burst = count` looks like the obvious way to spell "20 per minute", reads correctly at a
-  call site, and passes an instant-list test — while admitting `b + r·W` = double the figure
-  in a window of length `Per`. This is the defect design review found in round 2 of this
-  document, and it is on the flood-ban surface. Mitigation: D9 carries the measurement and the
-  arithmetic, the decomposition names the mechanism in the subtask, and AC12's window-occupancy
-  assertion is specified to fail against the bucket —
-  `[measured golang.org/x/time@v0.15.0 · probe mycancel/fix_test.go → "SHIPPED (bucket burst=20) first-60s=39 worst-any-60s-window=39" against "CANDIDATE (sliding count) first-60s=20 worst-any-60s-window=20"]`.
+- **The limiter gets re-composed.** Every defect this document went through came from a
+  second component that could move an instant a first component had already committed to, and
+  the cheapest-looking future change — "just use `x/time/rate` for the pacing window and keep
+  the schedule for the quota" — recreates exactly that. Mitigation: D9 states the single rule
+  the mechanism is built on, the decomposition names "no composed legs" in the subtask, and
+  the AC10 cross-chat scenario is specified to run red against a commit-at-candidate variant
+  first —
+  `[derived → AC10's cross-chat scenario and its red-first demonstration]`.
+- **Reclamation gets reintroduced.** "A refused call should give its slot back" is intuitive,
+  was tried in round 3, and broke the cap by shrinking its memory. Under D9 a refusal mutates
+  nothing, so there is no slot to give back — but a future reader may add removal on
+  *cancellation* and reach the same defect by the other door. Mitigation: D9 states grants are
+  never removed and why interior removal corrupts the `c`-th-newest indexing every window
+  depends on; AC31's scenario runs red against a commit-then-undo variant first —
+  `[derived → AC31's refusal scenario and its red-first demonstration]`.
 - **A test suite that asserts emission *instants* is blind to window occupancy.** The lesson
-  generalises past this one bug: the earlier AC12 scenario reproduced exactly and proved
-  nothing about the property that mattered. Mitigation: § Test Design now specifies the
-  occupancy assertion *and* how to confirm it has teeth (point it at the rejected mechanism
-  and watch it go red) — `AGENTS.md` § Patterns 2 applied to the design's own instrument —
-  `[derived → AC12 clause (ii), whose red-then-green demonstration is part of the subtask]`.
-- **A refused call leaves a hole in the limiter's schedule, and an implementor may try to
-  test it away.** `Reservation.CancelAt` reclaims nothing once a later reservation exists, so
-  under saturation the slot is spent. The design states the property that holds (nothing
-  dropped, nothing starved, never an over-emit) and forbids the AC31 scenario from asserting
-  reclamation. The hazard is the *repair*: a test written against the wrong property fails,
-  and the obvious fix loosens the emission-spacing assertion — which removes the flood-safety
-  check. Mitigation: D9 carries the measurement and § Test Design carries the prohibition in
-  the scenario itself —
-  `[measured golang.org/x/time@v0.15.0 · probe mycancel → "after b.CancelAt: c delay = 2s" / "next arrival d delay = 3s", against the control "cancelling the LAST reservation, next arrival = 1s (1s => restored)"]`.
+  generalises past any one bug: an instant-list assertion reproduced exactly across two review
+  rounds while proving nothing about the property that mattered. Mitigation: § Test Design
+  specifies occupancy and same-instant assertions *and* the broken variant each must first go
+  red against — `AGENTS.md` § Patterns 2 applied to the design's own instrument —
+  `[derived → AC12 and AC10, whose red-then-green demonstrations are part of subtask 4]`.
+- **The remaining hole — a call cancelled after its grant is committed — invites a "fix".**
+  The leftover grant can only push later grants later, so it is safe in the only direction
+  that matters, and D9 takes it deliberately. The hazard is a future repair that removes the
+  grant and lands back on the round-3 defect. Mitigation: the property is stated in D9 with
+  its cost, and AC31 asserts what holds (nothing dropped, nothing starved, never an
+  over-emit) rather than reclamation —
+  `[derived → AC31]`.
 - **A holder of `*telego.Bot` can reapply a `telego.With*` option and bypass the whole
   transport.** Executed, not inferred. Mitigation: the guard test in subtask 6 forbids any
   non-test file outside `internal/tg` from naming `telego.NewBot` or a `telego.With*` option,
@@ -1257,56 +1191,77 @@ the process environment, the network, or a real clock.
 ### `internal/tg` limiters — subtask 4
 
 - Location: `internal/tg/limit_test.go`.
-- Entry point: the limiter registry's acquire function, and end-to-end calls through
-  `Client.API()` against `tgtest`.
+- Entry point: the schedule and the limiter's acquire function directly, plus end-to-end
+  calls through `Client.API()` against `tgtest`.
+
+**Binding method for this subtask: every assertion below is written red-first.** Point it at
+the named broken variant, watch it fail, then wire the real mechanism and watch it pass. A
+green assertion nobody has seen fail is evidence about the assertion. This is not a
+suggestion here — two of the three defects this design went through were invisible to
+assertions that reproduced perfectly, and the variants below are exactly those defects
+reduced to a few lines.
+
+| Broken variant to run red against | What it reproduces |
+|---|---|
+| **`commit-at-candidate`** — commit to the global schedule at the candidate instant, then let a chat window push the emission later | round-3b: a bound that holds on reservations, not emissions |
+| **`commit-then-undo`** — commit the grant, then remove it when the deadline check refuses | round-3a: a refusal that corrupts the window's memory |
+| **`bucket-cap`** — express the quota window as a token bucket sized to its count | round-2: `b + r·W`, double the configured figure |
+
 - Scenarios and the exact configurations they use:
-  - **AC10** — message global `1/1s`, everything else `off`: message calls emit one second
-    apart while interleaved `getMe` calls emit immediately.
+  - **AC10** — two parts.
+    (i) message global `1/1s`, everything else `off`: message calls emit one second apart
+    while interleaved `getMe` calls emit immediately.
+    (ii) **the part the previous scenario could not see**: global `1/1s` *with* a chat window
+    engaged, so the chat pushes an emission well past its candidate instant, and traffic from
+    many other chats is released at the same moment. **No two emissions share an instant, and
+    no one-second window carries more than one.** Red-first against `commit-at-candidate`.
   - **AC11** — message chat rate `1/1s`: traffic into chat A is spaced, traffic into chat B is
-    not delayed by it, and an `ClassOther` call into chat A is not delayed by the message
+    not delayed by it, and a `ClassOther` call into chat A is not delayed by the message
     class's allowance.
-  - **AC12** — shape and window occupancy, and the second is the load-bearing one.
+  - **AC12** — shape and occupancy, and the second is the load-bearing one.
     (i) *Shape*: chat rate `1/100ms`, chat cap `5/1s`, calls released into one chat — the
-    burst is spread by the shaping rate and the cap binds only once it has been spread, which
-    is a statement about the emission instants.
-    (ii) ***Window occupancy*, which is what an instant list cannot see**: over the same run,
-    **no window of length `Per` contains more than `count` emissions** — checked over *every*
-    window, not only the first, by sliding the window across the recorded emission instants.
-    **This assertion is mandatory and must be able to fail.** The mechanism this design
-    rejected passes clause (i) unchanged while admitting double the cap
-    [measured golang.org/x/time@v0.15.0 · probe `mycancel/fix_test.go` → the rejected bucket
-    gives `worst-any-60s-window=39` where the adopted counter gives `20`], so a test suite
-    that asserts only instants is blind to the exact defect this round of review found. The
-    implementor should confirm the assertion's teeth the same way: point it at a
-    `rate.Limiter` with `burst = count` and watch it go red before wiring the counter.
-  - **AC13** — the edit class under the default configuration imposes no delay; the same class
-    with a configured bound binds; **and the message class under its shipped defaults emits at
-    most `20` into one chat in any sixty-second window**, which is the figure D10 cites as
-    enforced. That last one is where "traceable to a verified figure" becomes a test rather
-    than a claim about a constructor argument.
+    burst is spread by the short window and the cap binds only once it has been spread.
+    (ii) ***Occupancy*, which an instant list cannot see**: over the same run, **no window of
+    length `per` contains more than `count` emissions, for every configured window** — checked
+    by sliding each window across the recorded instants, not by inspecting the first one.
+    Red-first against `bucket-cap`.
+  - **AC13** — the edit class under the default configuration imposes no delay and allocates
+    no history; the same class with a configured bound binds; **and the message class under
+    its shipped defaults emits at most twenty into one chat in any sixty-second window and at
+    most one in any one-second window**, which are the figures D10 cites. That is where
+    "traceable to a verified figure" becomes a test rather than a claim about a constructor
+    argument.
   - **AC14** — a positive (private) chat id is charged on the same terms as a negative one.
   - **AC15** — the same configuration under two different base URLs produces identical
     emission instants.
   - **AC30** — one key at a known interval, callers released one at a time with
     `synctest.Wait()` between them so arrival order is fixed: emissions are one interval apart
     and in arrival order.
-  - **AC31** — under saturation with a deadline shorter than the queue: the emissions together
-    with the returned `*Error`s account for **every** submitted call, so nothing is dropped and
-    nothing is starved; and the emissions that do occur are still no closer together than the
-    configured interval, so a refusal cannot make the limiter over-emit.
-    **This scenario must NOT assert that a refused call's slot is reclaimed** — D9 measured
-    that it is not, under exactly these conditions. An assertion that later callers are pulled
-    forward would fail against the chosen mechanism, and the repair a failing test invites
-    (loosening the emission-spacing check) would attack the flood-safety property AC31 exists
-    to protect. The permitted observation about the hole is the safe-direction one: emission
-    instants may be *later* than a perfect schedule, never earlier.
+  - **AC31** — two parts.
+    (i) *Nothing is lost*: under saturation with a deadline shorter than the queue, the
+    emissions together with the returned `*Error`s account for **every** submitted call, and
+    the emissions that occur are still no closer together than every configured window allows.
+    (ii) *A refusal changes nothing*: with some calls refused at their deadline and the rest
+    admitted, occupancy over every window still holds — a refusal must leave the schedule
+    exactly as it found it. Red-first against `commit-then-undo`.
+    **This scenario must NOT assert that a refused or cancelled call's slot is reclaimed.**
+    D9 declines reclamation deliberately; an assertion that later callers are pulled forward
+    would fail against the mechanism, and the repair a failing test invites — loosening the
+    occupancy check — is precisely the flood-safety property AC31 exists to protect. The
+    permitted observation about the hole is the safe-direction one: emission instants may be
+    *later* than a perfect schedule, never earlier.
   - **AC32** — the change adds no migration directory entry and the package writes no state
     outside the process.
+- **Schedule unit tests, below the end-to-end scenarios**: `blockedUntil` returns "not
+  blocked" while a window is under-filled; it returns the `c`-th newest grant plus `per` once
+  filled; it mutates nothing (calling it repeatedly changes no later answer); retention keeps
+  exactly what the largest window needs; and an empty window set never blocks.
+- **Concurrency**: the acquire path is exercised from many goroutines under `-race`, since one
+  mutex now guards every schedule and AC28's race gate is where a locking mistake surfaces.
 - Per-attempt charging (D2) is visible here: a scenario that forces a retry consumes more
-  than one unit of allowance for one caller-visible call, and the limiter tests that assert
-  exact instants must therefore use first-attempt-success responses unless they mean to
-  exercise it.
-[derived → AC10–AC15, AC30–AC32.]
+  than one unit of allowance for one caller-visible call, so the scenarios that assert exact
+  instants use first-attempt-success responses unless they mean to exercise it.
+[derived → AC10–AC15, AC28, AC30–AC32.]
 
 ### `internal/tg` retry, `retry_after`, cancellation and observation — subtask 5
 
@@ -1344,7 +1299,11 @@ the process environment, the network, or a real clock.
 - Scenarios: no non-test file under `cmd/` or `internal/` imports a fasthttp or go-json
   package (AC2); no non-test file in `internal/tg` imports a metrics registry (AC17); the
   bot token appears in no rendered `*Error`, no observation and no fixture in the package
-  (AC26); the base-URL identifier appears only in the file that constructs the bot (AC15,
+  (AC26); **no retry or rate-limit literal appears at a call site in `internal/tg` — the scan
+  walks the package's non-test files and fails on a numeric or duration literal passed as a
+  window count, a window period, an attempt count or a backoff delay, since every such value
+  must arrive from `config.Transport` (AC21's second clause, which no other scenario
+  discharges)**; the base-URL identifier appears only in the file that constructs the bot (AC15,
   paired with the behavioural test in subtask 4); and AC27's seam, in each part D2 showed it
   needs — a gate that refuses everything blocks a call issued through
   `Client.API()`; the package exports no way to obtain a `*telego.Bot` that was not built with
@@ -1353,7 +1312,7 @@ the process environment, the network, or a real clock.
   That last check is a source scan, and it is complete rather than sampling only because this
   module is the whole population of code that can hold the pointer (`AGENTS.md` § API
   Stability: no downstream importers).
-[derived → AC2, AC15, AC17, AC26, AC27.]
+[derived → AC2, AC15, AC17, AC21, AC26, AC27.]
 
 **No golden artefact is minted by this task**, so `design-writer` § Rules' golden contract
 (seed, covered fields, meaning of a diff, combat-system version) has nothing to bind here —
@@ -1384,26 +1343,28 @@ the transport renders no combat log, no narrative and no generated maze.
   D11 reports the caller-visible total. #23 may want the transport-only number to keep limiter
   waits out of the health latency histogram; that is a per-attempt observation, not a field,
   and it is #23's call to make once it has a dashboard to look at.
-- **Should the `(chat, class)` limiter map evict?** Not for one MVP chat. #43's fan-out is the
-  trigger, and D9 records the one constraint a later fix must respect: eviction must be
-  time-based, because a dropped key returns a full bucket.
-- **Should the shaper legs reserve at emission time so refused calls stop leaving holes?**
-  The cap leg already reclaims exactly, so this question is scoped to the global shaper and
-  the per-chat shaping rate. Reserving on arrival is what makes AC30's arrival-order guarantee
-  cheap, and it is why a cancelled `rate.Reservation` under saturation cannot be reclaimed
-  (D9, measured). Reserving at
-  emission time would recover the throughput and lose the ordering guarantee. Nothing has
-  measured a need for that trade: the owner's answer this round keeps #19 on in-process
-  pacing with #43 owning the durable queue, and the hole costs throughput in the safe
-  direction only. Revisit if #43's fan-out ever runs the shaper at saturation for long
-  enough to notice.
+- **Should the `(chat, class)` schedule registry evict?** Not for one MVP chat. #43's fan-out
+  is the trigger, and D9 records the one constraint a later fix must respect: dropping a key
+  discards its grants and resets every window it enforced, so eviction must be time-based.
+- **Should a grant be reclaimed when its call is cancelled mid-wait?** D9 declines it, and the
+  history is the argument: reclamation has been attempted once and broke the property it was
+  added to protect. The hole costs throughput in the safe direction only, and it ages out
+  after `per`. If it is ever revisited, the shape that would work is not removal — it is
+  deciding the grant at emission time rather than on arrival, which trades away the
+  arrival-order guarantee AC30 rests on. Nothing has measured a need for that trade, and the
+  owner's answer this round keeps #19 on in-process pacing with #43 owning the durable queue.
+- **Is one mutex for the whole limiter the right granularity?** D9 takes it deliberately, to
+  keep the decision atomic across every schedule; per-key locking would restore the
+  multi-component structure that produced three defects. Contention is the thing to measure if
+  fan-out ever makes it a question — and any replacement must keep the decide-then-commit rule
+  intact, not merely shard the map.
 - **Should `sendChatAction` leave `ClassMessage`?** It delivers no message but is throttled
   today because the `send*` rule is deliberately fail-safe. The MVP sends none; a later
   "typing…" indicator that feels laggy is the signal to carve it out.
 - **The leaky-bucket reading, and the 5xx residue** — both carried forward from the spec
-  unchanged. This design implements the shaping reading for the *pacing* roles (`burst 1`,
-  steady emission) and retries 5xx. The window cap is not a bucket at all (D9), so the
-  leaky-bucket question does not reach it: a quota is not a pacer, and the owner's round-3
-  choice is honoured by the legs that actually pace. If either reading is overturned the
-  change stays contained — `burst` is one constant per shaper role, and the 5xx row is one
-  line of the D5 table.
+  unchanged. The owner's round-3 choice was shaping with steady emission and no burst, and D9
+  now expresses it without a burst parameter at all: a pacing key becomes the window
+  "at most one per interval", which *is* steady emission. A quota key is a bound, not a pacer,
+  so the leaky-bucket question does not reach it. If either reading is overturned the change
+  stays contained — the pacing/quota mapping is one table in D9, and the 5xx row is one line
+  of the D5 table.
