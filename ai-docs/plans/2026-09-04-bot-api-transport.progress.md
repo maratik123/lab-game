@@ -5,16 +5,16 @@ _Updated: 2026-09-04 17:50_
 
 **Branch:** feat/2026-09-04-bot-api-transport
 **base_commit:** c1d03fde428a1b84d00f822e8e3f3c42a1b093cb
-**Last build:** not run
+**Last build:** PASS
 **Issue:** #19
 **Spec:** ai-docs/plans/2026-09-04-bot-api-transport.spec.md
-**current_step:** Step 8 — Group A COMPLETE (subtasks 1-6 of 7); handing off to context-reset before Group B (subtask 7)
-**last_passed_gate:** go build ./... + go test -race ./... + go vet ./... + golangci-lint run (0 issues) + golangci-lint fmt -d (clean) + go mod tidy (no delta) | (subtask 6 commit, see below)
+**current_step:** Step 9.5 — docs updated
+**last_passed_gate:** make verify | 2026-09-04T18:46:26Z | 453503c
 **entry_args:** 19
 
 ## Next action
 
-**Do this immediately:** Group A is finished (all 6 code subtasks committed, all gates green). Per the design's Handoff plan, spawn `/context-reset` and hand off Group B (subtask 7 only: `ai-docs/key-decisions.md` KD-2 rewrite + new decisions) to a fresh `general-purpose` agent at the orchestrator's own model/effort. The orchestrator (not code-writer) owns self-review and the push — code-writer has done neither.
+**Do this immediately:** Step 10 — spawn the `self-review` Subagent with the spec, design, progress path and the commit range `c1d03fd..HEAD`.
 
 ## Subtasks
 
@@ -24,7 +24,7 @@ _Updated: 2026-09-04 17:50_
 - [x] 4. `internal/tg` limiter (D9) + minimal caller — `limit.go` (`schedule`/`Limiter`, decide-then-commit, ordered/unordered kinds, time-based `evict`), `constructor.go` (`encoding/json` `RequestConstructor`), `caller.go` (derives method+`ChatRef` from URL/body, gate, limiter acquire+wait, one HTTP attempt), `client.go` wires `WithAPICaller`/`WithRequestConstructor`. **All 7 of the binding red-first broken-variant table's rows implemented and run RED-then-GREEN** (`TestRedFirst_CommitAtCandidate`, `_CommitThenUndo`, `_BucketCap`, `_OrderedGlobal`, `_CountRetention`, `_PaceOnly`, `_QuotaOnly` — none stayed green as a broken variant). Plus `TestSchedule_*` (brute-force oracle over 200 randomized trials, invariant-after-every-commit, ordered non-decreasing, unbounded-contributes-no-window, time-based retention, real-now-vs-future-grant eviction), `TestLimiter_*` (AC10–AC15, AC30–AC33 functional scenarios), and `TestCaller_*` end-to-end through real telego + tgtest (success, `ChatKnown` derivation from a real `SendMessage`, gate refusal costs zero attempts, limiter delay honours a short context deadline).
 - [x] 5. `internal/tg` caller: retry loop, backoff, `retry_after`, typed error, observation — `retry.go` (`defaultJitter` with the `//nolint:gosec // G404` directive, `backoffDelay` per D6's exact formula, `classifyAttempt` per D5's table, `sanitizedError`/`sanitizeErr` dropping the `*url.Error` layer plus a token-replacer defense-in-depth per D8, `Client.giveUpError`/`observe`); `caller.go`'s `Call` rewritten into the full per-attempt-charging loop (limiter `acquire` moved inside the loop, `httptrace.WroteRequest` sticky `atomic.Bool` wired into `doAttempt`). All of `retry_test.go`'s AC4/AC5/AC6/AC7/AC8/AC9/AC16/AC18/AC26/AC33 scenarios pass under `testing/synctest` (D14) — virtual-clock retry_after/backoff/deadline/cancellation waits complete in ~0.01s wall time despite simulating hours. `golangci-lint run` caught two real style defects (an `if`/`else if` chain gocritic wanted as a `switch`, and QF1008 promoted-field simplifications on `resp.Error.X`) — both fixed.  ← CURRENT
 - [x] 6. `internal/tg` package-level guard tests — `guards_test.go`: AC2 (no fasthttp/go-json import under `cmd/`+`internal/`), AC17 (no metrics-registry import in `internal/tg`), AC21's literal-scan (no bare `<digit> * time.Unit` in production files — confirmed the regex does NOT false-positive on retry.go's genuine runtime `retry_after`-seconds conversion), the D2 seam guard (`telego.NewBot`/`telego.With*` grep outside `internal/tg` — verified as a REAL red-then-green control: a planted `telego.NewBot(...)` call in `cmd/bot` was caught, a bare unqualified reference to the function value was correctly NOT caught, confirming the regex targets calls), AC15's source half (`BaseURL` referenced only in `client.go`), the D4 token-exposure-sites log (informational, `Token()`/`FileDownloadURL`), AC27 (a refusing gate blocks a call through `Client.API()`), and an end-to-end call through a real `config.Load`-produced `Config.BotAPIBaseURL` into `tgtest`. **Group A (subtasks 1-6) is now complete** — every gate green on the full tree.
-- [ ] 7. `ai-docs/key-decisions.md`: KD-2 rewrite + the new decisions
+- [x] 7. `ai-docs/key-decisions.md`: KD-2 rewrite + KD-25/KD-26/KD-27 — commit 453503c
 
 ## Decisions log
 
@@ -33,6 +33,10 @@ _Updated: 2026-09-04 17:50_
 - **Step 7**: the telego v1.12.x ceiling is a configuration block, not an incompatibility — v1.12.1 builds clean under go1.26.5 once its own directive is lowered; raising the toolchain is deferred to its own task.
 - **Subtask 1 (code-writer)**: implemented `loadTransport` as a dedicated reader (never added to `envKeys()`), 13 `LAB_GAME_TG_*` keys, `Rate`/`ClassLimits`/`TransportLimits`/`Transport` value types per D10's exact shape. `.env.example` and the reader landed in the same commit (disjointness test requires it). `env.go`/`config.go`'s falsified doc comments rewritten; `doc.go`'s enumeration extended. Verified via `rg -U` sweep that no other live site asserts the old "every variable is required" claim outside history surfaces and balance-scoped comments. All gates green: build, full `go test ./...`, `go vet`, `golangci-lint run` (0 issues), `golangci-lint fmt -d` (clean).
 - **Subtask 4 (code-writer) — a genuine defect the red-first tests caught, not one the design predicted.** The first `schedule.commit(t)` implementation evicted aged-out grants using `t` (the just-granted, possibly far-future instant) as the "now" for the eviction threshold. Measured directly: `TestSchedule_InvariantHoldsAfterEveryCommit` and `TestSchedule_EarliestMatchesBruteForceOracle` both went red — a burst of several near-simultaneous calls (all sharing one real "now") could have an EARLY member of the burst wrongly evicted merely because a LATER member's own granted instant landed far enough in the future to make the earlier grant look "expired" relative to that future instant, even though real time had not actually advanced. Fixed by separating `commit` (insert only, no eviction) from a new `evict(now)` (time-based, using the caller's real "now"), with `Limiter.acquire` calling `evict(now)` once per acquisition before deciding — never per commit. Re-ran both tests plus the full suite green afterward. This is a `Kind: validation` finding for the red-first methodology itself (the spawn's own framing: "a row that stays green is itself a finding") — here the STRUCTURAL tests (brute-force oracle, invariant-after-commit), not the seven named broken-variant rows, are what caught it, confirming the design's own point that an instant-list assertion is not enough and a checkable postcondition is what matters.
+
+- **Step 9**: all gates PASS on the full tree — build, vet, `golangci-lint run` (0 issues), `golangci-lint fmt -d`, `go test -count=1`, `go test -race -count=1`, `go mod tidy` (no delta), and `make verify`. No panic-index addition (no `panic`/`log.Fatal` in new production code); no posting signature and no event-dictionary entry owed (this task moves no balance and adds no migration).
+
+- **Step 9.5**: `context.md`'s § Status "no Telegram client" clause replaced with the transport plus the reason `cmd/bot` still constructs nothing; `context-status.md` entry appended with the literal `#TBD-at-Step-12` locator. No open question in `context.md` was resolved by this task. Propagation sweep for the removed claim found only this run's own spec and design, which quote it to define AC29 and become history surfaces at Step 12.
 
 ## Key discoveries (don't re-investigate)
 
@@ -46,7 +50,7 @@ _Updated: 2026-09-04 17:50_
 
 | AC | Status |
 |----|--------|
-| AC1–AC33 | NOT_TESTED |
+| AC1–AC33 | PASS — `make verify` green; per-AC coverage checked at Step 9 |
 
 ## Review register
 
