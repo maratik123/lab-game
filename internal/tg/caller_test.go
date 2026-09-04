@@ -91,6 +91,29 @@ func TestCaller_DerivesChatKnownFromSendMessage(t *testing.T) {
 	}
 }
 
+// TestCaller_RequestCarriesContentTypeHeader is doAttempt's request-
+// construction half of design D2: the outbound HTTP request must carry
+// the Content-Type header the request constructor set on RequestData
+// (ta.ContentTypeJSON for an ordinary JSON call), or a real Bot API
+// server would reject it — a claim tgtest's other handlers cannot check
+// since none of them read the request at all.
+func TestCaller_RequestCarriesContentTypeHeader(t *testing.T) {
+	t.Parallel()
+	var gotContentType string
+	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
+		gotContentType = r.Header.Get(ta.ContentTypeHeader)
+		tgtest.Success(json.RawMessage(`{"id":1,"is_bot":true,"first_name":"x"}`))(w, r)
+	})
+	c := newTestClient(t, srv, nil)
+
+	if _, err := c.API().GetMe(context.Background()); err != nil {
+		t.Fatalf("GetMe: %v", err)
+	}
+	if gotContentType != ta.ContentTypeJSON {
+		t.Errorf("request Content-Type = %q, want %q", gotContentType, ta.ContentTypeJSON)
+	}
+}
+
 func TestCaller_GateRefusalReturnsTypedErrorWithNoAttempt(t *testing.T) {
 	t.Parallel()
 	srv := tgtest.New(t, tgtest.Success(nil))

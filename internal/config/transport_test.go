@@ -17,6 +17,29 @@ func TestLoadTransport_AllAbsentYieldsDefaults(t *testing.T) {
 	}
 }
 
+// TestLoadTransport_ExampleMatchesDefaults is AC22's and AC23's
+// "documented default for each" clause: .env.example's own LAB_GAME_TG_*
+// values, run through loadTransport, must equal defaultTransport() — so a
+// change to either side that is not mirrored in the other goes RED. A
+// bare `*tr == defaultTransport()` comparison against an empty
+// environment (as TestLoadTransport_AllAbsentYieldsDefaults does above)
+// cannot detect that drift: it would pass for any value
+// defaultTransport() happens to return, whatever .env.example says.
+func TestLoadTransport_ExampleMatchesDefaults(t *testing.T) {
+	t.Parallel()
+	example := readEnvExampleKeys(t)
+	tr, err := loadTransport(mapLookup(example))
+	if err != nil {
+		t.Fatalf("loadTransport(.env.example): unexpected error: %v", err)
+	}
+	want := defaultTransport()
+	if *tr != want {
+		t.Errorf("loadTransport(.env.example) = %+v, want defaultTransport() %+v — "+
+			".env.example's LAB_GAME_TG_* values and the compiled-in defaults have drifted apart",
+			*tr, want)
+	}
+}
+
 func TestLoadTransport_RetryValuesParsed(t *testing.T) {
 	t.Parallel()
 	env := map[string]string{

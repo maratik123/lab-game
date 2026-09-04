@@ -248,8 +248,12 @@ func TestRetry_DeadlineRefusalInsteadOfSleep(t *testing.T) {
 		if err == nil {
 			t.Fatal("GetMe: expected an error")
 		}
-		if elapsed >= 100*time.Second {
-			t.Errorf("elapsed = %v, must not sleep the full 100s retry_after past the 5s deadline", elapsed)
+		// The refusal must fire before the wait, not after sleeping it out
+		// — synctest's virtual clock makes "immediately" exact rather than
+		// a loose bound: a mutant that disables the pre-attempt deadline
+		// check sleeps out the full remaining 5s budget instead.
+		if elapsed != 0 {
+			t.Errorf("elapsed = %v, want 0 (must refuse immediately instead of sleeping toward the 100s retry_after)", elapsed)
 		}
 		var tgErr *Error
 		if !errors.As(err, &tgErr) {
@@ -258,7 +262,53 @@ func TestRetry_DeadlineRefusalInsteadOfSleep(t *testing.T) {
 		if tgErr.RetryAfter != 100*time.Second {
 			t.Errorf("RetryAfter = %v, want 100s (still carried even though not honoured)", tgErr.RetryAfter)
 		}
+		// The retained cause must be the 429's retry-after classification,
+		// never a context error — a mutant that sleeps out the wait
+		// instead of refusing pre-attempt swaps this for
+		// context.DeadlineExceeded.
+		if errors.Is(tgErr.Err, context.DeadlineExceeded) {
+			t.Errorf("Err = %v, must not be a context deadline error — the 429 retry-after cause must be retained", tgErr.Err)
+		}
+		if tgErr.Err == nil || !strings.Contains(tgErr.Err.Error(), "retry after: 100") {
+			t.Errorf("Err = %v, want it to carry the 429's retry after: 100", tgErr.Err)
+		}
 	})
+}
+
+// TestCaller_AttemptTimeoutAbandonsAttempt is design D10's AttemptTimeout
+// safety valve (docs/DESIGN.md §12.2's wedged-instance incident): a single
+// HTTP attempt that outruns AttemptTimeout is abandoned at that timeout,
+// not at the caller's own (much longer-lived) context deadline. This test
+// deliberately runs in real time rather than under synctest: the fake
+// handler's delay outlives the aborted attempt (net/http never interrupts
+// a handler mid-flight just because the client gave up), and synctest
+// requires every bubble goroutine to finish or be durably blocked before
+// the bubble's root returns — a still-sleeping handler goroutine trips
+// that "deadlock" check even though nothing is actually deadlocked.
+func TestCaller_AttemptTimeoutAbandonsAttempt(t *testing.T) {
+	t.Parallel()
+	srv := tgtest.New(t, tgtest.Delayed(2*time.Second, tgtest.Success(nil)))
+	tr := validTransport()
+	tr.AttemptTimeout = 50 * time.Millisecond
+	tr.RetryMaxAttempts = 1
+	c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	start := time.Now()
+	_, err := c.API().GetMe(ctx)
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("GetMe: expected an error")
+	}
+	if elapsed >= time.Second {
+		t.Errorf("elapsed = %v, want well under 1s (AttemptTimeout is 50ms) — the attempt must be abandoned "+
+			"at AttemptTimeout, well short of the handler's 2s delay and the caller's own 1-minute deadline", elapsed)
+	}
+	if ctx.Err() != nil {
+		t.Errorf("caller's own context Err() = %v, want nil — the call's own deadline must still be live "+
+			"when AttemptTimeout is what ended the attempt", ctx.Err())
+	}
 }
 
 func TestRetry_CancellationAtEveryWaitingSite(t *testing.T) {

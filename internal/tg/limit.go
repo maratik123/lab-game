@@ -307,8 +307,8 @@ func acquireFixedPoint(start time.Time, earliestFns ...func(time.Time) time.Time
 // refusal happens before any mutation"). A non-nil error means the
 // fixed-point search did not converge within maxAcquirePasses — believed
 // unreachable given a correct window configuration, but treated as the
-// defect design.md:737 calls it, never as a silent fallback: nothing is
-// committed and no grant is returned.
+// defect design D9's fixed-point-exhaustion paragraph calls it, never as a
+// silent fallback: nothing is committed and no grant is returned.
 func (l *Limiter) acquire(call Call, now, deadline time.Time, hasDeadline bool) (time.Time, bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -347,7 +347,8 @@ func (l *Limiter) acquire(call Call, now, deadline time.Time, hasDeadline bool) 
 // contributes no window. ceil rather than truncation buys evenness only —
 // the quota window is what forbids the N+1-th emission either way (design
 // D9's "Configuration maps onto windows"). When N is 1 the two windows
-// coincide exactly (design.md:825), so only one is kept.
+// coincide exactly (design D9's pacing-windows paragraph), so only one is
+// kept.
 func paceWindows(r config.Rate) []window {
 	if r.Count <= 0 {
 		return nil

@@ -217,10 +217,28 @@ func TestGuard_RefusingGateBlocksTheAccessor(t *testing.T) {
 	t.Parallel()
 	srv := tgtest.New(t, tgtest.Success(json.RawMessage(`{"id":1}`)))
 	refusing := gateFunc(func(context.Context, Call) error { return errors.New("refused") })
-	c := newTestClient(t, srv, func(o *Options) { o.Gate = refusing })
+	obs := &recordingObserver{}
+	c := newTestClient(t, srv, func(o *Options) { o.Gate = refusing; o.Observer = obs })
 
 	if _, err := c.API().GetMe(context.Background()); err == nil {
 		t.Fatal("GetMe: expected the gate to refuse the call")
+	}
+
+	// design D11: the observation point fires exactly once per outbound
+	// call, including a gate refusal — #23's health dashboard must see
+	// refusals too.
+	all := obs.all()
+	if len(all) != 1 {
+		t.Fatalf("Observer received %d observations, want exactly 1", len(all))
+	}
+	if all[0].Method != "getMe" {
+		t.Errorf("Observation.Method = %q, want %q", all[0].Method, "getMe")
+	}
+	if all[0].StatusCode != 0 {
+		t.Errorf("Observation.StatusCode = %d, want 0 (no attempt was ever made)", all[0].StatusCode)
+	}
+	if all[0].Retries != 0 {
+		t.Errorf("Observation.Retries = %d, want 0", all[0].Retries)
 	}
 }
 

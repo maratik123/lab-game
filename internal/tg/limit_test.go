@@ -737,9 +737,10 @@ func TestRedFirst_QuotaOnly(t *testing.T) {
 
 // ---- paceWindows dedup (finding 15) ----
 
-// TestPaceWindows_DedupesWhenTheyCoincide asserts design.md:825's claim
-// directly: "When N is 1 the two windows coincide and the schedule holds
-// one." Before the fix, N=1 produced two textually identical windows.
+// TestPaceWindows_DedupesWhenTheyCoincide asserts design D9's
+// pacing-windows paragraph's claim directly: "When N is 1 the two windows
+// coincide and the schedule holds one." Before the fix, N=1 produced two
+// textually identical windows.
 func TestPaceWindows_DedupesWhenTheyCoincide(t *testing.T) {
 	t.Parallel()
 	got := paceWindows(rate(1, time.Second))
