@@ -4,12 +4,13 @@
 **Date:** 2026-09-04
 
 > **Claim tags in this document.** Repo facts are pinned to the commit they were read
-> at (`a73040b`). Facts about an **external module or the standard library** have no repo
-> path, so their pin is the **module version** (or `go doc`) the probe ran against; the
-> probe modules live outside the repo under the session scratchpad. Claims about
-> artefacts this task creates carry `[derived → …]` and no locator.
-> `docs/DESIGN.md` is cited **by section only, never by line**, per the design-writer
-> contract — those citations carry no `[measured …]` tag by design.
+> at (`5285f4c`) — round 2 re-read every cited coordinate at that commit rather than
+> carrying round 1's `a73040b` pins forward. Facts about an **external module or the
+> standard library** have no repo path, so their pin is the **module version** (or
+> `go doc`) the probe ran against; the probe modules live outside the repo under the
+> session scratchpad. Claims about artefacts this task creates carry `[derived → …]`
+> and no locator. `docs/DESIGN.md` is cited **by section only, never by line**, per the
+> design-writer contract — those citations carry no `[measured …]` tag by design.
 
 ---
 
@@ -43,33 +44,34 @@ func Load(lookup Lookup) (*Config, error)
   differently, and which the stdlib lookup already reports
   [measured Go stdlib · `go doc os.LookupEnv` → `func LookupEnv(key string) (string, bool)`
   … "If the variable is present in the environment the value (which may be empty) is
-  returned and the boolean is true."].
+  returned and the boolean is true. Otherwise the returned value will be empty and the
+  boolean will be false."].
 
 `Load` returns `*Config` rather than a value because `Config` embeds the whole `Balance`
 tree, so a pointer keeps every call site from copying it; the returned value is
 documented as read-only rather than defended by the type system. This is **not** a lint
 requirement: `gocritic`'s `hugeParam` check is not active under this repo's configuration
-[measured a73040b:.golangci.yml · a scratch package passing a large struct by value
-through `golangci-lint run --config /home/syt/lab-game/.golangci.yml ./...` → no
-`gocritic` finding]. Recorded so the rationale is not later "restored" to a lint that
-never fired.
+[measured 5285f4c:.golangci.yml · a scratch package passing a large struct by value
+through `golangci-lint run --config /home/syt/lab-game/.golangci.yml ./...` → the run
+reports only the `errcheck` and `gosec` findings of D7, no `gocritic` finding]. Recorded
+so the rationale is not later "restored" to a lint that never fired.
 
 ### D2 — YAML parser: `go.yaml.in/yaml/v3`, a new direct production requirement
 
 Required by `AGENTS.md` § Dependency Versions (the established-packages AXIOM and the
-stated-reason rule) [measured a73040b:AGENTS.md:132-143 · `grep -n -A60 '^## Dependency Versions' AGENTS.md`].
+stated-reason rule) [measured 5285f4c:AGENTS.md:132-143 · `grep -n -A60 '^## Dependency Versions' AGENTS.md`].
 
 **Chosen: `go.yaml.in/yaml/v3` @ `v3.0.5`** — the YAML org's maintained fork of
 `go-yaml/yaml`.
 
-- maintained, not archived [measured go.yaml.in/yaml/v3 · `gh api repos/yaml/go-yaml --jq '{archived,pushed_at,description}'` → `{"archived":false,"description":"The YAML org maintained fork of https://github.com/go-yaml/yaml","pushed_at":"2026-09-02T21:45:14Z"}`];
+- maintained, not archived [measured go.yaml.in/yaml/v3 · `gh api repos/yaml/go-yaml --jq '{archived,pushed_at}'` → `{"archived":false,"pushed_at":"2026-09-02T21:45:14Z"}`];
 - published through `v3.0.5` [measured · `go list -m -versions go.yaml.in/yaml/v3` → `go.yaml.in/yaml/v3 v3.0.2 v3.0.3 v3.0.4 v3.0.5`];
 - **no non-stdlib requirements of its own** [measured go.yaml.in/yaml/v3@v3.0.5 · `cat $(go env GOMODCACHE)/go.yaml.in/yaml/v3@v3.0.5/go.mod` → `module go.yaml.in/yaml/v3` / `go 1.16` / a `retract [v3.0.0, v3.0.1]` directive and nothing else];
 - exposes the `Node` tree (with `Kind`, `Tag`, `Value`, `Content`, `Line`, `Column`) and
   `Decoder.KnownFields` [measured go.yaml.in/yaml/v3@v3.0.5 · `go doc go.yaml.in/yaml/v3 Node` and `go doc go.yaml.in/yaml/v3 Decoder` → the `Node` struct with those fields; `func (dec *Decoder) KnownFields(enable bool)`].
 
 **Rejected — `gopkg.in/yaml.v3`** (the incumbent, already resolved in this module's
-graph through a **test-only** path [measured a73040b:go.mod:73 · `go mod why -m gopkg.in/yaml.v3` → `internal/store` → `pgx/v5` → `pgx/v5.test` → `testify/assert` → `testify/assert/yaml` → `gopkg.in/yaml.v3`]). Adopting it costs no new
+graph through a **test-only** path [measured 5285f4c:go.mod:73 · `grep -n yaml go.mod` → `gopkg.in/yaml.v3 v3.0.1 // indirect`; `go mod why -m gopkg.in/yaml.v3` → `internal/store` → `pgx/v5` → `pgx/v5.test` → `testify/assert` → `testify/assert/yaml` → `gopkg.in/yaml.v3`]). Adopting it costs no new
 module, but its upstream is **archived** [measured gopkg.in/yaml.v3@v3.0.1 · `gh api repos/go-yaml/yaml --jq '{archived,pushed_at}'` → `{"archived":true,"pushed_at":"2025-04-01T17:00:11Z"}`], it has no release past `v3.0.1` [measured · `go list -m -versions gopkg.in/yaml.v3` → `gopkg.in/yaml.v3 v3.0.0 v3.0.1`], and the maintained successor's own `go.mod` **retracts** those tags (see the `retract` line quoted above). The AXIOM's table names "the package is unmaintained or abandoned" as the argument that *counts*; taking the abandoned one while its drop-in successor is maintained runs that argument backwards. `gopkg.in/yaml.v3` **stays** in `go.mod` as a test-only indirect requirement through testify — this task does not remove it, and nobody should "tidy it away".
 
 **Rejected — `github.com/goccy/go-yaml`**: maintained [measured · `gh api repos/goccy/go-yaml --jq '{archived,pushed_at}'` → `{"archived":false,"pushed_at":"2026-04-11T15:18:13Z"}`] and dependency-free, but it is a different API and a far larger parser. The YAML-org fork is the direct continuation of the API every behaviour below was measured against, so it wins on equivalence — not because goccy is unmaintained. **Escape hatch:** if the fork ever stalls, goccy is the replacement. The swap is contained by construction: the parser is imported from the balance-loading file alone (D3, and the file list in § Decomposition subtask 1), so no other file in the package names it.
@@ -114,10 +116,26 @@ documented AST. Neither reimplements YAML.
 ### D4 — Environment layer: the standard library, because it covers the requirement
 
 The AXIOM's own clarification: *"prefer the standard library" means stdlib over a
-third-party package* — and stdlib covers this end to end. `os.LookupEnv` gives
-presence-distinct-from-empty; `strconv.ParseInt` parses chat ids; `net/url.Parse` plus
-`URL.IsAbs` and a scheme check validate the Bot API base URL (AC9). No bespoke parser
-is written for anything the stdlib already parses.
+third-party package* — and stdlib covers this end to end, each piece measured rather
+than remembered:
+
+- `os.LookupEnv` gives presence distinct from empty
+  [measured Go stdlib · `go doc os.LookupEnv` → "If the variable is present in the
+  environment the value (which may be empty) is returned and the boolean is true.
+  Otherwise the returned value will be empty and the boolean will be false."];
+- `strconv.ParseInt` parses chat ids, including the negative group ids Telegram uses
+  [measured Go stdlib · `go doc strconv.ParseInt` → `func ParseInt(s string, base int, bitSize int) (i int64, err error)` … "The string may begin with a leading sign: \"+\" or \"-\"."];
+- `net/url.Parse` plus `URL.IsAbs` and a scheme check validate the Bot API base URL (AC9)
+  [measured Go stdlib · `go doc net/url.Parse` → "The url may be relative (a path,
+  without a host) or absolute (starting with a scheme). Trying to parse a hostname and
+  path without a scheme is invalid but may not necessarily return an error, due to
+  parsing ambiguities."; `go doc net/url.URL.IsAbs` → "IsAbs reports whether the URL is
+  absolute. Absolute means that it has a non-empty scheme."].
+
+That last pair is why AC9's check is `Parse` **plus** `IsAbs` **plus** an explicit
+`{http, https}` scheme test **plus** a non-empty-host test: `IsAbs` only asserts a
+non-empty scheme, and `Parse` is documented as tolerant of a scheme-less host/path. No
+bespoke parser is written for anything the stdlib already parses.
 
 **Evaluated — `github.com/caarlos0/env/v11`**: maintained and dependency-free [measured · `gh api repos/caarlos0/env --jq '{archived,pushed_at}'` → `{"archived":false,"pushed_at":"2026-09-04T00:59:31Z"}`; `cat $(go env GOMODCACHE)/github.com/caarlos0/env@v11.4.1/go.mod` → `module`, `go 1.18` and `retract` directives only]. It would supply `required` and type parsing, but (a) it covers only the environment source, so the loader still owns the balance walk and the error type; (b) AC10's "empty fails" and AC9's absolute-URL rule are project predicates it does not express, so those checks get written either way; (c) AC16 wants the **consulted** key set observable, and the hook it offers is `Options.OnSet`, which fires when a value *is set* — not on every key queried [measured github.com/caarlos0/env/v11@v11.4.1 · `go doc github.com/caarlos0/env/v11 Options` → `OnSet OnSetFn // OnSet allows to run a function when a value is set.`; the only injection field is `Environment map[string]string`]. **Escape hatch:** adopt it if the variable set outgrows a screen.
 
@@ -153,12 +171,16 @@ var ErrMissing, ErrUnknownKey, ErrInvalidValue, ErrUnreadable error
   and `cfg.Balance.Raid.Stamina.Cap` at a call site read as the same path — closing the
   spec's open question in favour of sub-structs.
 - **Numeric types, one rule:** counts are `int`; timers are `time.Duration`; everything
-  else is `shopspring/decimal.Decimal`. No `float32`/`float64` anywhere on the config
-  surface, extending KD-18's ledger rule rather than inventing a second convention.
+  else is `shopspring/decimal.Decimal` — already a **direct** requirement of this module,
+  so the surface adds no dependency
+  [measured 5285f4c:go.mod:5-12 · `sed -n '1,12p' go.mod` → the direct `require` block
+  containing `github.com/shopspring/decimal v1.4.0`]. No `float32`/`float64` anywhere on
+  the config surface, extending KD-18's ledger rule rather than inventing a second
+  convention.
 - **AC1, package-level state and `init`:** the package declares **no `init` function**,
   and the schema is returned by a function rather than held in a package `var`, so there
   is no mutable table at package scope. The error sentinels are package `var`s, following
-  the precedent already in the tree [measured a73040b:internal/store/errors.go:5-49 · `sed -n '1,60p' internal/store/errors.go` → `var ( ErrNoBasis = errors.New(…) … )`]; AC1's "mutable state" is read as *held configuration*, not as error identity.
+  the precedent already in the tree [measured 5285f4c:internal/store/errors.go:7-10 · `sed -n '1,12p' internal/store/errors.go` → `var (` … `ErrNoBasis = errors.New("store: posting basis is nil")`]; AC1's "mutable state" is read as *held configuration*, not as error identity.
 - **All failures at once:** env failures are joined with `errors.Join`, and so are
   balance failures, in schema order — deterministic, never map-iteration order
   (`AGENTS.md` § Code Style). `Load` validates the environment first, because the file
@@ -173,27 +195,43 @@ var ErrMissing, ErrUnknownKey, ErrInvalidValue, ErrUnreadable error
 | A `!!float` node decodes into `int` by truncation, with no error [measured go.yaml.in/yaml/v3@v3.0.5 · probe of `a: 3.25` into `int` → `err=<nil> val=3`] | An integer-typed entry additionally requires `Tag == "!!int"`. |
 | Duplicate mapping keys are **not** reported when unmarshalling into `yaml.Node`, but **are** reported when unmarshalling into a map — at every depth [measured go.yaml.in/yaml/v3@v3.0.5 · probe: `a:\n  b: 1\n  b: 2\n` → into `yaml.Node` `err=<nil>`; into `map[string]any` `err=… line 3: mapping key "b" already defined at line 2`] | A **duplicate-key pre-pass** unmarshals the raw bytes into a map and returns that error as-is. It already names the key and both lines, so the library's own check is used rather than a hand-rolled one. |
 | An alias node resolves transparently through `Node.Decode` [measured go.yaml.in/yaml/v3@v3.0.5 · probe of `x: &a 7` / `y: *a` → alias node `Kind=16`, `Decode` `err=<nil> val=7`] | The walk **rejects alias nodes at schema paths**, naming the path: the balance file is a literal table, and an anchor makes "which number is in force" a two-hop read. A merge key surfaces as a literal `<<` key [measured — same probe → `sec keys: "<<"(tag=!!merge) "q"(tag=!!str)`] and is therefore rejected by the unknown-key rule with no extra code. |
-| An empty document yields a `Node` with no content; `{}` yields a document node with an empty mapping [measured go.yaml.in/yaml/v3@v3.0.5 · probe → `empty: err=<nil> kind=0 content=0`; `braces: err=<nil> docContent=0`] | Both are normalised to "an empty mapping", so AC6 reports **every** schema path as missing instead of a special-cased "file is empty". |
+| **An empty document and `{}` differ at the document node and converge only at the mapping node.** An empty (or whitespace-only, or comment-only) input yields the **zero** `Node` — no document node at all; `{}` yields a document node whose single child is an empty mapping [measured go.yaml.in/yaml/v3@v3.0.5 · probe → `empty: err=<nil> docKind=0 len(doc.Content)=0`; `newline: docKind=0 len(doc.Content)=0`; `comment: docKind=0 len(doc.Content)=0`; `braces: err=<nil> docKind=1 len(doc.Content)=1 child.Kind=4 child.Tag="!!map" len(child.Content)=0`; kinds in that build: `Document=1 Sequence=2 Mapping=4 Scalar=8 Alias=16`] | Normalise **to the root mapping**, not to the document node: `len(doc.Content) == 0` is true for the empty input and **false** for `{}`, so it is the wrong test for both. The walk resolves "the root mapping, or an absent one" first, then reports **every** schema path as missing — which is AC6's condition — instead of special-casing "the file is empty". |
 | A non-mapping document root parses without error [measured go.yaml.in/yaml/v3@v3.0.5 · probe of `- 1\n- 2\n` → `err=<nil> docKind=2 docTag=!!seq`] | The walk rejects a non-mapping root, naming the file. |
 | `time.Duration` accepts a `!!str` (`30m`) and **rejects** a bare `!!int` [measured go.yaml.in/yaml/v3@v3.0.5 · probe → `a: 30m` `val=30m0s err=<nil>`; `a: 30` `err=… cannot unmarshal !!int '30' into time.Duration`] | Durations are written in Go duration syntax; no unit-less-integer footgun exists, so no extra tag check is needed beyond the null rule. |
 | `decimal.Decimal` decodes from `!!int`, `!!float` and `!!str`, and errors on a non-numeric string [measured go.yaml.in/yaml/v3@v3.0.5 + shopspring/decimal@v1.4.0 · probe → `0.25`→`0.25`, `3`→`3`, `"0.25"`→`0.25`, `oops`→`error decoding string 'oops': can't convert oops to decimal`] | A decimal entry requires `Tag ∈ {!!int, !!float}`, so a quoted number is rejected too — one spelling per number in the file. |
 
 Any `switch` on `yaml.Kind` carries a `default` clause; the lint config sets
 `default-signifies-exhaustive: true`, so a `default` satisfies `exhaustive`
-[measured a73040b:.golangci.yml:40-41 · `grep -n -A2 'exhaustive:' .golangci.yml` → `    exhaustive:` / `      default-signifies-exhaustive: true`].
+[measured 5285f4c:.golangci.yml:40-41 · `grep -n -E 'exhaustive:|default-signifies' .golangci.yml` → `40:    exhaustive:` / `41:      default-signifies-exhaustive: true`].
 
 ### D7 — Lint constraints already measured against this repo's config
 
 - **`gosec` G304 fires on `os.ReadFile(p)` and on `os.Open(p)` with a variable path**
-  [measured a73040b:.golangci.yml · a scratch package run through
+  [measured 5285f4c:.golangci.yml · a scratch package run through
   `golangci-lint run --config /home/syt/lab-game/.golangci.yml ./...` →
-  `G304: Potential file inclusion via variable (gosec)` at each such call site]. Reading a
+  `G304: Potential file inclusion via variable (gosec)` at both call sites]. Reading a
   file the operator named **is** the feature, so each such site carries
   `//nolint:gosec // G304: …` with a reason — which clears the finding and satisfies
   `nolintlint`'s `require-specific` and `require-explanation`
-  [measured a73040b:.golangci.yml:42-44 · same run with the annotated source → the G304
-  findings are gone and no `nolintlint` finding appears].
-- **`defer f.Close()` is flagged by `errcheck`** under this config [measured a73040b:.golangci.yml · same run → `Error return value of 'f.Close' is not checked (errcheck)`]. The world-path probe therefore opens, closes, and handles **both** errors explicitly — no `defer`, and never `_ = err` (`AGENTS.md` § Code Style).
+  [measured 5285f4c:.golangci.yml:42-44 · `grep -n -E 'nolintlint:|require-' .golangci.yml` → `42:    nolintlint:` / `43:      require-explanation: true` / `44:      require-specific: true`; the same scratch run over the annotated spelling → `0 issues.`].
+- **`defer f.Close()` is flagged by `errcheck`** under this config [measured 5285f4c:.golangci.yml · same run → `Error return value of 'f.Close' is not checked (errcheck)`]. The world-path probe therefore opens, closes, and handles **both** errors explicitly — no `defer`, and never `_ = err` (`AGENTS.md` § Code Style).
+- **`revive`'s `package-comments` rule is enabled, so the package comment is a
+  *subtask-1* obligation, not a subtask-5 one.** A package whose files carry no package
+  comment fails the lint gate outright
+  [measured 5285f4c:.golangci.yml:45-48 · `grep -n -E 'revive:|name: exported|name: package-comments' .golangci.yml` → `45:    revive:` / `47:        - name: exported` / `48:        - name: package-comments`; and a scratch package with an exported, documented function but no package comment through the same run → `package-comments: should have a package comment (revive)`].
+  `code-writer` Mode A runs `golangci-lint run` and commits **per subtask**
+  [measured 5285f4c:.claude/agents/code-writer.md:65,69 · `grep -n -i -E 'golangci|commit' .claude/agents/code-writer.md` → step "Run the gates: … `golangci-lint run`; `go vet ./...`" and "Stage explicitly and `git commit`"], so subtasks 1–4 cannot pass their own gate unless the package comment already exists. **Resolution:** subtask 1 ships a **provisional** package comment in `internal/config/doc.go`; subtask 5 rewrites that same comment's body to AC13's full wording (reload policy + each source's exclusive domain). Two supporting measurements make this the right placement:
+  - a package comment on `doc.go` satisfies the rule for the whole package, with the
+    other files carrying none [measured 5285f4c:.golangci.yml · scratch package
+    `config` with the comment on `doc.go` and none on `config.go`/`balance.go` → `0 issues.`],
+    and `ai-docs/doc-convention.md` DOC-2 sanctions `doc.go` for a package with several
+    source files [measured 5285f4c:ai-docs/doc-convention.md:22 · `grep -n -A6 -i 'package comment' ai-docs/doc-convention.md` → "Every package has exactly one package comment, on the file named after the package (or `doc.go` when the package is large)"];
+  - **no gate catches a second package comment** — two of them pass `golangci-lint run`
+    and `go vet` and simply concatenate in the rendered docs [measured 5285f4c:.golangci.yml ·
+    scratch package with a package comment on both `doc.go` and `dup.go` → `0 issues.`,
+    `go vet ./...` silent, and `go doc ./dup` printing both paragraphs in sequence]. So
+    DOC-2's "exactly one" is honour-system here: subtask 5 **edits** `doc.go`'s comment
+    and must not add a second one on `config.go`.
 
 ### D8 — Where the balance set is read from: an operator-supplied path, never embedded
 
@@ -232,7 +270,7 @@ redesigning balance.
 | `raid.death.backpack_ttl` | duration | `> 0` | placeholder | §3.4, §16.5 |
 | `raid.death.own_chat_head_start` | duration | `> 0` | placeholder | §3.4 |
 | `raid.death.respawn_debuff` | duration | `>= 0` | placeholder | §3.4, §16.5 |
-| `raid.afk.cruelty` | decimal | `0 <= x <= 1` | placeholder | §3.5 (*Жестокость — конфиг*) |
+| `raid.afk.cruelty` | decimal | `0 <= x <= 1` | placeholder — **shape included**, see below | §3.5 (*Жестокость — конфиг*) |
 | `raid.door.price_base` | decimal | `> 0` | placeholder | §2.3, §16.5 |
 | `raid.door.price_per_distance` | decimal | `> 0` | placeholder | §2.3 |
 | `raid.door.price_distance_exponent` | decimal | `>= 1` | placeholder | §2.3 |
@@ -260,10 +298,36 @@ carries no authority — #46 replaces the lot. **The combat-system version is no
 it identifies the code that produced a stored log (`docs/DESIGN.md` §4), so it is a
 constant in the combat package, not a tuning value an operator may edit.
 
+**Two curves are key *triples*, and the combination is written down as a comment, not
+inferred from the key names.** `price_base` + `price_per_distance` +
+`price_distance_exponent` and the matching `monster_budget` trio each imply an arithmetic
+combination that nothing in this task fixes: `docs/DESIGN.md` §2.3 states only that the
+door price rises with distance, and §4.6 states only that `budget(dist)` grows without a
+ceiling, linearly or slightly slower, and is multiplied at use by `k(level)`. Two later
+tasks — #46 filling the numbers, and the generation / door work binding the semantics —
+could therefore attach **different** formulas to the same keys. So `config/balance.yaml`
+carries **one comment line per curve** naming the combination the key names imply,
+explicitly marked as *not yet confirmed — #46 confirms or replaces it*. The comment is
+documentation, not a contract: no Go code reads it and the loader does not validate
+against it, so it commits nothing while making the ambiguity visible at the only place
+both future tasks must open. Where DESIGN itself states the combination (§4.6's
+`budget(dist) × k(level)`), the comment cites the section rather than restating the
+formula — `[derived → subtask 2's tracked balance file]`.
+
+**`raid.afk.cruelty`'s *shape* is a placeholder too, not only its number.**
+`docs/DESIGN.md` §3.5 says the AFK-leader's cruelty is configuration and fixes nothing
+else — not a scale, not a unit, not a range. A `decimal` bounded to `0 <= x <= 1` is this
+design's guess at a dial, chosen because it loads clean and reads as a fraction; it is
+**not** a decision #46 or the raid-FSM work inherits. If the mechanic wants an enum of
+consequences, a per-outcome table, or an unbounded severity, that replaces this row
+outright — schema, predicate and all — and the replacement is a normal one-key change,
+not a migration (nothing persists a balance value). Recorded here so the row is not later
+cited as a settled shape.
+
 ### D10 — The environment variable set
 
 `LAB_GAME_` prefix, matching the existing `LAB_GAME_TEST_DSN`
-[measured a73040b:internal/testdb/testdb.go:31 · `sed -n '31p' internal/testdb/testdb.go` → `const dsnEnv = "LAB_GAME_TEST_DSN"`]. Every variable is required; none has a compiled-in default.
+[measured 5285f4c:internal/testdb/testdb.go:31 · `sed -n '31p' internal/testdb/testdb.go` → `const dsnEnv = "LAB_GAME_TEST_DSN"`]. Every variable is required; none has a compiled-in default.
 
 | Variable | Validation | AC |
 |---|---|---|
@@ -284,20 +348,74 @@ variable at a single file — the loader accepts either, so #28 needs no loader 
 exit code. The AC11 behaviour is then tested by calling `run` in-process, which sidesteps
 the spec's permission constraint on invoking a compiled artefact by bare path. `main`
 exiting non-zero is not a panic and adds no row to the panic index
-[measured a73040b:ai-docs/panic-index.md:7-9 · `grep -n '^| ' ai-docs/panic-index.md` → the header row and a `| — | — | — |` placeholder row, i.e. the table is empty].
+[measured 5285f4c:ai-docs/panic-index.md:7,9 · `grep -n '^| ' ai-docs/panic-index.md` → the header row and a `| — | — | — |` placeholder row, i.e. the table is empty].
 
 ### D12 — CI paths-filter
 
 `.github/workflows/ci.yml`'s `go` filter matches `**/*.go`, `**/*.sql`, `go.mod`,
 `go.sum`, `.golangci.yml`, `Makefile` and `.github/workflows/**`
-[measured a73040b:.github/workflows/ci.yml:37-52 · `sed -n '37,52p' .github/workflows/ci.yml`],
+[measured 5285f4c:.github/workflows/ci.yml:37-52 · `sed -n '30,55p' .github/workflows/ci.yml`],
 and the file's own comment states that a future artefact must be added in the PR that
 introduces it or its gate silently stops running
-[measured a73040b:.github/workflows/ci.yml:35-36 · same read → `# Any future Go or harness artefact must be added here in the same PR` / `# that introduces it, or its gate silently stops running.`].
+[measured 5285f4c:.github/workflows/ci.yml:35-36 · same read → `# Any future Go or harness artefact must be added here in the same PR` / `# that introduces it, or its gate silently stops running.`].
 The tracked balance file, the world placeholder and `.env.example` are read by Go tests,
 so editing one without the filter update would skip the job that proves it — "a job that
 did not run is not a passing job" (`AGENTS.md` § Build & Test). They join the `go` filter,
 and `actionlint` runs on the changed workflow before `git add` (`AGENTS.md` AXIOM).
+
+### D13 — `.env.example`: why it is authorable, what may go in it, and how to verify it
+
+Round 1 either assumed or left implicit each of the facts below.
+
+**(a) The file tool can create and read it — the mechanism, not the outcome.** The rules
+that govern the outcome are the spec's binding constraint: the matcher takes gitignore
+syntax **with no in-pattern negation**, `deny` is evaluated before `allow` and is final,
+cannot be approved in-session, and governs the **`Write` tool through its `Edit(...)`
+entries** — no separate `Write(...)` rule exists
+[measured 5285f4c:ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md:172 · `grep -n 'no in-pattern negation' <spec>` → "approved in-session, takes gitignore syntax **with no in-pattern negation**, and"].
+Against those rules, the deny list enumerates the real environment filenames and carries
+**no `.env.*` catch-all**
+[measured 5285f4c:.claude/settings.json · `jq -r '.permissions.deny[]?' .claude/settings.json` → `Read`/`Edit` rows for `.idea/**`, `**/.env`, `**/.env.local`, `**/.env.development`, `**/.env.test`, `**/.env.staging`, `**/.env.production`, `**/.env.secret`, `**/.env.secrets`, `**/secrets*`, `**/.secrets*` — and nothing matching `.env.example`],
+and `Edit(./**)` is in `allow`, so `Write` reaches the path
+[measured 5285f4c:.claude/settings.json · `jq -r '.permissions.allow[]?' .claude/settings.json | grep -E 'Edit|Write|Read'` → `Edit(./**)`, `Edit(.claude/**)`, and no `Write(...)` entry]. Confirmed against the live matcher rather than
+by reading the rules alone: a `Read` of the path returns *"File does not exist"*, i.e. it
+cleared the permission layer and reports the ordinary truth that this task has not
+created the file yet [measured 5285f4c · `Read` tool on `/home/syt/lab-game/.env.example` → `File does not exist.`].
+The narrowing itself is already committed on this branch and therefore ships in this
+task's PR (spec Scope 11, AC17)
+[measured 5285f4c · `git log --oneline a73040b..HEAD -- .claude/settings.json ai-docs/claude-tools-hierarchy.md` → `db7999e docs(tools-hierarchy): describe the narrowed env deny rules` / `929b8e7 chore(settings): stop denying .env.example`] — see § Propagation targets.
+**Consequence for § Handoff plan:** subtask 6 is authorable inside Group A by
+`code-writer`, and every later agent can read the file back to verify AC8 and AC16. No
+grouping change and no prerequisite step.
+
+**(b) `.env.example` is the *loader's* manifest, and only that.** Subtask 6 asserts set
+equality between the file's keys, the recording `Lookup`'s consulted set, and
+`EnvKeys()` — the literal conjunction of AC8 and AC16, and the owner's round-4 decision
+keeps both ACs at that wording. The consequence, recorded here so it is visible to
+whoever next edits the file: **adding a variable the loader does not read breaks the
+suite.** The concrete candidate is `LAB_GAME_TEST_DSN`, which `internal/testdb` reads and
+which a fresh clone may well want to set
+[measured 5285f4c:internal/testdb/testdb.go:31 · `sed -n '31p' internal/testdb/testdb.go` → `const dsnEnv = "LAB_GAME_TEST_DSN"`], and which is documented outside this file already
+[measured 5285f4c:ai-docs/key-decisions.md:53 · `grep -n -A8 KD-20 ai-docs/key-decisions.md` → KD-20, "`LAB_GAME_TEST_DSN` points the suite at an existing server instead"; 5285f4c:ai-docs/go-test-conventions.md:42 · `grep -n LAB_GAME_TEST_DSN ai-docs/go-test-conventions.md` → the same variable in the integration-test bullet]. The trap is mitigated
+where it is met, at the file and at the failure message:
+- `.env.example` opens with a header comment stating that the file is the
+  `internal/config` loader's manifest, that a test asserts it equals `config.EnvKeys()`
+  exactly, and that a variable read by anything other than the loader — the test suite's
+  `LAB_GAME_TEST_DSN` among them — belongs in `ai-docs/go-test-conventions.md`, not here;
+- the set-equality assertion fails **in both directions by name** ("in `.env.example`,
+  never consulted by the loader: …" / "consulted by the loader, absent from
+  `.env.example`: …") and points at that header comment, so the failure explains itself
+  rather than reading as a mysterious regression — `[derived → subtask 6's disjointness test]`.
+
+**(c) A verification command must name `.env.example` alone.** The deny rules reach the
+`Bash` tool as well as the file tools, and the refusal is **not** predictable from the
+substring: a command naming both files is refused, the same command naming only the
+example runs, and `git check-ignore` runs on either
+[measured 5285f4c · `ls -la .env .env.example` → `Permission to use Bash with command … has been denied.`; `ls -la .env.example` → ordinary `ls` output, exit 2, "No such file or directory"; `git check-ignore -q .env.example` → exit 1; `git check-ignore -q .env` → exit 0, permitted]. A refusal renders as a
+permission error that looks nothing like a failed criterion, so an AC8/AC16 check written
+as one convenient two-path one-liner would read as a broken harness rather than a red
+gate. **Rule for every gate command in this design: one path per command.** § Test Design
+→ *Gate-level checks* applies it.
 
 ---
 
@@ -305,12 +423,12 @@ and `actionlint` runs on the changed workflow before `git add` (`AGENTS.md` AXIO
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | The balance schema and its walker: the `Balance` nested types, the schema entries (path · destination · predicate) built by a function, the duplicate-key pre-pass, and the node walk producing missing / unknown / null / wrong-tag / failed-predicate errors, each naming its dotted path. Adds the parser: `go get go.yaml.in/yaml/v3@latest`, `go mod tidy`, then read `git diff go.mod go.sum` before staging, and record the version that resolved (`v3.0.5` was the newest published at design time — D2). | `internal/config/balance.go`, `internal/config/balance_load.go`, `internal/config/errors.go`, `internal/config/balance_load_test.go`, `go.mod`, `go.sum` | — |
-| 2 | The tracked balance set at the default path, carrying a placeholder for every schema key, plus the both-directions agreement test (every schema path present in the file; every file path known to the schema). | `config/balance.yaml`, `internal/config/balance_file_test.go` | 1 |
+| 1 | The balance schema and its walker: the `Balance` nested types, the schema entries (path · destination · predicate) built by a function, the duplicate-key pre-pass, and the node walk producing missing / unknown / null / wrong-tag / failed-predicate errors, each naming its dotted path. **Also ships the provisional package comment in `internal/config/doc.go`** — without it `revive`'s `package-comments` rule fails this subtask's own gate (D7). Adds the parser: `go get go.yaml.in/yaml/v3@latest`, `go mod tidy`, then read `git diff go.mod go.sum` before staging, and record the version that resolved (`v3.0.5` was the newest published at design time — D2). | `internal/config/doc.go`, `internal/config/balance.go`, `internal/config/balance_load.go`, `internal/config/errors.go`, `internal/config/balance_load_test.go`, `go.mod`, `go.sum` | — |
+| 2 | The tracked balance set at the default path, carrying a placeholder for every schema key and one comment line per curve naming its unconfirmed combining formula (D9), plus the both-directions agreement test (every schema path present in the file; every file path known to the schema). | `config/balance.yaml`, `internal/config/balance_file_test.go` | 1 |
 | 3 | The environment layer: `Lookup`, `EnvKeys`, the variable-name constants, and validation of token, DSN, base URL and `ALLOWED_CHAT_IDS` — every failure a `*KeyError` naming its variable, joined in declaration order. | `internal/config/env.go`, `internal/config/env_test.go` | 1 |
 | 4 | World-set path resolution: the required variable, the open/close readability probe with both errors handled, `WorldPath` exposed as a string, and the tracked placeholder target at the default path. | `internal/config/world.go`, `internal/config/world_test.go`, `config/world/<marker>` | 3 |
-| 5 | `Load`: the package doc comment (reload policy + each source's exclusive domain, AC13), `Config`, `Secret`, and the composition of the environment, the world probe and the balance load into one joined error. | `internal/config/config.go`, `internal/config/config_test.go` | 1, 3, 4 |
-| 6 | `.env.example` with a placeholder for every required variable, and the disjointness tests: the recording-`Lookup` read set equals `.env.example`'s key set and `EnvKeys()`; the tracked balance values are identical across differing environments. Adds `github.com/joho/godotenv` as a **test-only** requirement to parse `.env.example`. | `.env.example`, `internal/config/disjoint_test.go`, `go.mod`, `go.sum` | 2, 5 |
+| 5 | `Load`: `Config`, `Secret`, and the composition of the environment, the world probe and the balance load into one joined error. **Rewrites the body of subtask 1's provisional package comment in `doc.go`** to AC13's wording (reload policy + each source's exclusive domain) — an edit to the existing comment, never a second one elsewhere in the package (D7). | `internal/config/doc.go`, `internal/config/config.go`, `internal/config/config_test.go` | 1, 3, 4 |
+| 6 | `.env.example` — a placeholder for every required variable, opened by the header comment D13(b) specifies — and the disjointness tests: the recording-`Lookup` read set equals `.env.example`'s key set and `EnvKeys()`, failing by name in both directions; the tracked balance values are identical across differing environments. Adds `github.com/joho/godotenv` as a **test-only** requirement to parse `.env.example`. | `.env.example`, `internal/config/disjoint_test.go`, `go.mod`, `go.sum` | 2, 5 |
 | 7 | `cmd/bot` wired to load and validate before any other work: `main` delegates to a testable `run`, which writes the key-naming message to stderr and returns a non-zero code. | `cmd/bot/main.go`, `cmd/bot/main_test.go` | 5 |
 | 8 | CI paths-filter: add the tracked config artefacts to the `go` filter so their gates run; `actionlint` on the changed workflow before staging. | `.github/workflows/ci.yml` | 2, 4, 6 |
 | 9 | Propagation sweep and the prose sites the diff falsifies (details and their measured current wording in § Propagation targets below): the `go run ./cmd/bot` line, the "cmd/bot is still the scaffold" status and package layout, the new key decisions (parser, disjoint sources, start-up-only reload), the reload-policy clause in the balance-numbers invariant, and the plans index row. Membership decided by `AGENTS.md` § Propagation Rule step 4, not by this list. | `AGENTS.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md`, `ai-docs/domain-invariants.md`, `ai-docs/plans/INDEX.md` | 1–8 |
@@ -320,15 +438,19 @@ and `actionlint` runs on the changed workflow before `git add` (`AGENTS.md` AXIO
 Each row below is a claim that exists in the tree today and that this diff falsifies or
 under-states. The list is **illustrative of the class, not a bound on it** — the sweep
 `grep -rni` over `.claude/`, `AGENTS.md` and `ai-docs/` decides membership, and repo-root
-user-facing docs are swept too (Propagation Rule step 4).
+user-facing docs are swept too (Propagation Rule step 4). Subtask 9 confines itself to
+prose the diff **contradicts**; the per-run status entry in `ai-docs/context-status.md`
+and `ai-docs/context.md`'s status bullet are `/task` Step 9.5's to write, so subtask 9
+does not pre-empt them.
 
 | Site | Current wording | Why the diff touches it |
 |---|---|---|
-| `AGENTS.md` § Build & Test | `go run ./cmd/bot                                        # run the bot` [measured a73040b:AGENTS.md:53 · `sed -n '53p' AGENTS.md`] | The command now fails without the documented environment; the comment must say so. |
-| `ai-docs/context.md` § Status | "the ledger core — `internal/store` … and `internal/testdb`; `cmd/bot` is still the scaffold" [measured a73040b:ai-docs/context.md:43 · `sed -n '43p' ai-docs/context.md`] | `internal/config` joins the layout and `cmd/bot` stops being a pure scaffold. |
-| `ai-docs/domain-invariants.md` § 8 | "A tuning value compiled into Go source is a defect even when it carries a good name: the season's balance is expected to move without a deploy." [measured a73040b:ai-docs/domain-invariants.md:68 · `sed -n '68p' ai-docs/domain-invariants.md`] | The reload policy is now decided (start-up only, spec Key decisions). The clause is amended to name it, so a reader does not infer hot reload; the rest of § 8 is untouched and remains the reason this task exists. |
+| `AGENTS.md` § Build & Test | `go run ./cmd/bot                                        # run the bot` [measured 5285f4c:AGENTS.md:53 · `sed -n '53p' AGENTS.md`] | The command now fails without the documented environment; the comment must say so. |
+| `ai-docs/context.md` § Status | "the ledger core — `internal/store` … and `internal/testdb`; `cmd/bot` is still the scaffold" [measured 5285f4c:ai-docs/context.md:43 · `sed -n '43p' ai-docs/context.md`] | `internal/config` joins the layout and `cmd/bot` stops being a pure scaffold. |
+| `ai-docs/domain-invariants.md` § 8 | "A tuning value compiled into Go source is a defect even when it carries a good name: the season's balance is expected to move without a deploy." [measured 5285f4c:ai-docs/domain-invariants.md:68 · `sed -n '68p' ai-docs/domain-invariants.md`] | The reload policy is now decided (start-up only, spec Key decisions). The clause is amended to name it, so a reader does not infer hot reload; the rest of § 8 is untouched and remains the reason this task exists. |
 | `ai-docs/key-decisions.md` | — | New KDs: the YAML parser and its rejected alternatives (D2), disjoint-by-domain sources with no override chain and therefore no key-path merge machinery (§ Approach, D10), start-up-only reload and no embedded balance copy (D8). |
 | `ai-docs/plans/INDEX.md` | — | The row for this plan pair, per the file's own maintenance contract. |
+| `.claude/settings.json` (929b8e7) and `ai-docs/claude-tools-hierarchy.md` (db7999e) | — | **Already landed on this branch** [measured 5285f4c · `git log --oneline a73040b..HEAD -- .claude/settings.json ai-docs/claude-tools-hierarchy.md` → both commits], and members of this class rather than exceptions to it (spec Scope 11, AC17): the deny-list narrowing that makes `.env.example` authorable, plus the tool-contract propagation the Propagation Rule requires for it. Subtask 9 **verifies** they are still present and consistent with the final diff; it does not re-do them, and nothing in this task reverts them. |
 
 ---
 
@@ -339,10 +461,12 @@ artefacts its gates read — `*.go`, `go.mod`/`go.sum`, the tracked `config/**` 
 `.env.example`, and `.github/workflows/**`. **Instructions/harness** covers the
 agent-facing prose enumerated by rule (e): `*.md`, `.claude/**`, `AGENTS.md`,
 `ai-docs/**`. Subtask 9 is the only instructions/harness subtask, and it depends on all
-the others, so two groups is the minimum reachable count.
+the others, so two groups is the minimum reachable count. (The two harness commits named
+in the last § Propagation targets row are already on the branch and are therefore not
+subtasks; they need no group.)
 
 - **Entry into Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry). The handoff binds at the start of every group, the first included.
-- **Group A** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token window — subtasks 1–8 (code change-type). All same-change-type subtasks clustered into one group rather than interleaved; 8 subtasks, within the size cap of 10.
+- **Group A** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token window — subtasks 1–8 (code change-type). All same-change-type subtasks clustered into one group rather than interleaved; 8 subtasks, within the size cap of 10. Subtask 6's `.env.example` is authorable and readable here — D13(a) measured the live matcher.
 - **Handoff after Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry). Parent `/task` resumes in Group B with fresh context.
 - **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator (typically xHigh), 1M-token window — subtask 9 (instructions/harness change-type: `AGENTS.md`, `ai-docs/**`). Terminal group (1 subtask; within the `1..=10` range).
 
@@ -355,11 +479,16 @@ Two groups, within the default maximum of 4 — no user gate needed.
 - **The parser promotion perturbs `go.mod` beyond the one line expected.** `go mod tidy` prunes and adds transitive lines, so the diff is read before staging and the `tidy-check` gate re-run — `AGENTS.md` § Dependency Versions forbids hand-editing a version. `gopkg.in/yaml.v3` must remain as a test-only indirect requirement and must not be removed as "now unused" — `[derived → subtask 1's gate step: `go mod tidy` then `git diff go.mod go.sum` read before `git add`, and AC14]`.
 - **A silently defaulted balance number — the defect this layer exists to prevent — reaches production through a YAML null or a truncated float.** Both are measured library behaviours (D6), and both are closed by explicit node-tag rules rather than by trusting the binder — `[measured go.yaml.in/yaml/v3@v3.0.5 · probe of `a: ~` and `a: 3.25` → `int err=<nil> val=0` and `int err=<nil> val=3`]`.
 - **A duplicated key in the balance file silently picks one value.** The node tree does not report duplicates; a map decode does, at every depth. The pre-pass uses the library's own check — `[measured go.yaml.in/yaml/v3@v3.0.5 · probe of a nested duplicate → into `yaml.Node` `err=<nil>`; into `map[string]any` `err=… mapping key "b" already defined at line 2`]`.
-- **The lint gate rejects the natural spelling of the file reads.** `gosec` G304 fires on a variable path and `errcheck` on `defer f.Close()`; both were run against this repo's config, and the design fixes the spelling that passes — `[measured a73040b:.golangci.yml · scratch package through `golangci-lint run --config /home/syt/lab-game/.golangci.yml ./...` → `G304: Potential file inclusion via variable (gosec)` and `Error return value of 'f.Close' is not checked (errcheck)`; the annotated form clears both]`.
+- **The "file is empty" case is tested with the wrong predicate.** An empty input and `{}` differ at the document node and agree only at the mapping node, so `len(doc.Content) == 0` passes for one and fails for the other; a walk normalised at the document node would accept `{}` as a populated file and never report AC6's missing paths — `[measured go.yaml.in/yaml/v3@v3.0.5 · probe → `empty: docKind=0 len(doc.Content)=0`; `braces: docKind=1 len(doc.Content)=1 child.Tag="!!map" len(child.Content)=0`]`. Closed by D6's normalise-to-the-root-mapping rule and by testing both inputs (§ Test Design, subtask 1).
+- **The lint gate rejects the natural spelling of the file reads.** `gosec` G304 fires on a variable path and `errcheck` on `defer f.Close()`; both were run against this repo's config, and the design fixes the spelling that passes — `[measured 5285f4c:.golangci.yml · scratch package through `golangci-lint run --config /home/syt/lab-game/.golangci.yml ./...` → `G304: Potential file inclusion via variable (gosec)` and `Error return value of 'f.Close' is not checked (errcheck)`; the annotated form → `0 issues.`]`.
+- **A per-subtask commit fails its own lint gate for a reason unrelated to its content.** `revive`'s `package-comments` fires on a package with no package comment, and `code-writer` Mode A gates and commits per subtask, so deferring the package comment to the last Go subtask would red-gate every earlier one — `[measured 5285f4c:.golangci.yml:45-48 · scratch package with a documented exported function and no package comment through the repo config → `package-comments: should have a package comment (revive)`]`. Closed by D7: subtask 1 ships `doc.go`, subtask 5 rewrites its body.
+- **A second package comment ships unnoticed.** Nothing gates it — two package comments pass `golangci-lint run` and `go vet` and merely concatenate in the rendered docs — so DOC-2's "exactly one" is honour-system on this diff — `[measured 5285f4c:.golangci.yml · scratch package with the comment on both `doc.go` and `dup.go` → `0 issues.`, `go vet` silent, `go doc` printing both paragraphs]`. Closed by making subtask 5 an **edit** to `doc.go` rather than an addition to `config.go`.
+- **A verification command for `.env.example` is refused rather than answered.** The deny rules reach `Bash`, and a refusal does not look like a failed criterion; the refusal is not predictable from the substring, so the rule is one path per command, never a convenience one-liner naming both — `[measured 5285f4c · `ls -la .env .env.example` → `Permission to use Bash with command … has been denied.`; `ls -la .env.example` → ordinary `ls`, exit 2]`. Closed by D13(c) and by § Test Design → Gate-level checks.
+- **A contributor adds a non-loader variable to `.env.example` and breaks the suite with no obvious cause.** The AC8+AC16 set equality is deliberate (owner, round 4) and neither AC widens; the trap is mitigated, not removed, by the file's header comment and by a two-direction failure message naming the offending keys — `[derived → subtask 6's `.env.example` header comment and its disjointness test]`.
 - **A test that reads the tracked config files resolves them relative to the package directory, not the repo root.** `.env.example` documents repo-root-relative paths, so any test driven by it must rewrite the path values through a repo-root prefix or it fails on a correct tree — `[derived → subtask 6's example-environment test and its repo-root helper]`.
-- **A change to `config/balance.yaml`, `config/world/**` or `.env.example` alone skips the job that validates it**, because the CI `go` filter does not currently match them — `[measured a73040b:.github/workflows/ci.yml:37-52 · `sed -n '37,52p' .github/workflows/ci.yml` → the `go:` filter lists `**/*.go`, `**/*.sql`, `go.mod`, `go.sum`, `.golangci.yml`, `Makefile`, `.github/workflows/**` and nothing under `config/` or `.env.example`]`. Closed by subtask 8.
+- **A change to `config/balance.yaml`, `config/world/**` or `.env.example` alone skips the job that validates it**, because the CI `go` filter does not currently match them — `[measured 5285f4c:.github/workflows/ci.yml:37-52 · `sed -n '30,55p' .github/workflows/ci.yml` → the `go:` filter lists `**/*.go`, `**/*.sql`, `go.mod`, `go.sum`, `.golangci.yml`, `Makefile`, `.github/workflows/**` and nothing under `config/` or `.env.example`]`. Closed by subtask 8.
 - **The "unreadable path" half of AC15 is not testable in a uid-independent way.** A `chmod 0` fixture is defeated when the suite runs as root, which would make the case pass vacuously rather than fail loudly. The negative cases are therefore a non-existent path and a path whose parent is a regular file — both deterministic for any uid — and the chmod case is deliberately not written; `AGENTS.md` § Go Test Conventions treats a vacuous pass as worse than an absent test — `[derived → subtask 4's world-path test table]`.
-- **The panic invariant.** Nothing in this design panics: the loader returns errors and `main` exits non-zero, which the index explicitly excludes from needing a row. No row is added — `[measured a73040b:ai-docs/panic-index.md · `grep -n '^| ' ai-docs/panic-index.md` → header plus `| — | — | — |`, i.e. an empty table]`.
+- **The panic invariant.** Nothing in this design panics: the loader returns errors and `main` exits non-zero, which the index explicitly excludes from needing a row. No row is added — `[measured 5285f4c:ai-docs/panic-index.md · `grep -n '^| ' ai-docs/panic-index.md` → header plus `| — | — | — |`, i.e. an empty table]`.
 - **No balance is moved and no schema is migrated by this task**, so the ledger and forward-migration rules impose no obligation here: the package writes nothing to Postgres and declares no persisted enum — `[derived → the file list in § Decomposition, which contains no `internal/store/migrations/**` entry, and AC14]`.
 
 ---
@@ -385,9 +514,12 @@ database and without network access (AC12); no test in this package imports
   the schema does not define, at top level and nested → unknown; a scalar where the
   schema expects an interior mapping → invalid; an alias at a schema path → invalid; a
   merge key → unknown; a duplicated key → the parser's own duplicate error; a
-  non-mapping document root → invalid; an empty document and `{}` → **every** schema
-  path reported missing, which is AC6's success condition; a syntactically invalid
-  document → a parse error naming the file.
+  non-mapping document root → invalid; a syntactically invalid document → a parse error
+  naming the file.
+- **AC6's own case, written as three distinct inputs, not one:** the empty string, a
+  whitespace-only document, and `{}` each report **every** schema path as missing. The
+  three are separate rows because they are not the same node shape (D6) — a walk that
+  normalises at the document node passes the first two and silently accepts the third.
 - **Happy path:** the rendered baseline loads and every field of the returned `Balance`
   equals the value written — asserted exactly, not "roughly".
 - `[derived → AC3, AC4, AC5, AC6, AC12]`
@@ -402,6 +534,9 @@ database and without network access (AC12); no test in this package imports
   the agreement proof and the test asserts it as such rather than re-deriving the key set.
 - **Why it matters:** this is the test that stops a later mechanic from adding a key to
   the file without adding it to the schema, or the reverse.
+- **Not tested, deliberately:** the curve comments D9 adds. They are documentation for
+  #46 and the generation/door work; no code reads them, so asserting on their text would
+  bind a formula this task explicitly does not decide.
 - `[derived → AC7]`
 
 ### Subtask 3 — the environment layer (`internal/config/env_test.go`)
@@ -441,6 +576,11 @@ database and without network access (AC12); no test in this package imports
   environment with both a bad world path and a bad balance file → the joined error names
   both; the `Secret` fields render as the redaction marker under `%v`, `%s` and `%#v`,
   and `Reveal` returns the underlying value.
+- **Package-comment obligation (AC13):** verified at review and by the lint gate, not by
+  a Go test — `revive` proves a package comment exists, and AC13's *content* (reload
+  policy, each source's exclusive domain) is read off `doc.go`. The one thing a test
+  cannot catch is a **second** package comment elsewhere in the package (D7), so the
+  reviewer checks that `doc.go` is the only file whose first line is a package comment.
 - `[derived → AC1, AC13, AC12]`
 
 ### Subtask 6 — disjointness (`internal/config/disjoint_test.go`)
@@ -454,10 +594,17 @@ database and without network access (AC12); no test in this package imports
   rewritten through the repo-root helper, succeeds (AC7's second sentence);
   loading the tracked balance file under differing environments — varying token, DSN, base
   URL and chat ids — yields `Balance` values that compare equal (AC16's second clause).
+- **The set-equality failure message is part of the test's job, not a nicety.** It reports
+  the two differences separately and by key name — present in `.env.example` yet never
+  consulted, versus consulted yet absent from `.env.example` — and points at the file's
+  header comment. Rationale in D13(b): the first shape is exactly what a contributor
+  documenting `LAB_GAME_TEST_DSN` in the wrong file will hit, and an unexplained red test
+  there is the trap this design is asked to make visible.
 - **Why `godotenv` rather than a hand-split:** `.env` quoting, comments and `export`
   prefixes are exactly where a naive splitter goes wrong, and a wrong parse makes this
-  test vacuous. It is maintained and requires nothing itself
-  [measured github.com/joho/godotenv@v1.5.1 · `gh api repos/joho/godotenv --jq '{archived,pushed_at}'` → `{"archived":false,"pushed_at":"2026-08-04T09:43:36Z"}`; `cat $(go env GOMODCACHE)/github.com/joho/godotenv@v1.5.1/go.mod` → `module github.com/joho/godotenv` and `go 1.12` only; `go doc github.com/joho/godotenv` → `func Read(filenames ...string) (envMap map[string]string, err error)`]. It is imported **only** from `_test.go`, so the production binary never links it — the same posture `internal/testdb` already holds for testcontainers (KD-20). This does not reopen the spec's "the Go process does not parse `.env`" decision: the **loader** still reads the process environment only.
+  test vacuous. It is maintained, its newest stable release is `v1.5.1`, and it requires
+  nothing itself
+  [measured github.com/joho/godotenv@v1.5.1 · `gh api repos/joho/godotenv --jq '{archived,pushed_at}'` → `{"archived":false,"pushed_at":"2026-08-04T09:43:36Z"}`; `go list -m -versions github.com/joho/godotenv` → `… v1.5.0 v1.5.1 v1.6.0-pre.1 …` (the `v1.6.0-pre.*` tags are prereleases); `cat $(go env GOMODCACHE)/github.com/joho/godotenv@v1.5.1/go.mod` → `module github.com/joho/godotenv` and `go 1.12` only; `go doc github.com/joho/godotenv` → `func Read(filenames ...string) (envMap map[string]string, err error)`]. It is imported **only** from `_test.go`, so the production binary never links it — the same posture `internal/testdb` already holds for testcontainers (KD-20). This does not reopen the spec's "the Go process does not parse `.env`" decision: the **loader** still reads the process environment only.
 - `[derived → AC7, AC8, AC16, AC12]`
 
 ### Subtask 7 — `cmd/bot` (`cmd/bot/main_test.go`)
@@ -472,15 +619,20 @@ database and without network access (AC12); no test in this package imports
 
 ### Gate-level checks that are not Go tests
 
+**One path per command** — D13(c): a command naming both `.env` and `.env.example` is
+refused by the permission layer, and the refusal does not look like a failed criterion.
+
 - `make verify` green on the resulting tree (AC14); `golangci-lint run` in particular
-  confirms the D7 spellings, since the G304/`errcheck` findings above were measured
-  against a scratch package rather than the real one.
+  confirms the D7 spellings, since the G304 / `errcheck` / `package-comments` findings
+  above were measured against scratch packages rather than the real one.
 - `actionlint .github/workflows/ci.yml` before staging subtask 8 (`AGENTS.md` AXIOM).
 - No file in the change carries a real bot token, DSN, `api_id` or `api_hash` (AC8) —
   a review-level check over the diff.
-- `git check-ignore -q .env.example` exits non-zero while `.env` exits zero, so the new
-  file is committable and the secret file stays ignored
-  [measured a73040b:.gitignore:8-10 · `git check-ignore -q .env.example; echo $?` → `1`, against `git check-ignore -q .env; echo $?` → `0`].
+- `git check-ignore -q .env.example; echo $?` → non-zero, so the new file is committable
+  under `.gitignore`'s explicit negation
+  [measured 5285f4c:.gitignore:8-10 · `grep -n "" .gitignore` → `8:.env` / `9:.env.*` / `10:!.env.example`; `git check-ignore -q .env.example; echo $?` → `1`].
+- The secret file stays ignored — checked as its **own** command, never appended to the
+  one above [measured 5285f4c:.gitignore:8 · `git check-ignore -q .env; echo $?` → `0`].
 
 ---
 
@@ -489,6 +641,16 @@ database and without network access (AC12); no test in this package imports
 - **Per-key admissible ranges** stay open, as the spec states: this task validates
   presence, shape and the design-stated single-key invariants; real bounds — and the
   cross-key relations D9 deliberately leaves out — arrive with the real numbers in #46.
+- **The two curve formulas.** `docs/DESIGN.md` fixes neither the door-price combination
+  nor the shape of `budget(dist)` beyond "rises with distance" and "linear or slightly
+  slower, times `k(level)`". D9 ships the key triples plus an unconfirmed comment naming
+  the combination they imply; **#46 confirms or replaces it**, and the generation / door
+  work must read that comment rather than re-deriving a formula from the key names. If
+  the owner would rather the combination stay wholly unwritten, deleting the comment
+  lines is a one-line-per-curve change with no code impact.
+- **The shape of `raid.afk.cruelty`**, not only its number — DESIGN fixes neither. The
+  bounded decimal in D9 is a loadable placeholder, and the raid-FSM work may replace the
+  row's type and predicate outright.
 - **Whether `Secret` earns its ergonomic cost.** It makes accidental formatting of the
   token and DSN structurally unlikely, at the price of a conversion at every future call
   site. Cheap to revert to plain `string` while `internal/config` has no callers; flagged
