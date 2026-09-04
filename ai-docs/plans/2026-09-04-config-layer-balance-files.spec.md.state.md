@@ -59,12 +59,27 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
-agent_id: null
+round: 2
+agent_id: a1ec125d6a209b32b
 prior_qa:
   - round: 0
     question: "File format for the balance set (TOML / YAML / JSON)? — open question carried in the issue body"
     answer: |
       YAML. User instruction at /task entry, verbatim: "формат balance-set yaml".
       Supplied before round 1; not produced by a spec-writer round.
+  - round: 1
+    question: "The balance set: one tracked YAML file, or a directory of per-area files the loader merges? This also fixes how a new mechanic's constants get added."
+    answer: |
+      One file — "A single tracked balance YAML. Simplest loader, one place to look;
+      every mechanic edits the same file, so concurrent branches collide there."
+  - round: 1
+    question: "Precedence between the three sources: may an environment variable change a value that lives in the balance or world files?"
+    answer: |
+      Disjoint — "Environment owns secrets, runtime settings and the file paths, and can
+      never change a game constant. A balance change is always a tracked file edit plus a restart."
+  - round: 1
+    question: "The world/biome file set, given #28 owns its schema and content: how much does this task load?"
+    answer: |
+      Paths only — "The loader resolves and validates where the world set lives and how it
+      layers with the other two sources. No world decode at all; #28 adds the typed schema."
 ```
