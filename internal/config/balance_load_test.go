@@ -196,17 +196,17 @@ func TestLoadBalance_NullValue(t *testing.T) {
 func TestLoadBalance_NullValue_ZeroAdmittingKeys(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name    string
-		old     string
-		want    string
-		wantKey string
+		name        string
+		old         string
+		replacement string
+		wantKey     string
 	}{
 		{"duration_non_negative", "    respawn_debuff: 1m\n", "    respawn_debuff: null\n", "raid.death.respawn_debuff"},
 		{"decimal_unit_fraction", "    cruelty: 0.5\n", "    cruelty: null\n", "raid.afk.cruelty"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			yaml := strings.Replace(validBalanceYAML, tc.old, tc.want, 1)
+			yaml := strings.Replace(validBalanceYAML, tc.old, tc.replacement, 1)
 			if yaml == validBalanceYAML {
 				t.Fatalf("fixture line %q not found — the test would assert nothing", tc.old)
 			}
