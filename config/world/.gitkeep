@@ -1,0 +1,5 @@
+This directory is the default LAB_GAME_WORLD_PATH target (issue #18, design
+D10). It is currently empty on purpose: internal/config only checks that
+the path opens and closes cleanly — nothing inside it is read. Issue #28
+fills this directory (or repoints the variable at a single file; the loader
+accepts either) with the actual world-set content.

@@ -50,7 +50,7 @@ golangci-lint fmt -d                                    # format check — non-z
 go mod tidy && git diff --exit-code go.mod go.sum       # module hygiene gate
 actionlint .github/workflows/<file>.yml                 # required gate for any new/modified workflow file
 shellcheck <script>.sh                                  # required gate for any new/modified shell script
-go run ./cmd/bot                                        # run the bot
+go run ./cmd/bot                                        # run the bot (exits non-zero unless .env.example's variables are exported)
 ```
 
 > **AXIOM — `actionlint` MUST pass before `git add` on any modified `.github/workflows/*.yml`; `shellcheck` MUST pass before `git add` on any modified `*.sh`.**
@@ -129,7 +129,18 @@ Three more, each with its mechanics on that page: **never write to a chat that i
 >
 > If your draft contains substrings like *"would add"*, *"introduce X as a dep"*, *"pull in X"*, *"avoid X as a dep"*, *"X is not currently a dependency"*, *"supports `--flag`"*, *"takes `--flag`"*, *"is committed"*, *"is tracked"*, *"is gitignored"*, *"there are no"*, *"still affects"*, *"is unfixed"* — **STOP**, run the relevant check, and either rewrite with the verified fact or drop the claim.
 
-When changing dependencies: **never hand-edit a version in `go.mod`** — `go get <module>@<version>`, then `go mod tidy`, then `go build ./...`, then read `git diff go.mod go.sum` **before staging** (tidy also prunes and adds transitive lines). Prefer the standard library; a new dependency needs a stated reason in the design document (`docs/DESIGN.md` §11 already fixes the load-bearing ones).
+> **AXIOM — Established Go packages and the standard library first. Hand-rolling is a decision that must be ARGUED, and two arguments are refused outright.**
+>
+> Fewer dependencies is better, and that cuts against writing your own just as hard: code you hand-rolled is a dependency this project owns, tests and carries forever, while a settled ecosystem package is one the ecosystem already tests. **"Prefer the standard library" means stdlib over a third-party package — never *stdlib plus your own implementation* over an established one.** Where the stdlib does not cover the requirement, the next step is a settled package, not a bespoke one.
+>
+> | Argument offered for hand-rolling | Standing |
+> |---|---|
+> | *"It's only 10–20 lines — cheaper than writing the import"* | **REFUSED.** Line count is not the cost. Ownership is: the edge cases not hit yet, plus every test and review round each of them buys. |
+> | *"Better to write our own than to pull in an established dependency"* | **REFUSED.** Dependency aversion is not a reason by itself. A maintained, widely-used package is the default, not the concession. |
+> | The package is unmaintained or abandoned, or its API cannot express the requirement | **A real argument** — make it in the design document, naming the package and the specific mismatch. |
+> | A rejected-alternatives comparison: what was evaluated, why each lost, what the escape hatch is | **The standard an argued wheel meets.** Model: **KD-4**, the self-written scheduler — `gocron` rejected as in-memory, Temporal as overkill, River named as the escape hatch. That decision stands. |
+
+When changing dependencies: **never hand-edit a version in `go.mod`** — `go get <module>@<version>`, then `go mod tidy`, then `go build ./...`, then read `git diff go.mod go.sum` **before staging** (tidy also prunes and adds transitive lines). A new dependency needs a stated reason in the design document, and so does hand-rolling in place of one — the AXIOM above governs both directions (`docs/DESIGN.md` §11 already fixes the load-bearing ones).
 
 ## Workflow
 

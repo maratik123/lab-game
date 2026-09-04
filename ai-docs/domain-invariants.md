@@ -65,4 +65,4 @@ Generation, combat and trail replay are pure functions of `(seed, input)`: no wa
 
 ## 8. Balance numbers live in configuration
 
-Stamina cap, step cost, backpack/respawn/standing timers, shop rates, the door price curve, `budget(dist)`, combat dice and scales — **all of them are configuration** (§16.5). A tuning value compiled into Go source is a defect even when it carries a good name: the season's balance is expected to move without a deploy.
+Stamina cap, step cost, backpack/respawn/standing timers, shop rates, the door price curve, `budget(dist)`, combat dice and scales — **all of them are configuration** (§16.5). A tuning value compiled into Go source is a defect even when it carries a good name: the season's balance is expected to move without a deploy. **The reload policy is start-up only** — `internal/config` reads and validates the tracked balance YAML once, during start-up, and nothing re-reads it while the process runs, so an edited number takes effect no earlier than the next restart. Without a *deploy*, yes; without a *restart*, no — hot reload is not designed ([`key-decisions.md`](key-decisions.md) KD-24).

@@ -94,7 +94,7 @@ All four regression suites must pass `shellcheck -s bash` and run green before `
 
 ## Permissions
 
-`allow` covers the project's own toolchain (`go`, `gofmt`, `golangci-lint`, `make`, `git`, `gh`, `ast-index`, `psql`, `actionlint`, `shellcheck`) plus read-only text tools. `deny` covers `.idea/**`, `**/.env*` and `**/secrets*` — the bot token and the database DSN must be unreachable to both `Read` and `Edit`.
+`allow` covers the project's own toolchain (`go`, `gofmt`, `golangci-lint`, `make`, `git`, `gh`, `ast-index`, `psql`, `actionlint`, `shellcheck`) plus read-only text tools. `deny` covers `.idea/**`, `**/secrets*` and `**/.secrets*`, and the environment files that carry a real secret — `**/.env` plus one entry per named variant (`.env.local`, `.env.development`, `.env.test`, `.env.staging`, `.env.production`, `.env.secret`, `.env.secrets`). The bot token and the database DSN must be unreachable to both `Read` and `Edit`, and `Edit(...)` also governs `Write`. **`.env.example` is deliberately outside the deny**, because `.gitignore` negates it and the configuration layer authors it; the rules enumerate the real files rather than using a `**/.env.*` catch-all because the matcher takes gitignore syntax with no in-pattern negation, and `deny` is final — no `allow` entry can carve an exception out of a broad deny. A new environment file whose name is not on that list is therefore **not** denied until it is added.
 
 ## CI — `.github/workflows/ci.yml`
 

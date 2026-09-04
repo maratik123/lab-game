@@ -43,6 +43,8 @@ jobs:
               - '.golangci.yml'
               - 'Makefile'
               - '.github/workflows/**'
+              - 'config/**'
+              - '.env.example'
             harness:
               - '.claude/**'
               - 'ai-docs/**'

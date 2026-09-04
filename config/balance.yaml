@@ -1,0 +1,75 @@
+# lab-game balance constants (issue #18, docs/DESIGN.md §16.5).
+#
+# Every key below is required by internal/config's schema; adding a key to
+# only one side (this file or the schema) fails start-up. Values here are
+# placeholders — loadable and shaped correctly, but not authoritative — and
+# are replaced by issue #46 with real balance numbers. Where a design
+# section is cited, the number matches that section's own reference value;
+# every other value is an arbitrary, obviously-placeholder number.
+
+world:
+  chunk:
+    # docs/DESIGN.md §2.2.2 (ориентир 16x16).
+    cols: 16
+    rows: 16
+
+raid:
+  stamina:
+    cap: 100
+    step_cost: 1
+
+  standing:
+    # docs/DESIGN.md §5 (> ~5 минут), §3.5.
+    calm_to_noises: 5m
+    noises_to_wave: 2m
+    wave_to_wave: 1m
+
+  death:
+    backpack_ttl: 30m
+    own_chat_head_start: 2m
+    respawn_debuff: 1m
+
+  afk:
+    # docs/DESIGN.md §3.5: the cruelty dial's *shape* is a placeholder too,
+    # not only its number (design D9) — a bounded [0,1] decimal is this
+    # task's guess at a dial, not a decision the raid-FSM work inherits.
+    cruelty: 0.5
+
+  door:
+    # price(dist) = price_base + price_per_distance * dist^price_distance_exponent
+    # — not yet confirmed. docs/DESIGN.md §2.3 states only that the price
+    # rises with distance; #46 confirms this combination or replaces it.
+    price_base: 10
+    price_per_distance: 2
+    price_distance_exponent: 1
+    # docs/DESIGN.md §2.2.3 (TTL ~30 мин (конфиг)).
+    boss_reward_ttl: 30m
+
+  monster_budget:
+    # budget(dist), multiplied at use by k(level) — docs/DESIGN.md §4.6.
+    base: 5
+    per_distance: 1
+    distance_exponent: 1
+    # docs/DESIGN.md §4.6 (≈ +3% за уровень).
+    scaling_per_level: 0.03
+
+combat:
+  # docs/DESIGN.md §4.2 (d20, 10 + DEF).
+  hit_die_sides: 20
+  base_defence: 10
+  critical_natural: 20
+  fumble_natural: 1
+  # docs/DESIGN.md §4.2 (≈2d6).
+  weapon_dice_count: 2
+  weapon_die_sides: 6
+  # docs/DESIGN.md §4.4 (SPD + d4).
+  initiative_die_sides: 4
+  max_rounds: 20
+  # docs/DESIGN.md §4.3 (+50% / -50%).
+  vulnerability_multiplier: 1.5
+  resist_multiplier: 0.5
+
+economy:
+  shop:
+    sell_rate: 0.25
+    buy_markup: 0.5
