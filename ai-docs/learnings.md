@@ -169,3 +169,9 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **at:** 5c94c78
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-04 — process — writing a claim about my own work into a durable file before the work that would support it
+**What happened:** Two instances in one `/task` run, both caught by self-review rather than by me. (1) I wrote into the progress file's Decisions log that a class sweep was "inspectable rather than a claim" — while the per-test enumeration existed only in a delegate's return message and appeared nowhere in the branch, so the sentence asserting inspectability was itself the unsupported claim. (2) I computed `**last_passed_gate:**`'s commit SHA with `git rev-parse --short HEAD` *before* making the commit that contained the gated tree, so every round recorded the parent's SHA; one earlier stamp also narrowed a register row's fix window to a commit later than the one the fix landed in, which is the unsafe direction for anyone re-checking it.
+**Rule:** AGENTS.md § Communication already says a recorded result is a claim and must be re-derived after the LAST edit of the turn — the failure mode is not forgetting the rule but not noticing that a sentence *about* the work (its completeness, its inspectability) is as much a measurement as a number is. Before writing any such sentence, ask what a reader would run to check it and whether that command would find anything in the tree; if the evidence lives only in a subagent's return, either copy it into the artefact or do not make the claim. For a SHA that names the tree a gate ran against, record it after the commit exists, not before.
+**Kind:** correction
+**Escalated?** no
