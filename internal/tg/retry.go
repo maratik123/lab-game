@@ -2,6 +2,7 @@ package tg
 
 import (
 	"errors"
+	"fmt"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -118,7 +119,15 @@ func sanitizeErr(err error, replacer *strings.Replacer) error {
 	if errors.As(err, &uerr) {
 		cause = uerr.Unwrap()
 		if cause == nil {
-			cause = errors.New(replacer.Replace(uerr.Err.Error()))
+			// *url.Error permits a nil Err (e.g. constructed directly
+			// rather than by net/http), so uerr.Unwrap() returning nil
+			// does not mean "nothing to report" — it means the wrapped
+			// cause itself is absent. Rendering uerr.Error() here would
+			// reintroduce the request URL (and therefore the bot token)
+			// that D8 requires dropped, and uerr.Err is nil so it cannot
+			// be rendered anyway. Name only what IS known and safe: the
+			// operation that failed.
+			cause = fmt.Errorf("%s: no underlying error", uerr.Op)
 		}
 	}
 	return &sanitizedError{rendered: replacer.Replace(cause.Error()), cause: cause}

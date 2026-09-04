@@ -606,18 +606,40 @@ func TestSanitizeErr_NilErrorReturnsNil(t *testing.T) {
 	}
 }
 
-// retry.go:120-122's "cause == nil" fallback (uerr.Unwrap() returning nil
-// because uerr.Err is nil) is DELIBERATELY left at zero coverage here — a
-// new finding from this coverage sweep, not a test gap: the fallback
-// itself calls uerr.Err.Error() on a nil error interface, which panics
+// TestSanitizeErr_URLErrorWithNilUnderlyingErrDoesNotPanic is the fix for
+// the panic this coverage sweep surfaced: retry.go's "cause == nil"
+// fallback (uerr.Unwrap() returning nil because uerr.Err is nil) used to
+// call uerr.Err.Error() on that same nil error interface, which panics
 // (nil pointer dereference) rather than falling back to any message.
-// Verified with a scratch test constructing &url.Error{Err: nil} and
-// calling sanitizeErr on it directly: `panic: runtime error: invalid
-// memory address or nil pointer dereference` at retry.go:121, deleted
-// after confirming. Writing a real test for this branch would either (a)
-// crash the suite, defeating its own purpose, or (b) require fixing the
-// bug first, which is out of Mode B's named-target scope (the three
-// findings in the spawn prompt) — reported back rather than fixed here.
+// Confirmed against the pre-fix code with a scratch test constructing
+// &url.Error{Err: nil} and calling sanitizeErr on it directly: `panic:
+// runtime error: invalid memory address or nil pointer dereference` at
+// retry.go:121 (goroutine trace through sanitizeErr), deleted after
+// confirming and before writing this permanent test. This test asserts
+// the fixed behaviour: no panic, and the rendered/stored cause names the
+// operation (uerr.Op) without reintroducing the URL — D8 requires the URL
+// dropped, not merely token-scrubbed, and there is no real underlying
+// cause to preserve when uerr.Err is nil.
+func TestSanitizeErr_URLErrorWithNilUnderlyingErrDoesNotPanic(t *testing.T) {
+	t.Parallel()
+	replacer := strings.NewReplacer(tgtest.Token, "[REDACTED_TOKEN]")
+	uerr := &url.Error{Op: "Post", URL: "http://bot-api.invalid/bot" + tgtest.Token + "/getMe", Err: nil}
+
+	got := sanitizeErr(uerr, replacer)
+	if got == nil {
+		t.Fatal("sanitizeErr: got nil")
+	}
+	rendered := got.Error()
+	if strings.Contains(rendered, uerr.URL) {
+		t.Errorf("sanitizeErr: rendered %q still contains the URL %q", rendered, uerr.URL)
+	}
+	if strings.Contains(rendered, tgtest.Token) {
+		t.Errorf("sanitizeErr: rendered %q still contains the token", rendered)
+	}
+	if !strings.Contains(rendered, uerr.Op) {
+		t.Errorf("sanitizeErr: rendered %q, want it to name the operation %q", rendered, uerr.Op)
+	}
+}
 
 // TestSanitizeErr_UnwrapsURLErrorAndDropsURL asserts D8's primary
 // token-leak defence directly (finding 6 — deleting the errors.As
