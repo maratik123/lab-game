@@ -61,7 +61,25 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
-agent_id: null
-prior_qa: []
+round: 4
+agent_id: afe05716d8ee3bcfd
+prior_qa:
+  - round: 1
+    question: "A Bot API call carries no idempotency key. When a request went out and no response came back, may the transport re-send it?"
+    answer: "Never on doubt"
+  - round: 1
+    question: "The per-chat limiter (~20/min into one chat): what does one bucket cover?"
+    answer: "Chat and class"
+  - round: 1
+    question: "Where do the retry and rate-limit values live?"
+    answer: "env-keys with backed default values"
+  - round: 2
+    question: "Per-chat buckets are keyed on (chat id, method class). Which classes exist, and what does a class with no Telegram-published number get?"
+    answer: "investigate what says telegram bot api (and other sources) if we will be using our bot api instance (not shared cooperative instances)"
+  - round: 3
+    question: "Retry eligibility is settled (never on doubt) and the growth is exponential with jitter. What bounds the retrying?"
+    answer: "Attempt cap"
+  - round: 3
+    question: "Which algorithm do the limiters use? Your framing was leaky bucket or something different."
+    answer: "leaky bucket: https://www.wikiwand.com/en/Leaky_bucket"
 ```
