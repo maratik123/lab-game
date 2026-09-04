@@ -49,7 +49,12 @@ separation between secrets, runtime settings, and game constants.
    unexercised. The binary is still a scaffold otherwise; no Telegram client, no DB
    connection, no update loop.
 10. **Reload policy stated explicitly** — see *Key decisions*.
-11. **Propagation** — every site whose claim this change falsifies is updated in the
+11. **The permission narrowing that makes `.env.example` authorable at all** — already
+    committed on this branch and therefore shipping in this task's PR: the
+    `.claude/settings.json` deny list stopped matching `.env.example` (929b8e7), with
+    the tool-contract propagation to `ai-docs/claude-tools-hierarchy.md` (db7999e).
+    Rationale and the verified rule state: *Technical constraints*.
+12. **Propagation** — every site whose claim this change falsifies is updated in the
     same PR (membership criterion: `AGENTS.md` § Propagation Rule step 4). Known
     members illustrating the class, not bounding it: `AGENTS.md` § Build & Test
     (`go run ./cmd/bot` now requires environment), `ai-docs/key-decisions.md`,
@@ -116,6 +121,7 @@ separation between secrets, runtime settings, and game constants.
 | `ALLOWED_CHAT_IDS` | **Required and non-empty in every environment**, including production. `docs/DESIGN.md` §12.5 makes it a code-level safety net that is *always on in testing*; the MVP ships to one friendly chat (§14), so requiring it everywhere costs nothing and removes the "unset means write anywhere" failure mode. Unset or empty is a start-up error naming the variable. |
 | Unknown key in the balance file | **An error.** Strict decoding: a typo in a balance key must not silently leave the intended key at its (nonexistent) default. The rule has no world-file counterpart in this task, because the world set is not decoded here. |
 | Bot API base URL representation | **One value, one axis** — an absolute `http`/`https` URL. The three design values are three values of that one variable; the evals value is an arbitrary fake-server URL, so an enum cannot express it. Rejecting a non-absolute or non-http(s) value is part of validation. |
+| What `.env.example` lists | **Only the loader's own variables** (owner, round 4). Test-suite variables such as `LAB_GAME_TEST_DSN` are documented elsewhere and do not appear there — the `LAB_GAME_` prefix precedent in Scope 2 cites that variable for its *naming*, not for inclusion. This is what keeps AC8 and AC16 a set equality: every variable the loader requires is listed, and the loader consults nothing outside the list. Neither AC widens. |
 | Placeholder semantics | A placeholder is a **valid value that loads**, not a sentinel that fails. The tracked balance file must load clean — that is what "the repo runs without a real secret" means. Placeholders carry no authority: #46 replaces them. |
 | Where balance placeholders come from | The axes named by the design, with the design's own reference values where it states one: chunk size — DESIGN's word is *ориентир* (reference), 16×16 hexes [source: 1646096:docs/DESIGN.md:69 · `sed -n '69p' docs/DESIGN.md`]; boss-reward door TTL — stated as approximate, ~30 minutes [source: 1646096:docs/DESIGN.md:81 · `sed -n '81p' docs/DESIGN.md`]. Axes with no design number get an obviously-placeholder value. |
 | YAML parser choice | **Left to design.** See *Technical constraints* — the choice carries a dependency obligation the design document must discharge. |
@@ -156,12 +162,29 @@ separation between secrets, runtime settings, and game constants.
   the loader returns to a deterministic path (`AGENTS.md` § Code Style).
 - **Documentation:** package comment plus a doc comment on every exported item
   (`ai-docs/doc-convention.md`).
-- **Executability of the acceptance criteria.** Every gate an AC below relies on is
-  already permitted: `Bash(go *)` and `Bash(make *)` are in `permissions.allow` in
-  `.claude/settings.json`, so `go run ./cmd/bot` and the `make` gate targets run
-  unattended. Running a *built* binary by bare path (`./bot`) is **not** granted — an
-  AC about start-up behaviour is checked through `go run` or a Go test, not by invoking
-  a compiled artefact directly. No new permission grant is needed for this task.
+- **Executability of the acceptance criteria — the command side *and* the file-tool
+  side.** The command side: `Bash(go *)` and `Bash(make *)` are in `permissions.allow`,
+  so `go run ./cmd/bot` and the `make` gate targets run unattended; running a *built*
+  binary by bare path (`./bot`) is not granted, so an AC about start-up behaviour is
+  checked through `go run` or a Go test, never by invoking a compiled artefact directly.
+  The file-tool side is the one that blocks: AC8 requires this task to **create**
+  `.env.example`, and a `deny` entry is evaluated before `allow`, is final, cannot be
+  approved in-session, takes gitignore syntax **with no in-pattern negation**, and
+  governs the `Write` tool through its `Edit(...)` entries — no separate `Write(...)`
+  rule exists. A `**/.env.*` catch-all therefore matches `.env.example` too and would
+  leave the required artefact unauthorable and unreadable. The deny list enumerates the
+  real environment files instead — `**/.env` plus `.env.local`, `.env.development`,
+  `.env.test`, `.env.staging`, `.env.production`, `.env.secret`, `.env.secrets`, each
+  for both `Read` and `Edit` — and carries no `.env.*` catch-all
+  [source: db7999e:.claude/settings.json · `jq -r '.permissions.deny[]?' .claude/settings.json`].
+  Confirmed against the live matcher rather than by reading the rules alone: a `Read` of
+  `.env.example` returns "File does not exist", i.e. it passes the permission layer.
+- **The deny rules reach `Bash` as well as the file tools.** A Bash command whose text
+  names a denied path is refused outright, while the same command naming only
+  `.env.example` runs — measured this round: `ls -la .env .env.example` was refused,
+  `ls -la .env.example` executed. Consequence for whoever verifies AC8: use a command
+  that names `.env.example` alone, and reach `.env` (if it must be reached at all)
+  through neither tool.
 
 ## Acceptance Criteria
 
@@ -183,7 +206,7 @@ separation between secrets, runtime settings, and game constants.
 | AC14 | Every gate `make verify` runs is green on the resulting tree. |
 | AC15 | The world-set path is a required environment variable resolved by the loader: a value naming a target that does not exist or is unreadable fails, naming the variable; a value naming an existing readable target succeeds. The loaded configuration exposes that path and no decoded world content, and no Go file in the change declares a type describing the world set's interior. A tracked placeholder target exists at the default path named in `.env.example`. |
 | AC16 | The sources are disjoint in fact, not only in prose: the loader consults no environment variable outside the set documented in `.env.example`, and no balance value the loader returns differs from the value in the balance file for any environment. |
-| AC17 | Propagation is complete for this change: every site whose claim the diff falsifies is updated in the same PR, membership decided by `AGENTS.md` § Propagation Rule step 4. Sites known at spec time — illustrative, not exhaustive: `AGENTS.md` § Build & Test (the `go run ./cmd/bot` line, which now requires environment), `ai-docs/key-decisions.md`, `ai-docs/context.md`, `ai-docs/plans/INDEX.md`. |
+| AC17 | Propagation is complete for this change: every site whose claim the diff falsifies is updated in the same PR, membership decided by `AGENTS.md` § Propagation Rule step 4. Sites known at spec time — illustrative, not exhaustive: `AGENTS.md` § Build & Test (the `go run ./cmd/bot` line, which now requires environment), `ai-docs/key-decisions.md`, `ai-docs/context.md`, `ai-docs/plans/INDEX.md`. Two members have already landed on the branch and are part of this class, not exceptions to it: `.claude/settings.json` (929b8e7) and `ai-docs/claude-tools-hierarchy.md` (db7999e), the sibling required by the Propagation Rule for a change to a tool contract. |
 
 ## Open questions
 
