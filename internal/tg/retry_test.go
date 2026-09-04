@@ -712,9 +712,9 @@ func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 	}
 
 	// The two rows above both hit the in-loop early-break branch
-	// (retry.go:32.21,34.9) — once d exceeds maxDelay/2 inside the loop
+	// (retry.go:33.21,35.9) — once d exceeds maxDelay/2 inside the loop
 	// it is pinned to maxDelay exactly, so the post-loop clamp
-	// (retry.go:38.18,40.3) never sees d > maxDelay on that path. New
+	// (retry.go:39.18,41.3) never sees d > maxDelay on that path. New
 	// rejects Transport.RetryMaxDelay < Transport.RetryBaseDelay
 	// (client.go:115-116), so base > maxDelay cannot occur through the
 	// public Client constructor; backoffDelay is still called directly

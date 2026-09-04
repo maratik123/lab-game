@@ -126,6 +126,23 @@ func TestLoadTransport_Malformed(t *testing.T) {
 		{"limit duration not parseable", envTGLimitMessageGlobal, "30/soon"},
 		{"limit zero duration", envTGLimitMessageGlobal, "30/0s"},
 		{"limit negative duration", envTGLimitMessageGlobal, "30/-1s"},
+
+		// Every remaining key gets its own malformed case (missing slash is
+		// enough to drive lookupRate's error branch and, via assertKeyError,
+		// confirm the *KeyError names THAT key specifically) — AC22's
+		// malformed clause must be unverified for none of the 13 keys, not
+		// just the one (envTGLimitMessageGlobal) the rows above already
+		// drive. envTGLimitMessageChatRate/ChatCap additionally exercise
+		// loadClass's second and third branches, which no case above
+		// reaches at all (self-review round 6, R6-1).
+		{"limit missing slash (message chat rate)", envTGLimitMessageChatRate, "30"},
+		{"limit missing slash (message chat cap)", envTGLimitMessageChatCap, "30"},
+		{"limit missing slash (edit global)", envTGLimitEditGlobal, "30"},
+		{"limit missing slash (edit chat rate)", envTGLimitEditChatRate, "30"},
+		{"limit missing slash (edit chat cap)", envTGLimitEditChatCap, "30"},
+		{"limit missing slash (other global)", envTGLimitOtherGlobal, "30"},
+		{"limit missing slash (other chat rate)", envTGLimitOtherChatRate, "30"},
+		{"limit missing slash (other chat cap)", envTGLimitOtherChatCap, "30"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

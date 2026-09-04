@@ -248,14 +248,18 @@ func TestDoAttempt_MalformedURLReturnsBuildRequestError(t *testing.T) {
 func TestDoAttempt_TruncatedBodyReturnsReadError(t *testing.T) {
 	t.Parallel()
 	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
+		// This handler runs on http.Server's own goroutine, not the test
+		// goroutine — testing forbids FailNow (t.Fatal/t.Fatalf) there.
+		// Report via t.Errorf and return, matching
+		// internal/tgtest/tgtest.go's CloseWithoutResponse.
 		hj, ok := w.(http.Hijacker)
 		if !ok {
-			t.Fatal("ResponseWriter does not support Hijack")
+			t.Errorf("ResponseWriter does not support Hijack")
 			return
 		}
 		conn, _, err := hj.Hijack()
 		if err != nil {
-			t.Fatalf("hijack: %v", err)
+			t.Errorf("hijack: %v", err)
 			return
 		}
 		_, _ = conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nshort"))
