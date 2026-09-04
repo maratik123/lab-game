@@ -64,8 +64,8 @@ separation between secrets, runtime settings, and game constants.
   (one file per world, a directory per world, lexicon and bestiary shapes) is #28's to
   decide; no wording here constrains that choice.
 - **Environment overrides of game constants** — excluded by the disjoint-sources
-  decision, not merely unimplemented. A balance change is a tracked file edit plus a
-  restart.
+  decision, not merely unimplemented. A balance change is an edit to the tracked
+  balance file, taking effect at the next start-up.
 - **Deploy-time configuration management** — compose files, secret stores, the second
   compose file for the testing environment (`docs/DESIGN.md` §12.5). Infrastructure pass.
 - **Consuming the configuration** — the Telegram transport, the store wiring, the raid
@@ -86,6 +86,15 @@ separation between secrets, runtime settings, and game constants.
   needed to land the layer | yes, small follow-up
 - Environment-specific overlay files (`balance.testing.yaml`) | isolation is by env per
   KD-11, and no second environment exists yet | yes, with the infrastructure pass
+- Upgrading how settings are stored so that balance can move without a deploy | seasons
+  are not MVP, and the owner deferred the storage question until they arrive (round-2
+  correction, verbatim: *«когда сезоны появятся, мы подумаем на апгрейдом хранения
+  настроек (как это делать без деплоя), сейчас это не в мвп»*). This is the disposition
+  of the closing clause of `ai-docs/domain-invariants.md` § 8 — "the season's balance is
+  expected to move without a deploy" [source: 1646096:ai-docs/domain-invariants.md:68 ·
+  `sed -n '68p' ai-docs/domain-invariants.md`]: deferred, so it binds no design decision
+  in this task. The rest of § 8 — balance numbers are configuration, never a Go literal
+  — is untouched and remains the reason this task exists | yes, with the seasons work
 - Splitting the balance file into per-area files | the owner chose one file for loader
   simplicity and one place to look; the accepted cost, in the option's own words, is
   that "every mechanic edits the same file, so concurrent branches collide there" —
@@ -100,9 +109,10 @@ separation between secrets, runtime settings, and game constants.
 | One balance file or one per area, and how a new mechanic adds constants without a standing merge conflict | **One file** (owner, round 1). A single tracked balance YAML: simplest loader, one place to look. A new mechanic adds its constants to that file. The accepted cost is branch collisions in it; recorded as a Deferred row rather than designed around now. |
 | Precedence between environment, balance file and world file set | **Disjoint by domain** (owner, round 1) — there is no override chain to resolve. The environment owns secrets, runtime settings and the file paths and can never change a game constant; each file source owns its own domain exclusively. Consequence for the design: no generic key-path override machinery, and no environment-vs-file merge step. |
 | What this task ships for the world/biome file set, given #28 owns its schema | **Paths and layering only** (owner, round 1). The loader resolves the world-set path from the environment and validates that it exists and is readable; it does not decode it and declares no world type. A tracked placeholder target ships at the default path so the load succeeds on a fresh clone — its *contents* are #28's, and this task neither reads nor constrains them. |
-| Reload policy | **Start-up only.** A balance change takes effect on process restart; no rebuild, no redeploy of code. Consequence the design must honour: the balance set is read from the filesystem at a path the operator controls — a `go:embed`-only build would make a balance change require a rebuild, contradicting `ai-docs/domain-invariants.md` § 8 ("the season's balance is expected to move without a deploy"). An embedded copy as a *fallback* is a design option only if the external path still wins. |
+| Reload policy | **Start-up only.** Configuration is read and validated once, during start-up; nothing re-reads it while the process runs, so a balance change takes effect no earlier than the next start-up. |
+| Where the balance set is read from — an operator-supplied path, a copy embedded at build time, or both | **Left to design**, exactly like the parser choice below. Nothing in the MVP constrains it: the "move balance without a deploy" question is deferred out of MVP (see *Deferred*), and no other requirement here depends on the answer. |
 | Environment-variable naming | `LAB_GAME_` prefix, matching the existing `LAB_GAME_TEST_DSN` [source: 1646096:internal/testdb/testdb.go:31 · `grep -rn LAB_GAME internal/`]. |
-| Where environment values come from | **The process environment only.** The Go process does not parse `.env`; the operator or compose exports it. `.env.example` is the tracked documentation of the required set, which — under the disjoint-sources decision — is exactly: secrets, runtime settings, and the two file paths. Keeps the loader standard-library-only on this axis. |
+| Where environment values come from | **The process environment only.** The Go process does not parse `.env`; the operator or compose exports it. `.env.example` is the tracked documentation of the required set, which — under the disjoint-sources decision — is exactly: secrets, runtime settings, and the path of each file source the design reads from disk. Keeps the loader standard-library-only on this axis. |
 | `ALLOWED_CHAT_IDS` | **Required and non-empty in every environment**, including production. `docs/DESIGN.md` §12.5 makes it a code-level safety net that is *always on in testing*; the MVP ships to one friendly chat (§14), so requiring it everywhere costs nothing and removes the "unset means write anywhere" failure mode. Unset or empty is a start-up error naming the variable. |
 | Unknown key in the balance file | **An error.** Strict decoding: a typo in a balance key must not silently leave the intended key at its (nonexistent) default. The rule has no world-file counterpart in this task, because the world set is not decoded here. |
 | Bot API base URL representation | **One value, one axis** — an absolute `http`/`https` URL. The three design values are three values of that one variable; the evals value is an arbitrary fake-server URL, so an enum cannot express it. Rejecting a non-absolute or non-http(s) value is part of validation. |
