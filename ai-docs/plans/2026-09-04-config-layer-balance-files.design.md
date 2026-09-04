@@ -3,14 +3,12 @@
 **Issue:** #18
 **Date:** 2026-09-04
 
-> **Claim tags in this document.** Repo facts are pinned to the commit they were read
-> at (`5285f4c`) — round 2 re-read every cited coordinate at that commit rather than
-> carrying round 1's `a73040b` pins forward. Facts about an **external module or the
-> standard library** have no repo path, so their pin is the **module version** (or
-> `go doc`) the probe ran against; the probe modules live outside the repo under the
-> session scratchpad. Claims about artefacts this task creates carry `[derived → …]`
-> and no locator. `docs/DESIGN.md` is cited **by section only, never by line**, per the
-> design-writer contract — those citations carry no `[measured …]` tag by design.
+> **Claim-tag conventions in this document.** A repo fact is pinned to the commit it was
+> read at. A fact about an **external module or the standard library** has no repo path,
+> so its pin is the **module version** (or `go doc`) the probe ran against; the probe
+> modules live outside the repo under the session scratchpad. A claim about an artefact
+> this task creates carries `[derived → …]` and no locator. `docs/DESIGN.md` is cited by
+> section, per the design-writer contract, so those citations carry no `[measured …]` tag.
 
 ---
 
@@ -72,7 +70,7 @@ stated-reason rule) [measured 5285f4c:AGENTS.md:132-143 · `grep -n -A60 '^## De
 
 **Rejected — `gopkg.in/yaml.v3`** (the incumbent, already resolved in this module's
 graph through a **test-only** path [measured 5285f4c:go.mod:73 · `grep -n yaml go.mod` → `gopkg.in/yaml.v3 v3.0.1 // indirect`; `go mod why -m gopkg.in/yaml.v3` → `internal/store` → `pgx/v5` → `pgx/v5.test` → `testify/assert` → `testify/assert/yaml` → `gopkg.in/yaml.v3`]). Adopting it costs no new
-module, but its upstream is **archived** [measured gopkg.in/yaml.v3@v3.0.1 · `gh api repos/go-yaml/yaml --jq '{archived,pushed_at}'` → `{"archived":true,"pushed_at":"2025-04-01T17:00:11Z"}`], it has no release past `v3.0.1` [measured · `go list -m -versions gopkg.in/yaml.v3` → `gopkg.in/yaml.v3 v3.0.0 v3.0.1`], and the maintained successor's own `go.mod` **retracts** those tags (see the `retract` line quoted above). The AXIOM's table names "the package is unmaintained or abandoned" as the argument that *counts*; taking the abandoned one while its drop-in successor is maintained runs that argument backwards. `gopkg.in/yaml.v3` **stays** in `go.mod` as a test-only indirect requirement through testify — this task does not remove it, and nobody should "tidy it away".
+module, but its upstream is **archived** [measured gopkg.in/yaml.v3@v3.0.1 · `gh api repos/go-yaml/yaml --jq '{archived,pushed_at}'` → `{"archived":true,"pushed_at":"2025-04-01T17:00:11Z"}`] and it has no release past `v3.0.1` [measured · `go list -m -versions gopkg.in/yaml.v3` → `gopkg.in/yaml.v3 v3.0.0 v3.0.1`]. Those two facts carry the decision by themselves. **The successor's `retract [v3.0.0, v3.0.1]` directive is *not* a third argument and must not be copied into `ai-docs/key-decisions.md` as one** — it retracts those version *strings under the new module path*, saying nothing about the incumbent release [measured go.yaml.in/yaml/v3@v3.0.5 · `cat $(go env GOMODCACHE)/go.yaml.in/yaml/v3@v3.0.5/go.mod` → `// these tags come from gopkg.in/yaml.v3` / `// they cannot be installed from go.yaml.in/yaml/v3 as it doesn't match` / `// so they are invalid and are retracted.` / `retract [v3.0.0, v3.0.1] // v3.0.2 is the first one with go.yaml.in/yaml/v3 module.`]. Recorded because subtask 9 copies this decision into the key-decisions log, where a misreading would outlive the round that caught it. The AXIOM's table names "the package is unmaintained or abandoned" as the argument that *counts*; taking the abandoned one while its drop-in successor is maintained runs that argument backwards. `gopkg.in/yaml.v3` **stays** in `go.mod` as a test-only indirect requirement through testify — this task does not remove it, and nobody should "tidy it away".
 
 **Rejected — `github.com/goccy/go-yaml`**: maintained [measured · `gh api repos/goccy/go-yaml --jq '{archived,pushed_at}'` → `{"archived":false,"pushed_at":"2026-04-11T15:18:13Z"}`] and dependency-free, but it is a different API and a far larger parser. The YAML-org fork is the direct continuation of the API every behaviour below was measured against, so it wins on equivalence — not because goccy is unmaintained. **Escape hatch:** if the fork ever stalls, goccy is the replacement. The swap is contained by construction: the parser is imported from the balance-loading file alone (D3, and the file list in § Decomposition subtask 1), so no other file in the package names it.
 
@@ -176,7 +174,11 @@ var ErrMissing, ErrUnknownKey, ErrInvalidValue, ErrUnreadable error
   [measured 5285f4c:go.mod:5-12 · `sed -n '1,12p' go.mod` → the direct `require` block
   containing `github.com/shopspring/decimal v1.4.0`]. No `float32`/`float64` anywhere on
   the config surface, extending KD-18's ledger rule rather than inventing a second
-  convention.
+  convention [measured 5285f4c:ai-docs/key-decisions.md:49 · `sed -n '49p' ai-docs/key-decisions.md` → KD-18's *Consequence*, "no `float32`/`float64` appears on the ledger path"].
+  **Consequence for every test that compares a `Balance`:** `decimal.Decimal` is a
+  `*big.Int` plus an exponent [measured shopspring/decimal@v1.4.0 · `sed -n '/^type Decimal struct/,/^}/p' $(go env GOMODCACHE)/github.com/shopspring/decimal@v1.4.0/decimal.go` → `value *big.Int` and `exp int32`], so neither `==` nor
+  `reflect.DeepEqual` is a numeric comparison — § Test Design, subtask 6, specifies the
+  spelling and carries the probe.
 - **AC1, package-level state and `init`:** the package declares **no `init` function**,
   and the schema is returned by a function rather than held in a package `var`, so there
   is no mutable table at package scope. The error sentinels are package `var`s, following
@@ -188,6 +190,14 @@ var ErrMissing, ErrUnknownKey, ErrInvalidValue, ErrUnreadable error
   message can report both.
 
 ### D6 — Parser behaviours the walk must handle (all measured)
+
+**This table is normative for subtask 1, not background reading.** Each row states a
+behaviour that is the opposite of the intuitive one — a null that decodes to zero without
+error, a float that truncates into an `int` without error, a duplicate key the node API
+does not report, a bare integer that a `time.Duration` *rejects* — and each carries the
+probe it came from. The implementor writes the walk from these rows and **re-probes** any
+it would change; it does not re-derive them from memory, and a rule dropped because it
+"looks unnecessary" is how a silently defaulted balance number ships.
 
 | Behaviour | Consequence for the design |
 |---|---|
@@ -273,7 +283,7 @@ redesigning balance.
 | `raid.afk.cruelty` | decimal | `0 <= x <= 1` | placeholder — **shape included**, see below | §3.5 (*Жестокость — конфиг*) |
 | `raid.door.price_base` | decimal | `> 0` | placeholder | §2.3, §16.5 |
 | `raid.door.price_per_distance` | decimal | `> 0` | placeholder | §2.3 |
-| `raid.door.price_distance_exponent` | decimal | `>= 1` | placeholder | §2.3 |
+| `raid.door.price_distance_exponent` | decimal | `> 0` | placeholder — **bound is the design-stated invariant only**, see below | §2.3 |
 | `raid.door.boss_reward_ttl` | duration | `> 0` | `30m` | §2.2.3 (*TTL ~30 мин (конфиг)*) |
 | `raid.monster_budget.base` | decimal | `> 0` | placeholder | §4.6, §16.5 |
 | `raid.monster_budget.per_distance` | decimal | `> 0` | placeholder | §4.6 |
@@ -313,6 +323,18 @@ against it, so it commits nothing while making the ambiguity visible at the only
 both future tasks must open. Where DESIGN itself states the combination (§4.6's
 `budget(dist) × k(level)`), the comment cites the section rather than restating the
 formula — `[derived → subtask 2's tracked balance file]`.
+
+**The two exponents are bounded differently, and the asymmetry is deliberate.**
+`raid.monster_budget.distance_exponent` keeps `0 < x <= 1` because §4.6 states the bound
+itself — `budget(dist)` grows *линейно или чуть медленнее*, so an exponent above 1
+contradicts the design document. `raid.door.price_distance_exponent` gets only `> 0`,
+because §2.3 states nothing beyond *«цена растет с дистанцией»*: a positive exponent is
+that sentence and no more. An earlier `>= 1` here was this design's guess at
+superlinearity, and it would have **rejected a sub-linear #46 curve at start-up** — a
+placeholder predicate refusing the real number is the same class of defect as a
+placeholder number pretending to be authoritative. Like `raid.afk.cruelty` below, this
+row's *shape* is open: if #46 wants a different parameterisation of the door curve, it
+replaces the row's type and predicate outright.
 
 **`raid.afk.cruelty`'s *shape* is a placeholder too, not only its number.**
 `docs/DESIGN.md` §3.5 says the AFK-leader's cruelty is configuration and fixes nothing
@@ -423,7 +445,7 @@ gate. **Rule for every gate command in this design: one path per command.** § T
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | The balance schema and its walker: the `Balance` nested types, the schema entries (path · destination · predicate) built by a function, the duplicate-key pre-pass, and the node walk producing missing / unknown / null / wrong-tag / failed-predicate errors, each naming its dotted path. **Also ships the provisional package comment in `internal/config/doc.go`** — without it `revive`'s `package-comments` rule fails this subtask's own gate (D7). Adds the parser: `go get go.yaml.in/yaml/v3@latest`, `go mod tidy`, then read `git diff go.mod go.sum` before staging, and record the version that resolved (`v3.0.5` was the newest published at design time — D2). | `internal/config/doc.go`, `internal/config/balance.go`, `internal/config/balance_load.go`, `internal/config/errors.go`, `internal/config/balance_load_test.go`, `go.mod`, `go.sum` | — |
+| 1 | The balance schema and its walker: the `Balance` nested types, the schema entries (path · destination · predicate) built by a function, the duplicate-key pre-pass, and the node walk producing missing / unknown / null / wrong-tag / failed-predicate errors, each naming its dotted path. **D6's table is normative here** — write the walk from those measured rows, re-probing rather than re-deriving any you would change. **Also ships the provisional package comment in `internal/config/doc.go`** — without it `revive`'s `package-comments` rule fails this subtask's own gate (D7). Adds the parser: `go get go.yaml.in/yaml/v3@latest`, `go mod tidy`, then read `git diff go.mod go.sum` before staging, and record the version that resolved (`v3.0.5` was the newest published at design time — D2). | `internal/config/doc.go`, `internal/config/balance.go`, `internal/config/balance_load.go`, `internal/config/errors.go`, `internal/config/balance_load_test.go`, `go.mod`, `go.sum` | — |
 | 2 | The tracked balance set at the default path, carrying a placeholder for every schema key and one comment line per curve naming its unconfirmed combining formula (D9), plus the both-directions agreement test (every schema path present in the file; every file path known to the schema). | `config/balance.yaml`, `internal/config/balance_file_test.go` | 1 |
 | 3 | The environment layer: `Lookup`, `EnvKeys`, the variable-name constants, and validation of token, DSN, base URL and `ALLOWED_CHAT_IDS` — every failure a `*KeyError` naming its variable, joined in declaration order. | `internal/config/env.go`, `internal/config/env_test.go` | 1 |
 | 4 | World-set path resolution: the required variable, the open/close readability probe with both errors handled, `WorldPath` exposed as a string, and the tracked placeholder target at the default path. | `internal/config/world.go`, `internal/config/world_test.go`, `config/world/<marker>` | 3 |
@@ -468,7 +490,7 @@ subtasks; they need no group.)
 - **Entry into Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry). The handoff binds at the start of every group, the first included.
 - **Group A** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token window — subtasks 1–8 (code change-type). All same-change-type subtasks clustered into one group rather than interleaved; 8 subtasks, within the size cap of 10. Subtask 6's `.env.example` is authorable and readable here — D13(a) measured the live matcher.
 - **Handoff after Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry). Parent `/task` resumes in Group B with fresh context.
-- **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator (typically xHigh), 1M-token window — subtask 9 (instructions/harness change-type: `AGENTS.md`, `ai-docs/**`). Terminal group (1 subtask; within the `1..=10` range).
+- **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator (typically xHigh), 1M-token window, via the `general-purpose` subagent with **no inline `model=` override** — subtask 9 (instructions/harness change-type: `AGENTS.md`, `ai-docs/**`). Terminal group (1 subtask; within the `1..=10` range).
 
 Two groups, within the default maximum of 4 — no user gate needed.
 
@@ -511,8 +533,10 @@ database and without network access (AC12); no test in this package imports
   invalid; a decimal key given a quoted number → invalid; a duration key given a bare
   integer → invalid; a key present but failing its predicate, once per predicate family
   (non-positive, negative, above an upper bound, at an excluded bound) → invalid; a key
-  the schema does not define, at top level and nested → unknown; a scalar where the
-  schema expects an interior mapping → invalid; an alias at a schema path → invalid; a
+  the schema does not define, at top level and nested → unknown; **both directions of the
+  shape mismatch** — a scalar where the schema expects an interior mapping, and a mapping
+  where the schema expects a scalar leaf (`raid.stamina.cap: {a: 1}`) → each invalid,
+  naming the path; an alias at a schema path → invalid; a
   merge key → unknown; a duplicated key → the parser's own duplicate error; a
   non-mapping document root → invalid; a syntactically invalid document → a parse error
   naming the file.
@@ -521,7 +545,8 @@ database and without network access (AC12); no test in this package imports
   three are separate rows because they are not the same node shape (D6) — a walk that
   normalises at the document node passes the first two and silently accepts the third.
 - **Happy path:** the rendered baseline loads and every field of the returned `Balance`
-  equals the value written — asserted exactly, not "roughly".
+  equals the value written — asserted exactly, not "roughly", and through the field-wise
+  comparison helper § Test Design subtask 6 specifies, never `==` or `reflect.DeepEqual`.
 - `[derived → AC3, AC4, AC5, AC6, AC12]`
 
 ### Subtask 2 — the tracked balance file (`internal/config/balance_file_test.go`)
@@ -594,6 +619,18 @@ database and without network access (AC12); no test in this package imports
   rewritten through the repo-root helper, succeeds (AC7's second sentence);
   loading the tracked balance file under differing environments — varying token, DSN, base
   URL and chat ids — yields `Balance` values that compare equal (AC16's second clause).
+- **How that last comparison is spelled, because the two obvious spellings are both
+  wrong.** `decimal.Decimal` is `value *big.Int` plus `exp int32`, so `==` compiles on
+  `Balance` and compares **pointers**: it is false even for two parses of the same
+  literal text. `reflect.DeepEqual` is the more dangerous one — it *passes* today and
+  breaks later, because it compares the encoding rather than the number: it is true for
+  two parses of the same text, but false for `1.50` against `1.5`, and false for a
+  zero-value `Decimal` against a parsed `"0"`
+  [measured shopspring/decimal@v1.4.0 · probe → `same text: a==b -> false  a.Equal(b) -> true  DeepEqual -> true`; `1.50 vs 1.5: c==d -> false  c.Equal(d) -> true  DeepEqual -> false`; `zero-value vs "0": ==false  Equal=true  DeepEqual=false`; and on a struct nesting two of them, `l1==l2 -> false  DeepEqual -> false`]. So the assertion walks the
+  `Balance` tree **field-wise**, comparing every `decimal.Decimal` with
+  `decimal.Decimal.Equal` [measured shopspring/decimal@v1.4.0 · `go doc github.com/shopspring/decimal.Decimal.Equal` → "Equal returns whether the numbers represented by d and d2 are equal."], every `time.Duration` and `int` with `==`. A
+  helper doing that walk is written once and reused by subtask 1's happy-path assertion,
+  which has the same problem — `[derived → subtask 6's disjointness test and subtask 1's baseline assertion]`.
 - **The set-equality failure message is part of the test's job, not a nicety.** It reports
   the two differences separately and by key name — present in `.env.example` yet never
   consulted, versus consulted yet absent from `.env.example` — and points at the file's
@@ -628,6 +665,16 @@ refused by the permission layer, and the refusal does not look like a failed cri
 - `actionlint .github/workflows/ci.yml` before staging subtask 8 (`AGENTS.md` AXIOM).
 - No file in the change carries a real bot token, DSN, `api_id` or `api_hash` (AC8) —
   a review-level check over the diff.
+- **AC11's second sentence gets its own command, with a positive control.**
+  `rg -n --glob '!*_test.go' --glob '*.go' -e '\bpanic\(' -e '\blog\.Fatal' cmd internal`
+  must return nothing. An empty result is only evidence once the pattern is known to
+  match, so the same command is first run against a scratch directory holding one
+  `panic(` and one `log.Fatal` — a grep-shaped criterion needs a planted positive control
+  or its silence proves nothing about the tree
+  [measured 5285f4c · that command over `cmd internal` → no output, exit 1; the same
+  command over a scratch directory with both forms planted → both lines matched, exit 0].
+  Run it after the last edit of the change, not once at the start (`AGENTS.md`
+  § Communication — a recorded result is a claim).
 - `git check-ignore -q .env.example; echo $?` → non-zero, so the new file is committable
   under `.gitignore`'s explicit negation
   [measured 5285f4c:.gitignore:8-10 · `grep -n "" .gitignore` → `8:.env` / `9:.env.*` / `10:!.env.example`; `git check-ignore -q .env.example; echo $?` → `1`].
