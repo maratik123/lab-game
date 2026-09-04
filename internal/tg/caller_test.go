@@ -164,6 +164,170 @@ func TestCaller_LimiterDelaysAndHonoursDeadline(t *testing.T) {
 	}
 }
 
+// TestCaller_HTTPClientFallsBackToDefaultClient is self-review round 5's
+// coverage sweep: (*caller).httpClient's http.DefaultClient fallback
+// (caller.go:230) had zero coverage hits — every fixture in this file
+// supplies Options.HTTPClient via newTestClient. This constructs a Client
+// with no HTTPClient set (validOptions leaves it nil) and reads the
+// unexported field back directly, without issuing any real HTTP call.
+func TestCaller_HTTPClientFallsBackToDefaultClient(t *testing.T) {
+	t.Parallel()
+	c, err := New(validOptions())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	cal := &caller{client: c}
+	if got := cal.httpClient(); got != http.DefaultClient {
+		t.Errorf("httpClient() = %p, want http.DefaultClient (%p) when Options.HTTPClient is nil", got, http.DefaultClient)
+	}
+}
+
+// TestMethodFromURL_MalformedURLReturnsEmpty is self-review round 5's
+// coverage sweep: methodFromURL's url.Parse error path (caller.go:238-240)
+// had zero coverage hits — every fixture passes a well-formed URL.
+func TestMethodFromURL_MalformedURLReturnsEmpty(t *testing.T) {
+	t.Parallel()
+	// A control character in the path is what makes net/url reject the
+	// string outright (url.Parse rejects ASCII control bytes).
+	if got := methodFromURL("http://bot-api.invalid/bot\x7f/getMe"); got != "" {
+		t.Errorf("methodFromURL(malformed) = %q, want %q", got, "")
+	}
+}
+
+// TestDoAttempt_NoBodyReturnsError is self-review round 5's coverage
+// sweep: doAttempt's "no body" default case (caller.go:193-194) had zero
+// coverage hits — every RequestData this package's own constructors
+// produce sets either BodyRaw or BodyStream (constructor.go), so the
+// branch is unreachable through the public Client.API() surface. It is
+// still reachable by calling doAttempt directly with a bare
+// *ta.RequestData, which is the shape a hostile or buggy
+// telegoapi.RequestConstructor could produce, and which the ta.RequestData
+// doc comment ("at least one BodyRaw or BodyStream must be provided")
+// documents as a precondition this function must not silently pass
+// through.
+func TestDoAttempt_NoBodyReturnsError(t *testing.T) {
+	t.Parallel()
+	srv := tgtest.New(t, tgtest.Success(nil))
+	c := newTestClient(t, srv, nil)
+	cal := &caller{client: c}
+
+	_, _, _, err := cal.doAttempt(context.Background(), tgtest.BaseURL+"/bot"+tgtest.Token+"/getMe", &ta.RequestData{})
+	if err == nil {
+		t.Fatal("doAttempt: expected an error when RequestData has neither BodyRaw nor BodyStream")
+	}
+	if !strings.Contains(err.Error(), "no body") {
+		t.Errorf("doAttempt error = %q, want it to mention the missing body", err.Error())
+	}
+}
+
+// TestDoAttempt_MalformedURLReturnsBuildRequestError is self-review round
+// 5's coverage sweep: doAttempt's http.NewRequestWithContext error path
+// (caller.go:198-200) had zero coverage hits — every fixture passes a
+// well-formed rawURL built from tgtest.BaseURL.
+func TestDoAttempt_MalformedURLReturnsBuildRequestError(t *testing.T) {
+	t.Parallel()
+	srv := tgtest.New(t, tgtest.Success(nil))
+	c := newTestClient(t, srv, nil)
+	cal := &caller{client: c}
+
+	_, _, _, err := cal.doAttempt(context.Background(), "://bad-url", &ta.RequestData{BodyRaw: []byte("{}")})
+	if err == nil {
+		t.Fatal("doAttempt: expected an error building the request from a malformed URL")
+	}
+	if !strings.Contains(err.Error(), "build request") {
+		t.Errorf("doAttempt error = %q, want it to carry the \"build request\" prefix", err.Error())
+	}
+}
+
+// TestDoAttempt_TruncatedBodyReturnsReadError is self-review round 5's
+// coverage sweep: doAttempt's io.ReadAll error path (caller.go:212-214)
+// had zero coverage hits. The handler hijacks the connection and writes a
+// response whose Content-Length promises more bytes than are actually
+// sent before the connection closes, which makes io.ReadAll return
+// io.ErrUnexpectedEOF.
+func TestDoAttempt_TruncatedBodyReturnsReadError(t *testing.T) {
+	t.Parallel()
+	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			t.Fatal("ResponseWriter does not support Hijack")
+			return
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			t.Fatalf("hijack: %v", err)
+			return
+		}
+		_, _ = conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nshort"))
+		_ = conn.Close()
+	})
+	c := newTestClient(t, srv, nil)
+	cal := &caller{client: c}
+
+	_, _, _, err := cal.doAttempt(context.Background(), tgtest.BaseURL+"/bot"+tgtest.Token+"/getMe", &ta.RequestData{BodyRaw: []byte("{}"), ContentType: ta.ContentTypeJSON})
+	if err == nil {
+		t.Fatal("doAttempt: expected a read error from the truncated body")
+	}
+	if !strings.Contains(err.Error(), "read body") {
+		t.Errorf("doAttempt error = %q, want it to carry the \"read body\" prefix", err.Error())
+	}
+}
+
+// TestDoAttempt_InvalidJSONReturnsDecodeError is self-review round 5's
+// coverage sweep: doAttempt's json.Unmarshal error path (caller.go:217-219)
+// had zero coverage hits — every fixture's handler answers with a
+// well-formed Bot API envelope.
+func TestDoAttempt_InvalidJSONReturnsDecodeError(t *testing.T) {
+	t.Parallel()
+	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("not json"))
+	})
+	c := newTestClient(t, srv, nil)
+	cal := &caller{client: c}
+
+	_, _, _, err := cal.doAttempt(context.Background(), tgtest.BaseURL+"/bot"+tgtest.Token+"/getMe", &ta.RequestData{BodyRaw: []byte("{}"), ContentType: ta.ContentTypeJSON})
+	if err == nil {
+		t.Fatal("doAttempt: expected a decode error from the malformed JSON body")
+	}
+	if !strings.Contains(err.Error(), "decode json") {
+		t.Errorf("doAttempt error = %q, want it to carry the \"decode json\" prefix", err.Error())
+	}
+}
+
+// TestCaller_AttemptFailureWithNoResponseErrorUsesGenericCause is
+// self-review round 5's coverage sweep: the retry loop's default lastCause
+// case (caller.go:109-110) had zero coverage hits. It fires when an
+// attempt neither errors nor carries a resp.Error — a decoded envelope
+// with "ok":false and no error/description/parameters fields at all — and
+// is not retryable (a plain 400), so the loop gives up after exactly one
+// attempt with the generic "no further detail" cause.
+func TestCaller_AttemptFailureWithNoResponseErrorUsesGenericCause(t *testing.T) {
+	t.Parallel()
+	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"ok":false}`))
+	})
+	c := newTestClient(t, srv, nil)
+
+	_, err := c.API().GetMe(context.Background())
+	if err == nil {
+		t.Fatal("GetMe: expected an error from the ok:false, error-less 400 response")
+	}
+	var tgErr *Error
+	if !errors.As(err, &tgErr) {
+		t.Fatalf("GetMe: error %v is not a *tg.Error", err)
+	}
+	if tgErr.Attempts != 1 {
+		t.Errorf("Attempts = %d, want 1 (a non-retryable 400 must give up after one attempt)", tgErr.Attempts)
+	}
+	if !strings.Contains(tgErr.Err.Error(), "no further detail") {
+		t.Errorf("Err = %q, want it to carry the generic \"no further detail\" cause", tgErr.Err.Error())
+	}
+}
+
 // gateFunc adapts a plain function to the Gate interface.
 type gateFunc func(ctx context.Context, call Call) error
 

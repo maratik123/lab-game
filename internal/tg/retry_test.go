@@ -11,6 +11,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	ta "github.com/mymmrac/telego/telegoapi"
+
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
 
@@ -576,6 +578,47 @@ func TestRetry_Observation(t *testing.T) {
 	})
 }
 
+// TestClassifyAttempt_NonRetryableHTTPStatusIsTerminalNotAmbiguous is
+// self-review round 5's coverage sweep: classifyAttempt's
+// "httpStatus != 0" case (a real, non-429, non-5xx HTTP response — e.g.
+// a 400 Bad Request) had zero coverage hits. It asserts design D5's
+// table directly: Telegram answered, so the outcome is known — not
+// ambiguous — and not retryable ("never on doubt" applies only when the
+// outcome is unknown, which this is not).
+func TestClassifyAttempt_NonRetryableHTTPStatusIsTerminalNotAmbiguous(t *testing.T) {
+	t.Parallel()
+	got := classifyAttempt(http.StatusBadRequest, &ta.Response{Ok: false}, true)
+	want := outcome{}
+	if got != want {
+		t.Errorf("classifyAttempt(400, ok:false, wrote:true) = %+v, want %+v (a real non-5xx/429 response is terminal, not ambiguous, not retryable)", got, want)
+	}
+}
+
+// TestSanitizeErr_NilErrorReturnsNil is self-review round 5's coverage
+// sweep: sanitizeErr's nil-err guard had zero coverage hits — every
+// existing caller passes a non-nil cause. The doc comment promises "A
+// nil err returns nil" (design D8); this checks that promise directly.
+func TestSanitizeErr_NilErrorReturnsNil(t *testing.T) {
+	t.Parallel()
+	replacer := strings.NewReplacer(tgtest.Token, "[REDACTED_TOKEN]")
+	if got := sanitizeErr(nil, replacer); got != nil {
+		t.Errorf("sanitizeErr(nil, ...) = %v, want nil", got)
+	}
+}
+
+// retry.go:120-122's "cause == nil" fallback (uerr.Unwrap() returning nil
+// because uerr.Err is nil) is DELIBERATELY left at zero coverage here — a
+// new finding from this coverage sweep, not a test gap: the fallback
+// itself calls uerr.Err.Error() on a nil error interface, which panics
+// (nil pointer dereference) rather than falling back to any message.
+// Verified with a scratch test constructing &url.Error{Err: nil} and
+// calling sanitizeErr on it directly: `panic: runtime error: invalid
+// memory address or nil pointer dereference` at retry.go:121, deleted
+// after confirming. Writing a real test for this branch would either (a)
+// crash the suite, defeating its own purpose, or (b) require fixing the
+// bug first, which is out of Mode B's named-target scope (the three
+// findings in the spawn prompt) — reported back rather than fixed here.
+
 // TestSanitizeErr_UnwrapsURLErrorAndDropsURL asserts D8's primary
 // token-leak defence directly (finding 6 — deleting the errors.As
 // unwrap block left the suite green, because
@@ -624,5 +667,39 @@ func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 	}
 	if got := backoffDelay(base, maxDelay, 0, func() float64 { return 1 }); got != base {
 		t.Errorf("backoffDelay(attempt=0, jitter=1) = %v, want %v (half plus the full other half)", got, base)
+	}
+
+	// Self-review round 5 finding 1: neither of backoffDelay's two
+	// RetryMaxDelay enforcement branches (the in-loop early break and
+	// the post-loop clamp) had ever been exercised — deleting both left
+	// the suite green. These two rows measure the capped region at the
+	// shipped defaults (RetryBaseDelay 500ms, RetryMaxDelay 30s) that
+	// design D10's rationale states in words: "30s caps the scale so a
+	// higher configured attempt count cannot grow the wait without
+	// bound." Verified against the shipped tree (GREEN) and against a
+	// scratch deletion of both branches (RED: "got 16s want 15s" at
+	// attempt=6, "got 8m32s want 30s" at attempt=10) before being added
+	// here.
+	const shippedBase = 500 * time.Millisecond
+	const shippedMax = 30 * time.Second
+	if got := backoffDelay(shippedBase, shippedMax, 6, func() float64 { return 0 }); got != 15*time.Second {
+		t.Errorf("backoffDelay(attempt=6, jitter=0) = %v, want %v (in-loop cap: 500ms*2^6=32s > max, break to maxDelay, half=15s)", got, 15*time.Second)
+	}
+	if got := backoffDelay(shippedBase, shippedMax, 10, func() float64 { return 1 }); got != shippedMax {
+		t.Errorf("backoffDelay(attempt=10, jitter=1) = %v, want %v (in-loop cap, same branch as attempt=6)", got, shippedMax)
+	}
+
+	// The two rows above both hit the in-loop early-break branch
+	// (retry.go:32.21,34.9) — once d exceeds maxDelay/2 inside the loop
+	// it is pinned to maxDelay exactly, so the post-loop clamp
+	// (retry.go:38.18,40.3) never sees d > maxDelay on that path. New
+	// rejects Transport.RetryMaxDelay < Transport.RetryBaseDelay
+	// (client.go:115-116), so base > maxDelay cannot occur through the
+	// public Client constructor; backoffDelay is still called directly
+	// by every other case in this test, and its own defensive clamp at
+	// attempt=0 needs its own row for that block to be exercised at
+	// all.
+	if got := backoffDelay(40*time.Second, shippedMax, 0, func() float64 { return 0 }); got != shippedMax/2 {
+		t.Errorf("backoffDelay(base>maxDelay, attempt=0, jitter=0) = %v, want %v (post-loop clamp: base alone already exceeds maxDelay)", got, shippedMax/2)
 	}
 }

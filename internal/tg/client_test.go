@@ -97,6 +97,44 @@ func TestNew_InstallsDiscardLoggerByDefault(t *testing.T) {
 	}
 }
 
+// recordingLogger is a minimal telego.Logger with exported DebugMode /
+// PrintErrors fields, shaped so installedLoggerFields' reflection over
+// *telego.Bot's installed logger can read them back regardless of the
+// concrete type telego.WithLogger stores.
+type recordingLogger struct {
+	DebugMode   bool
+	PrintErrors bool
+}
+
+func (l *recordingLogger) Debugf(string, ...any) {}
+func (l *recordingLogger) Errorf(string, ...any) {}
+
+// TestNew_InstallsProvidedLoggerWhenNonNil is self-review round 5 finding
+// 3: round 4's fix (TestNew_InstallsDiscardLoggerByDefault) pinned only
+// the nil-Options.Logger else branch; the non-nil if branch
+// (client.go:147-149, telego.WithLogger(opts.Logger)) was never once
+// exercised by any test, so a caller-supplied Logger silently reaching
+// telego.NewBot was never verified. This constructs with a recognisable
+// Options.Logger (DebugMode true, PrintErrors false — the opposite of
+// telego's own DiscardLogger, which is DebugMode false / PrintErrors
+// false) and asserts it, not the discard logger, ends up installed.
+func TestNew_InstallsProvidedLoggerWhenNonNil(t *testing.T) {
+	t.Parallel()
+	opts := validOptions()
+	opts.Logger = &recordingLogger{DebugMode: true, PrintErrors: false}
+	c, err := New(opts)
+	if err != nil {
+		t.Fatalf("New: unexpected error: %v", err)
+	}
+	debugMode, printErrors := installedLoggerFields(t, c)
+	if !debugMode {
+		t.Error("installed logger DebugMode = false, want true (Options.Logger, when non-nil, must be installed as-is via telego.WithLogger)")
+	}
+	if printErrors {
+		t.Error("installed logger PrintErrors = true, want false (must be the provided Options.Logger's own value, not telego's default logger's true)")
+	}
+}
+
 // validTransport returns a config.Transport that passes New's validation
 // — every retry field positive, every rate-limit class unbounded (the
 // zero value), which is a legal configuration (design D9's "an unbounded
@@ -213,6 +251,13 @@ func TestChatTarget_String(t *testing.T) {
 		{ChatNone, "ChatNone"},
 		{ChatUnknown, "ChatUnknown"},
 		{ChatKnown, "ChatKnown"},
+		// Self-review round 5's coverage sweep: the default arm was
+		// never exercised. ChatTarget is exported and this package
+		// defines no value outside 0-2, so an out-of-range value is a
+		// genuine caller mistake, not a fabricated scenario — the same
+		// fallback ChatUnknown already answers (the conservative,
+		// refuse-by-default state, design D12).
+		{ChatTarget(99), "ChatUnknown"},
 	}
 	for _, tc := range cases {
 		if got := tc.target.String(); got != tc.want {

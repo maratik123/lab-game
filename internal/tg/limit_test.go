@@ -144,6 +144,51 @@ func TestLimiter_UnboundedClassPassesThroughAndBoundCounterpartBinds(t *testing.
 	}
 }
 
+// TestLimiter_ClassLimitsRoutesEachClassToItsOwnConfig asserts self-review
+// round 5 finding 2: Limiter.classLimits' ClassEdit arm was never
+// exercised by any test — flipping "case ClassEdit: return l.limits.Edit"
+// to "return l.limits.Other" left the suite green, because every prior
+// test left Edit and Other at the same zero ClassLimits. This test
+// configures the two classes with distinct, distinguishable ChatRates so
+// an edit-class call and an other-class call bind on different
+// intervals, and table-drives over all three MethodClass values so
+// ClassMessage's existing coverage does not regress silently either.
+func TestLimiter_ClassLimitsRoutesEachClassToItsOwnConfig(t *testing.T) {
+	t.Parallel()
+	limits := config.TransportLimits{
+		Message: config.ClassLimits{ChatRate: rate(1, 1*time.Second)},
+		Edit:    config.ClassLimits{ChatRate: rate(1, 2*time.Second)},
+		Other:   config.ClassLimits{ChatRate: rate(1, 3*time.Second)},
+	}
+	cases := []struct {
+		name  string
+		class MethodClass
+		want  time.Duration
+	}{
+		{"message", ClassMessage, 1 * time.Second},
+		{"edit", ClassEdit, 2 * time.Second},
+		{"other", ClassOther, 3 * time.Second},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ll := newLimiter(limits)
+			key := chatCall(tc.class, tc.name)
+			first, ok := acquireOK(t, ll, key, epoch, time.Time{}, false)
+			if !ok {
+				t.Fatalf("acquire[0]: refused")
+			}
+			second, ok := acquireOK(t, ll, key, epoch, time.Time{}, false)
+			if !ok {
+				t.Fatalf("acquire[1]: refused")
+			}
+			if got := second.Sub(first); got != tc.want {
+				t.Errorf("second-first = %v, want exactly %v (classLimits must route %s to its own configured ChatRate, not another class's)", got, tc.want, tc.class)
+			}
+		})
+	}
+}
+
 // TestLimiter_UnboundedClassNeverAllocatesPerChatSchedule asserts D9's
 // registry claim directly: an unbounded class (no ChatRate, no ChatCap)
 // must not accumulate one map entry per distinct chat id — a schedule

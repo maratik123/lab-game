@@ -86,6 +86,12 @@ func TestMethodClass_String(t *testing.T) {
 		{ClassMessage, "ClassMessage"},
 		{ClassEdit, "ClassEdit"},
 		{ClassOther, "ClassOther"},
+		// Self-review round 5's coverage sweep: the default arm was
+		// never exercised. MethodClass is exported and this package
+		// adds no value outside 0-2 itself, so an out-of-range value is
+		// a genuine (if unusual) caller mistake, not a fabricated
+		// scenario — the same fallback ClassOther already answers.
+		{MethodClass(99), "ClassOther"},
 	}
 	for _, tc := range cases {
 		if got := tc.c.String(); got != tc.want {
