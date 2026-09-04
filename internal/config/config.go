@@ -35,9 +35,11 @@ func (s Secret) Reveal() string {
 // Config is lab-game's fully validated runtime configuration: the process
 // environment's secrets, runtime settings and file paths, plus the balance
 // file's decoded constants. Every field is populated by Load or Load
-// returns an error naming every rejected key — no field has a compiled-in
-// fallback. Treat the returned value as read-only; Config is not defended
-// against mutation by the type system.
+// returns an error naming every rejected key. Transport is the one
+// exception: its fields are individually optional-with-default, so an
+// absent LAB_GAME_TG_ variable never fails Load — every other field has no
+// compiled-in fallback (design D10). Treat the returned value as
+// read-only; Config is not defended against mutation by the type system.
 type Config struct {
 	// BotToken is the Telegram bot token (LAB_GAME_BOT_TOKEN).
 	BotToken Secret
@@ -58,6 +60,9 @@ type Config struct {
 	WorldPath string
 	// Balance holds every game constant, decoded from LAB_GAME_BALANCE_PATH.
 	Balance Balance
+	// Transport holds internal/tg's retry and rate-limit tuning
+	// (LAB_GAME_TG_*), each field optional-with-default (design D10).
+	Transport Transport
 }
 
 // Load reads and validates lab-game's whole configuration through lookup —
@@ -87,6 +92,11 @@ func Load(lookup Lookup) (*Config, error) {
 		errs = append(errs, err)
 	}
 
+	transport, err := loadTransport(lookup)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	worldPath, err := resolveWorldPath(lookup)
 	if err != nil {
 		errs = append(errs, err)
@@ -112,6 +122,7 @@ func Load(lookup Lookup) (*Config, error) {
 		AllowedChatIDs: env.AllowedChatIDs,
 		WorldPath:      worldPath,
 		Balance:        *balance,
+		Transport:      *transport,
 	}, nil
 }
 
