@@ -5,13 +5,13 @@ _Updated: 2026-09-04
 
 **Branch:** feat/2026-09-04-config-layer-balance-files
 **base_commit:** 869cfb37a773cc24aa2a0f3f705ced93f847422a
-**Last build:** `go build ./...` green | 2026-09-04T09:35:03Z
+**Last build:** PASS
 
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 8 — subtask 9 of 9 complete (Group B); every subtask done, ready for Step 9 (Verify)
-**last_passed_gate:** go build ./... + CI relative-link check + check-citations.sh | 2026-09-04T09:35:03Z | edcf6eb + working tree (pre-commit)
+**current_step:** Step 9 — Verify (AC1–AC16 PASS; AC17 pending Step 9.5)
+**last_passed_gate:** make verify + go test -race -count=1 ./... | 2026-09-04T09:40:52Z | d65020415f6d7a6b09b9a8349eea90245a11b6d4
 **entry_args:** 18
 
 ## Next action
@@ -62,6 +62,10 @@ _Updated: 2026-09-04
 
 - **Step 8**: owner's decision — the harness changes on this branch (AGENTS.md hand-rolling axiom, the settings.json deny narrowing, the claude-tools-hierarchy propagation) ship in the SAME PR as the config layer, not split out.
 
+- **Step 9**: no panic-index row owed — the index's own wider scope (panic, log.Fatal*, log.Panic*, must… helpers) run over the go-list non-test file set returns exit 1; the table stays the empty placeholder. No domain-invariant surface: the diff carries no store.Post, posting or item_movements reference, and the issue declares no telemetry obligation.
+- **Step 9**: AC11 verified behaviourally, not only by its tests — cmd/bot with all six variables unset exits 1 naming every missing key on stderr with stdout silent; with a valid environment it exits 0. Observed while doing so: the message doubles its prefix ("configuration: config: LAB_GAME_BOT_TOKEN: config: missing: required"), which no AC forbids but reads as an oversight — left for self-review to weigh rather than churned now.
+- **Step 9**: AC1's "no package-level mutable state" holds — the only package-level var block is the four error sentinels in errors.go, which is the form AGENTS.md § Code Style prescribes, not configuration state.
+
 ## Key discoveries (don't re-investigate)
 
 - Permission deny rules reach `Bash` by command text, not only the file tools: `ls -la .env .env.example` is refused, `ls -la .env.example` and `git check-ignore -q .env` both run. Verification commands touching `.env.example` use one path per command.
@@ -74,23 +78,23 @@ _Updated: 2026-09-04
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
-| AC10 | NOT_TESTED |
-| AC11 | NOT_TESTED |
-| AC12 | NOT_TESTED |
-| AC13 | NOT_TESTED |
-| AC14 | NOT_TESTED |
-| AC15 | NOT_TESTED |
-| AC16 | NOT_TESTED |
-| AC17 | NOT_TESTED |
+| AC1 | PASS |
+| AC2 | PASS |
+| AC3 | PASS |
+| AC4 | PASS |
+| AC5 | PASS |
+| AC6 | PASS |
+| AC7 | PASS |
+| AC8 | PASS |
+| AC9 | PASS |
+| AC10 | PASS |
+| AC11 | PASS |
+| AC12 | PASS |
+| AC13 | PASS |
+| AC14 | PASS |
+| AC15 | PASS |
+| AC16 | PASS |
+| AC17 | PENDING — closes at Step 9.5 (context.md § Status Code bullet) |
 
 ## Review register
 
