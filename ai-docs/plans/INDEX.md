@@ -7,7 +7,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | [2026-08-30 — mechanical code-style gates](done/2026-08-30-mechanical-code-style-gates.spec.md) | ✅ implemented (0 Go tests; gates verified by fixture) | none (PR #6) | — |
 | [2026-09-02 — ledger core: `store.Post`](done/2026-09-02-ledger-post-core.spec.md) | ✅ implemented | none (owner's decision) | — |
 | [2026-09-03 — rename the `design` Subagent](done/2026-09-03-rename-design-subagent.spec.md) | ✅ implemented | #10 | — |
-| [2026-09-04 — configuration layer: runtime settings and the balance/world constant files](2026-09-04-config-layer-balance-files.spec.md) | 🟢 in progress | #18 | — |
+| [2026-09-04 — configuration layer: runtime settings and the balance/world constant files](done/2026-09-04-config-layer-balance-files.spec.md) | ✅ implemented | #18 | — |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 
