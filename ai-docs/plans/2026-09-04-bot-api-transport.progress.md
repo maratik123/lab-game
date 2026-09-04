@@ -8,18 +8,19 @@ _Updated: 2026-09-04 17:50_
 **Last build:** not run
 **Issue:** #19
 **Spec:** ai-docs/plans/2026-09-04-bot-api-transport.spec.md
-**current_step:** Step 8 — subtask 1 of 7 complete (Group A, subtask 1 of 6)
-**last_passed_gate:** golangci-lint run (0 issues) + go test ./... + go vet ./... | c79c12b
+**current_step:** Step 8 — subtask 2 of 7 complete (Group A, subtask 2 of 6)
+**last_passed_gate:** golangci-lint run (0 issues) + go test -race ./... + go vet ./... | (subtask 2 commit, see below)
 **entry_args:** 19
 
 ## Next action
 
-**Do this immediately:** continue Group A with subtask 2 (`internal/tgtest`: in-process fake Bot API server, D13).
+**Do this immediately:** continue Group A with subtask 3 (`internal/tg` foundations + the telego dependency — `go get github.com/mymmrac/telego@v1.11.2` runs in this subtask, with the first importing file).
 
 ## Subtasks
 
 - [x] 1. `internal/config`: optional-with-default transport key class, `.env.example`, falsified doc comments — commit c79c12b
-- [ ] 2. `internal/tgtest`: in-process fake Bot API server  ← CURRENT
+- [x] 2. `internal/tgtest`: in-process fake Bot API server — pipe-backed `net.Listener`/`http.Server`, no real socket, `.invalid` base URL, fake token, `Success`/`TooManyRequests`/`ServerError`/`Delayed`/`FailNextDial`/`CloseWithoutResponse` behaviours, 8 tests all green under `-race`
+- [ ] 3. `internal/tg` foundations + the telego dependency (`go get`)  ← CURRENT
 - [ ] 3. `internal/tg` foundations + the telego dependency (`go get`)
 - [ ] 4. `internal/tg` limiter: the window schedule + the minimal caller
 - [ ] 5. `internal/tg` caller: retry loop, backoff, `retry_after`, typed error, observation
