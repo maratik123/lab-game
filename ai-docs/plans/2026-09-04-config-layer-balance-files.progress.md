@@ -10,21 +10,21 @@ _Updated: 2026-09-04
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 8 — subtask 2 of 8 complete
+**current_step:** Step 8 — subtask 3 of 8 complete
 **last_passed_gate:** golangci-lint run ./internal/config/... | 2026-09-04T00:00:00Z | (pre-commit)
 **entry_args:** 18
 
 ## Next action
 
-**Do this immediately:** subtask 3 — the environment layer (`internal/config/env.go`): `Lookup`, `EnvKeys`, the variable-name constants, and validation of token/DSN/base-URL/`ALLOWED_CHAT_IDS`.
+**Do this immediately:** subtask 4 — world-set path resolution (`internal/config/world.go`): the required `LAB_GAME_WORLD_PATH` variable, the open/close readability probe, and the tracked `config/world/` placeholder.
 
 ## Subtasks
 
 - [x] 1. Balance schema + walker; provisional package comment in `doc.go`; adds the YAML parser
 - [x] 2. Tracked balance set at the default path, placeholder per schema key + curve comments
 - [ ] 2. Tracked balance set at the default path, placeholder per schema key + curve comments  ← CURRENT
-- [ ] 3. Environment layer: `Lookup`, `EnvKeys`, name constants, token/DSN/base-URL/chat-id validation  ← CURRENT
-- [ ] 4. World-set path resolution: required variable, readability probe, both errors handled
+- [x] 3. Environment layer: `Lookup`, `EnvKeys`, name constants, token/DSN/base-URL/chat-id validation
+- [ ] 4. World-set path resolution: required variable, readability probe, both errors handled  ← CURRENT
 - [ ] 5. `Load`: `Config`, `Secret`, joined error; rewrites `doc.go`'s comment body to AC13 wording
 - [ ] 6. `.env.example` + disjointness tests; adds `godotenv` as a test-only requirement
 - [ ] 7. `cmd/bot` wired to load and validate before any other work; `main` delegates to `run`
@@ -40,6 +40,8 @@ _Updated: 2026-09-04
 - **Step 8, subtask 1**: `bindInt`'s `want` parameter trips `unparam` today because every int-typed key in D9 happens to use "positive" — kept (not simplified away) for symmetry with `bindDuration`/`bindDecimal` and because a future int key need not share that predicate; annotated `//nolint:unparam` with that reason rather than dropping the parameter.
 - **Step 8, subtask 2**: `config/balance.yaml`'s placeholder values are byte-identical to `balance_load_test.go`'s `validBalanceYAML` fixture (both are "an obviously-placeholder value that loads clean", D9) — not a coincidence to preserve, just the simplest set of numbers that satisfies every predicate; no code shares the two.
 - **Step 8, subtask 2**: `repo_root_test.go` derives the repository root from `runtime.Caller(0)` of the test file itself rather than `os.Getwd()`, so `repoRootPath` is correct regardless of which directory `go test` is invoked from; subtask 6 reuses it for the example-environment test (design § Risks).
+- **Step 8, subtask 3**: `EnvKeys()` and `envValues` cover all six `LAB_GAME_` variables (including `BALANCE_PATH`/`WORLD_PATH`), not only the four D10 lists as this subtask's own validation scope — `loadEnv` checks presence+non-empty uniformly for all six (the shared, uniform half of D10's rule for the path variables) and leaves the richer checks (file open/close, YAML decode) to subtask 4's world prober and subtask 5's `Load`/balance loader, which is what the decomposition table's per-subtask file list implies. This keeps the declared variable set in one place ahead of AC8/AC16's disjointness test (subtask 6).
+- **Step 8, subtask 3**: `gosec` flagged `envBotToken`'s constant declaration as G101 "potential hardcoded credentials" — a false positive, since the string is the environment-variable *name*, never a token value; annotated `//nolint:gosec` with that reason. Not one of D7's pre-measured lint findings, so recorded here for the next reader.
 
 ## Key discoveries (don't re-investigate)
 
@@ -96,3 +98,5 @@ _Updated: 2026-09-04
 - `config/balance.yaml` — the tracked balance set, one placeholder per schema key, curve comments for the door-price and monster-budget triples
 - `internal/config/balance_file_test.go` — the both-directions agreement test for `config/balance.yaml`
 - `internal/config/repo_root_test.go` — `repoRootPath`, resolving a repo-root-relative path from the test file's own location
+- `internal/config/env.go` — `Lookup`, `EnvKeys`, the six `LAB_GAME_` variable-name constants, `loadEnv`, the base-URL and chat-id parsers
+- `internal/config/env_test.go` — subtask 3's table tests plus `mapLookup`/`validEnv`, reused by subtask 5
