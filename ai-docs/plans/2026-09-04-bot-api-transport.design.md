@@ -104,13 +104,13 @@ compile
   `github.com/mymmrac/telego v1.11.2` inside the direct `require` block]. `make tidy-check`
   would therefore fail a standalone "add the dependency" subtask. **The decomposition binds
   the `go get` to the first importing file for exactly this reason** — see § Decomposition
-  subtask 4.
+  subtask 3.
 
 *Reason for the dependency* (`AGENTS.md` § Dependency Versions, and AC3's requirement that
 the design state it): KD-2 already chose it; this task is where the choice first becomes
 code. AC3's remaining clauses — a **direct** requirement at a **released** version with
 `go.sum` in agreement and no `go mod tidy` delta — are what the importer-binding above
-protects, and subtask 4's gate is `make tidy-check` itself.
+protects, and subtask 3's gate is `make tidy-check` itself.
 
 **Open for the owner, not blocking:** raising the local toolchain to ≥ 1.26.7 unlocks
 `v1.12.x`. Recorded in § Open questions.
@@ -119,22 +119,62 @@ protects, and subtask 4's gate is `make tidy-check` itself.
 
 ```
 telego.Bot (generated methods)  →  tg.caller.Call(ctx, url, data)  →  net/http
-                                     ├─ gate (D12)
-                                     ├─ limiters (D9)
-                                     ├─ attempt loop: backoff (D6), retry_after (D7)
-                                     └─ observation (D11)
+                                     ├─ gate (D12)            — once per call
+                                     └─ attempt loop:
+                                          ├─ limiters (D9)    — once per ATTEMPT
+                                          ├─ backoff (D6), retry_after (D7)
+                                          └─ (after the loop) observation (D11)
 ```
+
+**The limiters are charged per attempt, not per call, and the nesting above is the whole
+statement of that choice.** A retried call issues more than one request to Telegram, and the
+flood ban this package exists to prevent is counted in *requests*, not in caller-visible
+calls: charging once per call would let a saturated global shaper admit its configured rate
+in calls while emitting a multiple of it in requests. Backoff and `retry_after` already
+space the attempts of a *single* call, but they say nothing about many concurrent calls each
+retrying at once — which is exactly the incident shape. Per-attempt charging costs nothing
+in the common path (a call that succeeds first time is one attempt, one charge, so AC10's
+"calls" and "requests" coincide) and is the strictly safer accounting. Recorded explicitly
+because the implementor would otherwise settle it silently.
 
 `tg.Client` holds the configured `*telego.Bot`, the limiter registry, the retry settings,
 the gate and the observer; it exposes the bot through one accessor. Every outbound call in
 the project is a call on that bot, and every one of them lands in our caller.
 
-The accessor is deliberate, not a leak: because the seam is *below* the generated API,
-handing the generated API out costs nothing — there is no reachable path that skips the
-caller. That is exactly what AC27's second clause asks for, and it preserves KD-2's
-"complete coverage by construction" without wrapping a single method
-[derived → AC27's test: a refusing gate blocks a call issued through the accessor, and the
-package exposes no constructor for a bot without the caller].
+**The accessor's guarantee, stated at the strength it actually holds.** Across the
+*generated-method surface* — every `Bot.SendMessage`-shaped method, which is the whole Bot
+API — there is no path that skips the caller. That is what AC27's second clause needs, and
+it preserves KD-2's "complete coverage by construction" without wrapping a single method.
+
+**It is not an unconditional guarantee, and an earlier draft of this document wrongly said
+it was.** `telego.BotOption` is exported as a plain function type
+[measured telego@v1.11.2:bot.go:86-87 · `grep -n -B2 '^type BotOption' bot.go` →
+"// BotOption represents an option that can be applied to [Bot]" / `type BotOption func(bot *Bot) error`],
+and `WithAPICaller` merely assigns the unexported field
+[measured telego@v1.11.2:bot_options.go · `sed -n '/^\/\/ WithAPICaller/,/^}/p' bot_options.go` →
+`return func(bot *Bot) error { bot.api = caller; return nil }`], so any holder of the returned
+pointer can apply an option to a bot it did not construct. Executed rather than inferred: a
+probe built a bot with one caller, applied `telego.WithAPICaller(other)(bot)` from outside,
+and sent a message
+[measured telego@v1.11.2 · scratchpad probe `optesc`, `go run .` →
+`original caller reached: false` / `replacement caller reached: true`]. The gate, both
+limiters and the observation are all bypassed on that path.
+
+**Why the design accepts it, and what closes it.** `bot.api` is unexported, so the only
+lever is telego's own `telego.With*` options and `telego.NewBot` — a *closed, greppable*
+surface. lab-game is an application with no downstream importers (`AGENTS.md` § API
+Stability), so this module is the entire population of code that could hold the pointer:
+a guard test asserting that no non-test file outside `internal/tg` names `telego.NewBot` or
+any `telego.With*` option is therefore a **complete** cover for the reachable escape, not a
+sampling of it. That guard is subtask 6's
+[derived → AC27's tests: a refusing gate blocks a call issued through the accessor; the
+package exposes no constructor for a bot without the caller; and no non-test file outside
+`internal/tg` references `telego.NewBot` or a `telego.With*` option].
+
+The alternative that would close it in the type system — never handing out `*telego.Bot`
+and wrapping each method instead — is the option D2 already rejected above, and it trades a
+complete guard for hand-written coverage of a generated API. Recorded so the trade is
+visible rather than implied.
 
 Exported shape [derived → AC1]:
 
@@ -448,10 +488,52 @@ on the package's **documented reserve-and-wait pattern**
 the usage example `r := lim.ReserveN(time.Now(), 1)` / `time.Sleep(r.Delay())` / `Act()`, and
 "Use this method if you wish to wait and slow down in accordance with the rate limit without dropping events"]:
 reserve, compare the delay against the deadline, sleep or cancel. `Reservation.Cancel`
-returns the tokens so a refused call displaces nobody
-[measured golang.org/x/time@v0.15.0:rate/rate.go · `sed -n '/^\/\/ CancelAt indicates/,/^func (r \*Reservation) CancelAt/p' rate/rate.go` →
-"reverses the effects of this Reservation on the rate limit as much as possible"] — that is
-AC31's "no other call is displaced".
+is called on every abandoned reservation. **What that cancellation does and does not buy is
+measured below, because the doc comment's "as much as possible" is weaker than it reads and
+an earlier draft of this document over-read it.**
+
+**Measured behaviour of `Reservation.CancelAt` under `rate.Every(1s)`, burst 1.** Reserving
+`a`, `b`, `c` at one instant yields delays `0s`, `1s`, `2s`. Cancelling the **middle** one
+restores nothing: `c` stays at `2s` and the next arrival lands at `3s`, not `2s`
+[measured golang.org/x/time@v0.15.0 · scratchpad probe `mycancel`, `go test -v` →
+`a=0s b=1s c=2s` / `after b.CancelAt: c delay = 2s` / `next arrival d delay = 3s`].
+The instrument is not blind: cancelling the **last** reservation does restore, in both the
+two-reservation and the three-reservation case
+[measured golang.org/x/time@v0.15.0 · same probe →
+`after cancelling the LAST reservation, next arrival = 1s (1s => restored)` and
+`cancelled the LAST of three; next arrival = 2s (2s => restored, 3s => not)`].
+The rule that fits both results, and the source explains it — `CancelAt` returns early
+whenever `restoreTokens = r.tokens - tokensFromDuration(lastEvent - timeToAct) <= 0`
+[measured golang.org/x/time@v0.15.0:rate/rate.go · `sed -n '/^\/\/ CancelAt indicates/,/^func (r \*Reservation) CancelAt/p' rate/rate.go`
+plus the body's `if restoreTokens <= 0 { return }`] — is: **a cancellation reclaims its slot
+only while no later reservation has been taken on that limiter. Under saturation, which is
+AC31's own scenario, there always is one, so the slot is spent and later callers are not
+pulled forward.**
+
+**So the design guarantees the flood-safety property and not the throughput one, and says
+which is which.**
+
+- **Guaranteed, and what AC31 exists for:** nothing is dropped and nothing is starved —
+  every submitted call ends in an emission or a returned `*Error`. A cancellation can never
+  push a bucket *above* its burst, so a hole only ever leaves the limiter emitting **below**
+  its configured rate; over-emission is unreachable by any cancellation sequence. Measured:
+  cancelling every outstanding reservation in a saturated batch left the bucket **below**
+  zero rather than at burst, and the next arrivals were still one full interval apart
+  [measured golang.org/x/time@v0.15.0 · same probe →
+  `tokens after cancelling every reservation = -3 (burst is 1; >1 would be an over-emit)` /
+  `next two arrivals: 4s then 5s (second must be >= 1s apart)`].
+- **Not guaranteed:** slot reclamation. A call refused at its deadline leaves a hole in the
+  schedule; effective throughput under saturation can therefore sit below the configured
+  rate. That is a throughput cost, paid in the safe direction, and the owner's standing
+  answer this round keeps pacing in-process (#43 owns durability), so it is accepted rather
+  than engineered around.
+- **What would actually reclaim slots** is a mechanism change, not a wording change:
+  reserving at emission time instead of on arrival. Not taken — it trades the arrival-order
+  guarantee AC30 rests on for throughput nobody has measured a need for. Recorded in
+  § Open questions.
+
+`CancelAt` is still called on every abandoned reservation, because it *does* reclaim in the
+uncontended case the control demonstrates, and it is free when it does not.
 
 **Rejected — `go.uber.org/ratelimit`.** It is a genuine leaky-bucket shaper with an
 injectable clock, but its `Take()` takes no `context.Context`, so a call parked behind it
@@ -467,8 +549,8 @@ Dependency aversion is not a reason by itself."], and neither escape the same ta
 applies: `x/time/rate` is maintained, and its API *does* express the accounting. Only the
 wait needed writing, and the package documents that split itself.
 
-**Structure.** Every call charges its class's buckets, so there is no special case for "what
-charges the buckets" — the class table is the whole answer:
+**Structure.** Every *attempt* charges its class's buckets (D2), so there is no special case
+for "what charges the buckets" — the class table is the whole answer:
 
 - **global**, one shaper per class, `burst 1`;
 - **per chat**, keyed on `(chat key, class)`, a **shaping rate** (`burst 1`) and a **window
@@ -477,11 +559,11 @@ charges the buckets" — the class table is the whole answer:
   message every three seconds into a chat and would be stricter than any published figure.
 
 `Reserve` does not block, so acquiring all applicable buckets is allocation-order-free and
-there is no lock-ordering hazard; the call then waits once, until the **latest** of the
-reserved times, and each bucket is charged exactly once. If that instant is past the
-caller's deadline, every reservation is cancelled and the call returns the D8 error. A
-private chat is charged on the same terms as a group — no chat is exempt by construction
-(spec Key decisions).
+there is no lock-ordering hazard; the attempt then waits once, until the **latest** of the
+reserved times, and each bucket is charged exactly once **per attempt**. If that instant is
+past the caller's deadline, every reservation taken for that attempt is cancelled and the
+call returns the D8 error. A private chat is charged on the same terms as a group — no chat
+is exempt by construction (spec Key decisions).
 
 **A `Rate` with zero count is unbounded**, implemented as `rate.Inf`, which the package
 documents as allowing all events regardless of burst
@@ -591,6 +673,26 @@ tuning value an operator may change, which is the entire point of the key class.
   the wrapper appends `key` to `keys` and only then `return base(key)`], so an absent
   optional key is still in the recorded set. The loader therefore calls `lookup` for **every**
   transport key on every load, with no early return and no branch that skips one.
+- **"Queried unconditionally" must NOT be implemented by adding the transport keys to
+  `envKeys()`, and this is the trap in the change.** Two live tests iterate that unexported
+  helper and assert a *required*-variable failure for every member: removing a member's value
+  must yield `ErrMissing`, and emptying it must yield `ErrInvalidValue`
+  [measured 31736b4:internal/config/env_test.go:53,66 · `grep -n 'func TestLoadEnv_RequiredVariableUnset\|func TestLoadEnv_RequiredVariableEmpty' internal/config/env_test.go`
+  → both at those lines, each body `for _, key := range envKeys()` then `assertKeyError(t, err, ErrMissing, key)` /
+  `assertKeyError(t, err, ErrInvalidValue, key)`]. An optional key added to `envKeys()` fails
+  both immediately, and the tempting repair — loosening the assertion — is a direct attack on
+  AC24, which exists to keep those variables required.
+  **The correct shape is the one the package already uses for the two file paths:** a
+  dedicated reader. `envBalancePath` and `envWorldPath` are validated by `requiredBalancePath`
+  and `resolveWorldPath` rather than by `loadEnv`, and appear in `EnvKeys()` only
+  [measured 31736b4:internal/config/env.go · `sed -n '/^\/\/ envKeys returns/,/^}/p' internal/config/env.go`
+  → the doc comment "envKeys returns the four variables loadEnv itself validates. envBalancePath
+  and envWorldPath are validated by their own dedicated readers instead"; and
+  `sed -n '/^func EnvKeys/,/^}/p' internal/config/env.go` → `return append(envKeys(), envBalancePath, envWorldPath)`].
+  So: `loadTransport(lookup)` owns the transport keys, `Load` joins its errors alongside the
+  others, `EnvKeys()` appends `transportEnvKeys()`, and **`envKeys()` keeps exactly the
+  membership it has today** — leaving `env_test.go`'s two suites untouched and AC24 intact
+  [derived → AC24, whose existing tests must still pass unmodified].
 - **`.env.example` documents each new key carrying its default as the value**, because a
   test asserts every value is non-empty
   [measured 31736b4:internal/config/disjoint_test.go · `sed -n '/^\/\/ TestEnvExample_ValuesAreNonEmpty/,/^}/p' internal/config/disjoint_test.go` →
@@ -788,20 +890,34 @@ would be dead code in the binary and an untested wiring path at once.
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | `internal/config`: the optional-with-default transport key class — the value types of D10, the key names, the compiled-in defaults, the `<count>/<duration>`\|`off` grammar and its validation, `Load` + `EnvKeys` wiring with every key queried unconditionally, and the falsified doc comments in `env.go` and `config.go` rewritten (AC25). Tests first: absent → default, present → parsed, malformed → `*KeyError` naming the key, the three-way key-set equality, and the previously declared variables still required. | `internal/config/transport.go`, `internal/config/transport_test.go`, `internal/config/env.go`, `internal/config/config.go` | — |
-| 2 | `.env.example`: each new key documented with its default as a non-empty value, in the file's existing commented style. Lands with subtask 1's loader or the disjointness test fails. | `.env.example` | 1 |
-| 3 | `internal/tgtest`: the in-process fake Bot API server of D13 — `net.Pipe` dialer, the `.invalid` base URL, the scripted behaviours AC19 lists, the fake token constant, and its own tests. | `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` | — |
-| 4 | `internal/tg` foundations **and the telego dependency**: package comment, `Error`, `Observation`/`Observer`, `MethodClass` + the D4 classifier, `Gate`/`Call`/`ChatRef`, `Options` + `New` + `API`. `go get github.com/mymmrac/telego@<pinned>` runs in this subtask, with the importing file, so `make tidy-check` stays green (D1). Tests: the classifier over the pinned version's method names, option validation, error rendering and unwrapping. | `go.mod`, `go.sum`, `internal/tg/doc.go`, `internal/tg/errors.go`, `internal/tg/observe.go`, `internal/tg/class.go`, `internal/tg/client.go`, `internal/tg/class_test.go`, `internal/tg/client_test.go` | 1 |
-| 5 | `internal/tg` limiters: the per-class global shaper, the per-`(chat, class)` shaping rate and window cap, the reserve/compare/wait/cancel loop of D9, `rate.Inf` for an unbounded class, and the fixed charge-once discipline. Tests: per-class global admission, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, the cap binding after the burst is spread, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go` | 3, 4 |
-| 6 | `internal/tg` caller: the `encoding/json` request constructor, the attempt loop, the `httptrace` write-evidence classifier, equal-jitter backoff, exact `retry_after` honouring with the deadline bound, the gate call, and the single observation. Tests: no-shortened `retry_after`, strictly positive and growing delays, the ambiguous case making exactly one attempt, each retryable case, give-up field by field, deadline refusal, cancellation at every waiting site, the attempt cap, and the observation for a success, a retried success and a give-up. | `internal/tg/constructor.go`, `internal/tg/caller.go`, `internal/tg/retry.go`, `internal/tg/caller_test.go`, `internal/tg/retry_test.go` | 5 |
-| 7 | `internal/tg` package-level guard tests: the import scan over `cmd/` and `internal/` non-test files (no fasthttp, no go-json, no metrics registry), the token-absence sweep, the seam-cannot-be-bypassed test, the base-URL-appears-only-in-the-constructor source check, and the end-to-end call against `tgtest` built from a `config.Load`-produced `BotAPIBaseURL`. | `internal/tg/guards_test.go` | 6 |
-| 8 | `ai-docs/key-decisions.md`: rewrite KD-2 for the shipped reality (pinned version, the caller/constructor swap, the `stdjson` residue and why it was not taken, the toolchain ceiling), and add the decisions this task settles — the limiter package with its rejected alternatives, `testing/synctest` in place of a clock abstraction, and the optional-with-default key class with its boundary. | `ai-docs/key-decisions.md` | 7 |
+| 1 | `internal/config`: the optional-with-default transport key class — the value types of D10, the key names, the compiled-in defaults, the `<count>/<duration>`\|`off` grammar and its validation, a dedicated `loadTransport` reader joined into `Load` with `EnvKeys()` extended and **`envKeys()` left exactly as it is** (D10), the falsified doc comments in `env.go` and `config.go` rewritten (AC25), **and `.env.example` carrying each new key with its default as a non-empty value** in the file's existing commented style. Tests first: absent → default, present → parsed, malformed → `*KeyError` naming the key, the three-way key-set equality, and the previously declared variables still required. | `internal/config/transport.go`, `internal/config/transport_test.go`, `internal/config/env.go`, `internal/config/config.go`, `.env.example` | — |
+| 2 | `internal/tgtest`: the in-process fake Bot API server of D13 — `net.Pipe` dialer, the `.invalid` base URL, the scripted behaviours AC19 lists, the fake token constant, and its own tests. | `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` | — |
+| 3 | `internal/tg` foundations **and the telego dependency**: package comment, `Error`, `Observation`/`Observer`, `MethodClass` + the D4 classifier, `Gate`/`Call`/`ChatRef`, `Options` + `New` + `API`. `go get github.com/mymmrac/telego@<pinned>` runs in this subtask, with the importing file, so `make tidy-check` stays green (D1). Tests: the classifier over the pinned version's method names, option validation, error rendering and unwrapping. | `go.mod`, `go.sum`, `internal/tg/doc.go`, `internal/tg/errors.go`, `internal/tg/observe.go`, `internal/tg/class.go`, `internal/tg/client.go`, `internal/tg/class_test.go`, `internal/tg/client_test.go` | 1 |
+| 4 | `internal/tg` limiters: the per-class global shaper, the per-`(chat, class)` shaping rate and window cap, the reserve/compare/wait/cancel loop of D9, `rate.Inf` for an unbounded class, and the charge-once-**per-attempt** discipline (D2). Tests: per-class global admission, per-chat isolation, unbounded-class pass-through and its bound counterpart, private chats charged, steady ordered emission, the cap binding after the burst is spread, saturation ending in emission or error, and identical behaviour under two different base URLs. | `internal/tg/limit.go`, `internal/tg/limit_test.go` | 2, 3 |
+| 5 | `internal/tg` caller: the `encoding/json` request constructor, the attempt loop with the limiters inside it, the `httptrace` write-evidence classifier, equal-jitter backoff, exact `retry_after` honouring with the deadline bound, the gate call once per call, and the single observation. Tests: no-shortened `retry_after`, strictly positive and growing delays, the ambiguous case making exactly one attempt, each retryable case, give-up field by field, deadline refusal, cancellation at every waiting site, the attempt cap, and the observation for a success, a retried success and a give-up. | `internal/tg/constructor.go`, `internal/tg/caller.go`, `internal/tg/retry.go`, `internal/tg/caller_test.go`, `internal/tg/retry_test.go` | 4 |
+| 6 | `internal/tg` package-level guard tests: the import scan over `cmd/` and `internal/` non-test files (no fasthttp, no go-json, no metrics registry), the token-absence sweep, the seam tests (a refusing gate blocks a call through the accessor, **and no non-test file outside `internal/tg` names `telego.NewBot` or a `telego.With*` option** — D2), the base-URL-appears-only-in-the-constructor source check, and the end-to-end call against `tgtest` built from a `config.Load`-produced `BotAPIBaseURL`. | `internal/tg/guards_test.go` | 5 |
+| 7 | `ai-docs/key-decisions.md`: rewrite KD-2 for the shipped reality (pinned version, the caller/constructor swap, the `stdjson` residue and why it was not taken, the toolchain ceiling), and add the decisions this task settles — the limiter package with its rejected alternatives and the reclamation property it does *not* provide, `testing/synctest` in place of a clock abstraction, and the optional-with-default key class with its boundary. | `ai-docs/key-decisions.md` | 6 |
+
+**Why `.env.example` is inside subtask 1 rather than following it.** Each subtask is
+committed on a green gate, and `code-writer` Mode A commits per subtask with the **full**
+test gate run first
+[measured 31736b4:.claude/agents/code-writer.md · `sed -n '/^## Mode A/,/^## Mode B/p' .claude/agents/code-writer.md` →
+"**First rule of Mode A: you COMMIT after each subtask.**" and "Run the gates: `go build ./...`;
+`go test ./...` (scoped with `-run <TestName>` while iterating, full before the commit) …"].
+`internal/config` already asserts set equality between `.env.example`'s keys and
+`config.EnvKeys()`
+[measured 31736b4:internal/config/disjoint_test.go:103 · `sed -n '103p' internal/config/disjoint_test.go` →
+`assertSameKeySet(t, ".env.example", exampleKeys, "config.EnvKeys()", EnvKeys())`], so a
+subtask that extends `EnvKeys()` while deferring `.env.example` leaves `go test ./...` red
+and cannot be committed at all. An earlier draft split them and depended on the split
+holding; it could not. The two files move together, and **the fix is never to relax the
+disjointness assertion** — it is the mechanism AC23 is written against.
 
 **AC29's propagation set, and who owns each site.** Membership is decided by `AGENTS.md`
 § Propagation Rule step 4 and is not bounded by the spec's illustrative list; what this
 design fixes is the ownership, so nothing falls between the design and the workflow.
-`internal/config/env.go` and `internal/config/config.go` are subtask 1's (AC25);
-`.env.example` is subtask 2's; `ai-docs/key-decisions.md` KD-2 is subtask 8's.
+`internal/config/env.go`, `internal/config/config.go` and `.env.example` are subtask 1's
+(AC25); `ai-docs/key-decisions.md` KD-2 is subtask 7's.
 `ai-docs/context.md` (§ Architecture "Layout so far" and § Status, whose "no Telegram
 client" claim this change falsifies) and `ai-docs/context-status.md` are **not** subtasks
 here: `/task` Step 9.5 owns those writes, and `ai-docs/plans/INDEX.md` is Step 12's
@@ -819,7 +935,7 @@ yet — #22 owns the loop".
 
 ## Handoff plan
 
-`M = 8`, so grouping applies — the section is required for every `M ≥ 1`, single-subtask
+`M = 7`, so grouping applies — the section is required for every `M ≥ 1`, single-subtask
 designs included. Two groups, homogeneous by change-type, minimised, each marked with its
 implementor model and effort. The group size cap of `10` is a **maximum**, not a target: a
 group ends at whichever comes first — the cap, a change-type switch, or a dependency-forced
@@ -829,9 +945,9 @@ boundary. Here the change-type switch is what ends Group A, well below the cap.
   `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry). The handoff is
   bound at the start of **every** design-defined group, including the first.
 - **Group A** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent,
-  1M-token window — subtasks 1–7 (code change-type: `*.go`, `go.mod`/`go.sum`, `.env.example`).
+  1M-token window — subtasks 1–6 (code change-type: `*.go`, `go.mod`/`go.sum`, `.env.example`).
   All same-change-type subtasks are clustered into ONE group rather than interleaved with
-  subtask 8; within the size cap of 10.
+  subtask 7; within the size cap of 10.
   `.env.example`, `go.mod` and `go.sum` are code-group artefacts by this repository's own
   classification — CI's `go` paths filter lists them alongside `**/*.go`
   [measured 31736b4:.github/workflows/ci.yml · `sed -n '/            go:/,/            harness:/p' .github/workflows/ci.yml` →
@@ -842,7 +958,7 @@ boundary. Here the change-type switch is what ends Group A, well below the cap.
   resumes in Group B with fresh context.
 - **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
   (typically xHigh) — NOT pinned — via `general-purpose` with no inline `model=`, 1M-token
-  window — subtask 8 (instructions/harness change-type: `ai-docs/**`). Terminal group
+  window — subtask 7 (instructions/harness change-type: `ai-docs/**`). Terminal group
   (1 subtask; within the `1..=10` range).
 
 Group count is 2, within the default maximum of 4, so no user gate is needed. Group A is
@@ -857,17 +973,17 @@ outside its charter — `code-writer` must STOP on a predominantly-prose assignm
 
 - **The pinned telego version drifts out from under the toolchain.** `v1.12.x` is
   unreachable today and `v1.11.2` is the newest that resolves — but the toolchain may have
-  moved by implementation time. Mitigation: subtask 4 runs `go get` and reads its output
+  moved by implementation time. Mitigation: subtask 3 runs `go get` and reads its output
   rather than trusting this document; if a newer release resolves, take it and record the
   version actually pinned. The failure mode is loud, not silent —
   `[measured telego@v1.12.1 · go get … → "requires go >= 1.26.7 (running go 1.26.5; GOTOOLCHAIN=local)"]`.
 - **A standalone "add the dependency" step would fail `make tidy-check`.** `go mod tidy`
   removes an unimported requirement. Mitigation: the decomposition binds `go get` to the
-  first importing file (subtask 4) —
+  first importing file (subtask 3) —
   `[measured 31736b4 + telego@v1.11.2 · scratch copy, go get with no importer then go mod tidy → grep -c 'mymmrac/telego' go.mod = 0]`.
 - **The transitive `testify` bump breaks an existing suite.** Mitigation: already exercised —
   every test binary in the tree compiles against `v1.12.1`, and the running of them is
-  subtask 4's gate —
+  subtask 3's gate —
   `[measured 31736b4 + telego@v1.11.2 · scratch copy, go test -run XXXNONEXISTENT ./... → TESTCOMPILE-OK]`.
 - **A leaked goroutine turns a passing test into a bubble panic.** Any connection or server
   goroutine `tgtest` starts inside a bubble must exit before the root returns. Mitigation:
@@ -880,6 +996,27 @@ outside its charter — `code-writer` must STOP on a predominantly-prose assignm
 - **A future `Idempotency-Key` header would silently re-send a POST inside the transport.**
   Mitigation: the caller sets no such header, and the reason is stated in its doc comment —
   `[measured Go 1.26.5 stdlib · sed -n '/func (r \*Request) isReplayable/,/^}/p' $(go env GOROOT)/src/net/http/request.go → replayable for a POST only when Idempotency-Key or X-Idempotency-Key is present]`.
+- **A refused call leaves a hole in the limiter's schedule, and an implementor may try to
+  test it away.** `Reservation.CancelAt` reclaims nothing once a later reservation exists, so
+  under saturation the slot is spent. The design states the property that holds (nothing
+  dropped, nothing starved, never an over-emit) and forbids the AC31 scenario from asserting
+  reclamation. The hazard is the *repair*: a test written against the wrong property fails,
+  and the obvious fix loosens the emission-spacing assertion — which removes the flood-safety
+  check. Mitigation: D9 carries the measurement and § Test Design carries the prohibition in
+  the scenario itself —
+  `[measured golang.org/x/time@v0.15.0 · probe mycancel → "after b.CancelAt: c delay = 2s" / "next arrival d delay = 3s", against the control "cancelling the LAST reservation, next arrival = 1s (1s => restored)"]`.
+- **A holder of `*telego.Bot` can reapply a `telego.With*` option and bypass the whole
+  transport.** Executed, not inferred. Mitigation: the guard test in subtask 6 forbids any
+  non-test file outside `internal/tg` from naming `telego.NewBot` or a `telego.With*` option,
+  and the module has no downstream importers, so that scan is the complete population —
+  `[measured telego@v1.11.2 · probe optesc, go run . → "original caller reached: false" / "replacement caller reached: true"]`.
+- **Per-attempt limiter charging is a decision an implementor could silently reverse.** The
+  cheaper-looking arrangement (charge once per call, retry inside) passes AC10 as worded while
+  emitting a multiple of the configured rate in *requests* — the unit a flood ban counts.
+  Mitigation: D2's diagram places the limiters inside the attempt loop and states the reason,
+  and § Test Design flags where the choice becomes visible —
+  `[derived → the AC10 and AC33 scenarios, whose attempt counts and emission instants only
+  agree under per-attempt charging]`.
 - **A limiter-key map that never evicts grows with distinct `(chat, class)` pairs.** Accepted
   as a known bound for the MVP's single chat (`docs/DESIGN.md` §14), with the time-based
   eviction constraint recorded in D9 so a later fix cannot reset a cap by accident —
@@ -889,7 +1026,7 @@ outside its charter — `code-writer` must STOP on a predominantly-prose assignm
   `fastjson`, and puts the one-PR path in front of the owner —
   `[measured telego@v1.11.2 · probe p2, go list -tags stdjson -deps . → valyala/fasthttp and valyala/fastjson still present]`.
 - **A textual base-URL check is weaker than the property it guards.** The source check in
-  subtask 7 can only see the identifier, not every way a branch could be written.
+  subtask 6 can only see the identifier, not every way a branch could be written.
   Mitigation: it is paired with the behavioural test (identical limiter behaviour under two
   base URLs) and with the structural fact that the limiter API takes no URL at all —
   `[derived → AC15's pair of tests]`.
@@ -923,7 +1060,7 @@ the process environment, the network, or a real clock.
 - Fixtures: the existing `mapLookup` helper and `.env.example` reader already in the package.
 [derived → AC21–AC24.]
 
-### `internal/tgtest` — subtask 3
+### `internal/tgtest` — subtask 2
 
 - Location: `internal/tgtest/tgtest_test.go`.
 - Entry point: the server's client, driven directly by `net/http`.
@@ -934,7 +1071,7 @@ the process environment, the network, or a real clock.
   with no lingering goroutine.
 [derived → AC19.]
 
-### `internal/tg` classifier, options and error — subtask 4
+### `internal/tg` classifier, options and error — subtask 3
 
 - Location: `internal/tg/class_test.go`, `internal/tg/client_test.go`.
 - Entry points: the classifier, `New`, `(*Error).Error`, `(*Error).Unwrap`.
@@ -948,7 +1085,7 @@ the process environment, the network, or a real clock.
   through telego's wrapping and `errors.Is` reaches a wrapped `context.DeadlineExceeded`.
 [derived → AC1, AC8.]
 
-### `internal/tg` limiters — subtask 5
+### `internal/tg` limiters — subtask 4
 
 - Location: `internal/tg/limit_test.go`.
 - Entry point: the limiter registry's acquire function, and end-to-end calls through
@@ -971,15 +1108,25 @@ the process environment, the network, or a real clock.
   - **AC30** — one key at a known interval, callers released one at a time with
     `synctest.Wait()` between them so arrival order is fixed: emissions are one interval apart
     and in arrival order.
-  - **AC31** — under saturation with a deadline shorter than the queue, every submitted call
-    ends in an emission or a returned `*Error`, and the emissions together with the returned
-    errors account for every submitted call — never silence; a refused call's reservation is
-    cancelled, so a later call is not displaced.
+  - **AC31** — under saturation with a deadline shorter than the queue: the emissions together
+    with the returned `*Error`s account for **every** submitted call, so nothing is dropped and
+    nothing is starved; and the emissions that do occur are still no closer together than the
+    configured interval, so a refusal cannot make the limiter over-emit.
+    **This scenario must NOT assert that a refused call's slot is reclaimed** — D9 measured
+    that it is not, under exactly these conditions. An assertion that later callers are pulled
+    forward would fail against the chosen mechanism, and the repair a failing test invites
+    (loosening the emission-spacing check) would attack the flood-safety property AC31 exists
+    to protect. The permitted observation about the hole is the safe-direction one: emission
+    instants may be *later* than a perfect schedule, never earlier.
   - **AC32** — the change adds no migration directory entry and the package writes no state
     outside the process.
+- Per-attempt charging (D2) is visible here: a scenario that forces a retry consumes more
+  than one unit of allowance for one caller-visible call, and the limiter tests that assert
+  exact instants must therefore use first-attempt-success responses unless they mean to
+  exercise it.
 [derived → AC10–AC15, AC30–AC32.]
 
-### `internal/tg` retry, `retry_after`, cancellation and observation — subtask 6
+### `internal/tg` retry, `retry_after`, cancellation and observation — subtask 5
 
 - Location: `internal/tg/retry_test.go`, `internal/tg/caller_test.go`.
 - Entry point: a call issued through `Client.API()` against a scripted `tgtest` server.
@@ -1008,17 +1155,22 @@ the process environment, the network, or a real clock.
     `LAB_GAME_BOT_API_BASE_URL` pointing at the fake server, and the request arrives there.
 [derived → AC4–AC9, AC16–AC18, AC20, AC33.]
 
-### Package-level guards — subtask 7
+### Package-level guards — subtask 6
 
 - Location: `internal/tg/guards_test.go`.
 - Entry point: the source tree itself, parsed with `go/parser`.
 - Scenarios: no non-test file under `cmd/` or `internal/` imports a fasthttp or go-json
   package (AC2); no non-test file in `internal/tg` imports a metrics registry (AC17); the
   bot token appears in no rendered `*Error`, no observation and no fixture in the package
-  (AC26); a gate that refuses everything blocks a call issued through `Client.API()`, and the
-  package exports no way to obtain a `*telego.Bot` that was not built with the caller (AC27);
-  the base-URL identifier appears only in the file that constructs the bot (AC15, paired with
-  the behavioural test in subtask 5).
+  (AC26); the base-URL identifier appears only in the file that constructs the bot (AC15,
+  paired with the behavioural test in subtask 4); and AC27's seam, in each part D2 showed it
+  needs — a gate that refuses everything blocks a call issued through
+  `Client.API()`; the package exports no way to obtain a `*telego.Bot` that was not built with
+  the caller; **and no non-test file outside `internal/tg` names `telego.NewBot` or any
+  `telego.With*` option**, which is what closes the option-reapplication escape D2 measured.
+  That last check is a source scan, and it is complete rather than sampling only because this
+  module is the whole population of code that can hold the pointer (`AGENTS.md` § API
+  Stability: no downstream importers).
 [derived → AC2, AC15, AC17, AC26, AC27.]
 
 **No golden artefact is minted by this task**, so `design-writer` § Rules' golden contract
@@ -1053,6 +1205,14 @@ the transport renders no combat log, no narrative and no generated maze.
 - **Should the `(chat, class)` limiter map evict?** Not for one MVP chat. #43's fan-out is the
   trigger, and D9 records the one constraint a later fix must respect: eviction must be
   time-based, because a dropped key returns a full bucket.
+- **Should the limiter reserve at emission time so refused calls stop leaving holes?**
+  Reserving on arrival is what makes AC30's arrival-order guarantee cheap, and it is why a
+  cancelled reservation under saturation cannot be reclaimed (D9, measured). Reserving at
+  emission time would recover the throughput and lose the ordering guarantee. Nothing has
+  measured a need for that trade: the owner's answer this round keeps #19 on in-process
+  pacing with #43 owning the durable queue, and the hole costs throughput in the safe
+  direction only. Revisit if #43's fan-out ever runs the shaper at saturation for long
+  enough to notice.
 - **Should `sendChatAction` leave `ClassMessage`?** It delivers no message but is throttled
   today because the `send*` rule is deliberately fail-safe. The MVP sends none; a later
   "typing…" indicator that feels laggy is the signal to carve it out.
