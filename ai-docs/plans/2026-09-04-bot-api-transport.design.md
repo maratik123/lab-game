@@ -69,7 +69,7 @@ and that is precisely the "never on doubt" rule the owner set in round 1.
 
 ---
 
-### D1 — telego is pinned at `v1.11.2`, and the newest release is unreachable on this toolchain
+### D1 — telego is pinned at `v1.11.2`, which this toolchain's configuration requires, not telego's code
 
 `go get github.com/mymmrac/telego@v1.12.1` **fails** here: the release declares `go 1.26.7`
 while the installed toolchain is `go1.26.5` with `GOTOOLCHAIN=local`
@@ -81,8 +81,40 @@ while the installed toolchain is `go1.26.5` with `GOTOOLCHAIN=local`
 and `v1.11.2` declares `go 1.25.7`
 [measured · `curl -sS https://proxy.golang.org/github.com/mymmrac/telego/@v/v1.11.2.mod` → `go 1.25.7`].
 `GOTOOLCHAIN: local` is also CI's own setting
-[measured 31736b4:.github/workflows/ci.yml:16-17 · `sed -n '16,17p' .github/workflows/ci.yml` → `env:` / `  GOTOOLCHAIN: local`],
-so this is not a local-machine quirk to design around.
+[measured 31736b4:.github/workflows/ci.yml:16-17 · `sed -n '16,17p' .github/workflows/ci.yml` → `env:` / `  GOTOOLCHAIN: local`].
+
+**What that failure is, and what it is NOT — a future reader must not conclude `v1.12.x` is
+technically unusable.** It is a **policy minimum** the go command enforces *before* compiling,
+not an API or language incompatibility: telego `v1.12.1`'s code builds clean under the
+installed `go1.26.5` once its own declared minimum is lowered, with no diagnostics at all
+[measured telego@v1.12.1 · the module zip from `https://proxy.golang.org/github.com/mymmrac/telego/@v/v1.12.1.zip`,
+unpacked, its `go 1.26.7` directive edited to `go 1.26` and nothing else changed, then
+`GOTOOLCHAIN=local go build ./...` under `go version go1.26.5-X:nodwarf5 linux/amd64` →
+`BUILD-EXIT=0` with empty output]. Nothing in `v1.12.1` needs `1.26.7`.
+
+**The mechanism that would dissolve it is `GOTOOLCHAIN`, and it is ours, not telego's.** With
+Go's default `auto`, the go command fetches a newer toolchain and the operation simply
+succeeds
+[measured telego@v1.12.1 · `GOTOOLCHAIN=auto go get github.com/mymmrac/telego@v1.12.1` in a
+`go 1.26` module → `go: github.com/mymmrac/telego@v1.12.1 requires go >= 1.26.7; switching to go1.26.8` /
+`go: downloading go1.26.8 (linux/amd64)` / `go: upgraded go 1.26 => 1.26.7` / `go: added github.com/mymmrac/telego v1.12.1`,
+exit 0]. **Note the third line: adopting `v1.12.x` also raises this module's own `go` directive
+to `1.26.7`**, which is a project-wide requirement bump, not a local convenience — one more
+reason it belongs in its own task rather than inside this one. A consumer cannot instead
+override a dependency's declared minimum; the failure names `GOTOOLCHAIN` because that setting
+is the lever.
+
+**How far CI's `GOTOOLCHAIN: local` carries, stated exactly.** It establishes that CI resolves
+no toolchain automatically either — nothing more. CI installs its Go through
+`actions/setup-go` with `go-version-file: go.mod`, and this module declares `go 1.26`, so the
+patch CI actually gets is whatever that resolves to and may well already be `≥ 1.26.7`. **This
+design does not claim to know**: the recent CI runs cannot answer it, because the Go jobs are
+`paths-filter`-gated and were skipped on the harness-only changes that produced them, leaving
+no version line to read
+[measured · `gh run view 33874621571 --log` → output from `Detect changes` and
+`Harness guards` only; the `Build` job's own log is empty]. The ceiling this section
+describes is therefore a **local-machine** ceiling today, and the pin below is chosen so the
+tree builds for everyone under either resolution.
 
 **Decision: pin `v1.11.2`.** Verified against this module's real graph in a scratch copy of
 the tree: the resolution succeeds, `go build ./...`, `go vet ./...` and every test binary
@@ -117,8 +149,8 @@ code. AC3's remaining clauses — a **direct** requirement at a **released** ver
 `go.sum` in agreement and no `go mod tidy` delta — are what the importer-binding above
 protects, and subtask 3's gate is `make tidy-check` itself.
 
-**Open for the owner, not blocking:** raising the local toolchain to ≥ 1.26.7 unlocks
-`v1.12.x`. Recorded in § Open questions.
+**Owner's disposition:** `v1.11.2` stays for this task; raising the local toolchain and
+moving to `v1.12.x` is **deferred to its own task**. Recorded in § Open questions.
 
 ### D2 — The transport is one `telegoapi.Caller`; `tg.Client` owns configuration, not calls
 
@@ -1343,11 +1375,12 @@ outside its charter — `code-writer` must STOP on a predominantly-prose assignm
 
 ## Risks
 
-- **The pinned telego version drifts out from under the toolchain.** `v1.12.x` is
-  unreachable today and `v1.11.2` is the newest that resolves — but the toolchain may have
-  moved by implementation time. Mitigation: subtask 3 runs `go get` and reads its output
-  rather than trusting this document; if a newer release resolves, take it and record the
-  version actually pinned. The failure mode is loud, not silent —
+- **The pinned telego version drifts out from under the toolchain.** `v1.11.2` is the newest
+  that resolves under this machine's `go1.26.5` + `GOTOOLCHAIN=local` — a **configuration**
+  ceiling, not a technical one (D1) — and either half may have moved by implementation time.
+  Mitigation: subtask 3 runs `go get` and reads its output rather than trusting this document;
+  if a newer release resolves, take it and record the version actually pinned. The failure
+  mode is loud, not silent —
   `[measured telego@v1.12.1 · go get … → "requires go >= 1.26.7 (running go 1.26.5; GOTOOLCHAIN=local)"]`.
 - **A standalone "add the dependency" step would fail `make tidy-check`.** `go mod tidy`
   removes an unimported requirement. Mitigation: the decomposition binds `go get` to the
@@ -1704,10 +1737,14 @@ concluding it was dropped. Everything not marked `DECIDED` is genuinely still op
   and is not a loose end: the residue is telego decoding its own generated result types with a
   drop-in `encoding/json` reimplementation, and the propagation is **deliberately deferred to
   its own PR**, not left undecided.
-- **The local toolchain — DECIDED: stays at Go 1.26.5 with `GOTOOLCHAIN=local`, and telego
-  stays pinned at `v1.11.2`.** D1's measurement of the `v1.12.x` ceiling stands as the reason
-  the pin is where it is; the question is closed rather than deferred, so an implementor who
-  finds `v1.12.x` unreachable is seeing the designed state, not a stale document.
+- **Toolchain and telego version — DECIDED for this task, DEFERRED as its own.** `v1.11.2`
+  stays here; **raising the local Go toolchain to ≥ 1.26.7 and moving to telego `v1.12.x` is
+  deferred to its own task by the owner's decision.** D1 measures that this is a configuration
+  ceiling rather than a technical one — `v1.12.1`'s code builds clean under `go1.26.5` once its
+  declared minimum is lowered, and `GOTOOLCHAIN=auto` resolves the block outright — so the
+  deferred task is a toolchain-and-directive change, not a compatibility investigation. It
+  carries one consequence worth stating up front: adopting `v1.12.x` raises this module's own
+  `go` directive to `1.26.7`, which every local build and CI runner then has to satisfy.
 - **`docs/DESIGN.md` §11 and the per-chat per-second figure — DECIDED: do not touch §11.**
   The owner declines the edit for now. The transport expresses both windows either way (D9,
   D10), so nothing here depends on it. Recorded as a **known, accepted incompleteness** in a
