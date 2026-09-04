@@ -5,18 +5,18 @@ _Updated: 2026-09-04
 
 **Branch:** feat/2026-09-04-config-layer-balance-files
 **base_commit:** 869cfb37a773cc24aa2a0f3f705ced93f847422a
-**Last build:** not run
+**Last build:** `go build ./...` green | 2026-09-04T09:35:03Z
 
 **Issue:** #18
 **Spec:** ai-docs/plans/2026-09-04-config-layer-balance-files.spec.md
 
-**current_step:** Step 8 — Group A complete (subtasks 1-8 of 8); handoff to Group B for subtask 9
-**last_passed_gate:** golangci-lint run ./... | 2026-09-04T00:00:00Z | (pre-commit)
+**current_step:** Step 8 — subtask 9 of 9 complete (Group B); every subtask done, ready for Step 9 (Verify)
+**last_passed_gate:** go build ./... + CI relative-link check + check-citations.sh | 2026-09-04T09:35:03Z | edcf6eb + working tree (pre-commit)
 **entry_args:** 18
 
 ## Next action
 
-**Do this immediately:** Group A (`code-writer`, subtasks 1-8) is complete. Hand off to Group B (subtask 9 — propagation sweep, instructions/harness change-type) per the design's Handoff plan and `.claude/skills/context-reset/SKILL.md`.
+**Do this immediately:** every Step-8 subtask (1-9) is complete and committed on the branch. The orchestrator resumes at `/task` Step 9 (Verify). Note for Step 9.5: `ai-docs/context.md`'s § Status **Code** bullet still reads "`cmd/bot` is still the scaffold", which this diff makes false — subtask 9 deliberately did not touch it (see the Decisions log).
 
 ## Subtasks
 
@@ -28,7 +28,7 @@ _Updated: 2026-09-04
 - [x] 6. `.env.example` + disjointness tests; adds `godotenv` as a test-only requirement
 - [x] 7. `cmd/bot` wired to load and validate before any other work; `main` delegates to `run`
 - [x] 8. CI paths-filter: tracked config artefacts added to the `go` filter; actionlint
-- [ ] 9. Propagation sweep over the prose sites the diff falsifies  ← CURRENT (Group B)
+- [x] 9. Propagation sweep over the prose sites the diff falsifies
 
 ## Decisions log
 
@@ -52,6 +52,13 @@ _Updated: 2026-09-04
 - **Step 8, subtask 7 — found a bug in design § Test Design's own AC11 verification command.** `rg -n --glob '!*_test.go' --glob '*.go' -e '\bpanic\(' -e '\blog\.Fatal' cmd internal` (as written, negation glob first) does **not** exclude `_test.go` files in this ripgrep build (15.2.0): ripgrep applies globs in argument order and the *last* matching glob wins, so the trailing `--glob '*.go'` re-includes every `_test.go` file the leading negation excluded. The design's own measured "no output, exit 1" was taken before any `_test.go` file under `cmd`/`internal` contained `panic(` or `log.Fatal`, so the bug had nothing to expose at measurement time; `internal/config/balance_load_test.go`'s `dec` helper (subtask 1, `panic(err)` on a hard-coded-valid literal) is what surfaced it. Verified by re-running with the glob order flipped (`--glob '*.go' --glob '!*_test.go'`), which correctly drops `_test.go` files — re-confirmed against a positive-control scratch file in both orders. Fixed on the production side too: `cmd/bot/main.go`'s doc comment originally read "…Never panics and never calls log.Fatal (AC11)…", which the *broken* order's own false-negative test would have matched as a real hit had the doc comment run through the correct-order command — reworded to avoid the literal substring "log.Fatal". The corrected-order command now returns exit 1 with no output over `cmd internal`, matching the design's stated result. This is a harness-gap finding (a design's grep recipe, not project code) — recorded here per `Kind: correction`; `ai-docs/harness-gaps.md` is out of scope for a `code-writer` Mode A subtask to write, so it is left for `/task` Step 9's propagation/self-review pass to route.
 - **Step 8, subtask 7**: `run` takes `config.Lookup` directly (not `os.LookupEnv` baked in), so `main` is the only place that ever touches the process environment — `main_test.go` never calls `os.Exit` or spawns a binary, matching the design's "no test invokes a compiled artefact by bare path" constraint.
 - **Step 8, subtask 8**: `.github/workflows/ci.yml`'s `go` paths-filter gains `config/**` and `.env.example`; `actionlint .github/workflows/ci.yml` passed clean before staging (AGENTS.md AXIOM). Group A (subtasks 1-8) is now complete; handing off to Group B for subtask 9 per the design's Handoff plan.
+
+- **Step 8, subtask 9 — boundary call on `ai-docs/context.md`.** The design's § Propagation-targets row cites `5285f4c:ai-docs/context.md:43`, which is the § Status **Code** bullet ("`cmd/bot` is still the scaffold"), while the same section's preamble reserves `context.md`'s status bullet for `/task` Step 9.5. Resolved in favour of the explicit carve-out (also this group's spawn instruction): subtask 9 edited the § Architecture "**Layout so far:**" sentence — line 27, prose, not a status bullet — to add `internal/config`, and left line 43 alone. **Outstanding for Step 9.5:** the "still the scaffold" clause and the package list in that Code bullet are now false.
+- **Step 8, subtask 9 — the sweep, and the textual hits deliberately left standing.** Swept case-insensitively (`grep -rni` over `.claude/`, `AGENTS.md`, `ai-docs/`, `docs/`, plus `.github/` and `Makefile` where relevant) for `scaffold`, `cmd/bot`, `internal/config`, `env.example`, `LAB_GAME_`, `configuration`, `reload` / `without a deploy`, `balance.yaml` / `config/world`, `run the bot`, and for any directory-layout listing (none exists outside `context.md` and `INDEX.md`). Two `scaffold` hits — `.claude/skills/pr-commented/reference.md:9` and `.claude/skills/ai-audit/reference.md:134` — are the unrelated "template scaffolding" sense, inspected and left verbatim, not reworded. Hits in `ai-docs/plans/done/**`, `ai-docs/learnings.md`, `ai-docs/harness-gaps.md` and `ai-docs/context-status.md`'s past entries are history surfaces: left untouched per the Propagation Rule step-4 completeness test ("every LIVE doc must agree").
+- **Step 8, subtask 9**: the new `AGENTS.md` § Build & Test comment was written from a live run, not from the design — `env -u` on all six `LAB_GAME_` variables then `go run ./cmd/bot` exits 1 and names every missing key on stderr, so the comment reads "exits non-zero unless `.env.example`'s variables are exported".
+- **Step 8, subtask 9**: KD-22's two load-bearing repo claims were re-measured rather than copied from the design — `grep -rn 'go.yaml.in/yaml' --include='*.go' .` → the single import site `internal/config/balance_load.go:11` (so "the swap stays contained to one file" is true today), and `go mod why -m gopkg.in/yaml.v3` → reached only through `internal/store` → pgx test → testify, i.e. still test-only indirect. D2's explicit warning was honoured: the fork's `retract [v3.0.0, v3.0.1]` is written into KD-22 **as a non-argument**, not as a third reason.
+- **Step 8, subtask 9**: verified, not re-done, the two harness commits the design's last propagation row names — `.claude/settings.json`'s deny list holds `.idea/**`, `**/secrets*`, `**/.secrets*`, `**/.env` and the six named variants, with `.env.example` absent, which is what `ai-docs/claude-tools-hierarchy.md:97` describes. One pre-existing under-statement observed and deliberately left: that sentence names `**/secrets*` but not `**/.secrets*`. The omission predates this branch (it survives the `**/.env*` wording `db7999e` replaced) and is not a claim this diff falsifies, so widening it would be unapproved scope.
+- **Step 8, subtask 9 — gates for a prose-only diff.** Nothing non-prose moved, so no `actionlint` and no `shellcheck` applied. Run: `go build ./...` → green (sanity check); the CI step *relative markdown links resolve* executed verbatim over the whole tree → `LINKS-GREEN`, and the two new relative links (`INDEX.md` → the spec, `domain-invariants.md` → `key-decisions.md`) additionally traced with `realpath`; `.claude/skills/ai-audit/scripts/check-citations.sh` → `PASS` (local high-water mark PR #49), covering the new `#18` citations.
 
 - **Step 8**: owner's decision — the harness changes on this branch (AGENTS.md hand-rolling axiom, the settings.json deny narrowing, the claude-tools-hierarchy propagation) ship in the SAME PR as the config layer, not split out.
 
@@ -124,3 +131,8 @@ _Updated: 2026-09-04
 - `cmd/bot/main.go` — `main` now delegates to `run(lookup, stderr, stdout) int`, loading and validating configuration before any other work (AC11)
 - `cmd/bot/main_test.go` — subtask 7's scenarios, plus a local `repoRootPath`/`mapLookup`/`validEnv` (cmd/bot cannot import internal/config's unexported test helpers)
 - `.github/workflows/ci.yml` — `config/**` and `.env.example` added to the `go` paths-filter
+- `AGENTS.md` — § Build & Test: the `go run ./cmd/bot` line now states that it exits non-zero without the documented environment
+- `ai-docs/context.md` — § Architecture "Layout so far": `internal/config` added (the § Status bullets are Step 9.5's)
+- `ai-docs/domain-invariants.md` — § 8: the reload policy named (start-up only, no hot reload), pointing at KD-24
+- `ai-docs/key-decisions.md` — new § *Configuration layer (2026-09-04)*: KD-22 (YAML parser + rejected alternatives + escape hatches), KD-23 (disjoint sources, no override chain), KD-24 (start-up-only reload, operator-supplied path, no `go:embed`)
+- `ai-docs/plans/INDEX.md` — the row for this plan pair (🟢 in progress, #18)

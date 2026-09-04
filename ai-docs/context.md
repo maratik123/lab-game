@@ -24,7 +24,7 @@ The mechanics are deliberately conventional (stamina, auto-combat, seasons, an e
 
 ## Architecture
 
-The design document defines the blocks; the Go package layout lands one implementation spec at a time, never by assumption. **Layout so far:** `internal/store` — the ledger's write path (owner/scope/account catalog, forward migrations under `internal/store/migrations`, `store.Post`); `internal/testdb` — PostgreSQL provisioning for package tests (a `postgres:18` container or `LAB_GAME_TEST_DSN`, one schema per test). The blocks the layout has to house:
+The design document defines the blocks; the Go package layout lands one implementation spec at a time, never by assumption. **Layout so far:** `internal/store` — the ledger's write path (owner/scope/account catalog, forward migrations under `internal/store/migrations`, `store.Post`); `internal/testdb` — PostgreSQL provisioning for package tests (a `postgres:18` container or `LAB_GAME_TEST_DSN`, one schema per test); `internal/config` — the start-up configuration layer (the `LAB_GAME_` environment set, the tracked balance YAML, the world-set path), which `cmd/bot` loads and validates before any other work. The blocks the layout has to house:
 
 | Block | Responsibility | Design ref |
 |---|---|---|

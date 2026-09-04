@@ -50,7 +50,7 @@ golangci-lint fmt -d                                    # format check — non-z
 go mod tidy && git diff --exit-code go.mod go.sum       # module hygiene gate
 actionlint .github/workflows/<file>.yml                 # required gate for any new/modified workflow file
 shellcheck <script>.sh                                  # required gate for any new/modified shell script
-go run ./cmd/bot                                        # run the bot
+go run ./cmd/bot                                        # run the bot (exits non-zero unless .env.example's variables are exported)
 ```
 
 > **AXIOM — `actionlint` MUST pass before `git add` on any modified `.github/workflows/*.yml`; `shellcheck` MUST pass before `git add` on any modified `*.sh`.**
