@@ -73,8 +73,10 @@ exclusive arc that `internal/store` already implements.
    table holds pending and dead tasks only, so there is no terminal `completed` status
    value, no `executed_at` column, and no retention machinery — surviving history lives
    in the basis documents and the postings, and lag is measured in-process at execution
-   (Scope 8). Whether that delete also governs a *recurrent* occurrence is the open
-   round-2 question; the rest of the schema does not depend on its answer.
+   (Scope 8). **Delete-on-done governs one-shots only** (owner, round 2): a recurrent
+   task is one live row whose `run_at` moves forward, so its row is never deleted while
+   the schedule stands, and the table's identity constraint is what makes double-seeding
+   the same recurrence unrepresentable (Scope 7).
 
 3. **The two new basis types in Go, and they must live in `internal/store`.**
    `PostingBasis` is a **sealed** sum type: both its methods are unexported, and its doc
@@ -105,13 +107,17 @@ exclusive arc that `internal/store` already implements.
    and is never claimed again. Tasks in that state are enumerable through the package
    with enough context to diagnose them (type, `run_at`, attempts, last error).
 
-7. **Recurrent tasks: schedule-next-on-completion, idempotent by construction.** The
-   property this task must have, stated without committing to a representation: the next
-   occurrence becomes due in the **same transaction** that completes the current one, so
-   a commit leaves exactly one live occurrence of that recurrence and a rollback leaves
-   the current one still due. Whether that is the same row moved forward or a fresh
-   successor row — and where the cadence is declared — is the open round-2 question, and
-   it is the last thing this spec is waiting on.
+7. **Recurrent tasks: one live row per recurrence, moved forward** (owner, round 2).
+   Completing an occurrence sets the row's next `run_at` **in place**, in the same
+   transaction as the effects: a commit leaves exactly one live occurrence, a rollback
+   leaves the current one still due, and there is no window in which a recurrence has
+   zero or two live rows. The property the owner named as the reason for this shape is
+   structural rather than procedural — **double-seeding one recurrence is unrepresentable
+   because the table's identity constraint refuses it**, not because some code path
+   remembers to check first. Which columns carry that identity, and the fact that a
+   one-shot must not be forced to invent one, are in *Key decisions*. Where the cadence
+   that computes the next `run_at` is declared is the open round-3 question, and it is
+   the last thing this spec is waiting on.
 
 8. **Per-type lag instrumentation, through a seam rather than a registry.** The worker
    reports, per executed task, at least: task type, the lag between `run_at` and the
@@ -126,7 +132,8 @@ exclusive arc that `internal/store` already implements.
    `gh issue view 23 --json state`), which already names scheduler lag in its title.
 
 9. **Operational tuning as configuration keys.** The poll interval, the claim batch
-   limit, the retry attempt cap and the backoff base and ceiling are `LAB_GAME_`-prefixed
+   limit, the retry attempt cap, the backoff base and ceiling, and the per-task execution
+   deadline that bounds a hung handler (*Key decisions*) are `LAB_GAME_`-prefixed
    environment variables read by `internal/config`, in the optional-with-default class
    KD-27 established for operational tuning: absent means the documented default, present
    means parsed and validated with a start-up `*KeyError` naming the variable. They are
@@ -235,8 +242,13 @@ exclusive arc that `internal/store` already implements.
 | Lifecycle of a completed row | **Deleted by the transaction that completes it** (owner, round 1). The table holds pending and dead tasks only. Consequences, all of them intended: no retention step and no growth curve to manage; no terminal `completed` status value and no `executed_at`; the observation seam is the **only** place execution lag ever exists, since there is no row left to compute it from (AC12 carries the whole weight); and a guard no-op leaves no per-occurrence trace beyond its counter — see *Open questions*. |
 | Retention | **None, and none is needed** — it follows from the row above rather than being a separate decision. §11 places retention outside MVP in any case [source: 7039e36:docs/DESIGN.md:330 · `sed -n '330p' docs/DESIGN.md`]. |
 | Which direction the basis-document / task reference points | **Never from a basis document to `scheduled_task`.** Delete-on-done means the task row is gone while its basis document and postings live on, so a hard FK that way would either block the delete or cascade away ledger history. §11 fixes the direction for exactly this reason: FKs point from postings to bases, which is what makes dropping postings first always safe [source: 7039e36:docs/DESIGN.md:330 · `sed -n '330p' docs/DESIGN.md`]. A basis document carries by value whatever it needs to identify the task that produced it; which fields those are is the design's. |
-| Where a recurrent task's next `run_at` comes from | **TBD — re-asked in round 2** after the owner asked for prior art rather than choosing. The round-2 options are informed by the `kagkarlsson/db-scheduler` research recorded under *Technical constraints* § *Provenance*, which surfaced two forks the round-1 options had collapsed: whether a recurring task is one row moved forward or a successor row, and where its cadence is declared. |
-| Whether a recurrent chain can end in the terminal give-up state | **TBD — depends on the round-2 answers, and may dissolve.** If a recurrence is declared in code and re-seeded at start-up, a give-up is self-healing and the question does not arise; if the cadence lives only in a handler's return value, a give-up ends the day close permanently and the policy needs deciding. Issue #20's scope names a give-up state without saying it governs every task kind. |
+| The recurrent row's lifecycle | **One live row per recurrence, moved forward in place** (owner, round 2). Completing an occurrence sets the next `run_at` on the same row inside the same transaction as the effects; the row is never deleted while the schedule stands. Delete-on-done therefore governs **one-shots only**, and the two kinds differ in the schema by how they settle, not by living in different tables — which keeps §11's "class separation by a column, never a second table" intact [source: 7039e36:docs/DESIGN.md:311 · `sed -n '311p' docs/DESIGN.md`]. |
+| What makes double-seeding one recurrence impossible | **A uniqueness constraint on the task's identity, not a check in code** — the owner's stated reason for the move-forward shape. The identity is the task type plus an instance key. **A one-shot must not be forced to invent one:** a corpse-evaporation task has a natural instance key and a fan-out notification may not, so the constraint is a *partial* unique index over rows that carry an instance key, with a surrogate primary key — exactly the shape migration 00001 already uses for the basis columns of `journal_entry` [source: 7039e36:internal/store/migrations/00001_ledger_core.sql:74-75 · `sed -n '74,75p' internal/store/migrations/00001_ledger_core.sql`]. A composite primary key over (type, instance) would force every one-shot to supply a key it may not have. The design fixes the column names; AC29 fixes the property. |
+| Whether the scheduler needs a `picked` flag, a heartbeat and a dead-execution detector | **No — and the reason is a decision `docs/DESIGN.md` already made, not a preference.** A liveness protocol exists to release rows stranded by a worker that died *while holding them in a non-transactional executing state*. §11 specifies the opposite: the task executes **in one transaction with its own effects** [source: 7039e36:docs/DESIGN.md:310 · `sed -n '310p' docs/DESIGN.md`]. A worker that dies mid-execution aborts its transaction, which releases its row locks and reverts its writes, leaving the row exactly as it was — still due, and claimable by the next worker on its next poll. There is no stranded state for a detector to find, so a heartbeat column, a `picked` column and a revival handler would all be machinery guarding an unreachable state. |
+| The one failure the transactional shape does **not** self-heal | **A handler that hangs rather than crashes** — its transaction stays open, its row stays locked, and `SKIP LOCKED` means every other worker passes over that row *silently and forever*. This is the residual risk the row above creates, and it is answered by a **bounded per-task execution deadline** (Scope 9), not by a liveness protocol: a bound turns an invisible stall into a timed failure that enters the ordinary retry path and the ordinary instrumentation. Whether the bound is enforced through the handler's context, a database-side session timeout, or both is the design's; that a bound exists and that exceeding it is observable is AC30. |
+| How a recurrence is retired | **By an explicit removal, never by an omission.** Under move-forward the row outlives any deploy, so deleting a task type from the handler registry does not stop its row from coming due — it makes the row unclaimable, which AC21 requires to be a visible refusal rather than a silent accumulation. Retiring a recurrence is an act: the row is removed, by migration or by an operator, in the same change that drops its handler. |
+| Where a recurrent task's cadence is declared | **TBD — re-asked in round 3** after the owner asked, for the second time, how the prior art self-heals a recurrence before choosing. The research is recorded under *Technical constraints* § *Provenance*; what it changed about the options is that "healed by the next restart" is not one property but a **pair of primitives** — an idempotent seed keyed on instance identity, plus a bounded time-correction rule with a do-not-disturb window — and the owner's round-2 identity constraint is already the first of the two. |
+| Whether a recurrent chain can end in the terminal give-up state | **TBD — asked in round 3, and it did NOT dissolve.** Round 2 recorded that a code-declared cadence might make this question disappear. Under the owner's move-forward answer it does not: start-up seeding recreates a recurrence whose row is **missing**, but a row that exists in a terminal dead state is present, so seeding would adopt it rather than revive it. A give-up state for the recurring kind therefore has to be decided on its own. |
 
 ## Technical constraints
 
@@ -252,7 +264,13 @@ exclusive arc that `internal/store` already implements.
   owner asked what it does before deciding, and because it named two forks the round-1
   options had collapsed into one. Nothing in it is a constraint, a default, or an
   instruction to imitate. If the design ever wants to rely on one of those claims, it
-  reads the library's own source and pins it there.
+  reads the library's own source and pins it there. The round-3 block extends the same
+  research to that library's three healing mechanisms and carries the same standing.
+  **One observation inside it is load-bearing and was therefore checked against this
+  repository rather than accepted:** the library needs a heartbeat because it runs a
+  handler outside the claiming transaction, and §11 specifies the opposite for this
+  project — see the `picked`-flag row in *Key decisions*, whose conclusion rests on §11's
+  own sentence and not on the research.
 - **Module and toolchain:** `github.com/maratik123/lab-game`, `go 1.26`
   [source: 7039e36:go.mod:1-3 · `sed -n '1,3p' go.mod`].
 - **The ledger schema this migration extends.** `journal_entry` has one nullable FK
@@ -326,9 +344,10 @@ in *Open questions*, and nothing here blocks on the answer.
 
 ## Acceptance Criteria
 
-One criterion is still owed and lands once the recurrence question is answered: how a
-recurrent occurrence is represented, and therefore whether AC25's delete governs it. The
-payload and completed-row criteria below are settled by the owner's round-1 answers.
+Two criteria are still owed and land with the round-3 answers: where a recurrent task's
+cadence is declared and what re-seeds a missing recurrence, and whether the recurring kind
+can reach the terminal give-up state. Everything below is settled — the payload and
+completed-row criteria by the round-1 answers, the recurrent row's shape by round 2.
 
 | # | Criterion |
 |---|-----------|
@@ -342,7 +361,7 @@ payload and completed-row criteria below are settled by the owner's round-1 answ
 | AC8 | A handler can report a guard-miss no-op. The task reaches a terminal completed state, its writes are absent, and the outcome is reported to the observation seam as an outcome class distinct from both success-with-effects and failure. |
 | AC9 | A failing handler is retried with a strictly positive delay between attempts that grows rather than repeats, bounded by the configured attempt cap; after the cap the task is in a terminal give-up state and is never returned by a subsequent claim. A test asserts the exact attempt count and the terminal state. |
 | AC10 | Tasks in the give-up state are enumerable through the package, each carrying at least its type, its `run_at`, its attempt count and the last failure's message. |
-| AC11 | A recurrence's next occurrence becomes due in the same transaction as the execution that completes the current one, and the count of live occurrences of one recurrence is exactly one at every commit boundary: one after a committed execution, one after a rolled-back execution (the current one, still due), and one after a retried-then-succeeded execution — never zero, never two. The criterion is stated on the count, not on the row identity, so it holds under either representation. |
+| AC11 | A recurrent task is one row whose `run_at` advances in place: completing an occurrence updates that row rather than deleting it and inserting another, and the row's identity is unchanged across occurrences. The count of live rows for one recurrence is exactly one at every commit boundary — after a committed execution, after a rolled-back execution (the current one, still due), and after a retried-then-succeeded execution. Never zero, never two. |
 | AC12 | For every executed task the worker reports exactly one observation carrying at least the task type, the lag between `run_at` and the execution instant, the outcome class of AC8, and the size of the claim batch the task came from; the worker also reports its loop duration. A test collects observations for a success, a guard no-op, a retry and a give-up. |
 | AC13 | No non-test Go file in `internal/scheduler` imports a metrics-registry package, and the package compiles and its tests pass with no observation implementation installed. |
 | AC14 | Every operational tuning value — poll interval, claim batch limit, attempt cap, backoff base and backoff ceiling — is a `LAB_GAME_`-prefixed environment variable that `internal/config` reads and exposes as a typed field. No literal value for any of them appears at a call site in `internal/scheduler`, and a test constructs the worker with non-default values and observes the changed behaviour. |
@@ -356,10 +375,13 @@ payload and completed-row criteria below are settled by the owner's round-1 answ
 | AC22 | Propagation is complete for this change: every site whose claim the diff falsifies is updated in the same PR, membership decided by `AGENTS.md` § Propagation Rule step 4. Sites known at spec time — illustrative, not exhaustive: `ai-docs/context.md` (the Scheduler block row and the Status code paragraph), `ai-docs/key-decisions.md` KD-4, `AGENTS.md` § API Stability's carve-out sentence, `internal/store/basis.go`'s `PostingBasis` doc comment, `.env.example`, `internal/config/env.go`, and `ai-docs/plans/INDEX.md`. |
 | AC23 | Every gate `make verify` runs is green on the resulting tree, including the race-enabled test gate. |
 | AC24 | `scheduled_task` carries its type-specific data in a single JSONB payload column. A test round-trips a payload through insert, claim and execution and asserts the handler receives the value that was scheduled, including for a payload containing a nested object and a null. |
-| AC25 | A task that completes — whether with effects or as a guard no-op — leaves no row in `scheduled_task`: the deletion happens in the same transaction as the effects, so a rolled-back execution leaves the row present and still due. A test asserts both directions. There is no terminal `completed` status value in the schema and no retention step in the change. |
+| AC25 | A **one-shot** task that completes — whether with effects or as a guard no-op — leaves no row in `scheduled_task`: the deletion happens in the same transaction as the effects, so a rolled-back execution leaves the row present and still due. A test asserts both directions. There is no terminal `completed` status value in the schema and no retention step in the change. A recurrent task is the stated exception and is governed by AC11 instead. |
 | AC26 | A payload the handler cannot decode is classified as a failure rather than as a guard no-op, and it terminates: the task reaches the give-up state within the configured attempt cap rather than being retried indefinitely, and it is enumerable under AC10 with the decode failure as its recorded reason. |
 | AC27 | No basis-document table carries a foreign key to `scheduled_task`: deleting a completed task row neither fails nor cascades, and the basis document and its postings survive it. A test posts under a new basis type, lets the task complete and be deleted, and asserts the `journal_entry` and `posting` rows are still present and still balance. |
 | AC28 | Every persisted payload key is treated as a data contract: the design document names the payload keys each shipped task type reads, and a pending row written before a change still decodes after it. No live sentence in the tree claims that a JSONB payload is exempt from `AGENTS.md` § API Stability's forward-migration carve-out. |
+| AC29 | Scheduling a recurrence twice is refused by the database, not by a code path that checks first: with a recurrence already live, a second insert of the same task type and instance key fails on a uniqueness constraint. A one-shot task carrying no instance key is accepted, and two such one-shots of the same type coexist — the constraint does not force a one-shot to invent an identity. |
+| AC30 | A handler that neither returns nor fails within the configured per-task execution deadline is abandoned rather than left holding its row: the task's transaction ends, the row becomes claimable again, and the event is reported through the observation seam as a failure rather than passing silently. A test drives a handler that blocks past the deadline and asserts the row is claimable afterwards and the observation was made. |
+| AC31 | The schema contains no liveness-protocol machinery: no column recording that a task is currently being executed, no heartbeat timestamp, and no worker path that revives a task on the basis of a missed heartbeat. A test asserts the self-healing property this replaces — a worker whose transaction is aborted mid-execution leaves the task still due, with none of its writes visible, and the next claim returns it. |
 
 ## Open questions
 
@@ -381,11 +403,18 @@ payload and completed-row criteria below are settled by the owner's round-1 answ
   claim batch that is always full is the signal that lag is accumulating; §11's stated
   early signal is fan-out delaying gameplay edges, and the remedy it names is priority,
   which is out of scope here. The batch-size observation (AC12) is what will show it.
-- **How a dead recurrent chain is noticed, if the round-2 answers leave one possible.**
-  Where nothing re-seeds a recurrence, a give-up ends the day close permanently and
-  silently. The dead-task enumeration (AC10) and the per-type counters (AC12) make it
-  *visible*; the *alert* belongs to #23's dashboard, which has no rules yet. If the
-  answers make a chain self-healing, this question closes with them.
+- **Where the alert for a stopped recurrence lives, whatever the round-3 answers are.**
+  The dead-task enumeration (AC10) and the per-type counters (AC12) make a stopped
+  recurrence *visible*; turning visible into *noticed* is an alert rule, and alert rules
+  belong to #23's dashboard, which has none yet. This spec deliberately ships the signal
+  and not the rule.
+- **Whether a row whose task type is no longer registered should eventually be removed
+  automatically.** Under move-forward a recurrence outlives every deploy, so a type
+  dropped from the registry leaves a row that comes due forever and is refused every time
+  (AC21). This spec makes retiring a recurrence an explicit act (*Key decisions*) rather
+  than adding a garbage collector, because an automatic deleter of rows nobody claims is
+  a mechanism that removes evidence of the mistake it is covering for. If unclaimable
+  rows ever accumulate in practice, the refusal counter is what will show it.
 - **A guard no-op now leaves no per-occurrence trace.** Delete-on-done plus
   counter-shaped instrumentation means a stale task that died is afterwards a number, not
   a record: nothing says *which* occurrence died or what its payload was. §3.5 makes that

@@ -63,6 +63,7 @@ gh_issue:
 round_cap: 4
 questions_per_round_cap: 3
 round: 4
+prior_qa_note: "round 3 questions surfaced; answers pending"
 agent_id: a80e8c5c04428a94f
 prior_qa:
   - round: 1
@@ -82,4 +83,10 @@ prior_qa:
     question: "Where is a recurrent task's cadence declared, and what restores a chain that has stopped?"
     answer: "How db-scheduler self heals recurrent tasks?"
     note: "Not a choice — the owner asked for the prior art's healing mechanism before deciding. Researched facts passed as extra_context in round 3; the question is to be re-asked informed by them."
+  - round: 3
+    question: "Where is a recurrent task's cadence declared, and what re-seeds a recurrence whose row is missing?"
+    answer: "<pending — surfaced to the owner>"
+  - round: 3
+    question: "When a recurrent task's handler keeps failing, does the chain stop?"
+    answer: "<pending — surfaced to the owner>"
 ```
