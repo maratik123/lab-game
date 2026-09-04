@@ -76,11 +76,13 @@ func optionErrorf(field, format string, args ...any) *OptionError {
 // telegoapi.Caller — the retry loop, the retry_after wait, both rate
 // limiters, the outbound gate and the observation point.
 type Client struct {
-	bot       *telego.Bot
-	transport config.Transport
-	gate      Gate
-	observer  Observer
-	jitter    func() float64
+	bot        *telego.Bot
+	transport  config.Transport
+	gate       Gate
+	observer   Observer
+	jitter     func() float64
+	httpClient *http.Client
+	limiter    *Limiter
 }
 
 // New validates opts and constructs a Client. It returns an *OptionError
@@ -107,7 +109,25 @@ func New(opts Options) (*Client, error) {
 		return nil, optionErrorf("Transport.AttemptTimeout", "must be positive, got %s", opts.Transport.AttemptTimeout)
 	}
 
-	botOptions := []telego.BotOption{telego.WithAPIServer(opts.BaseURL)}
+	c := &Client{
+		transport:  opts.Transport,
+		gate:       opts.Gate,
+		observer:   opts.Observer,
+		jitter:     opts.Jitter,
+		httpClient: opts.HTTPClient,
+		limiter:    newLimiter(opts.Transport.Limits),
+	}
+
+	// WithAPICaller and WithRequestConstructor are the whole net/http +
+	// encoding/json swap (design D3): telego's own bot never gets a
+	// chance to install its default fasthttp caller or constructor, so no
+	// call issued through the returned Client can reach them (design D2's
+	// accessor guarantee, AC2, AC27).
+	botOptions := []telego.BotOption{
+		telego.WithAPIServer(opts.BaseURL),
+		telego.WithAPICaller(&caller{client: c}),
+		telego.WithRequestConstructor(jsonConstructor{}),
+	}
 	if opts.Logger != nil {
 		botOptions = append(botOptions, telego.WithLogger(opts.Logger))
 	} else {
@@ -118,14 +138,9 @@ func New(opts Options) (*Client, error) {
 	if err != nil {
 		return nil, optionErrorf("Token", "%s", err)
 	}
+	c.bot = bot
 
-	return &Client{
-		bot:       bot,
-		transport: opts.Transport,
-		gate:      opts.Gate,
-		observer:  opts.Observer,
-		jitter:    opts.Jitter,
-	}, nil
+	return c, nil
 }
 
 // API returns the configured *telego.Bot every outbound Bot API call goes
