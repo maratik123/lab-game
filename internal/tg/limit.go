@@ -1,6 +1,7 @@
 package tg
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -243,13 +244,21 @@ func (l *Limiter) chatScheduleLocked(call Call) *schedule {
 	if call.Chat.Target == ChatUnknown {
 		key = chatKey{key: unknownChatKey, class: call.Class}
 	}
-	s, ok := l.chats[key]
-	if !ok {
-		cl := l.classLimits(call.Class)
-		windows := append(paceWindows(cl.ChatRate), quotaWindows(cl.ChatCap)...)
-		s = newSchedule(orderedSchedule, windows)
-		l.chats[key] = s
+	if s, ok := l.chats[key]; ok {
+		return s
 	}
+	cl := l.classLimits(call.Class)
+	windows := append(paceWindows(cl.ChatRate), quotaWindows(cl.ChatCap)...)
+	if len(windows) == 0 {
+		// An unbounded class allocates no per-chat history at all (design
+		// D9's registry): a schedule with no windows never blocks, so
+		// there is nothing a stored entry would ever be consulted for —
+		// storing one anyway would let a distinct chat id per call grow
+		// this map without bound.
+		return nil
+	}
+	s := newSchedule(orderedSchedule, windows)
+	l.chats[key] = s
 	return s
 }
 
@@ -262,16 +271,45 @@ func (l *Limiter) chatScheduleLocked(call Call) *schedule {
 // it, never a fallback path a correct run relies on.
 const maxAcquirePasses = 4096
 
+// acquireFixedPoint runs design D9's decide-then-commit fixed-point
+// search from start, consulting earliestFns (each a schedule's earliest,
+// or an equivalent) until none advances t any further, or until
+// maxAcquirePasses is exhausted. It mutates nothing — pure decision, as
+// D9 requires. Extracted from acquire so the exhaustion branch (finding
+// 12: exhaustion is a defect, not a silent fallback) is directly
+// testable with a deliberately non-converging stub, independent of any
+// real schedule's own termination proof.
+func acquireFixedPoint(start time.Time, earliestFns ...func(time.Time) time.Time) (t time.Time, converged bool) {
+	t = start
+	for pass := 0; pass < maxAcquirePasses; pass++ {
+		next := t
+		for _, f := range earliestFns {
+			if c := f(t); c.After(next) {
+				next = c
+			}
+		}
+		if !next.After(t) {
+			return t, true
+		}
+		t = next
+	}
+	return t, false
+}
+
 // acquire decides the emission instant for call, not before now, honoring
 // deadline when hasDeadline is true, and commits to every relevant
 // schedule at that same instant — design D9's whole mechanism: decide
 // against every constraint first, commit to every constraint at that same
 // instant, never commit before the answer is final and never partially
-// undo. It returns (t, true) on a grant, or (zero, false) when the
-// required wait would end after deadline — in which case NOTHING has been
-// mutated (design D9's "a refusal cannot corrupt anything, because a
-// refusal happens before any mutation").
-func (l *Limiter) acquire(call Call, now, deadline time.Time, hasDeadline bool) (time.Time, bool) {
+// undo. It returns (t, true, nil) on a grant, or (zero, false, nil) when
+// the required wait would end after deadline — in which case NOTHING has
+// been mutated (design D9's "a refusal cannot corrupt anything, because a
+// refusal happens before any mutation"). A non-nil error means the
+// fixed-point search did not converge within maxAcquirePasses — believed
+// unreachable given a correct window configuration, but treated as the
+// defect design.md:737 calls it, never as a silent fallback: nothing is
+// committed and no grant is returned.
+func (l *Limiter) acquire(call Call, now, deadline time.Time, hasDeadline bool) (time.Time, bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -282,32 +320,24 @@ func (l *Limiter) acquire(call Call, now, deadline time.Time, hasDeadline bool) 
 		chat.evict(now)
 	}
 
-	t := now
-	for pass := 0; pass < maxAcquirePasses; pass++ {
-		next := t
-		if g := global.earliest(t); g.After(next) {
-			next = g
-		}
-		if chat != nil {
-			if c := chat.earliest(t); c.After(next) {
-				next = c
-			}
-		}
-		if !next.After(t) {
-			break
-		}
-		t = next
+	earliestFns := []func(time.Time) time.Time{global.earliest}
+	if chat != nil {
+		earliestFns = append(earliestFns, chat.earliest)
+	}
+	t, converged := acquireFixedPoint(now, earliestFns...)
+	if !converged {
+		return time.Time{}, false, fmt.Errorf("tg: limiter: fixed-point search did not converge within %d passes", maxAcquirePasses)
 	}
 
 	if hasDeadline && t.After(deadline) {
-		return time.Time{}, false
+		return time.Time{}, false, nil
 	}
 
 	global.commit(t)
 	if chat != nil {
 		chat.commit(t)
 	}
-	return t, true
+	return t, true, nil
 }
 
 // paceWindows expresses a pacing key's rate — steady emission at N per W,
@@ -316,15 +346,18 @@ func (l *Limiter) acquire(call Call, now, deadline time.Time, hasDeadline bool) 
 // (N, W), which bears the BOUND itself. r's zero value (unbounded)
 // contributes no window. ceil rather than truncation buys evenness only —
 // the quota window is what forbids the N+1-th emission either way (design
-// D9's "Configuration maps onto windows").
+// D9's "Configuration maps onto windows"). When N is 1 the two windows
+// coincide exactly (design.md:825), so only one is kept.
 func paceWindows(r config.Rate) []window {
 	if r.Count <= 0 {
 		return nil
 	}
-	return []window{
-		{count: 1, per: ceilDiv(r.Per, r.Count)},
-		{count: r.Count, per: r.Per},
+	pace := window{count: 1, per: ceilDiv(r.Per, r.Count)}
+	bound := window{count: r.Count, per: r.Per}
+	if pace == bound {
+		return []window{pace}
 	}
+	return []window{pace, bound}
 }
 
 // quotaWindows expresses a quota key's cap — at most N in any window of

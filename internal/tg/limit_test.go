@@ -1,14 +1,29 @@
 package tg
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/maratik123/lab-game/internal/config"
+	"github.com/maratik123/lab-game/internal/tgtest"
 )
 
 func rate(count int, per time.Duration) config.Rate { return config.Rate{Count: count, Per: per} }
+
+// acquireOK calls l.acquire and fails the test immediately if it reports
+// the fixed-point-exhaustion defect error (finding 12) — none of these
+// tests are constructed to hit it, so seeing that error here would itself
+// be a finding.
+func acquireOK(t *testing.T, l *Limiter, call Call, now, deadline time.Time, hasDeadline bool) (time.Time, bool) {
+	t.Helper()
+	tm, ok, err := l.acquire(call, now, deadline, hasDeadline)
+	if err != nil {
+		t.Fatalf("acquire: unexpected error: %v", err)
+	}
+	return tm, ok
+}
 
 func chatCall(class MethodClass, key string) Call {
 	return Call{Method: "x", Class: class, Chat: ChatRef{Key: key, Target: ChatKnown}}
@@ -44,7 +59,7 @@ func TestLimiter_PerClassGlobalAdmission(t *testing.T) {
 	l := newLimiter(limits)
 	var times []time.Time
 	for i := 0; i < 6; i++ {
-		tm, ok := l.acquire(noChatCall(ClassMessage), epoch, time.Time{}, false)
+		tm, ok := acquireOK(t, l, noChatCall(ClassMessage), epoch, time.Time{}, false)
 		if !ok {
 			t.Fatalf("acquire[%d]: refused unexpectedly", i)
 		}
@@ -55,7 +70,7 @@ func TestLimiter_PerClassGlobalAdmission(t *testing.T) {
 	}
 	// A call of an unbounded class must not be delayed by the message
 	// class's global allowance (AC10's second clause).
-	tm, ok := l.acquire(noChatCall(ClassOther), epoch, time.Time{}, false)
+	tm, ok := acquireOK(t, l, noChatCall(ClassOther), epoch, time.Time{}, false)
 	if !ok || !tm.Equal(epoch) {
 		t.Errorf("ClassOther acquire = (%v, %v), want (epoch, true) — unaffected by ClassMessage's global allowance", tm, ok)
 	}
@@ -71,13 +86,13 @@ func TestLimiter_CrossChatNonBlockingWithGlobalBounded(t *testing.T) {
 	l := newLimiter(limits)
 	// Chat A gets a heavy backlog.
 	for i := 0; i < 5; i++ {
-		if _, ok := l.acquire(chatCall(ClassMessage, "A"), epoch, time.Time{}, false); !ok {
+		if _, ok := acquireOK(t, l, chatCall(ClassMessage, "A"), epoch, time.Time{}, false); !ok {
 			t.Fatalf("chat A acquire[%d]: refused", i)
 		}
 	}
 	// Chat B, arriving at the same candidate, must not be pushed behind
 	// chat A's backlog.
-	tm, ok := l.acquire(chatCall(ClassMessage, "B"), epoch, time.Time{}, false)
+	tm, ok := acquireOK(t, l, chatCall(ClassMessage, "B"), epoch, time.Time{}, false)
 	if !ok {
 		t.Fatal("chat B acquire: refused unexpectedly")
 	}
@@ -92,7 +107,7 @@ func TestLimiter_UndecodableBodyIsBoundedNotExempt(t *testing.T) {
 	l := newLimiter(limits)
 	var times []time.Time
 	for i := 0; i < 4; i++ {
-		tm, ok := l.acquire(unknownChatCall(ClassMessage), epoch, time.Time{}, false)
+		tm, ok := acquireOK(t, l, unknownChatCall(ClassMessage), epoch, time.Time{}, false)
 		if !ok {
 			t.Fatalf("acquire[%d]: refused", i)
 		}
@@ -108,7 +123,7 @@ func TestLimiter_UnboundedClassPassesThroughAndBoundCounterpartBinds(t *testing.
 	// Other is unbounded by default: many calls at once, no delay.
 	l := newLimiter(config.TransportLimits{})
 	for i := 0; i < 10; i++ {
-		tm, ok := l.acquire(chatCall(ClassOther, "chat"), epoch, time.Time{}, false)
+		tm, ok := acquireOK(t, l, chatCall(ClassOther, "chat"), epoch, time.Time{}, false)
 		if !ok || !tm.Equal(epoch) {
 			t.Fatalf("unbounded acquire[%d] = (%v,%v), want (epoch,true)", i, tm, ok)
 		}
@@ -116,16 +131,33 @@ func TestLimiter_UnboundedClassPassesThroughAndBoundCounterpartBinds(t *testing.
 
 	// Its bound counterpart: configuring a ChatRate for Other makes it bind.
 	bounded := newLimiter(config.TransportLimits{Other: config.ClassLimits{ChatRate: rate(1, time.Second)}})
-	first, ok := bounded.acquire(chatCall(ClassOther, "chat"), epoch, time.Time{}, false)
+	first, ok := acquireOK(t, bounded, chatCall(ClassOther, "chat"), epoch, time.Time{}, false)
 	if !ok {
 		t.Fatal("bounded acquire[0]: refused")
 	}
-	second, ok := bounded.acquire(chatCall(ClassOther, "chat"), epoch, time.Time{}, false)
+	second, ok := acquireOK(t, bounded, chatCall(ClassOther, "chat"), epoch, time.Time{}, false)
 	if !ok {
 		t.Fatal("bounded acquire[1]: refused")
 	}
 	if !second.After(first) {
 		t.Errorf("second = %v, first = %v: configuring a bound must make it bind", second, first)
+	}
+}
+
+// TestLimiter_UnboundedClassNeverAllocatesPerChatSchedule asserts D9's
+// registry claim directly: an unbounded class (no ChatRate, no ChatCap)
+// must not accumulate one map entry per distinct chat id — a schedule
+// with no windows never blocks, so storing one is pure unbounded growth.
+func TestLimiter_UnboundedClassNeverAllocatesPerChatSchedule(t *testing.T) {
+	t.Parallel()
+	l := newLimiter(config.TransportLimits{})
+	for i := 0; i < 10; i++ {
+		if _, ok := acquireOK(t, l, chatCall(ClassOther, fmt.Sprintf("chat-%d", i)), epoch, time.Time{}, false); !ok {
+			t.Fatalf("acquire[%d]: refused", i)
+		}
+	}
+	if len(l.chats) != 0 {
+		t.Errorf("len(l.chats) = %d, want 0 (an unbounded class must allocate no per-chat schedule)", len(l.chats))
 	}
 }
 
@@ -136,11 +168,11 @@ func TestLimiter_PrivateChatIsChargedLikeAnyOther(t *testing.T) {
 	// bounded exactly like the cross-chat test's "A"/"B" keys (AC14).
 	limits := config.TransportLimits{Message: config.ClassLimits{ChatRate: rate(1, time.Second)}}
 	l := newLimiter(limits)
-	first, ok := l.acquire(chatCall(ClassMessage, "private:42"), epoch, time.Time{}, false)
+	first, ok := acquireOK(t, l, chatCall(ClassMessage, "private:42"), epoch, time.Time{}, false)
 	if !ok {
 		t.Fatal("acquire[0]: refused")
 	}
-	second, ok := l.acquire(chatCall(ClassMessage, "private:42"), epoch, time.Time{}, false)
+	second, ok := acquireOK(t, l, chatCall(ClassMessage, "private:42"), epoch, time.Time{}, false)
 	if !ok {
 		t.Fatal("acquire[1]: refused")
 	}
@@ -155,7 +187,7 @@ func TestLimiter_SteadyOrderedEmission(t *testing.T) {
 	l := newLimiter(limits)
 	var times []time.Time
 	for i := 0; i < 5; i++ {
-		tm, ok := l.acquire(chatCall(ClassMessage, "chat"), epoch, time.Time{}, false)
+		tm, ok := acquireOK(t, l, chatCall(ClassMessage, "chat"), epoch, time.Time{}, false)
 		if !ok {
 			t.Fatalf("acquire[%d]: refused", i)
 		}
@@ -180,7 +212,7 @@ func TestLimiter_BurstThenCapShape(t *testing.T) {
 	l := newLimiter(limits)
 	var times []time.Time
 	for i := 0; i < 6; i++ {
-		tm, ok := l.acquire(chatCall(ClassMessage, "chat"), epoch, time.Time{}, false)
+		tm, ok := acquireOK(t, l, chatCall(ClassMessage, "chat"), epoch, time.Time{}, false)
 		if !ok {
 			t.Fatalf("acquire[%d]: refused", i)
 		}
@@ -198,7 +230,7 @@ func TestLimiter_RefusalLeavesScheduleUnchanged(t *testing.T) {
 	t.Parallel()
 	limits := config.TransportLimits{Message: config.ClassLimits{ChatRate: rate(1, time.Second)}}
 	l := newLimiter(limits)
-	if _, ok := l.acquire(chatCall(ClassMessage, "chat"), epoch, time.Time{}, false); !ok {
+	if _, ok := acquireOK(t, l, chatCall(ClassMessage, "chat"), epoch, time.Time{}, false); !ok {
 		t.Fatal("acquire[0]: refused unexpectedly")
 	}
 
@@ -207,7 +239,7 @@ func TestLimiter_RefusalLeavesScheduleUnchanged(t *testing.T) {
 
 	// The next slot is epoch+1s; an impossible deadline must refuse
 	// without mutating anything.
-	if _, ok := l.acquire(chatCall(ClassMessage, "chat"), epoch, epoch.Add(10*time.Millisecond), true); ok {
+	if _, ok := acquireOK(t, l, chatCall(ClassMessage, "chat"), epoch, epoch.Add(10*time.Millisecond), true); ok {
 		t.Fatal("acquire[1]: expected refusal (deadline unreachable)")
 	}
 
@@ -229,7 +261,7 @@ func TestLimiter_SaturationEndsInEmissionOrError(t *testing.T) {
 	deadline := epoch.Add(3*time.Second + 500*time.Millisecond)
 	granted, refused := 0, 0
 	for i := 0; i < 10; i++ {
-		if _, ok := l.acquire(chatCall(ClassMessage, "chat"), epoch, deadline, true); ok {
+		if _, ok := acquireOK(t, l, chatCall(ClassMessage, "chat"), epoch, deadline, true); ok {
 			granted++
 		} else {
 			refused++
@@ -243,19 +275,30 @@ func TestLimiter_SaturationEndsInEmissionOrError(t *testing.T) {
 	}
 }
 
+// TestLimiter_IdenticalBehaviourAcrossBaseURLs builds two real Clients
+// through New, differing ONLY in BaseURL, and asserts their limiters
+// produce byte-identical acquire results (AC15) — unlike a test that
+// compares two Limiters built with no BaseURL anywhere in the picture,
+// this one actually varies the field AC15 names.
 func TestLimiter_IdenticalBehaviourAcrossBaseURLs(t *testing.T) {
 	t.Parallel()
-	// The Limiter never reads a base URL at all — newLimiter and acquire
-	// take no URL parameter — so two Clients differing only in BaseURL
-	// must produce byte-identical acquire results (AC15).
-	limits := config.TransportLimits{Message: config.ClassLimits{ChatRate: rate(1, time.Second)}}
-	l1 := newLimiter(limits)
-	l2 := newLimiter(limits)
+	tr := validTransport()
+	tr.Limits = config.TransportLimits{Message: config.ClassLimits{ChatRate: rate(1, time.Second)}}
+
+	c1, err := New(Options{BaseURL: "https://api.telegram.org", Token: tgtest.Token, Transport: tr})
+	if err != nil {
+		t.Fatalf("New (BaseURL 1): %v", err)
+	}
+	c2, err := New(Options{BaseURL: "https://self-hosted.bot-api.invalid", Token: tgtest.Token, Transport: tr})
+	if err != nil {
+		t.Fatalf("New (BaseURL 2): %v", err)
+	}
+
 	for i := 0; i < 4; i++ {
-		t1, ok1 := l1.acquire(chatCall(ClassMessage, "chat"), epoch, time.Time{}, false)
-		t2, ok2 := l2.acquire(chatCall(ClassMessage, "chat"), epoch, time.Time{}, false)
+		t1, ok1 := acquireOK(t, c1.limiter, chatCall(ClassMessage, "chat"), epoch, time.Time{}, false)
+		t2, ok2 := acquireOK(t, c2.limiter, chatCall(ClassMessage, "chat"), epoch, time.Time{}, false)
 		if ok1 != ok2 || !t1.Equal(t2) {
-			t.Fatalf("acquire[%d] diverged: (%v,%v) vs (%v,%v)", i, t1, ok1, t2, ok2)
+			t.Fatalf("acquire[%d] diverged across BaseURLs: (%v,%v) vs (%v,%v)", i, t1, ok1, t2, ok2)
 		}
 	}
 }
@@ -321,20 +364,20 @@ func TestRedFirst_CommitAtCandidate(t *testing.T) {
 	{
 		l := newLimiter(config.TransportLimits{Message: config.ClassLimits{Global: rate(1, time.Second)}})
 		var emissions []time.Time
-		tm, ok := l.acquire(chatCall(ClassMessage, "busy"), epoch, time.Time{}, false)
+		tm, ok := acquireOK(t, l, chatCall(ClassMessage, "busy"), epoch, time.Time{}, false)
 		if !ok {
 			t.Fatal("real acquire (busy chat): refused")
 		}
 		emissions = append(emissions, tm)
 		for i := 0; i < 5; i++ {
 			c := epoch.Add(time.Duration(i+1) * 100 * time.Millisecond)
-			tm, ok := l.acquire(chatCall(ClassMessage, "free"), c, time.Time{}, false)
+			tm, ok := acquireOK(t, l, chatCall(ClassMessage, "free"), c, time.Time{}, false)
 			if !ok {
 				t.Fatalf("real acquire (free chat, %d): refused", i)
 			}
 			emissions = append(emissions, tm)
 		}
-		tm, ok = l.acquire(chatCall(ClassMessage, "free2"), epoch.Add(104*time.Second), time.Time{}, false)
+		tm, ok = acquireOK(t, l, chatCall(ClassMessage, "free2"), epoch.Add(104*time.Second), time.Time{}, false)
 		if !ok {
 			t.Fatal("real acquire (7th call): refused")
 		}
@@ -689,5 +732,64 @@ func TestRedFirst_QuotaOnly(t *testing.T) {
 				t.Errorf("GREEN expected: emission %d (%v) must be strictly after emission %d (%v) — steady, not bursty", i, emissions[i], i-1, emissions[i-1])
 			}
 		}
+	}
+}
+
+// ---- paceWindows dedup (finding 15) ----
+
+// TestPaceWindows_DedupesWhenTheyCoincide asserts design.md:825's claim
+// directly: "When N is 1 the two windows coincide and the schedule holds
+// one." Before the fix, N=1 produced two textually identical windows.
+func TestPaceWindows_DedupesWhenTheyCoincide(t *testing.T) {
+	t.Parallel()
+	got := paceWindows(rate(1, time.Second))
+	want := []window{{count: 1, per: time.Second}}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("paceWindows(1/1s) = %v, want %v (the steady-shape and bound windows coincide)", got, want)
+	}
+}
+
+// TestPaceWindows_KeepsBothWhenDistinct asserts the N>1 case still gets
+// both windows — the dedup must not over-fire.
+func TestPaceWindows_KeepsBothWhenDistinct(t *testing.T) {
+	t.Parallel()
+	got := paceWindows(rate(30, time.Second))
+	if len(got) != 2 {
+		t.Fatalf("paceWindows(30/1s) = %v, want 2 distinct windows", got)
+	}
+	if got[0] == got[1] {
+		t.Errorf("paceWindows(30/1s): both windows are %v, want distinct", got[0])
+	}
+}
+
+// ---- acquireFixedPoint exhaustion (finding 12) ----
+
+// TestAcquireFixedPoint_ConvergesNormally asserts the ordinary case: an
+// earliest function that never advances past the candidate converges
+// immediately.
+func TestAcquireFixedPoint_ConvergesNormally(t *testing.T) {
+	t.Parallel()
+	stay := func(t time.Time) time.Time { return t }
+	got, converged := acquireFixedPoint(epoch, stay)
+	if !converged {
+		t.Fatal("acquireFixedPoint: converged = false, want true")
+	}
+	if !got.Equal(epoch) {
+		t.Errorf("acquireFixedPoint = %v, want %v", got, epoch)
+	}
+}
+
+// TestAcquireFixedPoint_ExhaustionIsReportedNotSwallowed asserts finding
+// 12's fix directly: an earliest function constructed to never settle
+// (each pass strictly later than the last) must exhaust
+// maxAcquirePasses and report converged=false — a defect signalled to
+// the caller, never a silent fallback that commits at whatever instant
+// the search happened to reach.
+func TestAcquireFixedPoint_ExhaustionIsReportedNotSwallowed(t *testing.T) {
+	t.Parallel()
+	neverSettles := func(t time.Time) time.Time { return t.Add(time.Nanosecond) }
+	_, converged := acquireFixedPoint(epoch, neverSettles)
+	if converged {
+		t.Fatal("acquireFixedPoint with a never-settling earliest fn: converged = true, want false")
 	}
 }

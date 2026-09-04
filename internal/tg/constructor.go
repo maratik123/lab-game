@@ -37,12 +37,25 @@ func (jsonConstructor) MultipartRequest(parameters map[string]string, filesParam
 	writer := multipart.NewWriter(pw)
 
 	go func() {
-		err := writeMultipartBody(writer, parameters, filesParameters)
-		_ = writer.Close()
-		_ = pw.CloseWithError(err)
+		bodyErr := writeMultipartBody(writer, parameters, filesParameters)
+		closeErr := writer.Close()
+		_ = pw.CloseWithError(multipartCloseErr(bodyErr, closeErr))
 	}()
 
 	return &ta.RequestData{ContentType: writer.FormDataContentType(), BodyStream: pr}, nil
+}
+
+// multipartCloseErr folds writer.Close()'s error (which writes the
+// closing multipart boundary and can itself fail) into the error the
+// pipe reader ultimately observes, so a truncated body is never reported
+// as a clean close. bodyErr, the earlier failure, wins when both are
+// non-nil — closeErr is then just a symptom of the pipe having already
+// gone bad.
+func multipartCloseErr(bodyErr, closeErr error) error {
+	if bodyErr != nil {
+		return bodyErr
+	}
+	return closeErr
 }
 
 // writeMultipartBody writes every field then every file into writer, in a

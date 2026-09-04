@@ -36,9 +36,9 @@ type Options struct {
 	// in [0,1) (design D6). Nil means the default math/rand/v2 source.
 	Jitter func() float64
 	// HTTPClient, when non-nil, is the *http.Client this package's caller
-	// performs attempts with. Nil means http.DefaultClient's transport
-	// settings are not assumed — a client is constructed with sane
-	// defaults.
+	// performs attempts with. Nil means every attempt uses
+	// http.DefaultClient directly — no client is constructed on this
+	// package's behalf.
 	HTTPClient *http.Client
 	// Logger, when non-nil, is installed as telego's own logger. Nil
 	// means telego.WithDiscardLogger() — this package's typed Error and
@@ -76,6 +76,11 @@ func optionErrorf(field, format string, args ...any) *OptionError {
 // returns, and every one of them is routed through this package's own
 // telegoapi.Caller — the retry loop, the retry_after wait, both rate
 // limiters, the outbound gate and the observation point.
+//
+// Client is safe for concurrent use: every field set at construction is
+// never mutated afterward, and the one piece of mutable state — the
+// Limiter's window schedules — serialises every acquisition under its
+// own mutex (design D9).
 type Client struct {
 	bot           *telego.Bot
 	transport     config.Transport

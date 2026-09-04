@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/mymmrac/telego"
+	ta "github.com/mymmrac/telego/telegoapi"
 
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/tgtest"
@@ -140,3 +145,94 @@ func TestCaller_LimiterDelaysAndHonoursDeadline(t *testing.T) {
 type gateFunc func(ctx context.Context, call Call) error
 
 func (f gateFunc) AllowCall(ctx context.Context, call Call) error { return f(ctx, call) }
+
+// TestCaller_MultipartRequestNeverRetried asserts design D5 directly
+// (finding 1 — the retry loop's exits never consulted data.BodyStream,
+// so a multipart request against a permanent 500 made 3 attempts,
+// re-reading an already-drained io.Pipe on attempts 2-3). A BodyStream
+// request must make exactly one attempt, however retryable the response
+// looks.
+func TestCaller_MultipartRequestNeverRetried(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		var calls int32
+		srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
+			atomic.AddInt32(&calls, 1)
+			tgtest.ServerError(http.StatusInternalServerError)(w, r)
+		})
+		c := newTestClient(t, srv, nil)
+		cal := &caller{client: c}
+
+		data := &ta.RequestData{
+			ContentType: "multipart/form-data",
+			BodyStream:  strings.NewReader("fake multipart body"),
+		}
+		_, err := cal.Call(context.Background(), tgtest.BaseURL+"/bot"+tgtest.Token+"/sendPhoto", data)
+		if err == nil {
+			t.Fatal("Call: expected an error from the permanent 500")
+		}
+		if got := atomic.LoadInt32(&calls); got != 1 {
+			t.Errorf("handler invoked %d times, want 1 (a multipart request must never be retried)", got)
+		}
+	})
+}
+
+// TestChatRefFromData is a table test over chatRefFromData's whole
+// branch set (findings 2 and 3 — the derivation had zero coverage, and
+// two of its four branches fell open to ChatNone instead of
+// ChatUnknown). Design D4/D12's table: ChatUnknown when there is no
+// decodable body at all (BodyRaw nil, whether or not BodyStream is set,
+// and BodyRaw present but undecodable), ChatNone when the body decodes
+// cleanly with no chat_id field, ChatKnown otherwise.
+func TestChatRefFromData(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		data *ta.RequestData
+		want ChatRef
+	}{
+		{
+			name: "no body at all",
+			data: &ta.RequestData{},
+			want: ChatRef{Target: ChatUnknown},
+		},
+		{
+			name: "BodyStream only (a real multipart request)",
+			data: &ta.RequestData{BodyStream: strings.NewReader("x")},
+			want: ChatRef{Target: ChatUnknown},
+		},
+		{
+			name: "BodyRaw present but not valid JSON",
+			data: &ta.RequestData{BodyRaw: []byte("not json")},
+			want: ChatRef{Target: ChatUnknown},
+		},
+		{
+			name: "BodyRaw decodes but is not a JSON object (chat_id unreadable)",
+			data: &ta.RequestData{BodyRaw: []byte("[1,2,3]")},
+			want: ChatRef{Target: ChatUnknown},
+		},
+		{
+			name: "BodyRaw decodes with no chat_id field",
+			data: &ta.RequestData{BodyRaw: []byte(`{}`)},
+			want: ChatRef{Target: ChatNone},
+		},
+		{
+			name: "BodyRaw carries a numeric chat_id",
+			data: &ta.RequestData{BodyRaw: []byte(`{"chat_id":-100123}`)},
+			want: ChatRef{Key: "-100123", Target: ChatKnown},
+		},
+		{
+			name: "BodyRaw carries a string chat_id (@channelusername)",
+			data: &ta.RequestData{BodyRaw: []byte(`{"chat_id":"@mychannel"}`)},
+			want: ChatRef{Key: `"@mychannel"`, Target: ChatKnown},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := chatRefFromData(tt.data); got != tt.want {
+				t.Errorf("chatRefFromData(%+v) = %+v, want %+v", tt.data, got, tt.want)
+			}
+		})
+	}
+}

@@ -41,6 +41,11 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 		Class:  classifyMethod(method),
 		Chat:   chatRefFromData(data),
 	}
+	// A multipart (BodyStream) request streams its body through an
+	// io.Pipe that is already drained after the first attempt, so a
+	// second attempt would re-read nothing and send a malformed request —
+	// design D5's "a multipart request is never retried".
+	multipart := data.BodyRaw == nil && data.BodyStream != nil
 
 	if c.client.gate != nil {
 		if err := c.client.gate.AllowCall(ctx, call); err != nil {
@@ -62,16 +67,22 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 
 	for {
 		deadline, hasDeadline := ctx.Deadline()
-		t, ok := c.client.limiter.acquire(call, time.Now(), deadline, hasDeadline)
+		t, ok, acquireErr := c.client.limiter.acquire(call, time.Now(), deadline, hasDeadline)
+		if acquireErr != nil {
+			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous,
+				fmt.Errorf("limiter: %w", acquireErr))
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, observedRetries(attempts))
+			return nil, tgErr
+		}
 		if !ok {
 			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous,
 				errors.New("limiter: required wait ends after the context deadline"))
-			c.client.observe(method, time.Since(start), lastStatus, rateLimited, attempts)
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, observedRetries(attempts))
 			return nil, tgErr
 		}
 		if err := waitUntil(ctx, t); err != nil {
 			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous, err)
-			c.client.observe(method, time.Since(start), lastStatus, rateLimited, attempts)
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, observedRetries(attempts))
 			return nil, tgErr
 		}
 
@@ -79,7 +90,7 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 		attempts++
 
 		if attemptErr == nil && resp != nil && resp.Ok {
-			c.client.observe(method, time.Since(start), httpStatus, rateLimited, attempts-1)
+			c.client.observe(method, time.Since(start), httpStatus, rateLimited, observedRetries(attempts))
 			return resp, nil
 		}
 
@@ -100,12 +111,17 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 		}
 
 		out := classifyAttempt(httpStatus, resp, wrote)
+		if multipart {
+			// design D5: exactly one attempt, whatever the classifier
+			// otherwise concluded.
+			out.retryable = false
+		}
 		lastAmbiguous = out.ambiguous
 		lastRetryAfter = out.retryAfter
 
 		if !out.retryable || attempts >= c.client.transport.RetryMaxAttempts {
 			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous, lastCause)
-			c.client.observe(method, time.Since(start), lastStatus, rateLimited, attempts-1)
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, observedRetries(attempts))
 			return nil, tgErr
 		}
 
@@ -123,15 +139,26 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 
 		if deadline, hasDeadline := ctx.Deadline(); hasDeadline && waitUntilTime.After(deadline) {
 			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous, lastCause)
-			c.client.observe(method, time.Since(start), lastStatus, rateLimited, attempts-1)
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, observedRetries(attempts))
 			return nil, tgErr
 		}
 		if err := waitUntil(ctx, waitUntilTime); err != nil {
 			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous, err)
-			c.client.observe(method, time.Since(start), lastStatus, rateLimited, attempts-1)
+			c.client.observe(method, time.Since(start), lastStatus, rateLimited, observedRetries(attempts))
 			return nil, tgErr
 		}
 	}
+}
+
+// observedRetries converts a raw count of attempts made so far into the
+// Retries value Observation documents — "the number of attempts beyond
+// the first" — clamped at 0 for the case no attempt has been made yet
+// (a gate refusal or a limiter bail-out on the very first pass).
+func observedRetries(attempts int) int {
+	if attempts <= 0 {
+		return 0
+	}
+	return attempts - 1
 }
 
 // doAttempt performs exactly one HTTP round trip and decodes its Bot API
@@ -227,13 +254,23 @@ type chatIDProbe struct {
 // decodes but carries no chat_id field, ChatKnown otherwise.
 func chatRefFromData(data *ta.RequestData) ChatRef {
 	if data.BodyRaw == nil {
-		if data.BodyStream != nil {
-			return ChatRef{Target: ChatUnknown}
-		}
-		return ChatRef{Target: ChatNone}
+		// No decodable body at all — a multipart request (BodyStream) or
+		// no body whatsoever. Either way the destination is unreadable,
+		// which is ChatUnknown, not ChatNone (design D4/D12): #22's
+		// allowlist gate must refuse an unverifiable destination, not
+		// let it through exempt from every per-chat window.
+		return ChatRef{Target: ChatUnknown}
 	}
 	var probe chatIDProbe
-	if err := json.Unmarshal(data.BodyRaw, &probe); err != nil || len(probe.ChatID) == 0 {
+	if err := json.Unmarshal(data.BodyRaw, &probe); err != nil {
+		// The body is present but not decodable — the same "destination
+		// unreadable" failure mode as no body at all (design D4).
+		return ChatRef{Target: ChatUnknown}
+	}
+	if len(probe.ChatID) == 0 {
+		// The body decodes cleanly and simply carries no chat_id —
+		// getMe, getUpdates, an inline-message edit. There is no
+		// destination to check (design D4).
 		return ChatRef{Target: ChatNone}
 	}
 	return ChatRef{Key: string(probe.ChatID), Target: ChatKnown}

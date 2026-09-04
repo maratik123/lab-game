@@ -193,3 +193,56 @@ func TestSchedule_EvictIsRelativeToRealNowNotToAFutureGrant(t *testing.T) {
 		t.Errorf("earliest after real-time eviction = %v, must not be before the burst's last real grant %v", got, grants[len(grants)-1])
 	}
 }
+
+// TestSchedule_EvictThreshold asserts evict's retention boundary
+// directly (finding 10 — evict had no test at all, so a weakened
+// threshold or a flipped comparison left the suite green). Three checks,
+// each targeting a specific named mutant:
+//  1. Exactly at the boundary (now-maxPer == grant), the grant must be
+//     RETAINED — Before is a strict comparison.
+//  2. Just past the boundary, it must be EVICTED. Together, 1 and 2
+//     distinguish "grants[i].Before(threshold)" from a flipped
+//     "!grants[i].After(threshold)" — the two disagree only exactly at
+//     the boundary.
+//  3. A grant evicted at now+3*maxPer catches a weakened threshold of
+//     now-2*maxPer, which check 2 alone would not.
+func TestSchedule_EvictThreshold(t *testing.T) {
+	t.Parallel()
+	s := newSchedule(unorderedSchedule, []window{{count: 1, per: time.Second}})
+
+	s.commit(epoch)
+	s.evict(epoch.Add(time.Second)) // now - maxPer == epoch, exactly the grant's own instant
+	if len(s.grants) != 1 {
+		t.Fatalf("grants = %d after evict at the exact boundary, want 1 (retained)", len(s.grants))
+	}
+
+	s.evict(epoch.Add(time.Second + time.Nanosecond)) // just past the boundary
+	if len(s.grants) != 0 {
+		t.Fatalf("grants = %d after evict just past the boundary, want 0 (evicted)", len(s.grants))
+	}
+
+	s.commit(epoch)
+	s.evict(epoch.Add(3 * time.Second)) // well past maxPer; catches a weakened now-2*maxPer threshold
+	if len(s.grants) != 0 {
+		t.Errorf("grants = %d after evict far past maxPer, want 0 (bounded retention)", len(s.grants))
+	}
+}
+
+// TestSchedule_EvictBoundsMemoryAcrossManyAcquires asserts D9's bounded-
+// memory claim directly: a long sequence of real-time-separated acquires
+// (each evicted before the next) must never accumulate an unbounded
+// grant history.
+func TestSchedule_EvictBoundsMemoryAcrossManyAcquires(t *testing.T) {
+	t.Parallel()
+	s := newSchedule(unorderedSchedule, []window{{count: 1, per: time.Second}})
+	now := epoch
+	for i := 0; i < 1000; i++ {
+		s.evict(now)
+		t2 := s.earliest(now)
+		s.commit(t2)
+		if len(s.grants) > 1 {
+			t.Fatalf("step %d: grants = %d, want at most 1 (bounded memory)", i, len(s.grants))
+		}
+		now = now.Add(2 * time.Second) // well past maxPer=1s before the next acquire
+	}
+}

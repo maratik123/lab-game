@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -444,19 +445,87 @@ func TestRetry_Observation(t *testing.T) {
 		if len(got) != 3 {
 			t.Fatalf("observations = %d, want 3", len(got))
 		}
-		if got[0].Retries != 0 || got[0].RateLimited {
-			t.Errorf("success observation = %+v, want Retries 0, RateLimited false", got[0])
+		// Pinned exact values, not loose bounds — finding 5's whole
+		// point is that a bound like "Retries > 0" stays green even when
+		// every attempts-1 call site is silently changed to attempts.
+		if got[0].Retries != 0 || got[0].RateLimited || got[0].StatusCode != http.StatusOK {
+			t.Errorf("success observation = %+v, want Retries 0, RateLimited false, StatusCode 200", got[0])
 		}
-		if got[1].Retries != 1 || !got[1].RateLimited {
-			t.Errorf("retried-success observation = %+v, want Retries 1, RateLimited true", got[1])
+		if got[1].Retries != 1 || !got[1].RateLimited || got[1].StatusCode != http.StatusOK {
+			t.Errorf("retried-success observation = %+v, want Retries 1, RateLimited true, StatusCode 200", got[1])
 		}
-		if got[2].Retries == 0 {
-			t.Errorf("give-up observation = %+v, want Retries > 0", got[2])
+		// validTransport's RetryMaxAttempts is 3: three failed 500
+		// attempts, so exactly 2 retries beyond the first.
+		if got[2].Retries != 2 || got[2].RateLimited || got[2].StatusCode != http.StatusInternalServerError {
+			t.Errorf("give-up observation = %+v, want Retries 2, RateLimited false, StatusCode 500", got[2])
 		}
 		for i, ob := range got {
 			if ob.Method != "getMe" {
 				t.Errorf("observation[%d].Method = %q, want getMe", i, ob.Method)
 			}
+			if ob.Latency < 0 {
+				t.Errorf("observation[%d].Latency = %v, want >= 0", i, ob.Latency)
+			}
+		}
+		// The retried-success and give-up calls both waited (retry_after
+		// / backoff between attempts); their Latency must reflect that,
+		// unlike the plain first success.
+		if got[1].Latency <= 0 {
+			t.Errorf("retried-success observation.Latency = %v, want > 0 (a retry_after wait happened)", got[1].Latency)
+		}
+		if got[2].Latency <= 0 {
+			t.Errorf("give-up observation.Latency = %v, want > 0 (backoff waits happened before giving up)", got[2].Latency)
 		}
 	})
+}
+
+// TestSanitizeErr_UnwrapsURLErrorAndDropsURL asserts D8's primary
+// token-leak defence directly (finding 6 — deleting the errors.As
+// unwrap block left the suite green, because
+// TestRetry_TokenAbsentFromRenderedError only checks the token
+// substring, which the trailing strings.Replacer alone already
+// satisfies). Two things must both hold: the stored cause is the
+// UNWRAPPED value beneath the *url.Error, not the *url.Error itself
+// (checked via errors.Is), and the rendered string must not contain the
+// URL at all — not merely have its token scrubbed.
+func TestSanitizeErr_UnwrapsURLErrorAndDropsURL(t *testing.T) {
+	t.Parallel()
+	replacer := strings.NewReplacer(tgtest.Token, "[REDACTED_TOKEN]")
+	cause := errors.New("boom")
+	uerr := &url.Error{Op: "Post", URL: "http://bot-api.invalid/bot" + tgtest.Token + "/getMe", Err: cause}
+
+	got := sanitizeErr(uerr, replacer)
+	if got == nil {
+		t.Fatal("sanitizeErr: got nil")
+	}
+	if !errors.Is(got, cause) {
+		t.Errorf("sanitizeErr: errors.Is(got, cause) = false, want true (Unwrap must return the *url.Error's own unwrapped cause)")
+	}
+	if errors.Is(got, error(uerr)) {
+		t.Errorf("sanitizeErr: errors.Is(got, uerr) = true, want false (the *url.Error itself must not be the stored cause)")
+	}
+	rendered := got.Error()
+	if strings.Contains(rendered, uerr.URL) {
+		t.Errorf("sanitizeErr: rendered %q still contains the URL %q", rendered, uerr.URL)
+	}
+	if rendered != cause.Error() {
+		t.Errorf("sanitizeErr: rendered = %q, want exactly %q (the URL must be DROPPED, not merely scrubbed)", rendered, cause.Error())
+	}
+}
+
+// TestBackoffDelay_JitterBoundsExactly asserts D6's equal-jitter formula
+// directly at the two ends of the jitter draw (finding 7 — no test
+// exercised backoffDelay or jitter directly; returning the full delay
+// with no jitter at all left the suite green).
+func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
+	t.Parallel()
+	const base = 100 * time.Millisecond
+	const maxDelay = 10 * time.Second
+
+	if got := backoffDelay(base, maxDelay, 0, func() float64 { return 0 }); got != base/2 {
+		t.Errorf("backoffDelay(attempt=0, jitter=0) = %v, want %v (half, no jitter added)", got, base/2)
+	}
+	if got := backoffDelay(base, maxDelay, 0, func() float64 { return 1 }); got != base {
+		t.Errorf("backoffDelay(attempt=0, jitter=1) = %v, want %v (half plus the full other half)", got, base)
+	}
 }
