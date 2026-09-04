@@ -8,19 +8,20 @@ _Updated: 2026-09-04 17:50_
 **Last build:** not run
 **Issue:** #19
 **Spec:** ai-docs/plans/2026-09-04-bot-api-transport.spec.md
-**current_step:** Step 8 — subtask 2 of 7 complete (Group A, subtask 2 of 6)
-**last_passed_gate:** golangci-lint run (0 issues) + go test -race ./... + go vet ./... | (subtask 2 commit, see below)
+**current_step:** Step 8 — subtask 3 of 7 complete (Group A, subtask 3 of 6)
+**last_passed_gate:** go build ./... + go test ./... + go vet ./... + golangci-lint run (0 issues) + golangci-lint fmt -d (clean) + go mod tidy idempotent | (subtask 3 commit, see below)
 **entry_args:** 19
 
 ## Next action
 
-**Do this immediately:** continue Group A with subtask 3 (`internal/tg` foundations + the telego dependency — `go get github.com/mymmrac/telego@v1.11.2` runs in this subtask, with the first importing file).
+**Do this immediately:** continue Group A with subtask 4 (`internal/tg` limiter — the window-schedule mechanism of D9, plus the minimal caller). This is the highest-risk subtask: the red-first broken-variant table from the spawn prompt is binding — write each assertion, point it at the named broken variant FIRST, confirm RED, then wire the correct mechanism.
 
 ## Subtasks
 
 - [x] 1. `internal/config`: optional-with-default transport key class, `.env.example`, falsified doc comments — commit c79c12b
 - [x] 2. `internal/tgtest`: in-process fake Bot API server — pipe-backed `net.Listener`/`http.Server`, no real socket, `.invalid` base URL, fake token, `Success`/`TooManyRequests`/`ServerError`/`Delayed`/`FailNextDial`/`CloseWithoutResponse` behaviours, 8 tests all green under `-race`
-- [ ] 3. `internal/tg` foundations + the telego dependency (`go get`)  ← CURRENT
+- [x] 3. `internal/tg` foundations + the telego dependency — `go get github.com/mymmrac/telego@v1.11.2` (direct requirement, go.mod/go.sum confirmed idempotent under a second `go mod tidy`); `Error`/`OptionError` (D8), `Observation`/`Observer` (D11), `MethodClass`+classifier (D4, tested against telego's own real method names incl. trap cases), `ChatTarget`/`ChatRef`/`Call`/`Gate` (D12), `Options`/`New`/`Client.API()` (D2) — `New` wires only `WithAPIServer` + `WithLogger`/`WithDiscardLogger` so far; `WithAPICaller`/`WithRequestConstructor` wiring is subtask 4's job per the design's own decomposition (client.go is edited again there)
+- [ ] 4. `internal/tg` limiter — the window schedule (D9) + the minimal caller  ← CURRENT
 - [ ] 3. `internal/tg` foundations + the telego dependency (`go get`)
 - [ ] 4. `internal/tg` limiter: the window schedule + the minimal caller
 - [ ] 5. `internal/tg` caller: retry loop, backoff, `retry_after`, typed error, observation
