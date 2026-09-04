@@ -15,13 +15,24 @@
 | 6 | **Pattern 6 (do/not examples for non-trivial rules)** — paragraphs that articulate a contrast between two shapes must demonstrate both shapes. | **Tightened heuristic** (per design-review note 4 on the `maratik123/quartzite#369` PR — `not`/`NOT` alone are too noisy, firing on every "do not" / "must not" / "is not" paragraph): trigger iff the paragraph contains **BOTH** (a) a Pattern 2 fail-loud verb AND (b) one of the stronger contrast markers `instead` / `wrong` / `correct` / `forbidden`. Then check if a fenced code block OR a two-column `\| Do this \| NOT this \|` table follows within 8 lines. If both triggers fire AND no example follows, flag the paragraph. (Words `not` / `NOT` / `right` / `bad` / `good` are NOT in the trigger list — they produce false positives at unacceptable scale.) | `nit` |
 | 7 | **Pattern 7 (compaction recovery callout)** — every callout-carrying skill must carry exactly one of the three locked variant-distinguishing phrases. | **Drive off the live grep, NOT the style guide table.** For each `.claude/skills/*/SKILL.md` whose body contains the literal string `Compaction recovery check`, run `rg -F` against the three variant-distinguishing phrases (verbatim, as carried by the code-side skill files that use each variant): Variant A = `"Locate the durable-state file via this skill's active-state probe"`; Variant B = `"If exactly one in-flight artefact exists"`; Variant C = `"Identify the **parent workflow**"`. If a callout-carrying skill contains zero or > 1 of the phrases → flag (likely invented 4th variant OR Variant-A/B/C drift). Also flag any callout-carrying skill not enumerated in the style guide Pattern 7 table (`ai-docs/agent-writing-style.md` § *7. Compaction recovery callout*, the `| Variant | Probe shape |` table — locate it by heading, never by line number) (style guide drift; the table should grow when a new skill onboards the callout). | `major` |
 | 8 | **Anti-patterns table audit** — no row of the Anti-patterns table (`ai-docs/agent-writing-style.md` § *Anti-patterns* — locate it by heading, never by line number) should appear verbatim as a positive rule anywhere in the audited corpus. | For each anti-pattern row's left-column text (e.g., `"Every paragraph in caps"`, `"AXIOM blockquote without action table"`), grep the audited corpus for matches NOT inside the style guide itself. Flag matches. | `major` |
-| 9 | **Pattern 8 (file-size AXIOM conformance)** — every covered instruction file must stay under the 40,000-**byte** hard cap; 35,000–39,999 is the normal working range and is **not** reported. Rule-of-truth: `ai-docs/agent-writing-style.md § 8. 40k byte-cap on instruction files, with hysteresis`; source AXIOM: `AGENTS.md § Build & Test`. | Run the verbatim `wc -c` invocation below against the covered file set, apply the three-band severity table. See § *Sub-check 9 — file-size AXIOM conformance* below for the recipe + severity bands. | see body |
+| 9 | **File-size AXIOM conformance** — every covered instruction file must stay under the 40,000-**byte** hard cap; 35,000–39,999 is the normal working range and is **not** reported. Rule-of-truth: § *Sub-check 9* of this page, which is the only file in the harness that states a threshold. | Run the verbatim `wc -c` invocation below against the covered file set, apply the three-band severity table. See § *Sub-check 9 — file-size AXIOM conformance* below for the AXIOM itself, the recipe, the severity bands and the covered file set. | see body |
 | 10 | **Style-guide audit coverage map** — every `## ` (level-2) heading in `ai-docs/agent-writing-style.md` must map to either an existing Checklist M sub-check or to the explicit exclusion list of non-rule-bearing meta-sections. Unmapped headings produce `nit` "audit coverage gap" findings. | Parse ATX `## ` headings from the **live** `ai-docs/agent-writing-style.md` (re-grep at audit time; do NOT use a baked-in snapshot). Apply the inline coverage map below. See § *Sub-check 10 — style-guide audit coverage map* below for the parser recipe + map + finding format. | `nit` |
 | 11 | **Cross-shape verbs** — carrot-shaped rules (entries in a `## Patterns` section) MUST NOT use stick verbs; stick-shaped rules (AGENTS.md AXIOM blockquotes or fail-loud bodies) MUST NOT use carrot verbs. The verb asymmetry IS the asymmetric-promotion contract — a wrong-shape verb either underweights a real obligation or locks in a brittle default as a hard rule. | (a) **Carrot block with stick verb:** for each `### N. <Name>` entry under a `## Patterns` section in the audited corpus, grep the entry body for `**MUST**` / `**NEVER**` / `**MUST NOT**` / `**FORBIDDEN**` — any match flags the entry. **Named exempt source.** `ai-docs/agent-writing-style.md` is the template-source style guide and is exempt from the (a) sweep — Patterns inside it legitimately *describe* stick verbs (Pattern 2 verb-table self-description) and *quote* stick-rule examples (Pattern 4 quoting Boundary rule 2). This mirrors Checklist N's *Forward (named exempt source)* row. (b) **Stick block with carrot verb:** for each `> **AXIOM —` blockquote (and its action-table body) outside `## Patterns` sections, grep for `Default to` / `Prefer` — any match flags the blockquote. Both directions flagged at the same severity. The detection cross-checks the Kind shape (Patterns block ↔ Kind: validation entry; AXIOM block ↔ Kind: correction entry) against the verb pattern. | `major` |
 
 After running Checklist M, surface findings using the same severity-driven apply-or-ask pattern as Checklists A–L (Step 2.5). Pattern 6 noise-management fallback: if AC5's demonstrator run shows > 50% false-positive rate on Pattern 6 findings, record the rate and tighten the heuristic in a follow-up `/improve` cycle (the heuristic itself is encoded here, not in a separate config file — design choice to keep the audit self-contained).
 
 ### Sub-check 9 — file-size AXIOM conformance
+
+> **AXIOM — Every covered instruction file stays under 40,000 bytes, and `/ai-audit` is the only surface that knows the figure.**
+> Measured by `wc -c` — **bytes, not characters**: a character count under-counts multibyte punctuation (every `—`, `§`, `≥` in these files is 2–3 bytes), so a char-based reading silently reports a file as smaller than the gate sees it. Crossing 40,000 bytes imposes measurable per-invocation cost on every Subagent spawn and Skill invocation.
+>
+> | Who | Obligation |
+> |---|---|
+> | This sub-check (M9) | Make extraction mandatory at `≥ 40,000` bytes; the postcondition is the file landing **below 35,000**, not merely back under the cap. |
+> | Checklist K1 ([`reference.md`](reference.md)) | Propose extraction for every `SKILL.md` over 200 lines, every pass — the routine relief that keeps files away from the gate. |
+> | Every other flow — `/task`, `/interview`, `/bugfix`, `/improve`, both reviewers, CI | **FORBIDDEN** to measure, report or plan around instruction-file size. No spec constraint, no AC, no design risk row, no review finding may name a file size or byte budget, at any threshold. A flow whose edits push a file past a threshold ships anyway and says nothing; the next `/ai-audit` extracts. |
+
+**The figures live here and nowhere else, and that placement is the enforcement.** They also stood in `AGENTS.md` § *Build & Test* and among the Patterns of `ai-docs/agent-writing-style.md` until forge-9 removed both. `CLAUDE.md` is `@AGENTS.md`, so the thresholds and the `wc -c` command sat in the context window of every session — which is the audience the third row forbids to use them — and a `/task` orchestrator duly assembled a size grep out of those very figures and reported a verdict about this AXIOM from a file the AXIOM does not cover (`ai-docs/learnings.md` 2026-09-03; `ai-docs/harness-gaps.md` 2026-09-03). A prohibition does not need to carry the number it prohibits knowing; enforcement does, and enforcement is here.
 
 Detection mechanism. Run this verbatim invocation:
 
@@ -42,9 +53,24 @@ a character count read lower than the gate does.
 | `35,000–39,999` | none — **normal working range**; do NOT report it. No flow outside this audit may name a file size at all, so there is no AC or spec constraint here to police | — |
 | `≥ 40,000` | `<path>: <count> bytes — AXIOM violation (≥ 40,000)`; the extraction pass this run owns must land the file **below 35,000** | `major` |
 
-The covered file set is enumerated verbatim from `AGENTS.md § Build & Test` (the source-of-truth AXIOM) and restated in `ai-docs/agent-writing-style.md § 8. 40k byte-cap on instruction files, with hysteresis`. A future change to the covered file set MUST update Sub-check 9 in the same PR per the Propagation Rule.
+**Covered file set** — enumerated, never a glob-as-the-entire-list, so a static reader sees the set the shell recipe above consumes:
 
-The recipe is `find`-based, not glob-based, and that is load-bearing: a `**` glob resolves only one level deep without `globstar`, so a future `.claude/skills/<skill>/<sub>/*.md` would silently leave the corpus. Pattern 4's explicit-path requirement applies to the *fail-loud bullet list* in Pattern 8 (so static readers see the covered set), not to the shell command that consumes it.
+- `AGENTS.md`
+- `CLAUDE.md`
+- `.claude/skills/**/*.md` (every markdown file under this directory — `SKILL.md` + `reference.md` siblings)
+- `.claude/agents/**.md` (every file under this directory)
+- `.claude/rules/*.md` (flat — `.claude/rules/` has no subdirectories today)
+- `ai-docs/code-style.md`
+- `ai-docs/doc-convention.md`
+- `ai-docs/context.md`
+- `ai-docs/agent-writing-style.md`
+- `ai-docs/corrections-log.md`
+
+This list and the recipe are one surface: a change to either updates the other in the same PR per the Propagation Rule. There is no upstream copy to defer to.
+
+**Extraction model.** The canonical pattern for `AGENTS.md`: verbose subsections move into `ai-docs/<topic>.md` reference pages with anchored links from the source file. `/ai-audit` applies the same model in both its extraction passes — K1's routine proposal and M9's mandatory one.
+
+The recipe is `find`-based, not glob-based, and that is load-bearing: a `**` glob resolves only one level deep without `globstar`, so a future `.claude/skills/<skill>/<sub>/*.md` would silently leave the corpus. Pattern 4's explicit-path requirement applies to the *covered-file list* above (so static readers see the set), not to the shell command that consumes it.
 
 Sub-check 9 is the **only** enforcement surface for the byte cap. `.github/workflows/ci.yml` carried a mechanical `≥ 40,000` gate over this corpus until forge-4 retired it: a red PR is a byte budget by another name, and it forced every `/task` to plan around sizes the AXIOM forbids it to know. Nothing else measures now — if this sub-check does not run, or runs and does not record a verdict, the cap is unenforced for that pass.
 
@@ -63,7 +89,7 @@ Inline coverage map (live as of this commit; re-validate at audit time by re-run
 
 | `## ` heading | Maps to | Outcome |
 |---|---|---|
-| `## Patterns` | sub-checks 1–7 (audits the shape of every entry under this heading, including the new Pattern 8 via Patterns 1–4 self-conformance) | no finding |
+| `## Patterns` | sub-checks 1–7 (audits the shape of every entry under this heading) | no finding |
 | `## Anti-patterns` | sub-check 8 | no finding |
 | `## Writing checklist` | excluded — meta-section (reader checklist, not a rule shape) | no finding |
 | `## Citation in PRs` | excluded — meta-section (PR-author convention, not a rule shape) | no finding |
