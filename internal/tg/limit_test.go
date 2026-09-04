@@ -203,6 +203,48 @@ func TestLimiter_SteadyOrderedEmission(t *testing.T) {
 	}
 }
 
+// TestLimiter_LaterArrivalDoesNotJumpAnEarlierGrant is R3 finding 1
+// (self-review round 3): AC30's "in the order they arrived" clause depends
+// entirely on chatScheduleLocked building the per-chat schedule as
+// orderedSchedule (limit.go), which clamps each candidate to be no earlier
+// than the chat's own newest grant. Under the shipped chat windows
+// (ChatRate 1/1s, ChatCap 20/1m) — with grants already committed at epoch
+// and epoch+10s — a third acquire call whose own candidate ("now") is
+// epoch+1s must still be granted AFTER the epoch+10s grant, because it
+// arrives (is acquired) third: an unordered schedule has nothing stopping
+// a 1s-spaced insertion between the two existing grants, which would let
+// this later arrival jump ahead of the already-granted epoch+10s call.
+// TestLimiter_SteadyOrderedEmission cannot see this because it configures
+// ChatRate alone, where the pace and bound windows coincide and the two
+// schedule kinds behave identically.
+func TestLimiter_LaterArrivalDoesNotJumpAnEarlierGrant(t *testing.T) {
+	t.Parallel()
+	limits := config.TransportLimits{Message: config.ClassLimits{
+		ChatRate: rate(1, time.Second),
+		ChatCap:  rate(20, time.Minute),
+	}}
+	l := newLimiter(limits)
+
+	first, ok := acquireOK(t, l, chatCall(ClassMessage, "chat"), epoch, time.Time{}, false)
+	if !ok || !first.Equal(epoch) {
+		t.Fatalf("acquire[0] = (%v,%v), want (epoch,true)", first, ok)
+	}
+	second, ok := acquireOK(t, l, chatCall(ClassMessage, "chat"), epoch.Add(10*time.Second), time.Time{}, false)
+	if !ok || !second.Equal(epoch.Add(10*time.Second)) {
+		t.Fatalf("acquire[1] = (%v,%v), want (epoch+10s,true)", second, ok)
+	}
+
+	// Arrives (is acquired) last, but its own candidate is earlier than the
+	// second grant.
+	third, ok := acquireOK(t, l, chatCall(ClassMessage, "chat"), epoch.Add(time.Second), time.Time{}, false)
+	if !ok {
+		t.Fatal("acquire[2]: refused unexpectedly")
+	}
+	if !third.After(second) {
+		t.Errorf("third arrival granted %v, not after second grant %v: a later arrival must not jump an already-granted call (AC30)", third, second)
+	}
+}
+
 func TestLimiter_BurstThenCapShape(t *testing.T) {
 	t.Parallel()
 	limits := config.TransportLimits{Message: config.ClassLimits{

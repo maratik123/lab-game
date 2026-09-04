@@ -321,6 +321,7 @@ func TestRetry_CancellationAtEveryWaitingSite(t *testing.T) {
 			tr := validTransport()
 			tr.RetryMaxAttempts = 5
 			tr.RetryBaseDelay = time.Hour
+			tr.RetryMaxDelay = time.Hour
 			c := newRetryTestClient(t, srv, func(o *Options) { o.Transport = tr })
 
 			ctx, cancel := context.WithCancel(context.Background())

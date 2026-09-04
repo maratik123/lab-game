@@ -112,6 +112,9 @@ func New(opts Options) (*Client, error) {
 	if opts.Transport.RetryMaxDelay <= 0 {
 		return nil, optionErrorf("Transport.RetryMaxDelay", "must be positive, got %s", opts.Transport.RetryMaxDelay)
 	}
+	if opts.Transport.RetryMaxDelay < opts.Transport.RetryBaseDelay {
+		return nil, optionErrorf("Transport.RetryMaxDelay", "must be at least Transport.RetryBaseDelay (%s), got %s", opts.Transport.RetryBaseDelay, opts.Transport.RetryMaxDelay)
+	}
 	if opts.Transport.AttemptTimeout <= 0 {
 		return nil, optionErrorf("Transport.AttemptTimeout", "must be positive, got %s", opts.Transport.AttemptTimeout)
 	}

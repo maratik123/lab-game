@@ -57,6 +57,7 @@ func TestNew_ValidatesEachField(t *testing.T) {
 		{"zero retry base delay", func(o *Options) { o.Transport.RetryBaseDelay = 0 }, "Transport.RetryBaseDelay"},
 		{"negative retry base delay", func(o *Options) { o.Transport.RetryBaseDelay = -1 }, "Transport.RetryBaseDelay"},
 		{"zero retry max delay", func(o *Options) { o.Transport.RetryMaxDelay = 0 }, "Transport.RetryMaxDelay"},
+		{"retry max delay below base delay", func(o *Options) { o.Transport.RetryMaxDelay = o.Transport.RetryBaseDelay - time.Millisecond }, "Transport.RetryMaxDelay"},
 		{"zero attempt timeout", func(o *Options) { o.Transport.AttemptTimeout = 0 }, "Transport.AttemptTimeout"},
 		{"malformed token", func(o *Options) { o.Token = "not-a-token" }, "Token"},
 	}
