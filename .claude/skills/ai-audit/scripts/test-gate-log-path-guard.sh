@@ -82,6 +82,26 @@ grep -qF -- '[A-Za-z0-9._-]+([[:space:]]|$)' <<<"$body" || {
   failures=$((failures + 1))
 }
 
+# --- the belt this guard is the braces for -----------------------------------
+# The hook matches COMMAND TEXT over a closed class of gate commands, so
+# anything that lands a log in the root by another route — a script, a tee, a
+# tool, a command shape outside the class — escapes it. What makes that escape
+# LOUD is the absence of a root ignore rule: `git status --porcelain` then
+# reports the file, and every flow probes that and stops.
+#
+# `git check-ignore` answers about a pathname, so these two assertions create
+# no files and cost nothing.
+if git check-ignore -q -- root.gate.log 2>/dev/null; then
+  printf 'FAIL: a *.gate.log in the repository root is ignored again — %s\n' \
+    "$(git check-ignore -v -- root.gate.log)"
+  printf '      A root log file must be visible to git status; tmp/ is where scratch goes.\n'
+  failures=$((failures + 1))
+fi
+if ! git check-ignore -q -- tmp/root.gate.log 2>/dev/null; then
+  echo "FAIL: tmp/ no longer ignores scratch — the canonical gate-log path is not ignored"
+  failures=$((failures + 1))
+fi
+
 if [ "$failures" -eq 0 ]; then
   echo "gate-log-path guard: all fixtures behave as specified"
   exit 0

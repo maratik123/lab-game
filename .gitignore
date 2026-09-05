@@ -17,12 +17,6 @@
 # over a filename the canonical command never fixed.
 /tmp/
 
-# The names those 60 files were written under. Kept so a tree that still holds
-# them stays clean for the flows' `git status --porcelain` probes; delete the
-# files and this pair goes with them.
-/gate.log
-*.gate.log
-
 # Retired run state. A flow COMMITS its progress and interview-state files while
 # it runs (so a delegate's truncating edit is recoverable from history), then
 # `mv`s them here and commits the deletion of the old paths as the last commit
