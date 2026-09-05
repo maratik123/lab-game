@@ -20,6 +20,27 @@
 
 ---
 
+## Round-7 resolutions — design-review round 4 (GO), fold-in
+
+Review round 4 returned **GO** and required a round-trip write-back of its notes before Step 8.
+Nothing here amends the spec. One finding turned out to be wider than reported and is fixed at its
+real width rather than at the width it was found: the stale-instant defect reaches the inline
+settlement route too, so the correction is a rule about *which instant a settlement uses* rather
+than a patch on the breach path.
+
+| Finding | Answered in | Resolution in one line |
+|---|---|---|
+| **MINOR 1** — backoff inert for the deadline-breach class | D3, D2 steps 3/7, D7, § Test Design, § Decomposition subtasks 7 and 9 | **Confirmed, and generalised.** Every future `run_at` is now computed from a **settlement instant `s`**, read on the settling connection after the handler returns (inline) or once per drain (deferred); the execution instant `t` keeps exactly one job, AC12's lag. The reported case — a breach at `t + TASK_TIMEOUT` settled with `t + backoff(k)`, where every backoff step inside the cap is shorter than one timeout — is one of three the same rule fixes; the other two are an inline retry after a handler that ran longer than its backoff step, and `rec.Next(run_at, ·)` given a stale second argument |
+| **MINOR 1, second half — the test could not fail** | § Test Design | Taken as the more important half. "`run_at` has moved out by the backoff" is **replaced**, not supplemented: the assertion is now that `run_at` is strictly later than a drain instant the test captures from the server, plus a growing-delta assertion across successive breaches. A test satisfied by a past timestamp is not a guard on a defect whose symptom is a past timestamp |
+| **REC on MINOR 1** — check the recurrent branch in the same edit | D7, § Test Design | Done, and the reason it matters is recorded: a production cadence longer than `TASK_TIMEOUT` hides a stale instant, while the sub-second cadences § Test Design uses so tests need not sleep expose it as a recurrence that appears to spin — the failure mode most likely to be hit by the suite and least likely to explain itself. A short-cadence case now asserts the settled `run_at` is after the drain instant |
+| **MINOR 2** — `settle.go` was a production file D1 did not list | D1 | Added, with its concern stated so the boundary is not left to the implementor: **`settle.go` owns D7 in full** — every outcome's settlement statement, the instants they are computed from, the pending-settlement set and its drain — while `execute.go` owns the cycle around it and issues no settlement statement of its own |
+| **NOTE 3(a)** — `DeadTasks`'s `q` was unnamed | D1 (`DeadTask` row), D7 | `DeadTasks(ctx, tx pgx.Tx, limit int)` — the caller-owned `pgx.Tx` that `Schedule` and `store.Post` already take, because every database entry point in this repository takes one and a second convention for a single read is not worth the asymmetry. The escape is named without being built: a consumer-declared querier interface, when the deferred operator surface needs to read on a pool |
+| **NOTE 3(b)** — `TaskID`'s zero never reached `NULL` | D14 | `NULLIF($n, 0)`, symmetric with `InstanceKey`'s empty-string mapping, and sound because `scheduled_task.id` is `GENERATED ALWAYS AS IDENTITY` and so is never zero — a task-less basis document stores `NULL` rather than a meaningless `0` |
+| **REC** — AC33's "neither move" was discharged for the correction only | § Test Design | The existing in-flight case now drives the **seed** against the same held row as well, so both moves are asserted. Recorded as the coverage gap it is rather than as a correctness fix — the reviewer measured the behaviour and it holds |
+| **REC** — two new probes did not name their re-proving AC | § Approach, D7 | Named: the savepoint pair carries AC7/AC12, the drain pair carries AC30, restoring the convention rounds 2–3 set for every `postgres:18.6` tag |
+
+---
+
 ## Round-6 resolutions — design-review round 3 (ITERATE)
 
 Round 3 of review returned ITERATE with two `major`s, one `minor`, two `note`s and four
@@ -226,17 +247,20 @@ The consequence is not theoretical, and it is measured **through the wrapper rat
 psql** — the substitution of a raw-SQL probe for the API actually prescribed is what let the defect
 survive five rounds, so the correction is measured against the thing it corrects. Under the
 wrapper the whole recovery collapses and the attempt is lost
-[measured pgx/v5@v5.10.0 + postgres:18.6 · a Go program: `tx, _ := pool.Begin(ctx)`; `sp, _ := tx.Begin(ctx)`; a handler statement that violates a unique constraint and is swallowed; `sp.Commit` → `ERROR: current transaction is aborted … (SQLSTATE 25P02)`; `sp.Rollback` → `tx is closed` (`errors.Is(err, pgx.ErrTxClosed)` → `true`); the outer settlement `UPDATE` → `SQLSTATE 25P02`; `tx.Commit` → `commit unexpectedly resulted in rollback`; the row afterwards → `consecutive_failures=0 last_error=<nil>`].
+[measured pgx/v5@v5.10.0 + postgres:18.6 · a Go program: `tx, _ := pool.Begin(ctx)`; `sp, _ := tx.Begin(ctx)`; a handler statement that violates a unique constraint and is swallowed; `sp.Commit` → `ERROR: current transaction is aborted … (SQLSTATE 25P02)`; `sp.Rollback` → `tx is closed` (`errors.Is(err, pgx.ErrTxClosed)` → `true`); the outer settlement `UPDATE` → `SQLSTATE 25P02`; `tx.Commit` → `commit unexpectedly resulted in rollback`; the row afterwards → `consecutive_failures=0 last_error=<nil>`; AC7 and AC12 re-prove the delivered behaviour on the delivered schema].
 With the savepoint managed by raw SQL on the outer `tx`, every step the design prescribes
 succeeds
-[measured pgx/v5@v5.10.0 + postgres:18.6 · the same program with `tx.Exec(ctx, "SAVEPOINT handler")`, the same swallowed violation, then `RELEASE SAVEPOINT handler` → `SQLSTATE 25P02`, `ROLLBACK TO SAVEPOINT handler` → `<nil>`, the settlement `UPDATE` → `<nil> (UPDATE 1)`, `tx.Commit` → `<nil>`; the row afterwards → `consecutive_failures=1 last_error=release failed`, and the effect table back at its pre-savepoint contents].
+[measured pgx/v5@v5.10.0 + postgres:18.6 · the same program with `tx.Exec(ctx, "SAVEPOINT handler")`, the same swallowed violation, then `RELEASE SAVEPOINT handler` → `SQLSTATE 25P02`, `ROLLBACK TO SAVEPOINT handler` → `<nil>`, the settlement `UPDATE` → `<nil> (UPDATE 1)`, `tx.Commit` → `<nil>`; the row afterwards → `consecutive_failures=1 last_error=release failed`, and the effect table back at its pre-savepoint contents; AC7 and AC12 re-prove it on the delivered schema].
 So the handler is handed the worker's **own** `pgx.Tx`; the savepoint is a pair of statements the
 worker issues around the call and is invisible to the handler.
 
 **The database is the clock that every persisted instant is read from.** Due-ness is
-`run_at <= now()`, evaluated by the server; the execution instant is a `clock_timestamp()` the
-server returns; backoff and cadence are **pure functions of instants the database supplied**. No
-Go instant is ever compared against a persisted one. This is not stylistic. `now()` is
+`run_at <= now()`, evaluated by the server; the execution and settlement instants are each a
+`clock_timestamp()` the server returns; backoff and cadence are **pure functions of instants the
+database supplied**. No Go instant is ever compared against a persisted one. Which of the two
+server instants a given value is computed from is itself load-bearing rather than incidental — D3
+and D7 fix it, after round 7 found that computing a retry from the *execution* instant writes a
+`run_at` that has often already passed. This is not stylistic. `now()` is
 `transaction_timestamp()` and is frozen for its transaction, while `clock_timestamp()` advances
 inside it
 [measured postgres:18.6 · `BEGIN; SELECT now(), clock_timestamp(); SELECT pg_sleep(0.4); SELECT now(), clock_timestamp(); COMMIT` →
@@ -333,11 +357,15 @@ The name and the headline types are fixed by the spec: `scheduler.Worker`, `sche
 | `Worker` | drain → discover → execute → settle, plus `Run` (which calls `Reconcile` once before its first cycle, D10), `RunOnce` and `Reconcile`. Holds one piece of mutable state: the **pending-settlement set** of tasks whose transaction died before it could settle them (D7, D11), guarded by a mutex because `Run` and a caller's `RunOnce` may both touch it |
 | `Options` | pool, registry, `config.Scheduler`, optional `Observer` |
 | `Observation` / `LoopObservation` / `Observer` / `FailureKind` | the observation seam (D12) |
-| `DeadTask` / `DeadTasks` | AC10's enumeration of give-up rows |
+| `DeadTask` / `DeadTasks` | AC10's enumeration of give-up rows. `DeadTasks(ctx, tx pgx.Tx, limit int)` takes a **caller-owned `pgx.Tx`**, the same shape as `Schedule` and `store.Post` — every database entry point in this repository does, and inventing a second convention for one read is not worth the asymmetry. When the operator surface the spec defers (spec *Deferred*) wants to read this on a pool instead, the widening is a consumer-declared one-method querier interface; it is not built now, because that caller does not exist |
 
 Files: `doc.go` (package comment), `task.go`, `registry.go`, `cadence.go`, `schedule.go`,
-`worker.go`, `execute.go`, `claim.go`, `reconcile.go`, `observe.go`, `errors.go` — small and one
-concern each, because the gated hard limit is 1000 lines for a non-test file and 1500 for a
+`worker.go`, `execute.go`, `claim.go`, `settle.go`, `reconcile.go`, `observe.go`, `errors.go` —
+small and one concern each. **`settle.go` owns D7 in full**: the settlement statement for every
+outcome, the backoff and next-cadence instants computed from `s`, the pending-settlement set and
+its guarded drain. `execute.go` owns the cycle around it — re-claim, savepoint, handler call,
+deadline — and calls into `settle.go` rather than issuing settlement statements of its own, which
+is the boundary rounds 1–6 left unstated while subtask 9 shipped the file, because the gated hard limit is 1000 lines for a non-test file and 1500 for a
 `_test.go`
 [measured 069ab1f:Makefile:23-24 · `sed -n '23,24p' Makefile` → `GO_MAX_LINES ?= 1000` / `GO_MAX_TEST_LINES ?= 1500`].
 
@@ -392,8 +420,9 @@ transaction.
    Zero rows means another worker took it, it was already settled, or a recurrence's `run_at` was
    already advanced: `COMMIT` and move to the next id, **silently** — no observation, because
    nothing executed.
-3. `SELECT clock_timestamp()` — the task's **execution instant**, the single value from which its
-   lag, its retry instant and its next cadence instant are all computed.
+3. `SELECT clock_timestamp()` — the task's **execution instant** `t`, whose one job is AC12's lag
+   (`t − run_at`). It is deliberately **not** the instant any future `run_at` is computed from; that
+   is the settlement instant of step 7 (D3, D7).
 4. If the type has no declaration: skip to settlement with `FailureUnregistered` (D7) — the
    handler is never called.
 5. `tx.Exec(ctx, "SAVEPOINT handler")` — **raw SQL on the worker's own `pgx.Tx`, not
@@ -405,7 +434,11 @@ transaction.
    *A failed savepoint release* below. **No-op** or **Failed** → `ROLLBACK TO SAVEPOINT handler`.
    **Deadline breached** → abandon this task's transaction (D11), enqueue the task for **deferred
    settlement** (step 0 below, D7's breach rows) and continue the cycle with the next id.
-7. Settle (D7), `COMMIT`, then emit this task's observation.
+7. If the settlement writes a `run_at`, `SELECT clock_timestamp()` again — the **settlement
+   instant** `s`, read after the handler has returned, so a backoff or a next-cadence instant is
+   measured from now rather than from before the handler ran (D7). Settle (D7), `COMMIT`, then emit
+   this task's observation. The one-shot Done and No-op path writes no `run_at`, so it reads no `s`
+   and costs no extra statement.
 8. If the commit fails, emit the observation as a failure with `FailureRolledBack` instead of the
    outcome the handler reported, and enqueue the task for deferred settlement for the same reason
    a breach is enqueued: a rolled-back commit settles nothing, so without it the row comes back due
@@ -468,9 +501,11 @@ primary-key lookup that returns no rows.
 | Value | Source | Used for |
 |---|---|---|
 | due-ness | `now()` in the discovery and re-claim `WHERE` | which rows are claimable |
-| execution instant | `clock_timestamp()`, one `SELECT` per task | lag, retry instant, next cadence instant |
+| execution instant `t` | `clock_timestamp()`, one `SELECT` per task, **before** the handler runs | the lag of AC12, and nothing else |
+| settlement instant `s` | `clock_timestamp()`, read on the **settling** connection immediately before a settlement that writes a `run_at` — inline, inside the task's transaction after the handler returns; deferred, once per drain and shared by every id in it | every future `run_at`: the backoff instant, the next cadence instant, and the undeclared row's deferral |
 | `run_at` on insert | `clock_timestamp() + $delay` in the INSERT | a mechanic schedules a *delay*, never an absolute instant |
 | `run_at` on reconcile | a `Cadence` result computed from a DB-supplied instant | seed and correction |
+| `run_at` on settlement | a backoff or `Cadence` result computed from `s`, never from `t` | see D7 — a retry instant measured from *before* the handler ran is a retry instant that can already be in the past |
 | poll interval, execution deadline | Go `time.Duration` from configuration | a wait, compared against nothing |
 | loop duration | `time.Since` around one cycle | reported, never persisted or compared against a row |
 
@@ -670,17 +705,33 @@ instead of a row that quietly stays due.
 
 ### D7 — Settlement: one statement per outcome
 
-Let `t` be the execution instant (D3), `k` the row's `consecutive_failures` **after** this
+Let `s` be the **settlement instant** (D3), `k` the row's `consecutive_failures` **after** this
 attempt, `cap`/`base`/`ceiling` the configured retry values, and `rec` the type's declaration.
+
+**Every future `run_at` is computed from `s`, not from the execution instant `t` — and rounds 1–6
+had this wrong.** `t` is read *before* the handler runs (D2 step 3); the settlement is written after
+it returns, and for a deferred settlement not until the next cycle's drain. Writing `t + backoff(k)`
+therefore writes an instant that has often already passed: with D13's defaults a breach happens no
+earlier than `TASK_TIMEOUT` (`30s`) after `t`, while every backoff step inside the cap — `1s`, `2s`,
+`4s`, `8s`, `16s` from a `1s` base — is shorter than that, so the row was written **already due** on
+every attempt and re-discovered by the very cycle that settled it. AC9's "a strictly positive delay
+between attempts that grows rather than repeats" was not delivered for that class. The same
+arithmetic bites the inline route whenever a handler runs longer than the backoff step, and it bites
+`rec.Next(run_at, ·)` too: a stale second argument makes the "smallest instant strictly after now"
+rule pick an instant that is no longer after now. One rule removes all three cases, which is why the
+fix is a rule about which instant settlement uses rather than a patch on the breach path.
+
+`t` keeps exactly one job — AC12's lag, which is `t − run_at` and must be measured at execution or
+it is not lag.
 
 | Outcome | Kind | Statement |
 |---|---|---|
 | Done or No-op | one-shot | `DELETE FROM scheduled_task WHERE id = $1` |
-| Done or No-op | recurrent | `UPDATE … SET run_at = $2, consecutive_failures = 0, last_error = NULL WHERE id = $1`, `$2 = rec.Next(run_at, t)` |
-| Failed | one-shot, `k < cap` | `UPDATE … SET consecutive_failures = $2, last_error = $3, run_at = $4 WHERE id = $1`, `$4 = t + backoff(k, base, ceiling)` |
+| Done or No-op | recurrent | `UPDATE … SET run_at = $2, consecutive_failures = 0, last_error = NULL WHERE id = $1`, `$2 = rec.Next(run_at, s)` |
+| Failed | one-shot, `k < cap` | `UPDATE … SET consecutive_failures = $2, last_error = $3, run_at = $4 WHERE id = $1`, `$4 = s + backoff(k, base, ceiling)` |
 | Failed | one-shot, `k >= cap` | `UPDATE … SET state = 'dead', consecutive_failures = $2, last_error = $3 WHERE id = $1` |
-| Failed | recurrent | `UPDATE … SET consecutive_failures = $2, last_error = $3, run_at = $4 WHERE id = $1`, `$4 = rec.Next(run_at, t)` |
-| Failed (`FailureUnregistered`) | **undeclared — no kind to ask** | `UPDATE … SET run_at = $2 WHERE id = $1`, `$2 = t + ceiling`; `state`, `consecutive_failures` and `last_error` untouched |
+| Failed | recurrent | `UPDATE … SET consecutive_failures = $2, last_error = $3, run_at = $4 WHERE id = $1`, `$4 = rec.Next(run_at, s)` |
+| Failed (`FailureUnregistered`) | **undeclared — no kind to ask** | `UPDATE … SET run_at = $2 WHERE id = $1`, `$2 = s + ceiling`; `state`, `consecutive_failures` and `last_error` untouched |
 | Failed, where the task's transaction **died before settling** — a deadline breach (`FailureDeadline`) or a `COMMIT` that failed (`FailureRolledBack`) | one-shot **or** recurrent, by the same rules as the ordinary Failed rows | **the same Failed row for that kind — including the `k >= cap` give-up for a one-shot — but issued LATER, on another connection, wrapped in the guard below.** The task's own transaction is gone, so no statement of its can settle it |
 
 **`FailureRolledBack` has two producers and only one of them is deferred.** A failed *savepoint
@@ -717,10 +768,23 @@ UPDATE scheduled_task s SET … FROM candidate c WHERE s.id = c.id
 
 The `SET` list is whichever Failed row of the table above the task's kind and attempt count select;
 `k` is known without re-reading the row, because the worker read `consecutive_failures` at claim
-time (D2 step 2) and `k` is that value plus one. The behaviour is measured on both sides
+time (D2 step 2) and `k` is that value plus one. **`s` for this route is the drain instant** — one
+`SELECT clock_timestamp()` on the drain connection at the top of the cycle, shared by every id in
+that drain — so a deferred backoff is measured from the moment the row is actually deferred, not
+from a `t` that may be several timeouts old.
+
+**The recurrent branch takes the same correction, and the reason it matters is a short cadence, not
+a long one.** `rec.Next(run_at, s)` with a production cadence longer than `TASK_TIMEOUT` would have
+survived a stale instant unharmed, which is exactly why the defect would have escaped review and
+surfaced in the suite instead: § Test Design drives recurrences on cadences of a few hundred
+milliseconds so a test need not sleep, and at that scale a stale `t` yields an immediately-due row —
+a recurrence that appears to spin, in a test whose failure mode explains nothing about its cause.
+With `s` the branch is correct at both scales.
+
+The drain's non-blocking and guard behaviour is measured on both sides
 [measured pgx/v5@v5.10.0 + postgres:18.6 · with the row held by another open transaction the statement → `UPDATE 0` and returns in `4ms` rather than blocking;
 against a free row → `UPDATE 1`; after the holder's transaction ends, the retry → `UPDATE 1`;
-and once `run_at` has moved, a further retry → `UPDATE 0`].
+and once `run_at` has moved, a further retry → `UPDATE 0`; AC30 re-proves the pair on the delivered schema].
 
 **`run_at = $2` is the guard, and it is what makes a late settlement safe.** Between the breach and
 the drain another worker may have claimed the row and finished it: a completed one-shot is deleted,
@@ -786,7 +850,8 @@ by the cap, which the one-shot branch already does, with the decode message land
 `last_error` as AC26's "recorded reason". No sentinel is imposed on handlers for this.
 
 `state = 'dead'` rows are never claimed again — discovery and re-claim both filter
-`state = 'pending'` — and are enumerable through `DeadTasks(ctx, q, limit)`, ordered by
+`state = 'pending'` — and are enumerable through `DeadTasks(ctx, tx pgx.Tx, limit int)`, whose
+parameter shape and the reason for it are in D1's table, ordered by
 `run_at, id`, each carrying type, instance key, `run_at`, attempt count and `last_error` (AC10).
 
 ---
@@ -1265,9 +1330,10 @@ unexported, so no other package can satisfy it
 [measured 069ab1f:internal/store/basis.go:18-25 · `sed -n '18,25p' internal/store/basis.go` →
 `type PostingBasis interface {` / `entrySQL() (string, error)` / `insert(ctx context.Context, tx pgx.Tx) (int64, error)`].
 `DeferredTask` and `RecurrentTask` are `internal/store` types beside `PlayerOperation` and
-`ManualCorrection`, each carrying `TaskID int64`, `TaskType string`, `InstanceKey string` (empty
-stored as `NULL` via `NULLIF`) and `RunAt time.Time` — **by value, with no foreign key back to
-`scheduled_task`**
+`ManualCorrection`, each carrying `TaskID int64` (zero stored as `NULL` via `NULLIF($n, 0)`, since
+`scheduled_task.id` is `GENERATED ALWAYS AS IDENTITY` and therefore never zero, so zero is an
+unambiguous "no task"), `TaskType string`, `InstanceKey string` (empty stored as `NULL` via
+`NULLIF`) and `RunAt time.Time` — **by value, with no foreign key back to `scheduled_task`**
 (AC27), because delete-on-done means the task row is gone while its basis document and postings
 live on. That absence carries a **second** load beyond ledger survival: it is the half of D4's
 lock-mode condition this change controls. The condition is that *no* table anywhere references
@@ -1283,7 +1349,8 @@ written by value, resolves it. It is **not** a foreign key and does not become o
 referential constraint, not the id itself, and a value cannot block a delete or cascade a ledger row
 away — which is the whole reason the direction was fixed the way it was (spec *Key decisions*). The
 column is nullable, because a mechanic may legitimately post under one of these documents without a
-task row to name. And the doc comment that today says the sum type has "exactly the store package's two
+task row to name — and the Go zero value reaches that `NULL` explicitly through `NULLIF($n, 0)`,
+the same way `InstanceKey`'s empty string does, rather than storing a meaningless `0`. And the doc comment that today says the sum type has "exactly the store package's two
 implementations" is rewritten to describe the set the package actually has (AC20)
 [measured 069ab1f:internal/store/basis.go:11-13 · `sed -n '11,13p' internal/store/basis.go` →
 `// PostingBasis is the sealed sum type of documents a journal_entry may` / `// reference — exactly the store package's two implementations,` / `// *PlayerOperation and *ManualCorrection (D8).`].
@@ -1519,9 +1586,9 @@ is the whole edit, and adding a justification there is how a forbidden framing g
 | 4 | Package foundation with no database: `doc.go`, `errors.go`, `task.go` (`Type`, `TaskID`, `Task`, `Request`, `Outcome`, `DeadTask`, and `Handler` with the ctx-propagation contract in its doc comment — D11), `observe.go` (`Observation`, `LoopObservation`, `Observer`, `FailureKind`), `registry.go` (`Declaration`, `Recurrence`, `Registry`, `NewRegistry`), `cadence.go` (`Cadence`, `Every`) and the pure `backoff`; exact table tests for `backoff` and `Every` and the registry's refusals (D1, D8, D9, D12). Depends on nothing: none of these files reads `config.Scheduler`, which arrives with `Options` in subtask 6 | `internal/scheduler/doc.go`, `errors.go`, `task.go`, `observe.go`, `registry.go`, `cadence.go`, `cadence_test.go`, `registry_test.go` | — |
 | 5 | The insertion surface: `(*Registry).Schedule` — inserting with `ON CONFLICT … DO NOTHING RETURNING id` so a duplicate identity never aborts the caller's transaction (D9) — and `DeadTasks`; the package's `TestMain` and schema fixture; tests for the payload round-trip, the unregistered-type refusal at insertion, the duplicate-identity refusal, the coexisting keyless one-shots, and re-scheduling an identity whose earlier row is dead (AC21 insertion, AC24, AC29) | `internal/scheduler/schedule.go`, `schedule_test.go`, `scheduler_test.go` | 1, 4 |
 | 6 | The execution cycle: `Options`, `New`, `RunOnce`, the discovery statement and the per-id re-claim — **both `FOR NO KEY UPDATE … SKIP LOCKED`, neither `FOR UPDATE` (D4, AC35)** — the per-task transaction with its handler savepoint — **raw `SAVEPOINT` / `RELEASE` / `ROLLBACK TO` statements on the worker's own `pgx.Tx`, never `tx.Begin`'s pseudo-nested transaction (§ Approach, D2 step 5)** — and `set_config(name, $1, true)` rather than `SET LOCAL name = $1` for the two timeouts (D2 step 1), the Done and No-op settlement paths including the failed savepoint release (D2 step 6); tests for batch bounding and skip-not-wait, two concurrent workers, effects-and-settlement atomicity, the no-op's absent writes, the silent skip of a row another worker took, delete-on-done both directions and the recurrence's single live row (AC5, AC6, AC7, AC8, AC11, AC25, AC35 worker half) | `internal/scheduler/worker.go`, `execute.go`, `claim.go`, `worker_test.go` | 3, 5 |
-| 7 | The failure policy: attempt counting, persisted backoff, the one-shot give-up, the recurrent reschedule-to-next-cadence, and the undeclared-type settlement that never reaches `dead` and never increments the counter; tests for exact attempt counts and the terminal state, dead-row enumeration, the decode failure, the never-terminal recurrence, the undeclared recurrence still coming due after more than `cap` refusals, and the rising/resetting counter (AC9, AC10, AC21 execution time, AC26, AC32, AC34) | `internal/scheduler/execute.go`, `failure_test.go` | 6 |
+| 7 | The failure policy: attempt counting, persisted backoff **computed from the settlement instant `s` and never from the execution instant `t` (D3, D7)**, the one-shot give-up, the recurrent reschedule-to-next-cadence, and the undeclared-type settlement that never reaches `dead` and never increments the counter; tests for exact attempt counts and the terminal state — each persisted `run_at` asserted strictly later than the instant that wrote it, never merely equal to `t + backoff` — dead-row enumeration, the decode failure, the never-terminal recurrence, the undeclared recurrence still coming due after more than `cap` refusals, and the rising/resetting counter (AC9, AC10, AC21 execution time, AC26, AC32, AC34) | `internal/scheduler/execute.go`, `failure_test.go` | 6 |
 | 8 | The loop and the seam: `Run`, the poll interval, emit-after-commit, the loop observation; tests collecting observations for a success, a no-op, a retry, a give-up and a repeatedly failing recurrence, plus non-default tuning values changing observed behaviour and the nil-observer path (AC12, AC13, AC14 worker half) | `internal/scheduler/worker.go`, `observe.go`, `observe_test.go` | 7 |
-| 9 | The per-task execution deadline **and the settlement of everything it abandons**: the two transaction-local timeouts, the handler goroutine, abandonment of that task's transaction, the connection hijack and its watchdog close, `FailureDeadline` / `FailureRolledBack`, **plus the pending-settlement set and the guarded non-blocking drain that runs before discovery (D2 step 0, D7)**; tests for the blocked handler, the row becoming claimable within ≈ 2 × the deadline, the observation, **the breach's attempt actually being counted and the row deferred**, a repeatedly-breaching one-shot reaching give-up within the cap, a repeatedly-breaching recurrence never reaching it, the drain's `run_at` guard and its non-blocking behaviour on a still-locked row, the untouched neighbours in the same cycle, the ctx-ignoring handler as the contract's negative case, and the aborted-transaction self-healing property (AC9 breach half, AC30, AC31 behavioural half, AC32 breach half, AC34 breach half) | `internal/scheduler/execute.go`, `worker.go`, `settle.go`, `deadline_test.go` | 8 |
+| 9 | The per-task execution deadline **and the settlement of everything it abandons**: the two transaction-local timeouts, the handler goroutine, abandonment of that task's transaction, the connection hijack and its watchdog close, `FailureDeadline` / `FailureRolledBack`, **plus the pending-settlement set and the guarded non-blocking drain that runs before discovery, whose `run_at` values are computed from the drain instant (D2 step 0, D3, D7)**; tests for the blocked handler, the row becoming claimable within ≈ 2 × the deadline, the observation, **the breach's attempt actually being counted and the row deferred**, a repeatedly-breaching one-shot reaching give-up within the cap, a repeatedly-breaching recurrence never reaching it, the drain's `run_at` guard and its non-blocking behaviour on a still-locked row, the untouched neighbours in the same cycle, the ctx-ignoring handler as the contract's negative case, and the aborted-transaction self-healing property (AC9 breach half, AC30, AC31 behavioural half, AC32 breach half, AC34 breach half) | `internal/scheduler/execute.go`, `worker.go`, `settle.go`, `deadline_test.go` | 8 |
 | 10 | `Reconcile`: the seed and the correction — the correction CTE takes `FOR NO KEY UPDATE … SKIP LOCKED` (D10, AC35) — and **`Run` calling `Reconcile` once before its first cycle, refusing to loop if it fails** (D10); tests for the missing-row seed, the seed against a dead row of the same identity, the shortened-cadence correction, two concurrent start-ups producing one row, the imminent occurrence left alone, and `Run`-reconciles-but-`RunOnce`-does-not (AC33, AC35 reconcile half) | `internal/scheduler/reconcile.go`, `reconcile_test.go` | 8 |
 | 11 | Propagation (D15): the table's spelling **and the claim query's row-lock mode** at their live sites — **`docs/DESIGN.md:310` included, exactly two edits on that one line per D15's bound, with line 147 left byte-identical** — KD-4 and the `context.md` Scheduler row (each falsified in its spelling **and** its lock mode), KD-27's boundary sentence, the `context.md` Architecture/Status updates, the `INDEX.md` row; and the AC36 check that no surface in the change frames the mode as a performance improvement or states the FK coupling as a completed guarantee. **Plus the owner-authorised generalisation of `.claude/agents/self-review.md` § 3's Postgres-invariants example** — the bounded substitution D15 specifies, which is authorised scope and not AC22 propagation — with the checks it requires, run on the produced tree: the Review-group sync check (`review-findings.md`, `project-review/SKILL.md` — expected outcome *no edit*, verified rather than assumed) and the case-insensitive keyword grep `AGENTS.md` § Propagation Rule step 1 requires, over `.claude/`, `AGENTS.md` and `ai-docs/`, reconciled against D15's site table (AC19, AC22, AC35 documentation half, AC36) | `docs/DESIGN.md`, `AGENTS.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md`, `.claude/agents/self-review.md` | 1–10 |
 
@@ -1824,8 +1891,21 @@ against a real PostgreSQL server through
   `[derived → AC30]`.
 - **The breach is settled, not merely abandoned** — the case the round-6 review found missing. After
   the breach and the next cycle's drain, the row's `consecutive_failures` has risen by one, its
-  `last_error` records the deadline, and its `run_at` has moved out by the backoff; the assertion is
-  on the persisted row, not on the observation `[derived → AC30, AC34, D7]`.
+  `last_error` records the deadline, and its `run_at` is **strictly later than the drain instant**,
+  captured by the test from the server immediately before the drain. The assertion is on the
+  persisted row, not on the observation. **"Moved out by the backoff" is deliberately not the
+  assertion**: `run_at = t + backoff(k)` satisfies it with a timestamp already in the past, which is
+  precisely the defect round 7 removed — a test that cannot fail on the bug it guards is not a guard
+  `[derived → AC9, AC30, AC34, D3, D7]`.
+- **Successive breaches of one one-shot are separated by a growing delay**: driven attempt by
+  attempt, each persisted `run_at` is later than the drain instant that wrote it, and the deltas
+  between consecutive settlements grow until the ceiling. This is AC9's "strictly positive … grows
+  rather than repeats" asserted for the breach class, which the pre-round-7 design did not deliver
+  `[derived → AC9, AC30]`.
+- **A recurrence on a short test cadence settles into the future, not into the past.** With a
+  cadence of a few hundred milliseconds and a handler that breaches a longer deadline, the settled
+  `run_at` is still strictly after the drain instant — the case a stale execution instant would fail
+  and a production-length cadence would hide `[derived → AC32, D7]`.
 - **A one-shot whose handler always breaches reaches give-up within the cap**, driven cycle by
   cycle: the attempt count at `dead` equals the configured cap and a subsequent discovery does not
   return it. Written against the pre-correction design this test never terminates, which is what
@@ -1879,7 +1959,10 @@ against a real PostgreSQL server through
 - An imminent occurrence (inside a poll interval) and an in-flight occurrence (its row held by an
   open transaction under the same `FOR NO KEY UPDATE … SKIP LOCKED` the correction CTE takes) are
   both left untouched — the correction returns having updated nothing rather than waiting on the
-  lock `[derived → AC33, AC35]`.
+  lock. **The same case drives the seed against that in-flight row**, so AC33's "neither move
+  disturbs an occurrence that is in flight" is asserted for *both* moves rather than for the
+  correction alone: the seed's `ON CONFLICT` arbiter still matches the live row and inserts nothing,
+  without waiting `[derived → AC33, AC35]`.
 
 **In `internal/store`** (subtasks 1 and 2):
 
