@@ -87,9 +87,12 @@ go run ./cmd/bot                                        # run the bot (exits non
 > Lowering the file is deliberately easy and deliberately visible: it lands in the diff a reviewer
 > reads.
 >
-> The tolerance and the measurement behind it are documented at the top of the script, including the
-> two timing-dependent statements that make the suite's coverage drift between runs. Read that header
-> before changing the number.
+> The tolerance is **0.50 pp** and the 24-run measurement behind it is at the top of the script,
+> including the five timing-dependent statements that make the suite's coverage drift between runs.
+> It is a standing value, not a step towards a tighter one: the drift is a fixed count of statements
+> over a growing denominator, so it narrows on its own as the tree grows, and buying tenths of a
+> point by mocking a server-side clock is not a trade this project is making. Change the number only
+> after re-running the series and finding the spread has grown past it.
 
 **CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
 

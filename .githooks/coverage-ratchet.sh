@@ -16,17 +16,51 @@
 # in most awks, and a ratchet should not depend on which awk is installed.
 # Float arithmetic throughout; the tolerance absorbs the epsilon.
 #
-# THE TOLERANCE, AND THE MEASUREMENT UNDER IT. Measured on 8fae04a, ten runs of
-# the suite: nine returned 1189/1329 statements = 89.4658%, one returned
-# 1191/1329 = 89.6163%. The two statements that flip are timing-dependent:
+# THE TOLERANCE, AND THE MEASUREMENT UNDER IT. 24 runs of the suite on 8fae04a,
+# 1329 statements throughout:
+#
+#   covered  percent   rounded  runs
+#     1189   89.4658%   89.47    20   (83%)
+#     1190   89.5410%   89.54     2   ( 8%)
+#     1191   89.6163%   89.62     1   ( 4%)
+#     1194   89.8420%   89.84     1   ( 4%)
+#
+# Observed spread 0.3762 pp; one statement is worth 0.0752 pp. Five blocks flip
+# between runs, all of them timing-dependent, all in one package:
+#   internal/scheduler/execute.go:167.87,170.3
 #   internal/scheduler/execute.go:223.73,225.3
+#   internal/scheduler/settle.go:202.101,204.4
+#   internal/scheduler/worker.go:116.57,119.4
 #   internal/scheduler/worker.go:150.21,151.20
-# So the observed run-to-run drift is 0.1505 pp. A lucky run RAISES the ratchet
-# (that is the rule), after which every ordinary run measures 0.1505 pp lower —
-# so a tolerance of exactly 0.15 pp blocks forever, with no code change
-# involved. Either raise TOLERANCE_PP to 0.25, or make those two blocks
-# deterministic and keep 0.15. This is a one-line decision and it is the
-# owner's; the value below is the one the owner specified.
+#
+# The spread is the binding constraint on the tolerance, and it binds whatever
+# the raise rule is: a lucky run RECORDS its value, and every ordinary run
+# afterwards reads as a fall of up to the spread. So TOLERANCE_PP must exceed
+# 0.3762, or the ratchet blocks forever with no code change involved. 0.50 is
+# that with headroom for a tail 24 runs has not seen — the 4-statement jump was
+# observed once.
+#
+# WHAT 0.50 COSTS, bounded: the recorded value never decreases, so the total
+# coverage that can be lost silently is one tolerance below the all-time high —
+# about 6.6 statements — ONCE, not per commit.
+#
+# 0.50 IS THE STANDING VALUE — there is no plan to tighten it, and chasing the
+# five blocks is explicitly not one. Mocking a server-side clock through the
+# database is not a cheap change, and buying tenths of a percentage point with
+# it would be the ratchet setting the project's priorities instead of guarding
+# them.
+#
+# The spread narrows on its own as the tree grows, because it is a COUNT of
+# statements over a growing denominator. The same five blocks are worth
+# 0.3762 pp at today's 1329 statements, 0.25 pp at 2000, and 0.167 pp at 3000.
+# The tolerance does not have to follow it down: a fixed 0.50 simply becomes
+# roomier, and what it can hide stays bounded at one tolerance below the
+# all-time high, once.
+#
+# Revisit this number only on a re-measurement — if a series of runs shows the
+# spread has GROWN past it, which would mean new flaky blocks arrived faster
+# than the denominator grew. Re-run the series before touching the constant;
+# do not adjust it from a single blocked commit.
 #
 # Usage:
 #   coverage-ratchet.sh            raise mode: check, and record a new high
@@ -38,7 +72,7 @@
 
 set -uo pipefail
 
-TOLERANCE_PP=0.15
+TOLERANCE_PP=0.50
 RATCHET_FILE=ai-docs/coverage-ratchet.txt
 PROFILE=tmp/coverage.out
 
