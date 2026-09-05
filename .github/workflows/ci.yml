@@ -50,6 +50,13 @@ jobs:
               - 'ai-docs/**'
               - 'AGENTS.md'
               - 'CLAUDE.md'
+              # The gate-log-path suite asserts about .gitignore's content — a
+              # root *.gate.log must NOT be ignored, tmp/*.gate.log must be.
+              # Without this line a .gitignore-only commit matches no filter,
+              # every job's `if:` is false, and the assertion that would catch
+              # a re-added rule never runs. "A job that did not run is not a
+              # passing job" (AGENTS.md § Build & Test).
+              - '.gitignore'
             workflows:
               - '.github/workflows/**'
 
