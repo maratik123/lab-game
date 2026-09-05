@@ -8,11 +8,14 @@ This project deliberately has no cron: stamina, backpack evaporation and monster
 are lazy ticks computed from timestamps at read time. One component is the stated
 exception — a hand-written task scheduler on Postgres. Its table — `scheduled_task`,
 singular, per *Source conflicts* below — carries `run_at`, a type, a payload and a
-status; its worker claims due rows with
-`SELECT … WHERE run_at <= now() FOR UPDATE SKIP LOCKED LIMIT N`; and a task executes
-**in one transaction with its own effects**, which is what makes it exactly-once with no
-two-phase machinery
-[source: 7039e36:docs/DESIGN.md:309-310 · `sed -n '309,310p' docs/DESIGN.md`].
+status; its worker claims due rows by a `SELECT … WHERE run_at <= now() … SKIP LOCKED
+LIMIT N`; and a task executes **in one transaction with its own effects**, which is what
+makes it exactly-once with no two-phase machinery
+[source: 6c63c88:docs/DESIGN.md:309-310 · `sed -n '309,310p' docs/DESIGN.md`]. §11 writes
+that claim's row lock as `FOR UPDATE`; **the owner settled it at round 6 as
+`FOR NO KEY UPDATE`**, and §11's own line is corrected to match rather than left to
+diverge — see the lock-mode row in *Key decisions* for the reason, which is not the one a
+reader expects.
 
 It is load-bearing rather than ancillary. A raid session advances through timer edges
 that *are* scheduler tasks, so the scheduler's lag is visible to a player as gameplay —
@@ -88,8 +91,9 @@ exclusive arc that `internal/store` already implements.
    doc comment's "exactly two" stops being true in this change (see AC20).
 
 4. **The worker: claim, execute, settle.** A batch claim of due rows with
-   `FOR UPDATE SKIP LOCKED` and a configurable limit; one transaction per task carrying
-   the task's own effects; a handler registry keyed by task type. The transaction is the
+   `FOR NO KEY UPDATE … SKIP LOCKED` (owner, round 6 — *Key decisions*; the per-id
+   re-claim takes the same mode) and a configurable limit; one transaction per task
+   carrying the task's own effects; a handler registry keyed by task type. The transaction is the
    worker's and is handed to the handler, mirroring `store.Post`, which takes a
    caller-owned `pgx.Tx` and neither commits nor rolls back
    [source: 7039e36:internal/store/post.go:74 · `grep -n '^func Post' internal/store/post.go`].
@@ -178,25 +182,43 @@ exclusive arc that `internal/store` already implements.
     successor path are database behaviour and are asserted against the database.
 
 11. **Propagation, as a class — and it now reaches the source document.** This change
-    renames a table that live documents name, adds an environment-variable class, and
-    falsifies the "exactly two implementations" sentence in `internal/store/basis.go`.
-    Every site whose claim the diff falsifies is updated in the same PR, membership
-    decided by `AGENTS.md` § Propagation Rule step 4 — the sites named in AC22 illustrate
-    the class and do not bound it.
+    renames a table that live documents name, **changes the row-lock mode those same
+    documents quote**, adds an environment-variable class, and falsifies the "exactly two
+    implementations" sentence in `internal/store/basis.go`. Every site whose claim the
+    diff falsifies is updated in the same PR, membership decided by `AGENTS.md`
+    § Propagation Rule step 4 — the sites named in AC22 illustrate the class and do not
+    bound it. Two of the known sites now carry *two* falsified claims each rather than
+    one, because they state the table name and the lock mode in the same sentence
+    [source: 6c63c88:ai-docs/context.md:36 · `sed -n '36p' ai-docs/context.md`;
+    6c63c88:ai-docs/key-decisions.md:15 · `sed -n '15p' ai-docs/key-decisions.md`].
 
     **`docs/DESIGN.md:310` is inside that class, and the licence for it is explicit.**
     `AGENTS.md` § Project holds the design document to "**Implement from it. Never
     redesign it** without an explicit user request"
-    [source: e64bcc6:AGENTS.md:15 · `grep -n 'Never redesign it' AGENTS.md`]. The product
-    owner supplied exactly that request, at round 5, when deciding the *Source conflicts*
-    finding. **What it authorises is one word:** the table's spelling on line 310 becomes
-    `scheduled_task`, so that §11's prose obeys the singular-table-names decision recorded
-    three lines below it in the same section
-    [source: e64bcc6:docs/DESIGN.md:313 · `sed -n '313p' docs/DESIGN.md`]. It authorises
-    nothing further — not restructuring §11, not any other sentence of `docs/DESIGN.md`,
-    and no change whatever to the scheduler's designed behaviour. The licence is stated
-    here, where the edit is prescribed, so that a later reader or a self-review meets it
-    rather than an apparent AXIOM violation.
+    [source: 6c63c88:AGENTS.md:15 · `grep -n 'Never redesign it' AGENTS.md`]. The product
+    owner supplied exactly that request twice, for two edits **to the same line**, and the
+    bound is **two edits and no more**:
+
+    - **Edit 1 (round 5) — the table's spelling.** `scheduled_tasks` becomes
+      `scheduled_task`, so that §11's prose obeys the singular-table-names decision
+      recorded three lines below it in the same section
+      [source: 6c63c88:docs/DESIGN.md:313 · `sed -n '313p' docs/DESIGN.md`].
+    - **Edit 2 (round 6) — the claim query's row-lock mode.** `FOR UPDATE SKIP LOCKED`
+      becomes `FOR NO KEY UPDATE SKIP LOCKED` in §11's query sketch, so that §11 stays
+      true of the worker this task ships and the implementation has no divergence from the
+      canonical primitive to argue about.
+
+    **Not authorised, and named so the bound is checkable.** The third clause on line 310
+    — *"Таска исполняется **в одной транзакции со своими эффектами**"* — is untouched, and
+    needs no change: the delivered per-task-transaction shape keeps it literally true.
+    Neither is restructuring §11, any other sentence of `docs/DESIGN.md`, or any change to
+    the scheduler's designed behaviour. **In particular the lock-mode edit is one line, not
+    a document-wide substitution:** `docs/DESIGN.md` contains exactly two `FOR UPDATE`
+    occurrences, and the other one — line 147, §3.5's `SELECT session FOR UPDATE` on the
+    raid session — is outside this authorisation and outside this task
+    [source: 6c63c88:docs/DESIGN.md:147 · `grep -n 'FOR UPDATE' docs/DESIGN.md`]. The
+    licence is stated here, where the edits are prescribed, so that a later reader or a
+    self-review meets it rather than an apparent AXIOM violation.
 
 ## Out of scope
 
@@ -225,12 +247,14 @@ exclusive arc that `internal/store` already implements.
   This task ships a package a composition root can construct, exactly as the transport
   task did.
 - **`/metrics`, the Prometheus registry and the health dashboard** — #23.
-- **Editing `docs/DESIGN.md` beyond the one authorised word.** It is decisions, and a
-  task does not redesign it (`AGENTS.md` § Project). The sole exception this task carries
-  is the table's spelling on line 310, for which the owner gave the explicit request that
-  AXIOM requires — see Scope 11 and *Source conflicts*. Every other sentence of the
-  document, the rest of §11 included, is untouched, and no scheduler behaviour described
-  there is revisited.
+- **Editing `docs/DESIGN.md` beyond the two authorised edits on line 310.** It is
+  decisions, and a task does not redesign it (`AGENTS.md` § Project). The only exceptions
+  this task carries are the table's spelling and the claim query's row-lock mode, both on
+  line 310, for each of which the owner gave the explicit request that AXIOM requires —
+  see Scope 11 and *Source conflicts*. The rest of line 310 — the
+  one-transaction-with-its-effects clause included — every other sentence of the document,
+  the rest of §11, and §3.5's own `FOR UPDATE` on line 147 are all untouched, and no
+  scheduler behaviour described there is revisited.
 - **Retention of the ledger's own tables** (postings, daily balances) — §11 puts that
   outside MVP and #45 owns day close
   [source: 7039e36:docs/DESIGN.md:330 · `sed -n '330p' docs/DESIGN.md`].
@@ -270,6 +294,8 @@ exclusive arc that `internal/store` already implements.
 | Where the migration lives | **`internal/store/migrations`**, as the second goose file, applied by `store.Migrate`. There is one migration set in this module and one `embed.FS` behind it [source: 7039e36:internal/store/migrate.go:16-24 · `sed -n '16,24p' internal/store/migrate.go`]. |
 | Where the two basis types live | **`internal/store`, not `internal/scheduler` — forced, not chosen.** `PostingBasis`'s two methods are unexported, so no other package can satisfy it [source: 7039e36:internal/store/basis.go:11-25 · `sed -n '11,25p' internal/store/basis.go`]. Consequence: the scheduler package depends on `store` for its basis types, never the reverse. |
 | Who owns the task's transaction | **The worker opens it; the handler receives it.** Same contract as `store.Post`, which neither commits nor rolls back its caller's `pgx.Tx` [source: 7039e36:internal/store/post.go:74 · `grep -n '^func Post' internal/store/post.go`]. A task and its effects therefore commit or roll back as one, which is the whole exactly-once argument of §11. |
+| The claim's row-lock mode | **`FOR NO KEY UPDATE … SKIP LOCKED`, for the batch claim and the per-id re-claim alike** (owner, round 6). **The reason is not performance, and writing that down is half the decision.** It is the weakest lock that expresses what a claim actually does: a claim reads a row and marks it taken; it does not change the row's key. The second half of the owner's reasoning is the operative one and it measures out — a one-shot's `DELETE` acquires `FOR UPDATE` strength anyway, **at the moment it is needed** rather than for the whole handler's duration, and claim-then-`DELETE` in one transaction succeeds [measured postgres:18.6 · `BEGIN; SELECT id FROM task WHERE id=1 AND state='pending' AND run_at <= now() FOR NO KEY UPDATE SKIP LOCKED; DELETE FROM task WHERE id=1; COMMIT` → `1` then `DELETE 1` then `COMMIT`, row absent afterwards]. The exclusion protocol the whole design rests on is unchanged and was checked rather than assumed: a row held under `FOR NO KEY UPDATE` is skipped by another worker exactly as before [measured postgres:18.6 · holder open on `id=1`; a second session's `SELECT id FROM task WHERE run_at <= now() ORDER BY run_at, id FOR NO KEY UPDATE SKIP LOCKED LIMIT 5` → `2` (the free row, not the held one), and its per-id re-claim of `id=1` → `(0 rows)`]. **Explicitly not a throughput decision:** the round-6 investigation reported no measurable separation between the modes on this task's own claim pattern — a claim of issue-body standing, not re-run here, and it is recorded to *remove* a justification rather than to supply one. Nobody may later trade the AC27 coupling away on the belief that the weaker lock is buying speed; if a future change wants a performance argument for either mode, it measures one. |
+| Why the lock mode and the FK ban must be revisited together | **Because AC27's ban is exactly what makes the two modes equivalent here.** With no foreign key referencing `scheduled_task`, nothing concurrently takes `FOR KEY SHARE` on a task row, and the mode is free. Add such an FK and the weaker mode starts **minting multixacts** under ordinary concurrency, where `FOR UPDATE` would have blocked the referential-integrity check instead. *The multixact minting is measured below; the costs that follow from it — a `MultiXact/CREATE_ID` WAL record, SLRU retention and multixact-freeze burden per co-lock — are the round-6 investigation's claim, of the same standing as an issue body, and are not pinned here as fact. They are recorded because they are the shape of the risk, not because they were checked.* Measured both ways on a real FK: under `FOR NO KEY UPDATE` the child insert succeeds and the parent tuple's `xmax` becomes a MultiXactId [measured postgres:18.6 · holder `SELECT id FROM parent WHERE id=1 FOR NO KEY UPDATE` open; concurrent `INSERT INTO child VALUES (11,1)` → `INSERT 0 1`; `heap_page_items(get_raw_page('parent',0))` → `t_infomask=0x11c2`, `HEAP_XMAX_IS_MULTI` set]; under `FOR UPDATE` the same insert blocks until it is cancelled, and PostgreSQL names the culprit in its own error [measured postgres:18.6 · holder on `id=2` `FOR UPDATE`; concurrent `INSERT INTO child VALUES (12,2)` under `statement_timeout='4s'` → `ERROR: canceling statement due to statement timeout / CONTEXT: while locking tuple (0,2) in relation "parent" / SQL statement "SELECT 1 FROM ONLY "public"."parent" x WHERE "id" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x"`]. That `FOR KEY SHARE OF x` is the referential-integrity trigger's own query, which is why the FK is the whole hazard. AC27 and the lock-mode row therefore point at each other: **neither may be revisited alone.** |
 | Whether a guard no-op is a failure | **No — it is a third outcome class.** `docs/DESIGN.md` §3.5 and `ai-docs/domain-invariants.md` § 4 both state a stale task dying at execution is expected traffic; the instrumentation must be able to tell it from a failure, or the health dashboard will read normal operation as an incident [source: 7039e36:ai-docs/domain-invariants.md:43 · `sed -n '43p' ai-docs/domain-invariants.md`]. |
 | How a task type relates to a basis document | **A task type names the basis document its effects post under, and the two new tables cover only the tasks that have no other basis.** §11's starter registry lists the raid-session transition and the day-close cron as basis types of their own [source: 7039e36:docs/DESIGN.md:331 · `sed -n '331p' docs/DESIGN.md`], and §3.5 makes a raid transition its own document [source: 7039e36:docs/DESIGN.md:153 · `sed -n '153p' docs/DESIGN.md`]. So a raid timer edge posts under #36's transition document; corpse evaporation posts under a deferred one-shot; the day close posts under a recurrent task. Issue #20 scopes this task to the latter two tables, and that is what it ships. |
 | Whether every executed task writes a basis row | **No.** A basis document exists to anchor postings; a task whose effects move no balance (a notification send) writes none. The basis row is created inside the executing transaction, by the code that posts. |
@@ -278,14 +304,14 @@ exclusive arc that `internal/store` already implements.
 | Metric coupling | **No metrics-registry import in `internal/scheduler`.** The package defines the observation point; #23 supplies the implementation, exactly as `internal/tg` did [source: 7039e36:internal/tg/observe.go:27-33 · `sed -n '27,33p' internal/tg/observe.go`]. |
 | Whether this task wires the worker into `cmd/bot` | **No — #24.** The transport task set the precedent: ship the package, let the composition root construct it [source: 7039e36:ai-docs/context.md:43 · `sed -n '43p' ai-docs/context.md`]. |
 | The table's name | **`scheduled_task`, singular**, matching issue #20's title and Scope and the 2026-09-02 table-naming decision that every table in migration 00001 already follows. §11's prose spells it plural in one place; see *Source conflicts*. |
-| Whether this task may correct §11's plural spelling in `docs/DESIGN.md` | **Yes — the owner gave the explicit request `AGENTS.md` § Project requires** (round 5), and the bounds of that authorisation are themselves the decision. **Authorised:** line 310's `scheduled_tasks` becomes `scheduled_task`, closing §11's disagreement with the singular-names decision three lines below it [source: e64bcc6:docs/DESIGN.md:310,313 · `sed -n '310p;313p' docs/DESIGN.md`]. **Not authorised:** redesigning or restructuring §11, editing any other sentence of `docs/DESIGN.md`, or altering any scheduler behaviour it describes. This is a spelling correction *inside* a decisions document, not a decision revisited — §11 already made the decision on line 313 and simply failed to apply it on line 310. |
+| Whether this task may edit §11 in `docs/DESIGN.md`, and how far | **Yes for two edits, both on line 310 — the owner gave the explicit request `AGENTS.md` § Project requires, at round 5 for the first and round 6 for the second** — and the bounds are themselves the decision. **Authorised, exactly two:** (1) line 310's `scheduled_tasks` becomes `scheduled_task`, closing §11's disagreement with the singular-names decision three lines below it; (2) line 310's `FOR UPDATE SKIP LOCKED` becomes `FOR NO KEY UPDATE SKIP LOCKED`, so §11 stays true of the shipped worker [source: 6c63c88:docs/DESIGN.md:310,313 · `sed -n '310p;313p' docs/DESIGN.md`]. **Not authorised:** the third clause on that same line (*"Таска исполняется в одной транзакции со своими эффектами"*, which needs no change and stays literally true), redesigning or restructuring §11, editing any other sentence of `docs/DESIGN.md` — §3.5's `SELECT session FOR UPDATE` on line 147 explicitly included — or altering any scheduler behaviour §11 describes. Neither edit revisits a decision: the first applies a decision §11 already made on line 313, the second records one the owner made at round 6. |
 | Payload representation | **One `payload jsonb` column** (owner, round 1). Each handler decodes its own shape; a new task type costs no migration for its payload. The two costs are accepted explicitly in the same answer: a malformed payload is caught at execution rather than by the database, and a reference held inside the payload can dangle. Consistent with the repository's existing split — the ledger is strict schema, the event log is JSONB, and they are deliberately different tables [source: 00a58ac:ai-docs/domain-invariants.md:52 · `sed -n '52p' ai-docs/domain-invariants.md`]. |
 | Whether JSONB relaxes the data-contract rule for payload keys | **No, and this is the trap the choice creates.** `AGENTS.md` names the scheduler's payloads, by that word, among the live data that outlives every deploy and changes by forward migration only [source: 00a58ac:AGENTS.md:84 · `grep -n 'scheduler.s .scheduled_tasks. payloads' AGENTS.md`]. A payload key is a persisted name: renaming one, re-typing one, or repurposing one is the same defect as doing it to a column, and a pending row written by the previous deploy must still decode. "It is only JSON" is not a licence. |
 | What a payload the handler cannot decode means | **A failure, not a guard no-op** — and one that must not loop. It is not the "state moved on" case §3.5 describes; it is a defect that will reproduce identically on every attempt, so it must reach the terminal give-up state and become visible (AC26) rather than consume the retry budget forever. |
 | What a dangling reference inside a payload means | **A guard miss — the default, and a handler may classify otherwise.** §3.5 makes orphaned tasks normal by design: cancellation is unnecessary and a task whose subject has moved on dies at execution [source: 7039e36:docs/DESIGN.md:154 · `sed -n '154p' docs/DESIGN.md`]. A referent that no longer exists is that same case. What the spec fixes is that both classifications are representable and observable; which one a given handler picks travels with the mechanic. |
 | Lifecycle of a completed row | **Deleted by the transaction that completes it** (owner, round 1). The table holds pending and dead tasks only. Consequences, all of them intended: no retention step and no growth curve to manage; no terminal `completed` status value and no `executed_at`; the observation seam is the **only** place execution lag ever exists, since there is no row left to compute it from (AC12 carries the whole weight); and a guard no-op leaves no per-occurrence trace beyond its counter — see *Open questions*. |
 | Retention | **None, and none is needed** — it follows from the row above rather than being a separate decision. §11 places retention outside MVP in any case [source: 7039e36:docs/DESIGN.md:330 · `sed -n '330p' docs/DESIGN.md`]. |
-| Which direction the basis-document / task reference points | **Never from a basis document to `scheduled_task`.** Delete-on-done means the task row is gone while its basis document and postings live on, so a hard FK that way would either block the delete or cascade away ledger history. §11 fixes the direction for exactly this reason: FKs point from postings to bases, which is what makes dropping postings first always safe [source: 3de3dfe:docs/DESIGN.md:344 · `grep -n 'FK направлен от проводок' docs/DESIGN.md`]. A basis document carries by value whatever it needs to identify the task that produced it; which fields those are is the design's. |
+| Which direction the basis-document / task reference points | **Never from a basis document to `scheduled_task`** — and since round 6, never from any other table either, because the ban is now half of the lock-mode pair (AC27, AC35). Delete-on-done means the task row is gone while its basis document and postings live on, so a hard FK that way would either block the delete or cascade away ledger history. §11 fixes the direction for exactly this reason: FKs point from postings to bases, which is what makes dropping postings first always safe [source: 3de3dfe:docs/DESIGN.md:344 · `grep -n 'FK направлен от проводок' docs/DESIGN.md`]. A basis document carries by value whatever it needs to identify the task that produced it; which fields those are is the design's. |
 | The recurrent row's lifecycle | **One live row per recurrence, moved forward in place** (owner, round 2). Completing an occurrence sets the next `run_at` on the same row inside the same transaction as the effects; the row is never deleted while the schedule stands. Delete-on-done therefore governs **one-shots only**, and the two kinds differ in the schema by how they settle, not by living in different tables — which keeps §11's "class separation by a column, never a second table" intact [source: 7039e36:docs/DESIGN.md:311 · `sed -n '311p' docs/DESIGN.md`]. |
 | What makes double-seeding one recurrence impossible | **A uniqueness constraint on the task's identity, not a check in code** — the owner's stated reason for the move-forward shape. The identity is the task type plus an instance key. **A one-shot must not be forced to invent one:** a corpse-evaporation task has a natural instance key and a fan-out notification may not, so the constraint is a *partial* unique index over rows that carry an instance key, with a surrogate primary key — exactly the shape migration 00001 already uses for the basis columns of `journal_entry` [source: 7039e36:internal/store/migrations/00001_ledger_core.sql:74-75 · `sed -n '74,75p' internal/store/migrations/00001_ledger_core.sql`]. A composite primary key over (type, instance) would force every one-shot to supply a key it may not have. The design fixes the column names; AC29 fixes the property. |
 | Whether the scheduler needs a `picked` flag, a heartbeat and a dead-execution detector | **No — and the reason is a decision `docs/DESIGN.md` already made, not a preference.** A liveness protocol exists to release rows stranded by a worker that died *while holding them in a non-transactional executing state*. §11 specifies the opposite: the task executes **in one transaction with its own effects** [source: 7039e36:docs/DESIGN.md:310 · `sed -n '310p' docs/DESIGN.md`]. A worker that dies mid-execution aborts its transaction, which releases its row locks and reverts its writes, leaving the row exactly as it was — still due, and claimable by the next worker on its next poll. There is no stranded state for a detector to find, so a heartbeat column, a `picked` column and a revival handler would all be machinery guarding an unreachable state. |
@@ -368,7 +394,12 @@ exclusive arc that `internal/store` already implements.
 
 ## Source conflicts
 
-`docs/DESIGN.md` §11 disagrees with itself about the scheduler table's name.
+`docs/DESIGN.md` §11 disagrees with itself about the scheduler table's name. **This
+section is about that conflict only.** The other edit line 310 receives — the row-lock
+mode — is not a source conflict: §11 states `FOR UPDATE` and nothing in the corpus
+contradicts it. It is a decision the owner changed at round 6, recorded in *Key
+decisions* and authorised in Scope 11. A reader of this section must not infer that line
+310 receives exactly one edit; it receives two.
 
 - `docs/DESIGN.md:310` — *"таблица `scheduled_tasks` (run_at, тип, payload, статус)"*
   [source: e64bcc6:docs/DESIGN.md:310 · `sed -n '310p' docs/DESIGN.md`]
@@ -400,8 +431,10 @@ being made to obey a decision it already states.
 ## Acceptance Criteria
 
 Every criterion below is settled: the payload and completed-row shape by the round-1
-answers, the recurrent row by round 2, the cadence and the failure policy by round 3, and
-AC19's exclusion set plus the `docs/DESIGN.md` correction by the round-5 amendment.
+answers, the recurrent row by round 2, the cadence and the failure policy by round 3,
+AC19's exclusion set plus the `docs/DESIGN.md` spelling correction by the round-5
+amendment, and the claim's row-lock mode — AC35, plus the coupling AC27 now names — by
+the round-6 amendment.
 Note that the failure criteria are **split by task kind** — AC9/AC10/AC26 govern one-shots
 and AC32 governs recurrences — because the two kinds settle failure differently by
 decision, not by oversight.
@@ -429,12 +462,12 @@ decision, not by oversight.
 | AC19 | The string `scheduled_tasks` occurs in no tracked file, subject to exactly these three exclusions and no others: (a) `.gitignore`, where the match is part of the harness lock-file path `.claude/scheduled_tasks.lock` — a file belonging to the agent harness, not a spelling of this table at all; (b) any file under `ai-docs/plans/done/`, which is history rather than a live surface; (c) this task's own `ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md` and `ai-docs/plans/2026-09-05-postgres-task-scheduler.design.md`, which quote the superseded spelling as the evidence for correcting it and would falsify themselves if they could not. Every other tracked surface spells the table `scheduled_task` — `docs/DESIGN.md` included, since Scope 11 corrects it rather than excluding it. |
 | AC20 | `store.PostingBasis`'s doc comment describes the set of implementations the package actually has after this change; no live sentence in the tree still asserts the sum type has exactly two. |
 | AC21 | An unregistered task type is a refusal — at registration, at insertion or at claim time — and never a claimed row that fails silently or a due row that no worker will ever take. A test asserts the refusal and asserts that such a row does not accumulate retries invisibly. |
-| AC22 | Propagation is complete for this change: every site whose claim the diff falsifies is updated in the same PR, membership decided by `AGENTS.md` § Propagation Rule step 4. **One member is named rather than illustrative, and is required**, because `AGENTS.md` § Project's AXIOM makes it the one edit a reviewer must find authorised: `docs/DESIGN.md` §11's table spelling on line 310 reads `scheduled_task` after this change, under the owner's explicit round-5 request recorded in Scope 11 and *Source conflicts* — and no other sentence of `docs/DESIGN.md` differs from its pre-change text. The remaining sites known at spec time are illustrative, not exhaustive: `ai-docs/context.md` (the Scheduler block row and the Status code paragraph), `ai-docs/key-decisions.md` KD-4, `AGENTS.md` § API Stability's carve-out sentence, `internal/store/basis.go`'s `PostingBasis` doc comment, `.env.example`, `internal/config/env.go`, and `ai-docs/plans/INDEX.md`. |
+| AC22 | Propagation is complete for this change: every site whose claim the diff falsifies is updated in the same PR, membership decided by `AGENTS.md` § Propagation Rule step 4. **Two members are named rather than illustrative, and both are required**, because `AGENTS.md` § Project's AXIOM makes them the edits a reviewer must find authorised — and they land on the *same* line, `docs/DESIGN.md:310`: after this change that line spells the table `scheduled_task` (owner's round-5 request) and writes the claim query's row lock as `FOR NO KEY UPDATE SKIP LOCKED` (owner's round-6 request), both recorded in Scope 11. **The bound is those two edits and no more:** the rest of line 310 — the one-transaction-with-its-effects clause included — and every other line of `docs/DESIGN.md`, §3.5's `SELECT session FOR UPDATE` among them, are byte-identical to their pre-change text. The remaining sites known at spec time are illustrative, not exhaustive: `ai-docs/context.md` (the Scheduler block row and the Status code paragraph), `ai-docs/key-decisions.md` KD-4, `AGENTS.md` § API Stability's carve-out sentence, `internal/store/basis.go`'s `PostingBasis` doc comment, `.env.example`, `internal/config/env.go`, and `ai-docs/plans/INDEX.md`. The Scheduler block row and KD-4 each carry two falsified claims rather than one, stating the table name and the lock mode in the same sentence. |
 | AC23 | Every gate `make verify` runs is green on the resulting tree, including the race-enabled test gate. |
 | AC24 | `scheduled_task` carries its type-specific data in a single JSONB payload column. A test round-trips a payload through insert, claim and execution and asserts the handler receives the value that was scheduled, including for a payload containing a nested object and a null. |
 | AC25 | A **one-shot** task that completes — whether with effects or as a guard no-op — leaves no row in `scheduled_task`: the deletion happens in the same transaction as the effects, so a rolled-back execution leaves the row present and still due. A test asserts both directions. There is no terminal `completed` status value in the schema and no retention step in the change. A recurrent task is the stated exception and is governed by AC11 instead. |
 | AC26 | A payload the handler cannot decode is classified as a failure rather than as a guard no-op. For a one-shot it terminates: the task reaches the give-up state within the configured attempt cap rather than being retried indefinitely, and it is enumerable under AC10 with the decode failure as its recorded reason. For a recurrence it does not terminate — AC32 applies — and the evidence that it is permanently broken is the rising consecutive-failure count of AC34. |
-| AC27 | No basis-document table carries a foreign key to `scheduled_task`: deleting a completed task row neither fails nor cascades, and the basis document and its postings survive it. A test posts under a new basis type, lets the task complete and be deleted, and asserts the `journal_entry` and `posting` rows are still present and still balance. |
+| AC27 | No table anywhere in the schema carries a foreign key referencing `scheduled_task`: deleting a completed task row neither fails nor cascades, and the basis document and its postings survive it. A test posts under a new basis type, lets the task complete and be deleted, and asserts the `journal_entry` and `posting` rows are still present and still balance. **This ban is coupled to AC35's lock mode and the two may not be revisited separately.** Under `FOR NO KEY UPDATE` such an FK would make the referential-integrity check take `FOR KEY SHARE` on a claimed task row concurrently, minting multixacts under ordinary load where `FOR UPDATE` would have blocked; the mechanism and its measurement are in *Key decisions*. Any later change that adds such an FK, or that widens this ban's scope, states in the same change what it does about the lock mode. |
 | AC28 | Every persisted payload key is treated as a data contract: the design document names the payload keys each shipped task type reads, and a pending row written before a change still decodes after it. No live sentence in the tree claims that a JSONB payload is exempt from `AGENTS.md` § API Stability's forward-migration carve-out. |
 | AC29 | Scheduling a recurrence twice is refused by the database, not by a code path that checks first: with a recurrence already live, a second insert of the same task type and instance key fails on a uniqueness constraint. A one-shot task carrying no instance key is accepted, and two such one-shots of the same type coexist — the constraint does not force a one-shot to invent an identity. |
 | AC30 | A handler that neither returns nor fails within the configured per-task execution deadline is abandoned rather than left holding its row: the task's transaction ends, the row becomes claimable again, and the event is reported through the observation seam as a failure rather than passing silently. A test drives a handler that blocks past the deadline and asserts the row is claimable afterwards and the observation was made. |
@@ -442,6 +475,8 @@ decision, not by oversight.
 | AC32 | A failing **recurrent** handler never reaches a terminal state: the row is rescheduled to its next cadence instant and remains claimable, and no number of consecutive failures converts it into a give-up. A test fails a recurrence's handler more times than the one-shot attempt cap and asserts the row is still live, still recurring, and still advancing by its cadence. |
 | AC33 | Start-up reconciles the declared recurrences against the table in two moves and no more: a declared recurrence with no row is seeded, and a declared recurrence whose row disagrees with the declaration has its `run_at` corrected. Seeding is idempotent — two workers starting concurrently produce one row, refused by the constraint of AC29 rather than by a lock — and neither move disturbs an occurrence that is in flight or imminent. A test covers the missing-row seed, the changed-declaration correction, the concurrent start, and the imminent occurrence left alone. |
 | AC34 | The consecutive-failure count is persisted on the task row, incremented on each failed execution, reset on a success or a guard no-op, and carried in the failure observation of AC12. A test asserts the count rises across successive failures of one recurrence and returns to zero after a success. |
+| AC35 | The worker's row lock is `FOR NO KEY UPDATE`: the batch claim and the per-id re-claim each take `FOR NO KEY UPDATE … SKIP LOCKED`, and no query against `scheduled_task` in the change takes `FOR UPDATE`. Every live document that states **the scheduler's claim query** states it with `FOR NO KEY UPDATE` — `docs/DESIGN.md` §11 included, per AC22. Four surfaces match a search for the old clause without violating this criterion, and they are named so the check needs no judgement call: files under `ai-docs/plans/done/` (history); this task's own spec and design (they quote the pre-change clause as the evidence for changing it); this task's `*.spec.md.state.md` interview state, which is retired before the PR in any case; and `docs/DESIGN.md` line 147, which is §3.5's raid-session lock rather than the scheduler's claim. `.claude/agents/self-review.md`'s Postgres-invariants rule is outside the criterion too — it names `SKIP LOCKED` behaviour as an example of a database-enforced invariant, not this worker's query — but it remains inside AC22's propagation class if its example now misleads. The exclusion protocol is unchanged under this mode and is asserted rather than assumed: AC5 and AC6 hold as written. |
+| AC36 | The recorded reason for AC35's mode is the one that survives measurement, and no live sentence in the tree claims otherwise: no document, comment or commit message in the change justifies `FOR NO KEY UPDATE` as a throughput, latency, contention or lock-weight improvement over `FOR UPDATE`. The reason each such surface gives is the pair in *Key decisions* — the weakest lock expressing what a claim does, with a one-shot's `DELETE` taking `FOR UPDATE` strength at the moment it is needed — together with the AC27 coupling that makes the two modes equivalent only while no foreign key references `scheduled_task`. |
 
 ## Open questions
 
