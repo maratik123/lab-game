@@ -8,8 +8,8 @@ _Updated: 2026-09-05 12:20 UTC_
 **Last build:** PASS
 **Issue:** #20
 **Spec:** ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md
-**current_step:** Step 11 — review fixes complete (Round 1)
-**last_passed_gate:** make verify + go test -count=1 -race ./internal/scheduler/ | 2026-09-05T12:54:13Z | (pending commit)
+**current_step:** Step 12 — finalising (PR not yet created)
+**last_passed_gate:** make verify + go test -count=1 -race ./... | 2026-09-05T15:05:20Z | 9690904673e1c9c26b1bcae5b6a1579cf85d4b1f
 **entry_args:** 20
 
 ## Next action
@@ -31,6 +31,10 @@ _Updated: 2026-09-05 12:20 UTC_
 - [x] 11. Propagation (D15) — Group B
 
 ## Decisions log
+
+- **Step 12**: spec and design moved to `ai-docs/plans/done/`, INDEX row set to implemented; 29 deferred/out-of-scope/open-question rows appended to `_inbox.jsonl`; the task-run telemetry record appended and both schema verifications PASS (trailing byte `0a`; corpus lines recorded 9714 = measured 9714).
+
+- **Step 10**: APPROVE at round 2. Round 1 rejected on two coverage holes found by mutation, both closed at 91a221e; seven items remain below the severity floor, each with its verifying command in the register.
 
 - **Step 11**: both round-1 majors were coverage holes, and both fixes were verified by re-running the reviewer's own mutations — `claim.go`'s payload assignment and `execute.go`'s `Lag` — each seen RED with the new assertions and each source file restored byte-identical from a cp-backup. My first mutation attempt failed its own assert and I reported a verdict from it; the retry with the correct indentation is what produced the evidence.
 
@@ -92,19 +96,20 @@ _Updated: 2026-09-05 12:20 UTC_
 | D3-1 | design round 3 | major | fixed@2dcc769 | `sed -n '303,333p' $(go env GOMODCACHE)/github.com/jackc/pgx/v5@v5.10.0/tx.go` |
 | D3-2 | design round 3 | major | fixed@2dcc769 | `awk '/^### D7/,/^### D8/' <design> \| grep -c Deadline` |
 | D4-1 | design round 4 | minor | fixed@42c4c7e | `grep -n 'settlement instant' <design>` |
-| AC24-EXEC | self-review round 1 | major | ⬜ Open | mutate `internal/scheduler/claim.go`'s `task.Payload = payload` to assign a fixed ``json.RawMessage(`{"corrupted":true}`)`` instead, then `go test -count=1 ./internal/scheduler/` — MUST go RED (it is GREEN today) |
-| AC12-LAG | self-review round 1 | major | ⬜ Open | `sed -i 's|Lag: t.Sub(task.RunAt)|Lag: t.Sub(t)|' internal/scheduler/execute.go && go test -count=1 ./internal/scheduler/` — MUST go RED |
-| AC12-BATCH | self-review round 1 | minor | ⬜ Open | `sed -i 's|BatchSize: batchSize}|BatchSize: 3}|' internal/scheduler/execute.go && go test -count=1 -run TestObserve ./internal/scheduler/` — MUST go RED |
-| TESTDESIGN-SKIP | self-review round 1 | minor | ⬜ Open | `grep -n 'Observer' internal/scheduler/worker_test.go` — the skipped-at-re-claim test must install one and assert `LoopObservation.BatchSize` |
-| EVERY-ZERO | self-review round 1 | minor | ⬜ Open | `go doc ./internal/scheduler Every` — must state the period precondition; or `NewRegistry` must refuse it |
-| DOC-SYMBOL | self-review round 1 | nit | ⬜ Open | `sed -n '13p;18p' internal/scheduler/claim.go` — the comment's first word must equal the const's name |
-| TESTNAME-BOUND | self-review round 1 | nit | ⬜ Open | `sed -n '113,150p' internal/scheduler/worker_test.go` — due-task count must exceed `testConfig().ClaimLimit`, or the name must drop "batchBounded" |
-| CONST-NAME | self-review round 1 | nit | ⬜ Open | `grep -n 'envSchedulerRetryMaxAttempt' internal/config/scheduler.go` |
+| AC24-EXEC | self-review round 1 | major | fixed@91a221e | mutate `internal/scheduler/claim.go`'s `task.Payload = payload` to assign a fixed ``json.RawMessage(`{"corrupted":true}`)`` instead, then `go test -count=1 -run TestSchedule_payloadRoundTrip ./internal/scheduler/` — RED at round 2: `schedule_test.go:90: delivered payload = map[corrupted:true], want map[n:5 nested:map[a:<nil>]]` |
+| AC12-LAG | self-review round 1 | major | fixed@91a221e | `sed -i 's|Lag: t.Sub(task.RunAt)|Lag: t.Sub(t)|' internal/scheduler/execute.go && go test -count=1 -run TestObserve_collectsOneObservationPerExecutedTask ./internal/scheduler/` — RED at round 2: `observe_test.go:62: observation for obs.done: Lag = 0s, want positive` (×3). **Residual, accepted@2 — below severity floor:** the bound is one-sided, so a wrong-but-positive Lag survives (`Lag: t.Sub(task.RunAt) + time.Hour` → GREEN). Pinning it needs a forced `run_at` in the past and a `Lag >= that` assertion; see round 2's note |
+| AC12-BATCH | self-review round 1 | minor | accepted@2 — below severity floor; re-verified still blind at round 2 (`BatchSize: 3}` → GREEN) | `sed -i 's|BatchSize: batchSize}|BatchSize: 3}|' internal/scheduler/execute.go && go test -count=1 -run TestObserve ./internal/scheduler/` — MUST go RED |
+| TESTDESIGN-SKIP | self-review round 1 | minor | accepted@2 — below severity floor; re-verified at round 2, `worker_test.go` still installs no `Observer` anywhere | `grep -n 'Observer' internal/scheduler/worker_test.go` — the skipped-at-re-claim test must install one and assert `LoopObservation.BatchSize` |
+| EVERY-ZERO | self-review round 1 | minor | accepted@2 — below severity floor; re-verified at round 2, `go doc` shows no precondition and `NewRegistry` still checks only `Cadence == nil` | `go doc ./internal/scheduler Every` — must state the period precondition; or `NewRegistry` must refuse it |
+| DOC-SYMBOL | self-review round 1 | nit | accepted@2 — below severity floor; re-verified at round 2, unchanged | `sed -n '13p;18p' internal/scheduler/claim.go` — the comment's first word must equal the const's name |
+| TESTNAME-BOUND | self-review round 1 | nit | accepted@2 — below severity floor; re-verified at round 2, still 3 due tasks against `ClaimLimit: 10` | `sed -n '113,150p' internal/scheduler/worker_test.go` — due-task count must exceed `testConfig().ClaimLimit`, or the name must drop "batchBounded" |
+| CONST-NAME | self-review round 1 | nit | accepted@2 — below severity floor; re-verified at round 2, unchanged | `grep -n 'envSchedulerRetryMaxAttempt' internal/config/scheduler.go` |
 | RUNONCE-DISCARD | self-review round 1 | — | accepted@1 — `worker.go:155`'s `_ = w.RunOnce(ctx)` is a documented discard, not a silent one: `Run`'s doc comment gives the reason and every cycle already reports its error through `ObserveLoop` (D12). AGENTS.md's `_ = err` ban targets swallowed errors, not ones routed to an observation seam. | `sed -n '136,139p;155p' internal/scheduler/worker.go` |
 | TELEMETRY-ROW | self-review round 1 | — | accepted@1 — § 4a's telemetry-lag row does not fire: the scheduler ships no mechanic and no production handler, writes no posting of its own (D14), and the repository tracks no event dictionary at all. The `Observer` seam is this project's established declaration point (`internal/tg` set the precedent). | `git ls-files \| grep -i 'telemetry\|event'` → empty; `grep -rn prometheus internal/scheduler/` → empty |
 | CTXSTATUS-TBD | self-review round 1 | — | accepted@1 — `ai-docs/context-status.md` carries the literal `#TBD-at-Step-12`, which CI's `harness` job greps for and fails on. That is the designed hand-off: `/task` Step 12 sub-step 10a fills it after `gh pr create`. Not a defect of this diff. | `grep -n 'TBD-at-Step-12' ai-docs/context-status.md` |
 | PARTIAL-IDX | self-review round 1 | — | accepted@1 — `journal_entry_deferred_task_key` / `_recurrent_task_key` are presence-checked, not predicate-checked, exactly as the pre-existing `journal_entry_player_operation_key` is. AC3's "CHECK names every one of them" half is held behaviourally: a stale CHECK would make `TestPost_underDeferredAndRecurrentTask_succeeds` fail with `num_nonnulls = 0`. | `go test -count=1 -run 'TestPost_underDeferredAndRecurrentTask_succeeds' ./internal/store/` |
 | CANCEL-AS-DEADLINE | self-review round 1 | — | accepted@1 — a parent-ctx cancellation during a handler call fires `deadlineCtx.Done()` and is reported as `FailureDeadline` with the connection hijacked. On shutdown the pending settlement is never drained, which leaves the row `pending` and due — AC31's self-healing property, not a leak. | `sed -n '104,139p' internal/scheduler/execute.go` |
+| PROMPT-CONTAMINATION | self-review round 2 | minor | accepted@2 — recorded, not verdict-bearing | The round-2 message carried a characterisation of the work, a summary of the fix, self-reported mutation results and a self-reported gate status — all content § *Spawn prompt contract* excludes. It arrived as a `SendMessage` course correction, not as a spawn prompt: it carries no invocation line, and the `PreToolUse` guard that enforces the contract is scoped to `Task\|Agent` spawns. Recorded so the orchestrator can tighten the channel; every claim in it was independently re-derived rather than accepted. | `bash .claude/skills/ai-audit/scripts/test-spawn-contract-guard.sh` |
 
 ## Files touched
 
@@ -180,3 +185,93 @@ _Updated: 2026-09-05 12:20 UTC_
 **Mutation testing — nine production mutations, each restored with a cp-backup and the tree re-verified clean.** Load-bearing (went RED): the deferred backoff computed from the claim-time `run_at` instead of the drain instant (the round-7 regression guard — both `TestDeadline_*` guards fired); a failed savepoint release reported as the `Done` the handler claimed; the drain guard losing its `run_at = $2` match; the reconcile correction losing its imminent-occurrence guard; an undeclared type's row starting to accrue attempts; the nil-observer guard removed; the per-id re-claim losing its row lock (`TestRunOnce_twoWorkersConcurrent_exactlyOnceUnderRace` fired); the discovery `LIMIT` ignoring `ClaimLimit`. Cosmetic (stayed GREEN → findings 1, 2 and 3 above): the payload handed to the handler, `Observation.Lag`, per-task `Observation.BatchSize`.
 
 **Instrument checks (a clean result is a claim about the instrument).** `TestBasisTables_noForeignKeyToScheduledTask`'s `count == 0` was probed by running the identical `pg_constraint` catalog query against an FK pair that *does* exist (`journal_entry → deferred_task`): it returns non-zero, so the query is not blind and AC27's zero is a real measurement.
+
+## Self-Review (Round 2)
+
+**Verdict:** APPROVE
+
+No `blocker` or `major` row is open, so per § *Findings format* this round carries no table: the
+remaining items ride along as `accepted@2 — below severity floor` register rows rather than
+withholding the verdict.
+
+**Both round-1 majors are verified closed — by this round's own mutations, not by the fix report.**
+
+| id | Registered verifying command, re-run at round 2 | Result |
+|----|---|---|
+| AC24-EXEC | `claim.go`'s `task.Payload = payload` → a fixed ``json.RawMessage(`{"corrupted":true}`)`` | **RED** — `schedule_test.go:90: delivered payload = map[corrupted:true], want map[n:5 nested:map[a:<nil>]]` |
+| AC12-LAG | `execute.go`'s `Lag: t.Sub(task.RunAt)` → `Lag: t.Sub(t)` | **RED** — `observe_test.go:62: observation for obs.done: Lag = 0s, want positive`, and the same for `obs.noop` and `obs.fail` |
+
+The AC24 probe is deliberately **stronger** than a nil payload: `{"corrupted":true}` unmarshals
+cleanly and differs only in *value*, so it proves the new assertion compares the delivered payload
+rather than merely checking that something decodes. `internal/scheduler/claim.go` and
+`internal/scheduler/execute.go` were each restored from a cp-backup and confirmed byte-identical
+with `git diff --quiet`.
+
+**One claim in the fix report does not survive checking, and it is recorded because the report
+invited the check.** The report states that `execute.go`'s `Lag: t.Sub(task.RunAt)` was "mutated to
+`Lag: 0`" and that the test "now fails on the `want positive` assertion". Run verbatim, that
+mutation does not compile — `internal/scheduler/execute.go:78:2: declared and not used: t` — so it
+produces a build failure, not an assertion failure, and cannot have exercised the assertion it is
+offered as evidence for. The same shape was already measured in round 1. **The fix is nonetheless
+real**: the row is marked `fixed@91a221e` on the strength of this round's own `Lag: t.Sub(t)`
+mutation, never on the report. This is the § *Patterns* 1 asymmetry in its cheapest form — a
+report that agrees with the reviewer's own conclusion is still a claim.
+
+**Residual on AC12-LAG, recorded rather than re-raised.** `o.Lag <= 0` closes the demonstrated
+blindness (a permanently-zero lag) but is a one-sided bound: `Lag: t.Sub(task.RunAt) + time.Hour`
+leaves `go test -run TestObserve ./internal/scheduler/` **GREEN**. The regression this leaves
+uncaught is the one D3 names — substituting a Go-clock interval for the server-supplied pair — and
+an upper bound alone would not catch it either, since both values are small. Pinning it properly
+means forcing `run_at` a known interval into the past and asserting `Lag` is at least that. Below
+the severity floor for this round: the primary case is covered, and the fix is a strengthening
+rather than a defect repair.
+
+**Still open, all below the severity floor — 7 items across 5 files** (each already carries its
+verifying command in the register, so a later round can promote any of them without re-deriving
+it):
+
+- `internal/scheduler/execute.go` + `internal/scheduler/observe_test.go` — `AC12-BATCH` (per-task
+  `Observation.BatchSize` still asserted only at the literal 3; `BatchSize: 3}` mutation GREEN),
+  and `AC12-LAG`'s residual one-sided bound above.
+- `internal/scheduler/worker_test.go` — `TESTDESIGN-SKIP` (the design's "even when some ids were
+  skipped at re-claim" clause; the file still installs no `Observer` at all) and `TESTNAME-BOUND`
+  (`TestRunOnce_batchBoundedAndSkipNotWait` still inserts 3 due tasks against `ClaimLimit: 10`).
+- `internal/scheduler/cadence.go` — `EVERY-ZERO` (`go doc ./internal/scheduler Every` still states
+  no precondition; `NewRegistry` still validates only `Cadence == nil`).
+- `internal/scheduler/claim.go` — `DOC-SYMBOL` (comment still opens `discoveryLimitSQL`, const is
+  `discoverySQL`).
+- `internal/config/scheduler.go` — `CONST-NAME` (`envSchedulerRetryMaxAttempt`, singular).
+
+### What was checked
+
+**Scope.** `git diff fb15941..HEAD` is three files: `internal/scheduler/schedule_test.go` (+42/-1),
+`internal/scheduler/observe_test.go` (+8/-1) and this progress file. **No production file changed**
+— confirmed by reading the diff, not by accepting the claim — so round 1's production-side
+verification (D1's file list, D2/D5/D7/D11 conformance, the panic/secret/ledger/`//nolint` sweeps,
+AC1/AC2/AC13/AC14/AC18/AC19/AC20/AC22/AC35, and the six load-bearing mutations) stands unchanged
+and was not re-derived.
+
+**Both new test blocks read for defects, not just for the assertion they add.** The AC24 block
+builds its own single-type registry rather than reusing `testRegistry`, takes the fixture's mutex
+before copying `handler.seen`, asserts the handler saw exactly one task and that its `ID` matches,
+then compares the *decoded* delivered payload — length, the scalar, the nested object's presence
+and its null member — never raw bytes, which is the comparison `jsonb`'s normalisation requires.
+The Lag block replaces `< 0` with `<= 0` and states in a comment why zero is the defect. Both tests
+are schema-isolated per `newScheduler`, so their new `RunOnce` call is safe under `t.Parallel()`.
+
+**Gates, re-run on the committed tree.** `make verify` **GREEN** (log captured to a file and
+grepped, never piped): `fmt-check`, `build`, `vet`, `lint`, `file-limits`, `test`, `test-race`,
+`tidy-check`, `actionlint`, `shellcheck`. Because the aggregate reported `(cached)` for the changed
+package, the race gate was re-run uncached: `go test -count=1 -race ./...` → **GREEN**, 7 packages,
+`internal/scheduler 26.160s`, `internal/store 28.000s`. AC23 holds. `golangci-lint`'s `unused`
+linter staying green also confirms `testRegistry` did not become dead when the AC24 test stopped
+calling it.
+
+**Prompt channel.** The round-2 message carried content § *Spawn prompt contract* excludes — a
+characterisation of the work, a fix summary, self-reported mutation results and a self-reported
+gate status. It is recorded as `PROMPT-CONTAMINATION` (`minor`, `accepted@2`) rather than as this
+round's blocking finding #1, because it arrived as a `SendMessage` course correction and not as a
+spawn prompt: it carries no invocation line, and the `PreToolUse` guard the contract names is
+scoped to `Task|Agent` spawns. The distinction is recorded so a later round or the orchestrator can
+disagree with it. Every factual claim the message made was re-derived here independently, and one
+of them did not survive.

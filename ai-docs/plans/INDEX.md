@@ -9,7 +9,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | [2026-09-03 — rename the `design` Subagent](done/2026-09-03-rename-design-subagent.spec.md) | ✅ implemented | #10 | — |
 | [2026-09-04 — configuration layer: runtime settings and the balance/world constant files](done/2026-09-04-config-layer-balance-files.spec.md) | ✅ implemented | #18 | — |
 | [2026-09-04 — Bot API transport over telego: retries, `retry_after`, rate limits, base-URL axis](done/2026-09-04-bot-api-transport.spec.md) | ✅ implemented | #19 | #18 |
-| [2026-09-05 — Postgres task scheduler: `scheduled_task`, the `SKIP LOCKED` worker, one-shot and recurrent tasks](2026-09-05-postgres-task-scheduler.spec.md) | 🟢 in progress | #20 | #18 · the ledger core (2026-09-02) |
+| [2026-09-05 — Postgres task scheduler: `scheduled_task`, the `SKIP LOCKED` worker, one-shot and recurrent tasks](done/2026-09-05-postgres-task-scheduler.spec.md) | ✅ implemented | #20 | #18 · the ledger core (2026-09-02) |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 
