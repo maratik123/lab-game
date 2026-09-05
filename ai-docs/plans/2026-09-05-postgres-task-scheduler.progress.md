@@ -8,18 +8,18 @@ _Updated: 2026-09-05 11:07_
 **Last build:** not run
 **Issue:** #20
 **Spec:** ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** go build ./... | 2026-09-05T11:07:14Z | 42c4c7ef29c98d46530ee8c05208c974e036c8ac
+**current_step:** Step 8 — subtask 1 of 10 complete
+**last_passed_gate:** golangci-lint run | 2026-09-05T00:00:00Z | (pending commit)
 **entry_args:** 20
 
 ## Next action
 
-**Do this immediately:** spawn Group A (subtasks 1–10) via `/context-reset` with the `code-writer` subagent, starting at subtask 1 — the `00002_scheduler.sql` migration.
+**Do this immediately:** continue Group A at subtask 2 — `store.DeferredTask` / `store.RecurrentTask`.
 
 ## Subtasks
 
-- [ ] 1. Migration `00002_scheduler.sql`: `scheduled_task_state`, `scheduled_task`, the live-scoped identity index, the two basis tables and the `journal_entry` arc  ← CURRENT
-- [ ] 2. `store.DeferredTask` / `store.RecurrentTask` implementing `PostingBasis`, each carrying `TaskID`
+- [x] 1. Migration `00002_scheduler.sql`: `scheduled_task_state`, `scheduled_task`, the live-scoped identity index, the two basis tables and the `journal_entry` arc
+- [ ] 2. `store.DeferredTask` / `store.RecurrentTask` implementing `PostingBasis`, each carrying `TaskID`  ← CURRENT
 - [ ] 3. `config.Scheduler`, defaults, `loadScheduler`, `schedulerEnvKeys()`, `.env.example`
 - [ ] 4. Package foundation, no database: `doc.go`, `errors.go`, `task.go`, `registry.go`, `cadence.go`, `observe.go`
 - [ ] 5. The insertion surface: `(*Registry).Schedule`
@@ -33,6 +33,7 @@ _Updated: 2026-09-05 11:07_
 ## Decisions log
 
 - **Step 7**: design-review reached GO at round 4; the owner raised the round cap to 5 (was 3) after round 3's two confirmed majors.
+- **Step 8 subtask 1**: wrote `00002_scheduler.sql` exactly per D5/D14 (scheduled_task_state enum, scheduled_task with the two-predicate identity index, deferred_task/recurrent_task with `task_id` by value and no FK, the journal_entry CHECK/column/index extension). Extended migrate_test.go's table list and goose_db_version count (gate-forced), plus the index list and CHECK substring map (AC3-forced, ungated per the design's own warning) and added a new `TestMigrate_scheduledTaskShape` asserting the column set (AC31: no execution marker/heartbeat/completed state), the enum's exact two members, and the identity index's two-predicate definition (AC29). All gates green: `go build ./...`, `go test ./internal/store/...`, `golangci-lint fmt -d`, `golangci-lint run`.
 
 ## Key discoveries (don't re-investigate)
 
@@ -57,4 +58,5 @@ _Updated: 2026-09-05 11:07_
 
 ## Files touched
 
-- (none yet)
+- `internal/store/migrations/00002_scheduler.sql` (new)
+- `internal/store/migrate_test.go`
