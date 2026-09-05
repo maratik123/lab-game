@@ -11,8 +11,9 @@ import (
 // Environment variable names, LAB_GAME_ prefixed to match the existing
 // LAB_GAME_TEST_DSN (internal/testdb). Every variable declared here is
 // required and none has a compiled-in default; the Bot API transport's
-// tuning variables (transport.go) are a separate, optional-with-default
-// class, added on top by EnvKeys() (design D10).
+// tuning variables (transport.go) and the scheduler's polling/retry
+// tuning variables (scheduler.go) are separate, optional-with-default
+// classes, added on top by EnvKeys() (design D10, D13).
 const (
 	envBotToken = "LAB_GAME_BOT_TOKEN" //nolint:gosec // G101: this is an environment-variable NAME, not a credential value
 
@@ -45,13 +46,14 @@ type Lookup func(key string) (value string, ok bool)
 // built on every call (AC1 — no package-level mutable state). It is the
 // set AC16's "consults no environment variable outside the documented set"
 // is checked against, and the set .env.example is asserted to equal
-// exactly (AC8). transportEnvKeys() — the optional-with-default Bot API
-// transport tuning keys — is appended alongside envBalancePath and
-// envWorldPath, each validated by its own dedicated reader rather than by
-// loadEnv (design D10).
+// exactly (AC8). transportEnvKeys() and schedulerEnvKeys() — the two
+// optional-with-default tuning classes — are appended alongside
+// envBalancePath and envWorldPath, each validated by its own dedicated
+// reader rather than by loadEnv (design D10, D13).
 func EnvKeys() []string {
 	keys := append(envKeys(), envBalancePath, envWorldPath)
-	return append(keys, transportEnvKeys()...)
+	keys = append(keys, transportEnvKeys()...)
+	return append(keys, schedulerEnvKeys()...)
 }
 
 // envValues holds the environment layer's validated results: the two
