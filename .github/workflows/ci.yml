@@ -179,6 +179,7 @@ jobs:
           bash .claude/skills/ai-audit/scripts/test-no-verify-guard.sh
           bash .claude/skills/ai-audit/scripts/test-ac-shape.sh
           bash .claude/skills/ai-audit/scripts/test-review-register.sh
+          bash .claude/skills/task/scripts/test-precommit-dispatch.sh
       - name: acceptance criteria state conditions, not tests
         run: bash .claude/skills/ai-audit/scripts/check-ac-shape.sh
       - name: relative markdown links resolve

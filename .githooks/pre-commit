@@ -6,9 +6,23 @@
 # --get core.hooksPath` prints nothing, run:
 #   git config core.hooksPath .githooks
 #
+# PATHS ARE RESOLVED FROM THE WORKTREE ROOT, NOT FROM $PWD. githooks(5)
+# promises git chdirs to the root of the working tree before running a hook,
+# and measurement agrees — a bare `.githooks/coverage-ratchet.sh` resolves from
+# the repository root, from a subdirectory, under `git -C` from outside the
+# repo, and inside a linked worktree and its subdirectories. It is still
+# resolved explicitly here: the promise is invisible at the call site, a
+# reviewer has to go and look it up, and this hook is also the thing someone
+# runs by hand to see what it does.
+#
 # Bypassing this hook is the owner's escape, not an agent's: a `PreToolUse`
 # guard refuses `git commit --no-verify` from inside the harness.
 
 set -uo pipefail
 
-exec .githooks/coverage-ratchet.sh
+root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  printf 'pre-commit: not a git work tree; no gate run\n' >&2
+  exit 0
+}
+
+exec "$root/.githooks/coverage-ratchet.sh"
