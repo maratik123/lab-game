@@ -200,13 +200,22 @@ never lags code (`AGENTS.md` § *Domain Rules*; `docs/DESIGN.md` §13.4
   Scope 6 edits reconcile the corpus with its own §11 — a table name and a registry
   membership line — and change no mechanic.
 - **Tests provision Postgres through testcontainers** (KD-20): `postgres:18`, major tag
-  only (KD-16); `LAB_GAME_TEST_DSN` points the suite at a running server instead. Postgres
+  only (KD-19); `LAB_GAME_TEST_DSN` points the suite at a running server instead. Postgres
   behaviour — the CHECK, the FKs, the views — is tested against Postgres, never a mock.
 - **Executability of unattended checks.** `.claude/settings.json` `permissions.allow`
-  grants `Bash(psql *)`; it grants **neither `podman` nor `docker`**, so every acceptance
-  check must be reachable through `go test` / `make` (or `psql` against an already-running
-  server). A design step that needs a container command unattended specs its grant as its
-  own line.
+  grants `Bash(psql *)` and, since 837952e, `Bash(podman *)`; it still carries **no
+  `docker` entry**
+  [source: 837952e:.claude/settings.json:150-151 · `grep -n 'Bash(psql \*)\|Bash(podman \*)' .claude/settings.json`].
+  The rule this bullet exists for is unchanged, only its reach: an unattended step may
+  invoke `go`, `make`, `psql` and `podman`, and anything outside that set — `docker` by
+  name included — still specs its grant as its own line.
+  Note what the podman grant does **not** buy, so the design does not build on it wrongly:
+  `internal/testdb` drives testcontainers-go over the API socket rather than a CLI (it
+  names no `podman`/`docker` command, only the image `docker.io/library/postgres:18`), so
+  the suite reaches the runtime through `DOCKER_HOST` and never needed this permission.
+  What the grant buys is **diagnosis around a failure** — inspecting a container, reading
+  its logs, clearing a leaked one — which a design or verification step may now do without
+  a prompt.
 - **Coverage ratchet.** This task stages `.go` and `.sql`, so `.githooks/coverage-ratchet.sh`
   measures on every commit; new Go code carries its tests in the same commit.
 - **Language split.** The `docs/` corpus is Russian, so the Scope 6 edits are written in

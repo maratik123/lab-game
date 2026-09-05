@@ -58,7 +58,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 4
 agent_id: af42b6350aa60c754
 prior_qa:
   - round: 1
@@ -70,4 +70,10 @@ prior_qa:
   - round: 1
     question: "Both source conflicts close by touching docs/DESIGN.md: §13.1/§13.5 spell the table `events` against §11:313's singular-names decision, and §11:331's «Стартовый реестр типов оснований» omits the game event that §11:323 and §11:332 both name. Does this PR edit the design corpus?"
     answer: "Edit both. §13.1/§13.5 spelling becomes `event`, and §11:331 gains «игровое событие (лог 13.1)». Every live doc agrees and neither conflict is re-derivable by a later reader."
+  - round: 3
+    question: "(orchestrator-initiated, not a spec-writer question) The owner changed a standing constraint mid-interview: `.claude/settings.json` now allow-lists `Bash(podman *)`."
+    answer: "Correct the Technical constraints bullet at spec line 206, which claims settings.json grants neither podman nor docker. Committed as 837952e."
+  - round: 4
+    question: "(orchestrator-initiated) The KD-16 citation you flagged: authorised, with a correction to your diagnosis. Two KD numbering spaces exist — the project-wide registry `ai-docs/key-decisions.md`, and each done/ spec's own local KD table."
+    answer: "Change the bare `(KD-16)` on spec line 203 to `(KD-19)` and nothing else. Rationale: line 202-203 mixes both spaces in one sentence — `(KD-20)` resolves project-wide and correctly, `(KD-16)` resolves ledger-local. `(KD-3)` on line 174 is correct as written because it is explicitly qualified `the ledger's KD-3` — do not touch it."
 ```
