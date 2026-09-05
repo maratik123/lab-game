@@ -54,8 +54,12 @@ func TestObserve_collectsOneObservationPerExecutedTask(t *testing.T) {
 		if o.BatchSize != 3 {
 			t.Errorf("observation for %s: BatchSize = %d, want 3", o.Type, o.BatchSize)
 		}
-		if o.Lag < 0 {
-			t.Errorf("observation for %s: Lag = %v, want non-negative", o.Type, o.Lag)
+		// Positive, not merely non-negative: Lag is a real elapsed interval
+		// between run_at and the execution instant (design D3), so a zero
+		// would mean the two instants came from the same read — the exact
+		// defect the clock discipline exists to prevent.
+		if o.Lag <= 0 {
+			t.Errorf("observation for %s: Lag = %v, want positive", o.Type, o.Lag)
 		}
 	}
 	if byType["obs.done"].Outcome != OutcomeDone || byType["obs.done"].Failure != FailureNone {

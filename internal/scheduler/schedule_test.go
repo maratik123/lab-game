@@ -29,7 +29,11 @@ func TestSchedule_payloadRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	pool := newScheduler(t)
-	reg := testRegistry(t)
+	handler := &fixedOutcomeHandler{outcome: OutcomeDone}
+	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: handler})
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
 
 	want := map[string]any{"n": float64(5), "nested": map[string]any{"a": nil}}
 	payload, err := json.Marshal(want)
@@ -55,6 +59,42 @@ func TestSchedule_payloadRoundTrip(t *testing.T) {
 	wantNested := want["nested"].(map[string]any)
 	if gotNested["a"] != wantNested["a"] {
 		t.Fatalf("decoded nested payload = %v, want %v", gotNested, wantNested)
+	}
+
+	// AC24's other half: the payload must survive the claim and reach the
+	// handler. Asserting only the stored row leaves claim.go free to hand
+	// every handler something else entirely.
+	w, err := New(Options{Pool: pool, Registry: reg, Config: testConfig()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := w.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+
+	handler.mu.Lock()
+	seen := append([]Task(nil), handler.seen...)
+	handler.mu.Unlock()
+	if len(seen) != 1 {
+		t.Fatalf("handler saw %d tasks, want exactly 1", len(seen))
+	}
+	if seen[0].ID != id {
+		t.Errorf("handler saw task id %d, want %d", seen[0].ID, id)
+	}
+
+	var delivered map[string]any
+	if err := json.Unmarshal(seen[0].Payload, &delivered); err != nil {
+		t.Fatalf("unmarshal delivered payload %q: %v", seen[0].Payload, err)
+	}
+	if len(delivered) != len(want) || delivered["n"] != want["n"] {
+		t.Fatalf("delivered payload = %v, want %v", delivered, want)
+	}
+	deliveredNested, _ := delivered["nested"].(map[string]any)
+	if deliveredNested == nil {
+		t.Fatalf("delivered payload lost its nested object: %v", delivered)
+	}
+	if deliveredNested["a"] != wantNested["a"] {
+		t.Fatalf("delivered nested payload = %v, want %v", deliveredNested, wantNested)
 	}
 }
 
