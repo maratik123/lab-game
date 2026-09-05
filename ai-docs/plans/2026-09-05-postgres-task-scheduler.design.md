@@ -4,14 +4,34 @@
 **Date:** 2026-09-05
 
 > **Claim-tag conventions in this document.** A repo fact carries the commit of the **read**
-> (`ac09e61`, re-resolved for this round rather than carried forward from round 1), not of this
-> document, so a tag may lag `HEAD` after a revision that touched only this file. A fact about
-> **PostgreSQL's own behaviour** has no repo path, so its pin is the server version the probe ran
-> against (`postgres:18.6`, a throwaway container started from the image already on this machine
-> and stopped afterwards). A fact about an **external module** is pinned by its version. A claim
+> (`ac09e61` for a round-2 read, `9e6c05b` for a round-3 read — each re-resolved in the round that
+> wrote it rather than carried forward), not of this document, so a tag may lag `HEAD` after a
+> revision that touched only this file. A fact about **PostgreSQL's own behaviour** has no repo
+> path, so its pin is the server version the probe ran against (`postgres:18.6`, a throwaway
+> container started from the image already on this machine and stopped afterwards). A fact about an **external module** is pinned by its version. A claim
 > about an artefact this task has **not yet built** carries `[derived → …]` and no locator.
 > `docs/DESIGN.md` is cited by section per the design-writer contract, so those citations carry
 > no `[measured …]` tag.
+
+---
+
+## Round-3 review resolutions
+
+Where each round-2 finding and recommendation is answered. Round 2 returned **GO**; every item
+below is a note, a recommendation or a `minor`, and none of them amends the spec. The round-2 table
+follows this one, so Step 8 can verify both rounds' write-backs from this pair without re-reading
+the document.
+
+| Round-2 item | Resolved in | Resolution in one line |
+|---|---|---|
+| **Issue 1 (minor)** — D10's `$2` and the correction's `instance_key = $2` never say what the value is | D1 (`Recurrence` row), D5, D10, § Test Design (reconcile) | Stated at the surface: **a recurrence's instance key is its type name**, derived rather than declared, with the reason a `NULL` there would silently remove the AC29/AC33 constraint; no new `NewRegistry` refusal is needed, because the empty-type refusal already covers it |
+| **Issue 2 (minor)** — subtask 6 builds `Options` (which carries `config.Scheduler`, from subtask 3) but depends only on 5 | § Decomposition | Subtask 6's dependency is now `3, 5` |
+| **Issue 3 (minor)** — D11's layers are presented as exhaustive; a **ctx-ignoring handler** is a second, unnamed leak | § Approach (lease rejection), D11 (intro + residue), D1 (`Handler` row), § Risks, § Test Design, § Open questions, § Decomposition subtasks 4 and 9 | The class is named and measured (short statements trip neither server-side timeout); the contract moves onto `Handler`'s doc comment (**propagate the received `ctx`**); the AC30 test drives the violating handler as its negative case. The lease argument is **not** weakened and no lease is added — it is sharpened: the design's own "no stranded state to revive" was too strong, and the corrected argument is that a lease's reviver cannot act on that state either, because its `UPDATE` blocks on the row lock (measured in § Approach). AC30's residual conditionality goes to § Open questions as a design-shape question, with its one measured mechanism, rather than being smoothed over |
+| **Issue 4 (note)** — D2 step 6 has no failure branch for the savepoint release | D2, D7, D12, § Risks, § Test Design, § Decomposition subtask 6 | Named and settled: the release fails when a handler swallows a database error and reports `OutcomeDone`; `ROLLBACK TO SAVEPOINT` is still accepted afterwards (measured in D2), so the attempt is settled through D7's **Failed** rows with the release error as `last_error` and reported as `FailureRolledBack`. The alternative — rolling the transaction back whole — is rejected in the same paragraph, because it would leave the row due with no attempt counted |
+| **Issue 5 (note)** — the index list does *not* fail on a new index, so § Risks overstated the gate | § Risks, D15, § Decomposition subtask 1, § Test Design | Confirmed against the tree and reworded, with the locators in § Risks: the table list (`slices.Equal`) and the goose row count (`want 2`) are gate-forced; the index list is a **presence loop** and the CHECK map a `num_nonnulls` substring match, so both pass the extended shape unchanged and must be extended by hand for **AC3** with no gate to remind the implementor. The CHECK half — the orchestrator's independent confirmation — is stated alongside, since it is the second assertion an implementor would expect to go red |
+| **Rec.** — item 3 deserves care, not mechanics | § Approach, D11 | Done as described above: the case against the lease protocol is re-argued on a measured premise rather than on the sentence the finding refuted |
+| **Rec.** — item 1's fix makes D5's probes self-consistent with D1 | D5 | D5's probe list now says the repeated pair is D10's convention |
+| **Non-findings, recorded so they are not re-raised** | — | Recorded as the round-2 review left them: it reproduced the `[measured postgres:18.6 …]` tags and they held; its `git grep` found no live site missing from D15's propagation set; and it found the ledger AXIOM untouched — the scheduler moves no balance, posts nothing itself, and D14 adds no FK from a basis document back to `scheduled_task` |
 
 ---
 
@@ -144,10 +164,22 @@ costs one extra statement per cycle and buys both criteria back.
 
 **Rejected — a lease/`picked` column with a heartbeat.** It is the standard shape for job runners
 that execute *outside* the claiming transaction, and this project specifies the opposite (§11).
-With the handler inside the task's transaction there is no stranded state to revive: an aborted
-transaction reverts its writes and drops its row locks, leaving the row still due. AC31 asserts
-that property directly. The one failure this does not self-heal is a handler that hangs rather
-than crashes, and D11 bounds it with a timeout rather than a protocol.
+With the handler inside the task's transaction, every failure that **ends** the transaction heals
+itself: the abort reverts its writes and drops its row locks, leaving the row still due, which is
+what AC31 asserts directly. The sentence this paragraph replaces put the case as "there is no
+stranded state to revive", which is too strong — the failures that do *not* end the transaction
+**are** stranded state: a handler that hangs, and a handler that ignores its deadline-bearing
+context, both named in D11. The argument survives the correction, and for a sharper reason than the
+one it replaces: it is exactly on that stranded state that a lease has no move, because the row is
+still locked by an open transaction and the reviver's own `UPDATE` blocks on that lock instead
+of reclaiming the row
+[measured postgres:18.6 · against a row held `FOR UPDATE` by an open transaction,
+`BEGIN; SET LOCAL lock_timeout = '700ms'; UPDATE t SET n = n + 1 WHERE id = 2` →
+`ERROR: canceling statement due to lock timeout` / `CONTEXT: while updating tuple (0,4) in relation "t"`].
+A lease would buy a detector whose reviver cannot act — which is not the same thing as buying
+nothing, and is why the rejection is argued here rather than assumed. D11 bounds those failures
+where they can be bounded — a timeout, a database that terminates the backend, and a documented
+contract on `Handler` — and names in full the residue no protocol on this shape reaches.
 
 **Rejected — computing backoff and the next cadence instant in SQL.** `run_at = now() + …` keeps
 everything server-side, but it makes the growth rule an expression buried in an UPDATE that can
@@ -165,11 +197,11 @@ The name and the headline types are fixed by the spec: `scheduler.Worker`, `sche
 |---|---|
 | `Type` | the persisted task-type name (`type Type string`) |
 | `Task` | one claimed row handed to a handler: id, type, instance key, payload, `RunAt`, consecutive-failure count |
-| `Handler` | consumer-declared one-method interface: `Execute(ctx, tx pgx.Tx, task Task) (Outcome, error)` |
+| `Handler` | consumer-declared one-method interface: `Execute(ctx, tx pgx.Tx, task Task) (Outcome, error)`; its doc comment carries the contract D11 rests on — the handler propagates the received `ctx` to every call it makes on `tx` |
 | `Outcome` | `OutcomeDone` · `OutcomeNoop` · `OutcomeFailed` (the worker produces the last from a non-nil error) |
 | `Cadence` | `func(prev, now time.Time) time.Time` — the next occurrence's instant |
 | `Every` | the one shipped `Cadence` constructor: a fixed period |
-| `Recurrence` | a cadence plus the configuration key its value came from |
+| `Recurrence` | a cadence plus the configuration key its value came from; its instance key is its **type name** (D10), derived rather than declared, so there is no instance-key field |
 | `Declaration` | one registry entry: type, handler, optional recurrence |
 | `Registry` | the immutable declaration set; also the insertion surface (`Schedule`) |
 | `Request` | what `Schedule` takes: type, instance key, payload, delay |
@@ -234,7 +266,8 @@ transaction.
    handler is never called.
 5. `SAVEPOINT` (`tx.Begin`), then run the handler on its own goroutine with a deadline-bearing
    context and wait for either its result or the deadline (D11).
-6. **Done** → release the savepoint. **No-op** or **Failed** → *roll back to* the savepoint.
+6. **Done** → release the savepoint; a release that *fails* is settled as a failure, under
+   *A failed savepoint release* below. **No-op** or **Failed** → *roll back to* the savepoint.
    **Deadline breached** → abandon this task's transaction (D11) and continue the cycle with the
    next id.
 7. Settle (D7), `COMMIT`, then emit this task's observation.
@@ -248,6 +281,26 @@ writes; AC25 requires the deletion to happen in the same transaction as the effe
 savepoint satisfies both at once — rolling the *whole* transaction back would move the deletion
 out of it, and committing without a rollback would make "its writes are absent" a contract the
 worker asks handlers to honour rather than a property it enforces.
+
+**A failed savepoint release is settled as a failure, not reported as the success it followed.**
+Step 6's release is the one statement in the cycle that can fail *because of something the handler
+did and then hid*: a handler that hits a database error, swallows it and returns `OutcomeDone`
+leaves its subtransaction aborted, so the release is refused along with every other statement in
+that transaction. The `OutcomeNoop` and `OutcomeFailed` paths are unaffected — they roll *back to*
+the savepoint, which an aborted subtransaction accepts (§ Approach measures exactly that recovery). The recovery is the one the savepoint already provides — rolling
+back to it is still accepted **after** the failed release, and the settlement statement then
+applies and the transaction commits
+[measured postgres:18.6 · `BEGIN; SAVEPOINT h; <duplicate INSERT>` → `ERROR: duplicate key value violates unique constraint "t_pkey"`;
+`RELEASE SAVEPOINT h` → `ERROR: current transaction is aborted, commands ignored until end of transaction block`;
+`ROLLBACK TO SAVEPOINT h` → `ROLLBACK`; `UPDATE t SET n = n + 1 WHERE id = 2` → `UPDATE 1`; `COMMIT` → `COMMIT`,
+leaving the settled row at `n = 1`]. So the worker treats a failed release exactly as it treats an
+error the handler returned honestly: roll back to the savepoint, settle this attempt through D7's
+**Failed** rows with the release error as `last_error`, commit, and report `FailureRolledBack`
+(D12) — the same kind step 8 reports for a failed commit, and for the same reason: the outcome the
+handler claimed did not survive. Both alternatives are worse than they look. Reporting `Done`
+records as a success something the database refused. Letting the whole transaction roll back leaves
+the row due with **no attempt counted**, which is the one shape in this design that would retry
+forever at the poll interval with neither backoff nor a cap.
 
 **Why the observation is emitted after `COMMIT`.** An observation emitted before the commit is a
 claim about work that may still roll back — the "green instrument" failure in its purest form.
@@ -349,7 +402,8 @@ recurrence or a keyed one-shot silently stopped forever, with nothing in the des
 Adding `AND state = 'pending'` scopes the identity to **live** rows, which is the property the
 spec actually asks for: the constraint exists so that *double-seeding a live recurrence* is
 unrepresentable (spec *Key decisions*), not so that a settled row keeps its name. Every branch is
-measured against the two-predicate index:
+measured against the two-predicate index (the pair repeated in each probe is D10's convention:
+a recurrence's instance key is its type name):
 
 - a live duplicate is refused by the database, not by a code path that looks first
   [measured postgres:18.6 · with a pending `('day.close','day.close')` row present, a plain
@@ -476,6 +530,12 @@ type whose declaration changes from recurrent to one-shot between deploys, whose
 `cap` times. D5's live-scoped index is what keeps that survivable — the dead row does not hold the
 identity, so a later re-declaration is seeded fresh.
 
+**A failed savepoint release settles through the Failed rows too.** A handler that swallows a
+database error and then reports `OutcomeDone` aborts its subtransaction, so the release D2 step 6
+issues on that path is refused. That attempt is settled by this table's **Failed** rows, with the release error as
+`last_error`, so it counts toward the cap and carries backoff exactly as a returned error does; the
+observation carries `FailureRolledBack` rather than the outcome the handler reported (D2, D12).
+
 **A decode failure is just a handler error.** AC26 needs it classified as a failure and terminated
 by the cap, which the one-shot branch already does, with the decode message landing in
 `last_error` as AC26's "recorded reason". No sentinel is imposed on handlers for this.
@@ -554,6 +614,23 @@ VALUES ($1, $2, '{}'::jsonb, $3)
 ON CONFLICT (type, instance_key) WHERE instance_key IS NOT NULL AND state = 'pending' DO NOTHING
 ```
 
+**`$2` is the type name — a recurrence's instance key is its type.** Load-bearing rather than
+cosmetic: `scheduled_task_identity_key` is partial on `instance_key IS NOT NULL` (D5), so a `NULL`
+here would put the seeded row **outside** the index; no conflict could then arise, `DO NOTHING`
+would never fire, and every start-up would insert one more row for the same recurrence — the
+property AC29 and AC33 rest on, removed by an omission rather than by a decision. D5 measures that
+escape directly, in the shape it is wanted for: two keyless rows of one type coexist. The value is **derived, not declared**:
+`Registry` admits one declaration per type (`NewRegistry` refuses a duplicate, D9), so a second
+instance key for the same recurrent type would key a declaration that cannot exist, and
+`Recurrence` therefore carries no instance-key field. It also cannot be empty, which is why no new
+refusal is needed to protect it: `NewRegistry` already refuses an empty type (D9), and the instance
+key *is* the type. The `NULLIF($2, '')` that `Schedule` applies to a caller-supplied key belongs to
+the one-shot path alone — the keyless row D5 measures is a one-shot property, never a recurrence's.
+A recurrent type that one day needs several live instances gets an instance-key field on
+`Recurrence` by the same widening a payload would need, not by leaving the column to chance. D5's
+probes already write the convention out (`('day.close','day.close')`); this paragraph is where the
+surface says it.
+
 The payload is the literal empty object, not a parameter: neither `Declaration` nor `Recurrence`
 carries a payload, because a recurrence's occurrence is identified by its type and instance key
 and has nothing type-specific to say. `payload` is `NOT NULL` (D5), so the column needs a value
@@ -578,8 +655,9 @@ WITH candidate AS (
 UPDATE scheduled_task s SET run_at = $3 FROM candidate c WHERE s.id = c.id
 ```
 
-*In flight* is `FOR UPDATE SKIP LOCKED` — a row a worker is currently executing is skipped, not
-waited on. *Imminent* is derived rather than configured: an occurrence that could be claimed
+`$1` and `$2` are the same pair the seed writes — the type, and the instance key that is that
+type's name. *In flight* is `FOR UPDATE SKIP LOCKED` — a row a worker is currently executing is
+skipped, not waited on. *Imminent* is derived rather than configured: an occurrence that could be claimed
 before the correction takes effect is one within a poll interval, which needs no seventh tuning
 key. The disagreement test is the same expression as the correction, which is what makes the
 statement idempotent — a healthy recurrence always satisfies `run_at <= rec.Next(now, now)`, so
@@ -606,7 +684,8 @@ mistake it covers for.
 The transactional shape self-heals a worker that *crashes*. It does not self-heal a handler that
 *hangs*: its transaction stays open, its row stays locked, and `SKIP LOCKED` means every other
 worker passes over that row silently and forever. AC30 bounds it. The layers, each covering what
-the others cannot:
+the others cannot — and **jointly not exhaustive**, which is why the residue below is part of this
+section rather than an afterthought:
 
 1. **The handler's context** — `context.WithTimeout(ctx, deadline)`. Every pgx call the handler
    makes through its `pgx.Tx` fails once it expires, so a handler that merely blocks on the
@@ -659,15 +738,45 @@ clock starts when the session goes **idle** — so a handler whose last statemen
 before the worker's deadline fires pushes the release out to nearly twice the deadline. A handler
 that blocks without touching the database at all goes idle immediately and is released at ≈ 1 ×.
 
-**The residue, named rather than hidden.** The orphaned handler goroutine survives until it
-touches the dead connection (its next call fails, because the server has terminated that backend)
-or returns. A handler that neither returns nor touches the database is an infinite loop in Go
-code, which no scheduler can reclaim: it leaks one goroutine and one client-side file descriptor
-per breach, bounded by the number of breaches, and the server-side resources are already released
-by layer 2. It is a handler defect and the deadline observation is what makes it visible. Nothing
-in this path panics — `Hijack`'s panic is guarded by its documented precondition, and the
+**The residue, named rather than hidden — both classes of it.**
+
+*The orphaned goroutine.* After a breach the handler's goroutine survives until it touches the dead
+connection (its next call fails, because the server has terminated that backend) or returns. A
+handler that neither returns nor touches the database is an infinite loop in Go code, which no
+scheduler can reclaim: it leaks one goroutine and one client-side file descriptor per breach,
+bounded by the number of breaches, and the server-side resources are already released by layer 2.
+
+*The handler that ignores the `ctx` it is handed.* This is the class AC30 exists to remove, and the
+one the three layers genuinely miss. A handler that issues its statements on a context of its own —
+`context.Background()`, or a fresh `WithTimeout` — never sees layer 1's cancellation; if each of
+those statements is short, `statement_timeout` never trips; and because the session is *executing*
+rather than sitting idle in its transaction, `idle_in_transaction_session_timeout` never trips
+either, its clock running only while the session is idle
+[measured postgres:18.6 · a session under `SET LOCAL statement_timeout = '1s'` and
+`SET LOCAL idle_in_transaction_session_timeout = '1s'`, holding a row `FOR UPDATE` and then issuing
+`SELECT pg_sleep(0.2)` repeatedly → `holder-still-alive | 00:00:04.02894`, neither timeout having
+fired; a concurrent `SELECT … FOR UPDATE SKIP LOCKED` on that row mid-run → `(0 rows)`].
+Layer 3 still fires — the worker reports `FailureDeadline` and moves to the next id — so the breach
+is *visible*; what is not reclaimed is the **row**, which stays locked for as long as the handler
+keeps working. The bound is the handler's own return: the watchdog closes the hijacked connection
+then, and a client disconnect inside an open transaction releases its locks server-side
+[measured postgres:18.6 · a session that ran `BEGIN; SELECT id FROM t WHERE id = 2 FOR UPDATE` and
+then disconnected without `COMMIT`; the next session's `SELECT … FOR UPDATE SKIP LOCKED` on that row
+→ `2 | claimable-after-disconnect`]. It is unbounded only when the handler also never returns —
+the infinite-loop class above, in its database-touching variant.
+
+**So the contract lives on `Handler`, in its doc comment, not in this document: a handler
+propagates the received `ctx` to every call it makes on the `tx` it is handed.** That sentence is
+what makes AC30's "the row becomes claimable again" true for every handler that honours it, which
+is why it is a documented contract on an exported interface rather than a remark in a design. The
+AC30 test drives a contract-violating handler as its negative case (§ Test Design), so the boundary
+is asserted rather than assumed, and § Open questions carries — for the owner to accept or decline
+— the one mechanism that would bound the class regardless of the handler. Both residue classes are
+handler defects, and the deadline observation is what makes each visible.
+
+Nothing in this path panics — `Hijack`'s panic is guarded by its documented precondition, and the
 project's panic index holds no row today and gains none here
-[measured ac09e61:ai-docs/panic-index.md · `sed -n '/^| File:line/,$p' ai-docs/panic-index.md` →
+[measured 9e6c05b:ai-docs/panic-index.md · `sed -n '/^| File:line/,$p' ai-docs/panic-index.md` →
 `| File:line | Call | Why it cannot fire (or is unrecoverable) |` / `|---|---|---|` / `| — | — | — |`].
 
 ---
@@ -700,8 +809,9 @@ criterion or by an open question the spec left standing: `unregistered` is the r
 spec names as the only signal that an undeclared recurrence's row is coming due forever — and
 under D7 that row now keeps coming due, so the counter keeps rising, which is what the spec's
 property needs; `deadline` is AC30's "reported as a failure rather than passing silently";
-`rolledBack` is what stops D2's emit-after-commit from reporting a phantom success when the
-task's own commit fails. `exhaustive` is enabled with `default-signifies-exhaustive: true`, so
+`rolledBack` is what stops D2's emit-after-commit from reporting a phantom success — when the
+task's own commit fails, and equally when the savepoint release that a reported `Done` requires is
+refused because the handler swallowed a database error (D2 step 6). `exhaustive` is enabled with `default-signifies-exhaustive: true`, so
 every switch over `Outcome` or `FailureKind` is total or carries a default
 [measured ac09e61:.golangci.yml:40-41 · `sed -n '40,41p' .golangci.yml` → `exhaustive:` / `default-signifies-exhaustive: true`].
 
@@ -873,7 +983,7 @@ wording (§ Approach).
 | `internal/store/basis.go` | "exactly the store package's two implementations" | rewritten (AC20) |
 | `internal/config/env.go` header comment | names the transport keys as *the* optional-with-default class | reworded |
 | `internal/config/config.go` `Config` doc comment | "Transport is the one exception" | reworded |
-| `internal/store/migrate_test.go` | hard-codes the table list, the `goose_db_version` row count and the index list | updated with the migration (subtask 1) |
+| `internal/store/migrate_test.go` | hard-codes the table list, the `goose_db_version` row count, the index list and the exactly-one-basis CHECK definition | updated with the migration (subtask 1) — the first two are gate-forced, the last two are AC3-forced and ungated (§ Risks) |
 | `.env.example` | does not document the new keys | extended |
 | `ai-docs/plans/INDEX.md` | has no row for this pair | row added |
 
@@ -943,15 +1053,15 @@ and that exclusion is withdrawn.
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | Migration `00002_scheduler.sql`: `scheduled_task_state`, `scheduled_task` with the live-scoped identity index, the due index and its CHECKs, `deferred_task`, `recurrent_task`, the `journal_entry` column + CHECK + partial-unique-index extension (D5, D14). Update the migration suite: table list, `goose_db_version` row count, index list, `journal_entry_exactly_one_basis` definition; add the `scheduled_task` column-set assertion that carries AC31 and the AC3 shape assertion | `internal/store/migrations/00002_scheduler.sql`, `internal/store/migrate_test.go`, `internal/store/schema_test.go` | — |
+| 1 | Migration `00002_scheduler.sql`: `scheduled_task_state`, `scheduled_task` with the live-scoped identity index, the due index and its CHECKs, `deferred_task`, `recurrent_task`, the `journal_entry` column + CHECK + partial-unique-index extension (D5, D14). Update the migration suite: table list and `goose_db_version` row count (both gate-forced), index list and `journal_entry_exactly_one_basis` definition (**AC3-forced and ungated** — neither can fail on its own, § Risks); add the `scheduled_task` column-set assertion that carries AC31 and the AC3 shape assertion | `internal/store/migrations/00002_scheduler.sql`, `internal/store/migrate_test.go`, `internal/store/schema_test.go` | — |
 | 2 | `store.DeferredTask` / `store.RecurrentTask` implementing `PostingBasis`; rewrite the `PostingBasis` doc comment (AC20); tests for posting under each new basis, the two-non-null refusal, and ledger survival of a deleted task row (AC4, AC27) | `internal/store/basis.go`, `internal/store/basis_test.go`, `internal/store/schema_test.go` | 1 |
 | 3 | `config.Scheduler`, its defaults, `loadScheduler`, `schedulerEnvKeys()`, the `EnvKeys()` append, the `Config.Scheduler` field and `Load` wiring; the falsified doc comments in `env.go` and `config.go`; the `.env.example` block; the absent/present/malformed and example-matches-defaults tests (D13, AC15) | `internal/config/scheduler.go`, `internal/config/env.go`, `internal/config/config.go`, `internal/config/scheduler_test.go`, `.env.example` | — |
-| 4 | Package foundation with no database: `doc.go`, `errors.go`, `task.go` (`Type`, `TaskID`, `Task`, `Request`, `Outcome`, `DeadTask`), `observe.go` (`Observation`, `LoopObservation`, `Observer`, `FailureKind`), `registry.go` (`Declaration`, `Recurrence`, `Registry`, `NewRegistry`), `cadence.go` (`Cadence`, `Every`) and the pure `backoff`; exact table tests for `backoff` and `Every` and the registry's refusals (D1, D8, D9, D12). Depends on nothing: none of these files reads `config.Scheduler`, which arrives with `Options` in subtask 6 | `internal/scheduler/doc.go`, `errors.go`, `task.go`, `observe.go`, `registry.go`, `cadence.go`, `cadence_test.go`, `registry_test.go` | — |
+| 4 | Package foundation with no database: `doc.go`, `errors.go`, `task.go` (`Type`, `TaskID`, `Task`, `Request`, `Outcome`, `DeadTask`, and `Handler` with the ctx-propagation contract in its doc comment — D11), `observe.go` (`Observation`, `LoopObservation`, `Observer`, `FailureKind`), `registry.go` (`Declaration`, `Recurrence`, `Registry`, `NewRegistry`), `cadence.go` (`Cadence`, `Every`) and the pure `backoff`; exact table tests for `backoff` and `Every` and the registry's refusals (D1, D8, D9, D12). Depends on nothing: none of these files reads `config.Scheduler`, which arrives with `Options` in subtask 6 | `internal/scheduler/doc.go`, `errors.go`, `task.go`, `observe.go`, `registry.go`, `cadence.go`, `cadence_test.go`, `registry_test.go` | — |
 | 5 | The insertion surface: `(*Registry).Schedule` and `DeadTasks`; the package's `TestMain` and schema fixture; tests for the payload round-trip, the unregistered-type refusal at insertion, the duplicate-identity refusal, the coexisting keyless one-shots, and re-scheduling an identity whose earlier row is dead (AC21 insertion, AC24, AC29) | `internal/scheduler/schedule.go`, `schedule_test.go`, `scheduler_test.go` | 1, 4 |
-| 6 | The execution cycle: `Options`, `New`, `RunOnce`, the discovery statement, the per-task transaction with its re-claim and handler savepoint, the Done and No-op settlement paths; tests for batch bounding and skip-not-wait, two concurrent workers, effects-and-settlement atomicity, the no-op's absent writes, the silent skip of a row another worker took, delete-on-done both directions and the recurrence's single live row (AC5, AC6, AC7, AC8, AC11, AC25) | `internal/scheduler/worker.go`, `execute.go`, `claim.go`, `worker_test.go` | 5 |
+| 6 | The execution cycle: `Options`, `New`, `RunOnce`, the discovery statement, the per-task transaction with its re-claim and handler savepoint, the Done and No-op settlement paths including the failed savepoint release (D2 step 6); tests for batch bounding and skip-not-wait, two concurrent workers, effects-and-settlement atomicity, the no-op's absent writes, the silent skip of a row another worker took, delete-on-done both directions and the recurrence's single live row (AC5, AC6, AC7, AC8, AC11, AC25) | `internal/scheduler/worker.go`, `execute.go`, `claim.go`, `worker_test.go` | 3, 5 |
 | 7 | The failure policy: attempt counting, persisted backoff, the one-shot give-up, the recurrent reschedule-to-next-cadence, and the undeclared-type settlement that never reaches `dead` and never increments the counter; tests for exact attempt counts and the terminal state, dead-row enumeration, the decode failure, the never-terminal recurrence, the undeclared recurrence still coming due after more than `cap` refusals, and the rising/resetting counter (AC9, AC10, AC21 execution time, AC26, AC32, AC34) | `internal/scheduler/execute.go`, `failure_test.go` | 6 |
 | 8 | The loop and the seam: `Run`, the poll interval, emit-after-commit, the loop observation; tests collecting observations for a success, a no-op, a retry, a give-up and a repeatedly failing recurrence, plus non-default tuning values changing observed behaviour and the nil-observer path (AC12, AC13, AC14 worker half) | `internal/scheduler/worker.go`, `observe.go`, `observe_test.go` | 7 |
-| 9 | The per-task execution deadline: the `SET LOCAL` statement and idle-in-transaction timeouts, the handler goroutine, abandonment of that task's transaction, the connection hijack and its watchdog close, `FailureDeadline` / `FailureRolledBack`; tests for the blocked handler, the row becoming claimable within ≈ 2 × the deadline, the observation, the untouched neighbours in the same cycle, and the aborted-transaction self-healing property (AC30, AC31 behavioural half) | `internal/scheduler/execute.go`, `worker.go`, `deadline_test.go` | 8 |
+| 9 | The per-task execution deadline: the `SET LOCAL` statement and idle-in-transaction timeouts, the handler goroutine, abandonment of that task's transaction, the connection hijack and its watchdog close, `FailureDeadline` / `FailureRolledBack`; tests for the blocked handler, the row becoming claimable within ≈ 2 × the deadline, the observation, the untouched neighbours in the same cycle, the ctx-ignoring handler as the contract's negative case, and the aborted-transaction self-healing property (AC30, AC31 behavioural half) | `internal/scheduler/execute.go`, `worker.go`, `deadline_test.go` | 8 |
 | 10 | `Reconcile`: the seed and the correction; tests for the missing-row seed, the seed against a dead row of the same identity, the shortened-cadence correction, two concurrent start-ups producing one row, and the imminent occurrence left alone (AC33) | `internal/scheduler/reconcile.go`, `reconcile_test.go` | 8 |
 | 11 | Propagation (D15): the table's spelling at its live sites — **`docs/DESIGN.md:310` included, one word only, per D15's bound** — KD-27's boundary sentence, KD-4, the `context.md` Architecture/Status/Scheduler-row updates, the `INDEX.md` row | `docs/DESIGN.md`, `AGENTS.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–10 |
 
@@ -981,8 +1091,9 @@ Two groups, within the default maximum of 4; no user approval is required.
 
 ## Risks
 
-- **A hung handler is the one failure the transactional shape does not self-heal**; a row locked
-  forever is invisible, because `SKIP LOCKED` makes every other worker pass over it silently.
+- **A hung handler is a failure the transactional shape does not self-heal** — one of the two D11
+  names, the other being the row below; a row locked forever is invisible, because `SKIP LOCKED`
+  makes every other worker pass over it silently.
   Mitigated by D11's layers, the database's being the one that does not depend on our process —
   `[measured postgres:18.6 · a session holding `id = 8` under `SET LOCAL idle_in_transaction_session_timeout = '2s'`; a concurrent `… WHERE id = 8 … FOR UPDATE SKIP LOCKED` at `t≈0.5s` → `rows=[]`, at `t≈3.0s` → `rows=[8]`; the holder's next statement → `FATAL: terminating connection due to idle-in-transaction timeout`]`.
 - **The row's release after a deadline breach takes up to ≈ 2 × the configured deadline**, because
@@ -993,6 +1104,21 @@ Two groups, within the default maximum of 4; no user approval is required.
   hijacked connection; the watchdog closes that connection only when the goroutine finishes, so a
   handler that neither returns nor touches the database leaks one goroutine and one client file
   descriptor per breach — `[derived → the AC30 test asserts the row is claimable and the observation made; the doc comment names the residue]`.
+- **A handler that ignores its deadline-bearing `ctx` keeps its row locked past the breach.** It
+  never sees layer 1's cancellation, and its short statements trip neither `statement_timeout` nor
+  `idle_in_transaction_session_timeout`, whose clock runs only while the session is idle — so the
+  worker reports the breach and moves on while the row stays locked until the handler returns.
+  Mitigated by the contract in `Handler`'s doc comment (propagate the received `ctx`), by the
+  `FailureDeadline` observation that still fires, and by the watchdog's close on the handler's
+  return; the mechanism that would bound it regardless of the handler is named in § Open questions
+  for the owner —
+  `[measured postgres:18.6 · a session under `SET LOCAL statement_timeout = '1s'` and `SET LOCAL idle_in_transaction_session_timeout = '1s'`, holding a row `FOR UPDATE` and issuing `SELECT pg_sleep(0.2)` repeatedly → `holder-still-alive | 00:00:04.02894`, neither timeout having fired, and a concurrent `… FOR UPDATE SKIP LOCKED` on that row → `(0 rows)`]`.
+- **A handler that swallows a database error and then reports success** aborts its subtransaction,
+  so the savepoint release fails and the reported outcome cannot be written. Mitigated by settling
+  it as a failure through D7's Failed rows rather than letting the transaction roll back whole —
+  which would leave the row due with no attempt counted, retrying forever with neither backoff nor
+  a cap —
+  `[measured postgres:18.6 · after a failed `RELEASE SAVEPOINT h`, `ROLLBACK TO SAVEPOINT h` → `ROLLBACK`, the settlement `UPDATE` → `UPDATE 1`, `COMMIT` → `COMMIT`]`.
 - **A discovery race wastes work**: two workers polling at the same instant discover overlapping
   ids and each loses the re-claim on the ids the other took first. Bounded — the loser's cost is a
   primary-key lookup returning no rows, and no observation is emitted —
@@ -1008,9 +1134,15 @@ Two groups, within the default maximum of 4; no user approval is required.
   production panics — `[measured pgx/v5@v5.10.0:pgxpool/conn.go:69-73 · `sed -n '69,73p' pgxpool/conn.go` → `// Hijack assumes ownership of the connection from the pool. Caller is responsible for closing the connection. Hijack` … `panic("cannot hijack already released or hijacked connection")`]`.
   Mitigated by a single guarded call site: one flag decides hijack-or-release, and no path reaches
   both. No row is added to the panic index.
-- **The migration suite hard-codes facts this migration changes** — the table list, the
-  `goose_db_version` row count and the index list all fail unless updated in the same subtask —
-  `[measured ac09e61:internal/store/migrate_test.go:36 · `grep -n 'want := \[\]string{' internal/store/migrate_test.go` → `36:	want := []string{`; ac09e61:internal/store/migrate_test.go:131 · `grep -n 'goose_db_version rows' internal/store/migrate_test.go` → `131:		t.Fatalf("goose_db_version rows = %d, want 2", count)`]`.
+- **The migration suite hard-codes facts this migration changes, and only some of them are
+  gated.** The table list is compared with `slices.Equal` and the `goose_db_version` row count
+  against `want 2`, so both go red unless updated in the same subtask. The index list is a
+  **presence loop** over a `want` slice, which a new index cannot fail, and the constraint map
+  matches `journal_entry_exactly_one_basis` by the substring `num_nonnulls`, which the extended
+  CHECK still contains — so those two must be extended to satisfy **AC3**, and **no gate will
+  remind the implementor**. An implementor who trusts the gate ships a green suite that asserts the old
+  shape —
+  `[measured 9e6c05b:internal/store/migrate_test.go:36,42 · `sed -n '36p;42p' internal/store/migrate_test.go` → `want := []string{` / `if !slices.Equal(tables, want) {`; 9e6c05b:internal/store/migrate_test.go:131 · `sed -n '131p' internal/store/migrate_test.go` → `t.Fatalf("goose_db_version rows = %d, want 2", count)`; 9e6c05b:internal/store/migrate_test.go:219,226 · `sed -n '219p;226p' internal/store/migrate_test.go` → `for _, want := range []string{` / `if !found[want] {`; 9e6c05b:internal/store/migrate_test.go:235 · `sed -n '235p' internal/store/migrate_test.go` → `"journal_entry_exactly_one_basis": "num_nonnulls",`]`.
 - **KD-27's boundary sentence and `Config`'s doc comment become false** the moment a second
   optional-with-default class exists — `[measured ac09e61:ai-docs/key-decisions.md:73 · `grep -o 'The boundary, stated exactly:[^.]*\.' ai-docs/key-decisions.md` → `The boundary, stated exactly:* the relaxation reaches **only** these keys.`; ac09e61:internal/config/config.go:38-39 · `sed -n '38,39p' internal/config/config.go` → `// returns an error naming every rejected key. Transport is the one` / `// exception: its fields are individually optional-with-default, so an`]`.
 - **`jsonb` normalises, so a byte-exact payload round trip does not hold** — a test asserting raw
@@ -1105,6 +1237,11 @@ Every claim in this section is about a test that does not yet exist, so every ta
   and the row records the failed attempt rather than a success `[derived → AC7]`.
 - A handler that writes and then reports `OutcomeNoop`: its writes are absent, the row is settled,
   and the observation's outcome is neither success nor failure `[derived → AC8]`.
+- A handler that writes, hits a database error, **swallows it and reports `OutcomeDone`**: the
+  savepoint release fails, and the cycle settles the attempt as a **failure** — the row's
+  `consecutive_failures` rises, `last_error` records the release error, the observation carries the
+  rolled-back failure kind rather than a success, and the row is due again after the backoff rather
+  than immediately `[derived → AC7, AC12, D2 step 6]`.
 - Delete-on-done, both directions: a committed one-shot leaves no row; a cycle whose task
   transaction is rolled back leaves the row present and still due `[derived → AC25]`.
 - A recurrence across a committed execution, a rolled-back execution and a failed execution: the
@@ -1156,13 +1293,24 @@ Every claim in this section is about a test that does not yet exist, so every ta
 - The neighbours survive: a cycle containing a task that breaches its deadline and a task that
   succeeds leaves the successful task's effects committed, because they were never in the same
   transaction `[derived → AC30, D2]`.
+- **The contract's negative case — a handler that ignores the `ctx` it is handed** and issues short
+  statements on a context of its own until the test releases it: the worker still reports the
+  deadline failure kind and proceeds to the next id within the deadline, the row is **still locked**
+  while that handler runs (the boundary D11 names, asserted rather than assumed), and it becomes
+  claimable once the handler returns and the watchdog closes the hijacked connection. The handler is
+  held by a channel the test closes, so the test's runtime is bounded by the test, not by the
+  defect `[derived → AC30, D11]`.
 - The self-healing property that replaces a liveness protocol: a transaction that claims a row,
   writes, and is then rolled back leaves the row still due with none of its writes visible, and
   the next discovery returns it `[derived → AC31]`.
 
 **Reconciliation** (`reconcile_test.go`, subtask 10):
 
-- A declared recurrence with no row is seeded, one cadence ahead, not immediately `[derived → AC33]`.
+- A declared recurrence with no row is seeded, one cadence ahead, not immediately, and the seeded
+  row's `instance_key` is its **type name** — the value that puts it inside the identity index's
+  predicate, and therefore the reason the repeat and concurrent `Reconcile` cases below insert
+  nothing
+  `[derived → AC33, D10]`.
 - **A declared recurrence whose only row is `state = 'dead'`** is seeded: afterwards exactly one
   pending row exists for it, beside the untouched dead one. Unreachable for a recurrence under D7
   and D5 together, and asserted anyway, because it is the property that keeps "a stopped chain is
@@ -1181,8 +1329,10 @@ Every claim in this section is about a test that does not yet exist, so every ta
 - `store.Migrate` against an empty database yields `scheduled_task`, `deferred_task` and
   `recurrent_task`; the migration file has no down section `[derived → AC2]`.
 - `journal_entry` carries one nullable FK column per basis type, the CHECK names every one of them,
-  and each new basis column has its own partial unique index; the FK-coverage test stays green
-  `[derived → AC3]`.
+  and each new basis column has its own partial unique index; the FK-coverage test stays green.
+  The index-list and CHECK-definition assertions in `migrate_test.go` are **extended by hand** here:
+  the first is a presence loop and the second a substring match, so neither goes red on its own
+  (§ Risks) `[derived → AC3]`.
 - A balanced batch through `store.Post` under each new basis type succeeds and its `journal_entry`
   row has exactly one non-null basis column; a row attempting two is refused by the database with
   the CHECK's name `[derived → AC4]`.
@@ -1205,6 +1355,25 @@ observable outputs are database rows and observation structs.
   identity leaves exactly one pending row. A new criterion is a spec amendment and routes through
   the owner, so the design asserts the property under AC29 and AC33 instead (§ Test Design). If the
   owner wants it binding at criterion level, it is a criterion-level addition and no code change.
+- **AC30's guarantee is conditional on `Handler`'s documented contract, and one mechanism would
+  make it unconditional.** The delivered layers reclaim the row for every handler that propagates
+  the `ctx` it is handed (D11); a handler that ignores it keeps the row locked until it returns,
+  because short statements trip neither server-side timeout. The mechanism that would close that
+  without a lease protocol is a `pg_terminate_backend` on the breached task's own backend, issued
+  from another pooled connection after the breach — available to an ordinary role, since a role may
+  terminate a backend belonging to itself
+  [measured postgres:18.6 · as a role with `rolsuper = f`, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'app' AND pid <> pg_backend_pid()` → `t`,
+  then `SELECT id … FOR UPDATE SKIP LOCKED` on the row that backend held → `2 | claimable-after-terminate`,
+  and the terminated session's next statement → `connection to server was lost`], with the backend's
+  PID a plain field read on the hijacked connection
+  [measured pgx/v5@v5.10.0:pgconn/pgconn.go:708-710 · `sed -n '708,710p' pgconn/pgconn.go` →
+  `func (pgConn *PgConn) PID() uint32 {` / `return pgConn.pid` / `}`]. It needs no new grant — the
+  hijacked connection belongs to the application's own role — so the reason it is **not** adopted
+  here is not cost but scope: it widens the design past the finding it answers, and it has a shape
+  question of its own (the worker would terminate a backend whose statements the orphaned goroutine
+  may still be issuing, turning a handler defect into a client-visible connection error at a moment
+  the worker chose). The owner's call — leave AC30's guarantee conditional on the `Handler`
+  contract, or add the layer and make it unconditional.
 - **The task type is `text`, not a PostgreSQL enum** (D6). The argument is made in full and the
   decision is the design's to make per the spec, but it is a visible departure from "every
   categorical column is a PostgreSQL enum" and is flagged here so the owner sees it rather than
