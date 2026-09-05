@@ -8,19 +8,19 @@ _Updated: 2026-09-05 11:07_
 **Last build:** not run
 **Issue:** #20
 **Spec:** ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md
-**current_step:** Step 8 — subtask 1 of 10 complete
-**last_passed_gate:** golangci-lint run | 2026-09-05T00:00:00Z | (pending commit)
+**current_step:** Step 8 — subtask 2 of 10 complete
+**last_passed_gate:** golangci-lint run | 2026-09-05T14:16:35Z | (pending commit)
 **entry_args:** 20
 
 ## Next action
 
-**Do this immediately:** continue Group A at subtask 2 — `store.DeferredTask` / `store.RecurrentTask`.
+**Do this immediately:** continue Group A at subtask 3 — `config.Scheduler`, defaults, `loadScheduler`, `schedulerEnvKeys()`, `.env.example`.
 
 ## Subtasks
 
 - [x] 1. Migration `00002_scheduler.sql`: `scheduled_task_state`, `scheduled_task`, the live-scoped identity index, the two basis tables and the `journal_entry` arc
-- [ ] 2. `store.DeferredTask` / `store.RecurrentTask` implementing `PostingBasis`, each carrying `TaskID`  ← CURRENT
-- [ ] 3. `config.Scheduler`, defaults, `loadScheduler`, `schedulerEnvKeys()`, `.env.example`
+- [x] 2. `store.DeferredTask` / `store.RecurrentTask` implementing `PostingBasis`, each carrying `TaskID`
+- [ ] 3. `config.Scheduler`, defaults, `loadScheduler`, `schedulerEnvKeys()`, `.env.example`  ← CURRENT
 - [ ] 4. Package foundation, no database: `doc.go`, `errors.go`, `task.go`, `registry.go`, `cadence.go`, `observe.go`
 - [ ] 5. The insertion surface: `(*Registry).Schedule`
 - [ ] 6. The execution cycle: `Options`, `New`, `RunOnce`, discovery + per-id re-claim
@@ -33,6 +33,7 @@ _Updated: 2026-09-05 11:07_
 ## Decisions log
 
 - **Step 7**: design-review reached GO at round 4; the owner raised the round cap to 5 (was 3) after round 3's two confirmed majors.
+- **Step 8 subtask 2**: added `store.DeferredTask`/`store.RecurrentTask` to `basis.go`, each carrying `TaskID int64`/`TaskType`/`InstanceKey`/`RunAt`, `NULLIF($n,0)` and `NULLIF($n,'')` mapping the Go zero values to NULL exactly as D14 specifies; rewrote `PostingBasis`'s doc comment to name all four implementations (AC20). Tests added to `basis_test.go`: nil-receiver ErrNoBasis for both new types, a balanced post under each new basis (AC4), the two-non-null CHECK refusal using the two *new* basis columns, survival of a deleted `scheduled_task` row (its journal_entry/posting rows and the by-value `task_id` on the basis row all survive, AC27/D14), two keyless one-shots distinguished by `task_id` (D14's stated reason for the column), and a `pg_constraint` sweep confirming neither new basis table carries an FK to `scheduled_task` (AC27's actual scope, not D4's wider condition). All gates green: `go build ./...`, `go test ./internal/store/...` (one transient testcontainers/podman network flake on first run, green on retry — an environment issue, not a code issue), `golangci-lint fmt -d`, `golangci-lint run`.
 - **Step 8 subtask 1**: wrote `00002_scheduler.sql` exactly per D5/D14 (scheduled_task_state enum, scheduled_task with the two-predicate identity index, deferred_task/recurrent_task with `task_id` by value and no FK, the journal_entry CHECK/column/index extension). Extended migrate_test.go's table list and goose_db_version count (gate-forced), plus the index list and CHECK substring map (AC3-forced, ungated per the design's own warning) and added a new `TestMigrate_scheduledTaskShape` asserting the column set (AC31: no execution marker/heartbeat/completed state), the enum's exact two members, and the identity index's two-predicate definition (AC29). All gates green: `go build ./...`, `go test ./internal/store/...`, `golangci-lint fmt -d`, `golangci-lint run`.
 
 ## Key discoveries (don't re-investigate)
@@ -60,3 +61,5 @@ _Updated: 2026-09-05 11:07_
 
 - `internal/store/migrations/00002_scheduler.sql` (new)
 - `internal/store/migrate_test.go`
+- `internal/store/basis.go`
+- `internal/store/basis_test.go`
