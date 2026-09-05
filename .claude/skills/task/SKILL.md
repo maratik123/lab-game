@@ -217,7 +217,8 @@ For each `⬜ Open` finding in the latest `## Self-Review (Round N)` section of 
 
 After all findings are resolved, run gates (`go build ./...`, `go test ./...`, `golangci-lint run`) **and the fix-round measurement pass (binding):** execute the `verifying command` of every register row this round touched, plus every AC whose measurement the touched files could move (at minimum: every AC the design lists a verification command for over a file in this round's diff), quoting outputs into the register. Fix rounds feed the very prose files the size/count ACs measure — re-measure them each round. Then:
 
-1. Update `.progress.md`.
+1. **Update `.progress.md` in BOTH places, or the commit is refused.** Marking a finding `✅ Fixed` in the round table is half the write: the register row for the same finding must move from `open` to `fixed@<sha>` in the same edit. The register — not the round tables — is what the next round reads (`.claude/agents/self-review.md` instruction 7a), so a row left at `open` is invisible to that round, which re-raises it as a new finding. A `PreToolUse` hook runs `check-review-register.sh` over every staged `*.progress.md` and blocks the commit on a disagreement.
+   Measured, which is why this is a gate: the transport run raised exactly this disagreement in **five consecutive rounds** (register rows R2-8, R3-3, R4-4, R5-5, R6-7 in `2026-09-04-bot-api-transport.progress.md`), each round fixing the instance by hand and the next round finding the next one.
 1a. `git push` the fix-round commits — the Step-8 draft PR tracks every round; an unpushed fix round is invisible work.
 2. **PR body sync (when a PR exists — i.e. fix rounds after Step 12, via `/pr-commented`).** `gh pr view <N> --json title,body`, re-read, then `gh pr edit` only if the body contradicts the new commits. Never skip the read. During pre-PR Step 11 rounds this item is a no-op.
 3. **Resolve fixed review threads (unconditional).** GraphQL recipe per `reference.md` and AGENTS.md § *Workflow* (PR review comment resolution).
@@ -258,7 +259,12 @@ After all findings are resolved, run gates (`go build ./...`, `go test ./...`, `
     **Verify before continuing:** `grep -n 'TBD-at-Step-12' ai-docs/context-status.md` returns nothing. If it still matches, the edit did not land — fix it now, not in a note: the previous run recorded the intent to backfill in its progress file and shipped the placeholder anyway, because sub-step 9a retires that file before the PR exists, so an intention parked there is a promise in a document that has already left the tree (`ai-docs/harness-gaps.md` 2026-09-03).
 11. Post the PR URL to the user.
 12. **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 12 — PR opened (PR #<N>)`; append a `## Decisions log` bullet recording the PR number and the spec/design `done/` move (one line, prefixed `Step 12:`).
-13. Remove the in-flight marker: `rm -f ai-docs/plans/.task-inflight`. (The Stop hook blocks ending a turn while the marker exists unless the turn handed control to the user — see § *In-flight marker* below.)
+13. **Read the stop ledger, then remove the in-flight marker.** The Stop hook records one `blocked:` line per block it issued and renames each hand-back token it spent to `handback-spent:`, so the marker is the run's own record of how many times the cycle tried to end early. Read the two counts into the transcript and delete the file in the same turn:
+    ```bash
+    awk '/^blocked: /{b++} /^handback-spent: /{h++} END{printf "stop-gate blocks: %d\nhand-backs spent: %d\n", b+0, h+0}' ai-docs/plans/.task-inflight
+    rm -f ai-docs/plans/.task-inflight
+    ```
+    **Binding on the closing report:** every statement the run makes about its own conduct — whether the cycle stopped, how many times the gate fired, whether a hand-back was legitimate — cites these two counts, or is not made at all. A count recalled from memory is a claim about the transcript that the transcript never supplied. Measured, which is why this is a required read and not advice: the run that opened PR #54 closed with "the cycle was not stopped" and "the hook caught me three times" after a two-hour silent stop and six blocks.
 
 After the PR is created, the unconditional PR-body re-read rule (AGENTS.md *Workflow*) applies to any subsequent push on this branch: `gh pr view <N>` first, then `gh pr edit` only if the body now contradicts the diff.
 
@@ -268,7 +274,7 @@ After the PR is created, the unconditional PR-body re-read rule (AGENTS.md *Work
 
 ## In-flight marker (Stop-hook contract)
 
-`ai-docs/plans/.task-inflight` (gitignored) exists from Step 8 entry to Step 12 item 13. The `Stop` hook blocks ending a turn while it exists, unless the turn appended a hand-back line `handback: <ISO-8601 UTC> <reason ≤ 10 words>` to the marker — do that only when the turn genuinely hands control to the user (an `AskUserQuestion`, a surfaced blocker, a user stop); the next orchestrator turn deletes the token line. Full contract: `reference.md` § In-flight marker. The rule it enforces: **naming the next step is not performing it** — a turn inside an active `/task` either advances the flow with tool calls or explicitly hands back.
+`ai-docs/plans/.task-inflight` (gitignored) exists from Step 8 entry to Step 12 item 13. The `Stop` hook blocks ending a turn while it exists, unless the turn appended a hand-back line `handback: <ISO-8601 UTC> <reason ≤ 10 words>` to the marker — do that only when the turn genuinely hands control to the user (an `AskUserQuestion`, a surfaced blocker, a user stop) or out of its hands to a background delegate. **One token buys one stop: the hook spends it as it permits that stop, renaming it `handback-spent:`.** You never edit the marker to resume — appending is the only write you make to it. Full contract: `reference.md` § In-flight marker. The rule it enforces: **naming the next step is not performing it** — a turn inside an active `/task` either advances the flow with tool calls or explicitly hands back.
 
 ## Patterns
 

@@ -91,8 +91,8 @@ ALLOW	make --help | head
 ALLOW	go list ./... | head -20
 ALLOW	golangci-lint linters | head -20
 ALLOW	git log --oneline | head -20
-ALLOW	go test ./... > gate.log 2>&1 && echo GATE-RED
-ALLOW	grep -E "^(FAIL|ok)" gate.log | head -5
+ALLOW	go test ./... > tmp/gate.log 2>&1 && echo GATE-RED
+ALLOW	grep -E "^(FAIL|ok)" tmp/gate.log | head -5
 ALLOW	cmake --build . | tail -5
 ALLOW	echo makezero | tail -1
 ALLOW	make verify
