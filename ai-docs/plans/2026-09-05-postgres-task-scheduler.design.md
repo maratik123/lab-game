@@ -3,15 +3,44 @@
 **Issue:** #20
 **Date:** 2026-09-05
 
-> **Claim-tag conventions in this document.** A repo fact carries the commit of the **read**
-> (`ac09e61` for a round-2 read, `9e6c05b` for a round-3 read — each re-resolved in the round that
-> wrote it rather than carried forward), not of this document, so a tag may lag `HEAD` after a
-> revision that touched only this file. A fact about **PostgreSQL's own behaviour** has no repo
-> path, so its pin is the server version the probe ran against (`postgres:18.6`, a throwaway
-> container started from the image already on this machine and stopped afterwards). A fact about an **external module** is pinned by its version. A claim
-> about an artefact this task has **not yet built** carries `[derived → …]` and no locator.
+> **Claim-tag conventions in this document.** A repo fact carries the commit of the **read**, not
+> of this document. Round 4 re-ran every repo read in one turn, so every repo tag here now carries
+> `069ab1f`; an earlier round's pin is never carried forward unresolved. A fact about
+> **PostgreSQL's own behaviour** has no repo path, so its pin is the server version the probe ran
+> against (`postgres:18.6`, a throwaway container started from the image already on this machine
+> and stopped afterwards). **Round 4 re-ran every PostgreSQL probe too, and re-ran rather than
+> re-tagged the mode-dependent ones**: a tag that quoted a `FOR UPDATE` statement would otherwise
+> assert a property of a query this design no longer issues, which is the claim class this
+> convention exists to prevent. A fact about an **external module** is pinned by its version. A
+> claim about an artefact this task has **not yet built** carries `[derived → …]` and no locator.
 > `docs/DESIGN.md` is cited by section per the design-writer contract, so those citations carry
-> no `[measured …]` tag.
+> no `[measured …]` tag — with one exception, `docs/DESIGN.md:310`, which is this change's edit
+> target and is therefore pinned by line where the edit is prescribed (D15).
+
+---
+
+## Round-4 resolutions — the spec's round-6 and round-7 amendments
+
+**Two round numberings meet in this document and they are different sequences:** *design* rounds 1–4
+(this document's revisions, each reviewed by `design-review`) and *interview* rounds 1–7 (the spec's
+own question rounds). Every "round 5/6/7" below is an **interview** round.
+
+This design round answers a **spec change**, not a review finding: design rounds 2 and 3 both
+returned GO, and the spec was then amended twice. Interview round 6 settled the claim's row-lock
+mode and widened the `docs/DESIGN.md` licence from one edit on line 310 to two; interview round 7
+kept AC27 at basis-document scope, which leaves the lock-mode equivalence resting on a condition
+wider than any criterion enforces. The design round-3 table follows this one and the round-2 table
+follows that, so Step 8 reads every round's write-back from one place.
+
+| Amendment | Answered in | Resolution in one line |
+|---|---|---|
+| **Round 6 — the row lock becomes `FOR NO KEY UPDATE`** (spec *Key decisions*; AC35) | § Approach, D2, D4, D10, D11, § Risks, § Test Design, § Decomposition subtasks 2, 6, 10, 11 | Every query this design issues against `scheduled_task` — the discovery claim, the per-id re-claim and `Reconcile`'s correction CTE — takes `FOR NO KEY UPDATE … SKIP LOCKED`, and **no query in the design takes `FOR UPDATE`** |
+| **Round 6 — the recorded reason must be the one that survives measurement** (AC36) | § Approach (the mode paragraph), D4, D15, § Risks, § Test Design, § Decomposition subtask 11 | The reason recorded is the pair the owner gave: the weakest lock that expresses what a claim does, and a one-shot's `DELETE` taking `FOR UPDATE` strength **at the moment it is needed** rather than for the handler's whole duration (measured). Every surface that argues the mode says **in terms** that it is not a throughput, latency, contention or lock-weight decision |
+| **Every mode-dependent probe was re-run, not re-tagged** | § Approach, D2, D4, D5, D10, D11, § Risks, § Open questions | The exclusion, `LIMIT`-after-skip, savepoint, idle-in-transaction, ctx-ignoring-handler, disconnect, lease-reviver, reconcile-correction and `pg_terminate_backend` probes were re-run against `postgres:18.6` with the holder and the claimant both on `FOR NO KEY UPDATE`. The probes carrying **no locking clause at all** — `now()` versus `clock_timestamp()`, the savepoint-recovery pair, the `statement_timeout` recovery, the identity-index branches and `jsonb` normalisation — are mode-independent by inspection and were re-run anyway, so no tag in this document quotes a statement the design does not issue |
+| **Round 6 — the `docs/DESIGN.md` licence widens to two edits on line 310** | D15, § Decomposition subtask 11, § Risks | D15's bound is now *two edits and no more* on that line: the table's spelling and the claim query's row-lock mode. **The line-147 exclusion is stated where the edit is prescribed** — §3.5's `SELECT session FOR UPDATE` is the raid-session FSM's guard query, a different mechanism, and a document-wide substitution would silently change its documented lock mode. §11 therefore no longer diverges from the shipped worker on the mode, so the design has no canonical-primitive divergence left to argue |
+| **Round 7 — AC27 keeps its basis-document scope** | D4 (the coupling), D14, § Risks | The equivalence rests on *no foreign key anywhere referencing `scheduled_task`*; AC27 enforces that for **basis-document tables only**. Every surface that states the coupling states it at that reach — a **named, accepted residual risk with its failure mode**, never a completed guarantee — and the design adds **no rule of its own** re-imposing the wider scope the owner declined |
+| **AC35's exclusion surfaces and AC36's no-performance-framing check** | D15, § Test Design | D15 names the surfaces that may still match a search for the old clause without violating AC35, and the one surface whose example the design deliberately does **not** edit, with the reason and the propagation cost, flagged to the owner in § Open questions rather than acted on |
+| **AC23**, unnamed in design rounds 1–3 | § Risks | Named where the gate discipline lives: every subtask re-runs its gate, and the whole-tree `make verify` including the race gate is the Step-9 obligation |
 
 ---
 
@@ -51,7 +80,7 @@ without re-reading the whole document.
 | **Rec.** — Group B does not name its subagent | § Handoff plan | `general-purpose` named, symmetric with Group A |
 | **Rec.** — subtask 4's dependency on 3 is spurious | § Decomposition | Removed; 4 now depends on nothing |
 | **Rec.** — AC33's "a row that disagrees" does not name the direction | § Test Design | Named: the correction fires for a **shortened** cadence |
-| **Spec amendment** (round 5) — `docs/DESIGN.md:310` is corrected, not excluded | D15, § Decomposition subtask 11, § Handoff plan | AC19's exclusion set rebuilt to exactly the classes the spec names; `docs/DESIGN.md` moved from *excluded* to *corrected*; the one-word bound and the trap clause on the same line stated where the edit is prescribed. Round 1's *Open question* asking the owner about §11's spelling is retired — the owner answered it |
+| **Spec amendment** (round 5) — `docs/DESIGN.md:310` is corrected, not excluded | D15, § Decomposition subtask 11, § Handoff plan | AC19's exclusion set rebuilt to exactly the classes the spec names; `docs/DESIGN.md` moved from *excluded* to *corrected*; the spelling bound and the trap clause on the same line stated where the edit is prescribed. Round 1's *Open question* asking the owner about §11's spelling is retired — the owner answered it. **Superseded in round 4:** the round-6 amendment widened the same licence to a second edit on that line, so D15's bound is now the two the round-4 table names, not this row's one |
 
 ---
 
@@ -61,52 +90,80 @@ without re-reading the whole document.
 immediately below, and every later section is a consequence of one of them.
 
 **One transaction per task — and the batch is a *discovery* claim, not the executing
-transaction.** `docs/DESIGN.md` §11 fixes both the claim query
-(`WHERE run_at <= now() FOR UPDATE SKIP LOCKED LIMIT N`) and the exactly-once argument (a task
-executes in one transaction with its own effects). Round 1 read those sentences as being in
+transaction.** `docs/DESIGN.md` §11 fixes both the claim query's shape
+(`WHERE run_at <= now() … SKIP LOCKED LIMIT N`) and the exactly-once argument (a task executes in
+one transaction with its own effects). Its **row-lock mode** is the paragraph below, and after
+this change §11 states that mode too, under the round-6 half of the licence D15 bounds — so the
+worker and its source document agree rather than diverging on the clause. Round 1 read those sentences as being in
 tension the moment the limit exceeds one, and resolved the tension by claiming and executing a
 whole batch in one transaction with a savepoint per task. **That resolution is withdrawn.** It
 made a task's durability depend on its neighbours — a later task's deadline breach discarded an
 earlier task's already-executed effects — which is exactly the property §11's sentence buys, and
 it falsified the live derived sentences that spell the cardinality out
-[measured ac09e61:ai-docs/context.md:36 · `grep -n 'one transaction per task with its effects' ai-docs/context.md` →
+[measured 069ab1f:ai-docs/context.md:36 · `grep -n 'one transaction per task with its effects' ai-docs/context.md` →
 ``36:| Scheduler | `scheduled_tasks` worker (`FOR UPDATE SKIP LOCKED`), one transaction per task with its effects | §11 |``;
-ac09e61:ai-docs/key-decisions.md:15 · `grep -n 'each task executing in one transaction' ai-docs/key-decisions.md` →
+069ab1f:ai-docs/key-decisions.md:15 · `grep -n 'each task executing in one transaction' ai-docs/key-decisions.md` →
 `15:**KD-4 …** … each task executing in one transaction with its effects.`;
-ac09e61:ai-docs/domain-invariants.md:45 · `grep -n 'A task executes in one transaction' ai-docs/domain-invariants.md` →
+069ab1f:ai-docs/domain-invariants.md:45 · `grep -n 'A task executes in one transaction' ai-docs/domain-invariants.md` →
 `45:- **A task executes in one transaction with its effects** — exactly-once without two-phase machinery.`].
-`docs/DESIGN.md`'s own sentence is not editable beyond the one authorised word (D15), so a shape
-whose derived docs need rewording is a shape that disagrees with its source. The tension was not
+`docs/DESIGN.md`'s own sentence is not editable beyond the two authorised edits, neither of which
+touches it (D15), so a shape whose derived docs need rewording is a shape that disagrees with its
+source. The tension was not
 in §11; it was in the assumption that the claim's locks must be the ones execution happens under.
 They need not be. The cycle is:
 
-1. **Discovery** — one `SELECT … FOR UPDATE SKIP LOCKED LIMIT N` statement, run outside any
-   explicit transaction, so its row locks live only for the statement. It answers "which ids are
-   due and not currently being executed", and its cardinality is AC12's batch size.
+1. **Discovery** — one `SELECT … FOR NO KEY UPDATE SKIP LOCKED LIMIT N` statement, run outside
+   any explicit transaction, so its row locks live only for the statement. It answers "which ids
+   are due and not currently being executed", and its cardinality is AC12's batch size.
 2. **Execution** — for each discovered id, its **own** transaction: re-claim that one row by id
-   under `FOR UPDATE SKIP LOCKED`, run the handler, settle, commit. A row another worker took in
-   the meantime returns zero rows and is skipped silently — not a failure, not an observation.
+   under `FOR NO KEY UPDATE SKIP LOCKED`, run the handler, settle, commit. A row another worker
+   took in the meantime returns zero rows and is skipped silently — not a failure, not an
+   observation.
 
-Both halves are measured. A second worker's per-id re-claim of a row held by an executing
-transaction returns no rows rather than waiting, and a free row is returned
-[measured postgres:18.6 · with one session holding `id = 5` in an open transaction,
-`SELECT id … WHERE id = 5 AND state='pending' AND run_at <= now() FOR UPDATE SKIP LOCKED` → `(0 строк)`;
-the same statement for `id = 6` → `6`]. And the discovery claim itself skips the row under
+Both halves are measured, **under the mode the design actually issues**. A second worker's per-id
+re-claim of a row held by an executing transaction returns no rows rather than waiting, and a free
+row is returned
+[measured postgres:18.6 · with one session holding `id = 5` and `id = 7` in an open transaction under `FOR NO KEY UPDATE SKIP LOCKED`,
+`SELECT id FROM scheduled_task WHERE id = 5 AND state='pending' AND run_at <= now() FOR NO KEY UPDATE SKIP LOCKED` → `(0 rows)`;
+the same statement for `id = 6` → `6`]. And the discovery claim itself skips the rows under
 execution
-[measured postgres:18.6 · same fixture, `SELECT id … WHERE state='pending' AND run_at <= now() ORDER BY run_at, id FOR UPDATE SKIP LOCKED LIMIT 5` →
-`6` and `8`, not `5`]. Exactly-once therefore rests on the per-task lock, and AC5's clauses
+[measured postgres:18.6 · same fixture, `SELECT id FROM scheduled_task WHERE state='pending' AND run_at <= now() ORDER BY run_at, id FOR NO KEY UPDATE SKIP LOCKED LIMIT 5` →
+`6` and `8`, not `5` or `7`]. Exactly-once therefore rests on the per-task lock, and AC5's clauses
 rest on the discovery claim; nothing rests on a reading of §11.
+
+**The row lock is `FOR NO KEY UPDATE`, and the reason is not performance.** The owner settled the
+mode at round 6 (spec *Key decisions*; AC35). The honest account of how it got here is part of the
+decision: this design wrote `FOR UPDATE` through its first three rounds because §11 writes it, and copying the canonical primitive
+is not an argument — the design had no recorded reason of its own, which is exactly what the
+round-6 question found. The reason it now carries is that `FOR NO KEY UPDATE` is **the weakest
+lock that expresses what a claim actually does**: a claim reads a due row and marks it taken; it
+does not change the row's key. The stronger strength a one-shot's settlement needs is taken **at
+the moment it is needed** rather than held for the handler's whole duration — a `DELETE` acquires
+`FOR UPDATE` strength itself, and claim-then-`DELETE` in one transaction succeeds
+[measured postgres:18.6 · `BEGIN; SELECT id FROM scheduled_task WHERE id = 5 AND state='pending' AND run_at <= now() FOR NO KEY UPDATE SKIP LOCKED; DELETE FROM scheduled_task WHERE id = 5; COMMIT` →
+`5` / `DELETE 1` / `COMMIT`, then `row_5_after_commit | 0`].
+
+**It is explicitly not a throughput, latency, contention or lock-weight decision, and AC36 makes
+saying so binding.** No sentence in this document, in the code it prescribes, in its commit
+messages or in the propagation D15 lists may justify the mode as faster or lighter than
+`FOR UPDATE`. The round-6 investigation reported no separation between the modes on this task's
+own claim pattern — **a claim of issue-body standing, carried from the spec and not re-run here**,
+and recorded to *remove* a justification rather than to supply one, which is why nothing in this
+design depends on it being true. A future change that wants a performance argument for either mode
+measures one. What the
+equivalence does rest on is a **condition about foreign keys**, and D4 states it at the reach the
+criteria actually enforce — which is narrower than the condition.
 
 **A savepoint still exists, and its scope is now exactly the handler call.** AC7 wants a
 handler's writes gone but the failed attempt recorded, and AC8 wants a no-op's writes gone but
 the row still settled in the same transaction as the (absent) effects. Only a subtransaction
 around the handler satisfies both: roll back to it, then write the settlement, then commit
-[measured postgres:18.6 · `BEGIN; <re-claim id=6 FOR UPDATE>; SAVEPOINT handler; INSERT INTO effect …; ROLLBACK TO SAVEPOINT handler; UPDATE scheduled_task SET consecutive_failures = consecutive_failures + 1, last_error = 'boom', run_at = clock_timestamp() + interval '1 s' WHERE id = 6; COMMIT` →
+[measured postgres:18.6 · `BEGIN; <re-claim id=6 FOR NO KEY UPDATE SKIP LOCKED>; SAVEPOINT handler; INSERT INTO effect …; ROLLBACK TO SAVEPOINT handler; UPDATE scheduled_task SET consecutive_failures = consecutive_failures + 1, last_error = 'boom', run_at = clock_timestamp() + interval '1 s' WHERE id = 6; COMMIT` →
 `effect_rows | failures | last_error` = `0 | 1 | boom`]. A subtransaction aborted by a constraint
 violation is recoverable the same way and the outer transaction still commits
 [measured postgres:18.6 · `BEGIN; SAVEPOINT h2; <duplicate INSERT>; ROLLBACK TO SAVEPOINT h2; SELECT count(*); COMMIT` →
 `ERROR: duplicate key value violates unique constraint "scheduled_task_identity_key"` / `ROLLBACK` /
-`rows_after_recovery | 6` / `COMMIT`]. pgx exposes it as a first-class API: `pgx.Tx.Begin` opens a
+`rows_after_recovery` = the pre-savepoint count, unchanged / `COMMIT`]. pgx exposes it as a first-class API: `pgx.Tx.Begin` opens a
 pseudo-nested transaction on a savepoint, `Commit` releases it and `Rollback` rolls back to it
 [measured pgx/v5@v5.10.0:tx.go:171,309,322 · `grep -n 'savepoint sp_\|release savepoint\|rollback to savepoint' tx.go` →
 `171:  _, err := tx.conn.Exec(ctx, "savepoint sp_"+…)` / `309:  … "release savepoint sp_"+…` / `322:  … "rollback to savepoint sp_"+…`].
@@ -124,7 +181,7 @@ this whole task exists to produce is exactly such a comparison. It also settles 
 question before it is asked: the package has no persisted-instant clock to fake, so no scheduler
 test needs a `synctest` bubble around a real socket, and KD-26's binding half ("production code
 carries no clock abstraction") is satisfied more strongly than by an injectable clock
-[measured ac09e61:ai-docs/key-decisions.md:71 · `grep -n 'KD-26 ' ai-docs/key-decisions.md | cut -c1-95` →
+[measured 069ab1f:ai-docs/key-decisions.md:71 · `grep -n 'KD-26 ' ai-docs/key-decisions.md | cut -c1-95` →
 ``71:**KD-26 — Tests use `testing/synctest`; production code carries no clock abstraction.** The ``].
 
 Go time survives in this package as **intervals only**, and there are exactly the kinds below —
@@ -173,9 +230,12 @@ context, both named in D11. The argument survives the correction, and for a shar
 one it replaces: it is exactly on that stranded state that a lease has no move, because the row is
 still locked by an open transaction and the reviver's own `UPDATE` blocks on that lock instead
 of reclaiming the row
-[measured postgres:18.6 · against a row held `FOR UPDATE` by an open transaction,
-`BEGIN; SET LOCAL lock_timeout = '700ms'; UPDATE t SET n = n + 1 WHERE id = 2` →
-`ERROR: canceling statement due to lock timeout` / `CONTEXT: while updating tuple (0,4) in relation "t"`].
+[measured postgres:18.6 · against a row held `FOR NO KEY UPDATE SKIP LOCKED` by an open transaction,
+`BEGIN; SET LOCAL lock_timeout = '700ms'; UPDATE scheduled_task SET run_at = now() WHERE id = 6` →
+`ERROR: canceling statement due to lock timeout` / `CONTEXT: while updating tuple (0,6) in relation "scheduled_task"`.
+The reviver's `UPDATE` is itself a `FOR NO KEY UPDATE`-strength acquisition, and two of those on
+one row conflict — so the weaker claim mode does not open a door for a lease that the stronger one
+closed].
 A lease would buy a detector whose reviver cannot act — which is not the same thing as buying
 nothing, and is why the rejection is argued here rather than assumed. D11 bounds those failures
 where they can be bounded — a timeout, a database that terminates the backend, and a documented
@@ -214,17 +274,17 @@ Files: `doc.go` (package comment), `task.go`, `registry.go`, `cadence.go`, `sche
 `worker.go`, `execute.go`, `claim.go`, `reconcile.go`, `observe.go`, `errors.go` — small and one
 concern each, because the gated hard limit is 1000 lines for a non-test file and 1500 for a
 `_test.go`
-[measured ac09e61:Makefile:23-24 · `sed -n '23,24p' Makefile` → `GO_MAX_LINES ?= 1000` / `GO_MAX_TEST_LINES ?= 1500`].
+[measured 069ab1f:Makefile:23-24 · `sed -n '23,24p' Makefile` → `GO_MAX_LINES ?= 1000` / `GO_MAX_TEST_LINES ?= 1500`].
 
 Every method that reaches the database takes `ctx context.Context` first and no type in the
 package has a `context.Context` field (AC1). Every exported item carries a doc comment starting
 with its name and the package carries a package comment, because `revive`'s `exported` and
 `package-comments` rules are enabled
-[measured ac09e61:.golangci.yml:45-48 · `sed -n '45,48p' .golangci.yml` → `revive:` / `rules:` / `- name: exported` / `- name: package-comments`].
+[measured 069ab1f:.golangci.yml:45-48 · `sed -n '45,48p' .golangci.yml` → `revive:` / `rules:` / `- name: exported` / `- name: package-comments`].
 
 **What it does not import.** No metrics-registry package (AC13) — the seam is a plain struct plus
 a consumer-declared interface, the precedent `internal/tg` already set
-[measured ac09e61:internal/tg/observe.go:30-33 · `sed -n '30,33p' internal/tg/observe.go` →
+[measured 069ab1f:internal/tg/observe.go:30-33 · `sed -n '30,33p' internal/tg/observe.go` →
 `type Observer interface {` / `// ObserveCall reports one completed outbound call.` / `ObserveCall(Observation)` / `}`].
 And **no non-test file imports `internal/store`**: the scheduler never writes a basis document,
 because a basis document exists to anchor postings and the code that posts is the handler (spec
@@ -244,7 +304,7 @@ its row locks are released when the statement's implicit transaction ends:
 SELECT id FROM scheduled_task
 WHERE state = 'pending' AND run_at <= now()
 ORDER BY run_at, id
-FOR UPDATE SKIP LOCKED
+FOR NO KEY UPDATE SKIP LOCKED
 LIMIT $1
 ```
 
@@ -256,7 +316,8 @@ transaction.
 1. `BEGIN`, then `SET LOCAL statement_timeout` and `SET LOCAL
    idle_in_transaction_session_timeout`, both to the configured per-task deadline (D11).
 2. **Re-claim** — `SELECT id, type, instance_key, payload, run_at, consecutive_failures FROM
-   scheduled_task WHERE id = $1 AND state = 'pending' AND run_at <= now() FOR UPDATE SKIP LOCKED`.
+   scheduled_task WHERE id = $1 AND state = 'pending' AND run_at <= now() FOR NO KEY UPDATE SKIP
+   LOCKED`. The mode is D4's and is the same one the discovery statement takes (AC35).
    Zero rows means another worker took it, it was already settled, or a recurrence's `run_at` was
    already advanced: `COMMIT` and move to the next id, **silently** — no observation, because
    nothing executed.
@@ -332,7 +393,44 @@ immediately.
 
 ---
 
-### D4 — The claim queries, their index, and what a priority column would change (AC16)
+### D4 — The claim queries: the lock mode, the condition it rests on, the index, and what a priority column would change (AC16, AC35, AC36)
+
+**Every locking query this design issues against `scheduled_task` takes `FOR NO KEY UPDATE …
+SKIP LOCKED`, and none takes `FOR UPDATE`** (AC35). The design names each of them where it
+specifies them: the discovery claim and the per-id re-claim (D2), and `Reconcile`'s correction CTE
+(D10) — and no other statement in the package locks a `scheduled_task` row. The
+reason for the mode, and the fact that it is **not** a performance reason, are in § Approach; this
+section carries the query-level consequences and the one condition the mode's equivalence with
+`FOR UPDATE` rests on.
+
+The exclusion protocol the whole design rests on is **asserted under the new mode rather than
+inherited from the old one** — § Approach measures the per-id re-claim skipping a held row and
+returning a free one, and the discovery claim skipping the rows under execution; the `LIMIT`
+ordering is measured below; `Reconcile`'s in-flight skip is measured in D10. AC5 and AC6 re-prove
+the protocol on the delivered schema.
+
+**What the equivalence rests on — and how far the enforcement actually reaches.** The two modes
+behave identically on this table only while **no table anywhere references `scheduled_task` by a
+foreign key**. Add such an FK and the referential-integrity trigger fires `FOR KEY SHARE` on the
+referenced row: `FOR NO KEY UPDATE` permits that lock and `FOR UPDATE` blocks it, so under the
+weaker mode the child insert proceeds and the parent tuple's `xmax` becomes a MultiXactId, where
+the stronger mode would have blocked the integrity check instead. Both directions are measured,
+and PostgreSQL names the trigger's own query in the blocking case
+[measured postgres:18.6 · a holder open on `SELECT id FROM parent WHERE id = 1 FOR NO KEY UPDATE`; a concurrent `INSERT INTO child VALUES (11,1)` → `INSERT 0 1`, and `heap_page_items(get_raw_page('parent',0))` for that tuple → `infomask_hex | 11c0` with `heap_xmax_is_multi | t`;
+the same holder on `id = 2` under `FOR UPDATE`, the concurrent `INSERT INTO child VALUES (12,2)` under `statement_timeout='4s'` → `ERROR: canceling statement due to statement timeout` / `CONTEXT: while locking tuple (0,2) in relation "parent"` / `SQL statement "SELECT 1 FROM ONLY "public"."parent" x WHERE "id" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x"`].
+The costs that follow a minted multixact — a WAL record for the multixact id, SLRU retention and
+freeze burden — are the round-6 investigation's claim, of issue-body standing, and are **not**
+pinned here as fact; they are the shape of the risk, not something this design checked.
+
+**AC27 enforces less than that condition, deliberately, and the gap is a residual risk rather than
+an open question.** AC27 forbids a foreign key to `scheduled_task` from a **basis-document** table
+only — the scope the owner kept at round 7 — so an FK from any *other* table would satisfy every
+criterion in this spec while silently invalidating the equivalence. Every surface in this change
+that states the coupling states it at **that** reach: a named failure mode, never a completed
+guarantee (§ Risks). This design adds **no rule of its own** re-imposing the wider ban, because
+widening it is the criterion the owner declined and a design-side substitute would be re-deciding
+a settled question. What this change does control is its own schema, and D14 adds no foreign key
+in either direction between `scheduled_task` and the two basis-document tables.
 
 The discovery statement of D2 is served by
 
@@ -345,8 +443,8 @@ it needs no index of its own.
 
 The `LIMIT` is applied **after** rows locked by another transaction are skipped, which is what
 makes a small limit safe under concurrency
-[measured postgres:18.6 · with the two earliest due rows locked by an open transaction,
-`SELECT id … ORDER BY run_at, id FOR UPDATE SKIP LOCKED LIMIT 1` → `5` (the third row), not zero rows;
+[measured postgres:18.6 · with the two earliest due rows held by an open transaction under `FOR NO KEY UPDATE SKIP LOCKED`,
+`SELECT id FROM scheduled_task WHERE state='pending' AND run_at <= now() ORDER BY run_at, id FOR NO KEY UPDATE SKIP LOCKED LIMIT 1` → the third row, not zero rows;
 AC5 re-proves this on the delivered schema].
 
 **AC16, stated as the criterion asks.** Adding the deferred priority/queue column later is **a
@@ -403,7 +501,9 @@ Adding `AND state = 'pending'` scopes the identity to **live** rows, which is th
 spec actually asks for: the constraint exists so that *double-seeding a live recurrence* is
 unrepresentable (spec *Key decisions*), not so that a settled row keeps its name. Every branch is
 measured against the two-predicate index (the pair repeated in each probe is D10's convention:
-a recurrence's instance key is its type name):
+a recurrence's instance key is its type name). **None of these probes carries a locking clause**,
+so none of them is affected by the round-6 mode change; they were re-run in round 4 regardless, so
+that every tag in this document is a measurement of this round rather than a carried-forward one:
 
 - a live duplicate is refused by the database, not by a code path that looks first
   [measured postgres:18.6 · with a pending `('day.close','day.close')` row present, a plain
@@ -440,7 +540,7 @@ would be asserting a property the storage type does not have.
 
 **A payload key is a data contract.** `AGENTS.md`'s API-stability carve-out names the scheduler's
 payloads by that word among the live data that outlives every deploy
-[measured ac09e61:AGENTS.md:84 · `grep -n "scheduler's .scheduled_tasks. payloads" AGENTS.md` →
+[measured 069ab1f:AGENTS.md:84 · `grep -n "scheduler's .scheduled_tasks. payloads" AGENTS.md` →
 one match, at `AGENTS.md:84`, the `> **CARVE-OUT — data contracts are the opposite…**` paragraph].
 The package doc comment says so in the same words, and the payload keys this change ships are
 named in § Test Design (they belong to test-only types; no production type ships here).
@@ -451,7 +551,7 @@ named in § Test Design (they belong to test-only types; no production type ship
 
 The precedent points the other way: every categorical column in migration 00001 is a PostgreSQL
 enum
-[measured ac09e61:internal/store/migrations/00001_ledger_core.sql:2-4 · `sed -n '2,4p' …/00001_ledger_core.sql` →
+[measured 069ab1f:internal/store/migrations/00001_ledger_core.sql:2-4 · `sed -n '2,4p' …/00001_ledger_core.sql` →
 `CREATE TYPE owner_kind AS ENUM ('world', 'player', 'chat');` / `ledger_kind` / `operation_source`],
 and the spec's *Key decisions* names that precedent as the default. The facts that overturn it for
 **this** column, and only this one — `state` stays an enum, because its value set is the schema's
@@ -466,7 +566,7 @@ own.
    no legitimate member and every test would have to mutate the schema with `ALTER TYPE … ADD
    VALUE` before it could insert a row. The migration hygiene test already treats `ADD VALUE` as a
    special, isolated kind of migration file
-   [measured ac09e61:internal/store/migrate_test.go:188-190 · `grep -n 'addValueRe.MatchString' -A 3 internal/store/migrate_test.go` →
+   [measured 069ab1f:internal/store/migrate_test.go:188-190 · `grep -n 'addValueRe.MatchString' -A 3 internal/store/migrate_test.go` →
    `188:  if addValueRe.MatchString(text) {` / `189-   if createTableRe.MatchString(text) || insertRe.MatchString(text) || updateRe.MatchString(text) {` / `190-    t.Errorf("%s: an ADD VALUE file must do nothing else (CREATE TABLE/INSERT/UPDATE found)", entry.Name())`].
 3. **§11's greppable-registry argument is about basis-document types, not task types.** That
    argument is honoured exactly where it was made: the `journal_entry` CHECK gains both new basis
@@ -579,7 +679,7 @@ func NewRegistry(decls ...Declaration) (*Registry, error)
 
 Built once, never mutated, safe for concurrent use without a lock — the same posture
 `internal/tg`'s `Options` takes
-[measured ac09e61:internal/tg/client.go:17 · `grep -n 'type Options struct' internal/tg/client.go` → `17:type Options struct {`].
+[measured 069ab1f:internal/tg/client.go:17 · `grep -n 'type Options struct' internal/tg/client.go` → `17:type Options struct {`].
 Construction refuses an empty type, a nil handler, a duplicate type, and a recurrence with a nil
 cadence or an empty configuration key, each wrapping `ErrInvalidDeclaration` with the offending
 type named.
@@ -587,7 +687,7 @@ type named.
 `Registry` is also the insertion surface:
 `(*Registry).Schedule(ctx, tx, Request) (TaskID, error)` takes a **caller-owned** `pgx.Tx` and
 neither commits nor rolls back, exactly as `store.Post` does
-[measured ac09e61:internal/store/post.go:74 · `grep -n '^func Post' internal/store/post.go` →
+[measured 069ab1f:internal/store/post.go:74 · `grep -n '^func Post' internal/store/post.go` →
 `74:func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Posting) error {`].
 That is not a convenience: §3.5 schedules a raid session's timer edges **inside the transition's
 own transaction**, so a transaction-taking insert is the only shape that keeps a transition and
@@ -650,14 +750,19 @@ WITH candidate AS (
     WHERE type = $1 AND instance_key = $2 AND state = 'pending'
       AND run_at > $3                    -- $3 = rec.Next(now, now): the declaration disagrees
       AND run_at > now() + $4            -- $4 = the poll interval: not imminent
-    FOR UPDATE SKIP LOCKED
+    FOR NO KEY UPDATE SKIP LOCKED
 )
 UPDATE scheduled_task s SET run_at = $3 FROM candidate c WHERE s.id = c.id
 ```
 
 `$1` and `$2` are the same pair the seed writes — the type, and the instance key that is that
-type's name. *In flight* is `FOR UPDATE SKIP LOCKED` — a row a worker is currently executing is
-skipped, not waited on. *Imminent* is derived rather than configured: an occurrence that could be claimed
+type's name. **The locking clause is the same mode the claim takes** (D4, AC35): this is the third
+and last query in the design that locks a `scheduled_task` row. *In flight* is `FOR NO KEY UPDATE
+SKIP LOCKED` — a row a worker is currently executing is skipped, not waited on, and the statement
+was measured in both states
+[measured postgres:18.6 · against a live `('day.close','day.close')` row due in two days, the correction CTE above with a shortened `$3` → `UPDATE 1`;
+with the same row held by another transaction under `FOR NO KEY UPDATE SKIP LOCKED`, the same statement → `UPDATE 0`, returning at once rather than waiting;
+AC33 re-proves both on the delivered schema]. *Imminent* is derived rather than configured: an occurrence that could be claimed
 before the correction takes effect is one within a poll interval, which needs no seventh tuning
 key. The disagreement test is the same expression as the correction, which is what makes the
 statement idempotent — a healthy recurrence always satisfies `run_at <= rec.Next(now, now)`, so
@@ -694,18 +799,19 @@ section rather than an afterthought:
    idle_in_transaction_session_timeout`, both set to the deadline at the top of the task's
    transaction. The first bounds a single long statement and leaves the transaction recoverable
    through the savepoint
-   [measured postgres:18.6 · `SET LOCAL statement_timeout='200ms'; SAVEPOINT h; SELECT pg_sleep(2); ROLLBACK TO SAVEPOINT h; SELECT count(*); COMMIT` →
-   `ERROR: canceling statement due to statement timeout` / `ROLLBACK` / `stmt_timeout_recovered | 3` / `COMMIT`].
+   [measured postgres:18.6 · `BEGIN; SET LOCAL statement_timeout='200ms'; SAVEPOINT h; SELECT pg_sleep(2); ROLLBACK TO SAVEPOINT h; SELECT count(*); COMMIT` →
+   `ERROR: canceling statement due to statement timeout` / `ROLLBACK` / `stmt_timeout_recovered | 3` / `COMMIT`;
+   no locking clause, so the round-6 mode change does not reach this probe].
    The second is the one that matters for a handler hung in Go code: the server terminates the
    backend, which aborts the transaction and releases its row locks **without our process
    participating at all**
-   [measured postgres:18.6 · a session holding `id = 8` under `SET LOCAL idle_in_transaction_session_timeout = '2s'`;
-   a concurrent `… WHERE id = 8 … FOR UPDATE SKIP LOCKED` at `t≈0.5s` → `rows=[]`, the same statement at
-   `t≈3.0s` → `rows=[8]`, and the holder's next statement → `FATAL: terminating connection due to idle-in-transaction timeout`;
+   [measured postgres:18.6 · a session holding `id = 8` under `FOR NO KEY UPDATE SKIP LOCKED` with `SET LOCAL idle_in_transaction_session_timeout = '2s'`;
+   a concurrent `SELECT id … WHERE id = 8 … FOR NO KEY UPDATE SKIP LOCKED` at `t≈0.5s` → `(0 rows)`, the same statement at
+   `t≈3.0s` → `8`, and the holder's next statement → `FATAL: terminating connection due to idle-in-transaction timeout` / `connection to server was lost`;
    AC30 and AC31 re-prove the pair on the delivered schema]. Both settings are transaction-scoped
    and settable by an **ordinary, non-superuser** role
-   [measured postgres:18.6 · as a role with `rolsuper = f`, `BEGIN; SET LOCAL statement_timeout='250ms'; SET LOCAL idle_in_transaction_session_timeout='250ms'; SELECT current_setting(…), current_setting(…)` →
-   `250ms | 250ms`].
+   [measured postgres:18.6 · as a role with `rolsuper = f`, `BEGIN; SET LOCAL statement_timeout='250ms'; SET LOCAL idle_in_transaction_session_timeout='250ms'; SELECT current_setting('statement_timeout') AS st, current_setting('idle_in_transaction_session_timeout') AS idle` →
+   `st | idle` = `250ms | 250ms`].
 3. **The worker stops waiting.** Each handler runs on its own goroutine and the worker selects on
    the result or the deadline. Without this the worker could not *report* the breach, which AC30
    requires; the layers above release the row but say nothing.
@@ -753,16 +859,17 @@ those statements is short, `statement_timeout` never trips; and because the sess
 rather than sitting idle in its transaction, `idle_in_transaction_session_timeout` never trips
 either, its clock running only while the session is idle
 [measured postgres:18.6 · a session under `SET LOCAL statement_timeout = '1s'` and
-`SET LOCAL idle_in_transaction_session_timeout = '1s'`, holding a row `FOR UPDATE` and then issuing
-`SELECT pg_sleep(0.2)` repeatedly → `holder-still-alive | 00:00:04.02894`, neither timeout having
-fired; a concurrent `SELECT … FOR UPDATE SKIP LOCKED` on that row mid-run → `(0 rows)`].
+`SET LOCAL idle_in_transaction_session_timeout = '1s'`, holding a row under `FOR NO KEY UPDATE SKIP LOCKED`
+and then issuing `SELECT pg_sleep(0.2)` repeatedly → `holder-still-alive | 00:00:04.026056`, neither
+timeout having fired; a concurrent `SELECT id … FOR NO KEY UPDATE SKIP LOCKED` on that row mid-run → `(0 rows)`].
 Layer 3 still fires — the worker reports `FailureDeadline` and moves to the next id — so the breach
 is *visible*; what is not reclaimed is the **row**, which stays locked for as long as the handler
 keeps working. The bound is the handler's own return: the watchdog closes the hijacked connection
 then, and a client disconnect inside an open transaction releases its locks server-side
-[measured postgres:18.6 · a session that ran `BEGIN; SELECT id FROM t WHERE id = 2 FOR UPDATE` and
-then disconnected without `COMMIT`; the next session's `SELECT … FOR UPDATE SKIP LOCKED` on that row
-→ `2 | claimable-after-disconnect`]. It is unbounded only when the handler also never returns —
+[measured postgres:18.6 · a session that ran `BEGIN; SELECT id FROM scheduled_task WHERE id = 6 FOR NO KEY UPDATE`
+and then disconnected without `COMMIT`; a concurrent claim while it was still connected → `(0 rows)`,
+and the next session's `SELECT id … FOR NO KEY UPDATE SKIP LOCKED` on that row after the disconnect
+→ `6 | claimable-after-disconnect`]. It is unbounded only when the handler also never returns —
 the infinite-loop class above, in its database-touching variant.
 
 **So the contract lives on `Handler`, in its doc comment, not in this document: a handler
@@ -776,7 +883,7 @@ handler defects, and the deadline observation is what makes each visible.
 
 Nothing in this path panics — `Hijack`'s panic is guarded by its documented precondition, and the
 project's panic index holds no row today and gains none here
-[measured 9e6c05b:ai-docs/panic-index.md · `sed -n '/^| File:line/,$p' ai-docs/panic-index.md` →
+[measured 069ab1f:ai-docs/panic-index.md · `sed -n '/^| File:line/,$p' ai-docs/panic-index.md` →
 `| File:line | Call | Why it cannot fire (or is unrecoverable) |` / `|---|---|---|` / `| — | — | — |`].
 
 ---
@@ -813,7 +920,7 @@ property needs; `deadline` is AC30's "reported as a failure rather than passing 
 task's own commit fails, and equally when the savepoint release that a reported `Done` requires is
 refused because the handler swallowed a database error (D2 step 6). `exhaustive` is enabled with `default-signifies-exhaustive: true`, so
 every switch over `Outcome` or `FailureKind` is total or carries a default
-[measured ac09e61:.golangci.yml:40-41 · `sed -n '40,41p' .golangci.yml` → `exhaustive:` / `default-signifies-exhaustive: true`].
+[measured 069ab1f:.golangci.yml:40-41 · `sed -n '40,41p' .golangci.yml` → `exhaustive:` / `default-signifies-exhaustive: true`].
 
 `BatchSize` is the **discovery** cardinality (D2), which is what AC12's "the size of the claim
 batch the task came from" names; a task skipped at re-claim produces no observation at all,
@@ -857,22 +964,22 @@ The mechanics of the existing layer that bind, and are followed exactly:
 
 - `loadScheduler` reuses `lookupPositiveInt` and `lookupPositiveDuration` — already in the
   package, so no helper is duplicated
-  [measured ac09e61:internal/config/transport.go:207,223 · `grep -n '^func lookupPositive' internal/config/transport.go` →
+  [measured 069ab1f:internal/config/transport.go:207,223 · `grep -n '^func lookupPositive' internal/config/transport.go` →
   `207:func lookupPositiveInt(lookup Lookup, key string) (int, bool, error) {` / `223:func lookupPositiveDuration(lookup Lookup, key string) (time.Duration, bool, error) {`].
 - The keys go into `EnvKeys()`, **never** into the unexported `envKeys()`, which the
   required-variable suites iterate — putting an optional key there fails them immediately, and
   loosening those suites would attack the requiredness they exist to hold
-  [measured ac09e61:internal/config/env.go:33-35 · `sed -n '33,35p' internal/config/env.go` →
+  [measured 069ab1f:internal/config/env.go:33-35 · `sed -n '33,35p' internal/config/env.go` →
   `func envKeys() []string {` / `return []string{envBotToken, envDSN, envBotAPIBaseURL, envAllowedChatIDs}` / `}`].
 - Every key is queried **unconditionally** on every load, because the disjointness test's
   recording lookup compares the set of keys the loader actually consulted against `EnvKeys()` and
   `.env.example`
-  [measured ac09e61:internal/config/disjoint_test.go:103-104 · `sed -n '103,104p' internal/config/disjoint_test.go` →
+  [measured 069ab1f:internal/config/disjoint_test.go:103-104 · `sed -n '103,104p' internal/config/disjoint_test.go` →
   `assertSameKeySet(t, ".env.example", exampleKeys, "config.EnvKeys()", EnvKeys())` /
   `assertSameKeySet(t, "loader-consulted keys", recorded(), "config.EnvKeys()", EnvKeys())`].
 - Each key gets a `.env.example` line carrying its default as a **non-empty** value, because one
   test requires every value non-empty and another requires the whole file to load
-  [measured ac09e61:internal/config/disjoint_test.go:108-115 · `sed -n '108,115p' internal/config/disjoint_test.go` →
+  [measured 069ab1f:internal/config/disjoint_test.go:108-115 · `sed -n '108,115p' internal/config/disjoint_test.go` →
   `func TestEnvExample_ValuesAreNonEmpty(t *testing.T) {` … `t.Errorf(".env.example: %s has an empty value", k)`].
 
 `Config` gains a `Scheduler` field and `Load` calls `loadScheduler` alongside `loadTransport`,
@@ -887,7 +994,7 @@ at a call site in `internal/scheduler`" a property rather than a promise.
 
 Migration `internal/store/migrations/00002_scheduler.sql`, forward-only, with **no `-- +goose
 Down` section** — the package has none and a test enforces it
-[measured ac09e61:internal/store/migrate_test.go:174 · `grep -n 'contains -- +goose Down' internal/store/migrate_test.go` →
+[measured 069ab1f:internal/store/migrate_test.go:174 · `grep -n 'contains -- +goose Down' internal/store/migrate_test.go` →
 `174:    t.Errorf("%s: contains -- +goose Down", entry.Name())`].
 
 ```sql
@@ -914,11 +1021,11 @@ CREATE UNIQUE INDEX journal_entry_recurrent_task_key ON journal_entry (recurrent
 This is the shape migration 00001 established, extended rather than reinvented: one nullable FK
 column per basis type, one `CHECK (num_nonnulls(…) = 1)` naming all of them, one partial unique
 index per basis column
-[measured ac09e61:internal/store/migrations/00001_ledger_core.sql:70-75 · `sed -n '70,75p' …/00001_ledger_core.sql` →
+[measured 069ab1f:internal/store/migrations/00001_ledger_core.sql:70-75 · `sed -n '70,75p' …/00001_ledger_core.sql` →
 `player_operation_id  bigint      REFERENCES player_operation (id),` … `CONSTRAINT journal_entry_exactly_one_basis CHECK (num_nonnulls(player_operation_id, manual_correction_id) = 1)` … `CREATE UNIQUE INDEX journal_entry_player_operation_key  ON journal_entry (player_operation_id)  WHERE player_operation_id  IS NOT NULL;`].
 The partial predicate is also what keeps the FK-coverage test green, since it accepts an index
 whose predicate is an `IS NOT NULL`
-[measured ac09e61:internal/store/fkcover_test.go:85 · `sed -n '85p' internal/store/fkcover_test.go` →
+[measured 069ab1f:internal/store/fkcover_test.go:85 · `sed -n '85p' internal/store/fkcover_test.go` →
 `if idx.pred != nil && !strings.Contains(strings.ToUpper(*idx.pred), "IS NOT NULL") {`].
 
 **Rows written before this migration.** Both new columns are `NULL` for every existing
@@ -937,15 +1044,19 @@ migration, not a reversal.
 
 **The Go types live in `internal/store` — forced, not chosen.** `PostingBasis`'s methods are
 unexported, so no other package can satisfy it
-[measured ac09e61:internal/store/basis.go:18-25 · `sed -n '18,25p' internal/store/basis.go` →
+[measured 069ab1f:internal/store/basis.go:18-25 · `sed -n '18,25p' internal/store/basis.go` →
 `type PostingBasis interface {` / `entrySQL() (string, error)` / `insert(ctx context.Context, tx pgx.Tx) (int64, error)`].
 `DeferredTask` and `RecurrentTask` are `internal/store` types beside `PlayerOperation` and
 `ManualCorrection`, each carrying `TaskType string`, `InstanceKey string` (empty stored as `NULL`
 via `NULLIF`) and `RunAt time.Time` — **by value, with no foreign key back to `scheduled_task`**
 (AC27), because delete-on-done means the task row is gone while its basis document and postings
-live on. And the doc comment that today says the sum type has "exactly the store package's two
+live on. That absence carries a **second** load beyond ledger survival: it is the half of D4's
+lock-mode condition this change controls. The condition is that *no* table anywhere references
+`scheduled_task`; AC27 enforces it for basis-document tables only, so this migration satisfies its
+half and the rest stays a named residual risk (D4, § Risks) rather than a guarantee this schema
+can make. And the doc comment that today says the sum type has "exactly the store package's two
 implementations" is rewritten to describe the set the package actually has (AC20)
-[measured ac09e61:internal/store/basis.go:11-13 · `sed -n '11,13p' internal/store/basis.go` →
+[measured 069ab1f:internal/store/basis.go:11-13 · `sed -n '11,13p' internal/store/basis.go` →
 `// PostingBasis is the sealed sum type of documents a journal_entry may` / `// reference — exactly the store package's two implementations,` / `// *PlayerOperation and *ManualCorrection (D8).`].
 
 **No posting signature ships here.** The scheduler moves no balance of its own; each mechanic
@@ -954,29 +1065,35 @@ it ships its handler (`docs/DESIGN.md` §13.4, spec *Out of scope*).
 
 ---
 
-### D15 — Propagation: the sites this diff falsifies, and the one word authorised in `docs/DESIGN.md`
+### D15 — Propagation: the sites this diff falsifies, and the two edits authorised in `docs/DESIGN.md`
 
 Membership is decided by `AGENTS.md` § Propagation Rule step 4 — every live doc must agree,
 history surfaces are left untouched. The list below is the class as known at design time;
 membership is re-derived at Step 8 by the same rule, not bounded by this table.
 
-Two claims travel together through §11 and its derived documents, and they need separate verdicts:
-the **table's spelling**, which this change corrects at every live site, and the **"one
+The claims that travel together through §11 and its derived documents need separate verdicts, and
+after the round-6 amendment there is one more of them than in round 3: the **table's spelling**, which this change corrects at every live site; the **claim
+query's row-lock mode**, which the round-6 amendment changes and which this change therefore
+corrects at every live site that quotes it, `docs/DESIGN.md` §11 included; and the **"one
 transaction per task with its effects"** invariant, which round 1's batch shape falsified and the
-chosen shape does not. The sites the round-1 design listed for the spelling only — plus
+chosen shape does not. The spelling and the mode land on the *same sentence* at more than one
+site, which is why the table below gives each site a verdict per claim rather than per file. The sites the round-1 design listed for the spelling only — plus
 `ai-docs/domain-invariants.md`, which it omitted entirely although `AGENTS.md` lists that file
 among the pages read on nearly every task
-[measured ac09e61:AGENTS.md:260,265 · `grep -n 'Read on nearly every task' AGENTS.md` → `260:Read on nearly every task:`;
+[measured 069ab1f:AGENTS.md:260,265 · `grep -n 'Read on nearly every task' AGENTS.md` → `260:Read on nearly every task:`;
 `sed -n '265p' AGENTS.md` → ``| [`ai-docs/domain-invariants.md`](…) | Ledger, telemetry, scheduler and Telegram-safety invariants |``] — are the reason the shape changed rather than the
 wording (§ Approach).
 
 | Site | What becomes false | Verdict |
 |---|---|---|
-| `docs/DESIGN.md` §11, the table's spelling | spells the table `scheduled_tasks` | **corrected — one word, under the owner's round-5 request** (below) |
-| `docs/DESIGN.md` §11, "в одной транзакции со своими эффектами" | nothing | **untouched, and true of the delivered shape** |
-| `AGENTS.md` § API Stability carve-out | spells the table `scheduled_tasks` | spelling only |
-| `ai-docs/key-decisions.md` KD-4 | spells the table `scheduled_tasks`; also says "each task executing in one transaction with its effects" | spelling only — the invariant clause **survives verbatim** |
-| `ai-docs/context.md` Scheduler block row | spells the table `scheduled_tasks`; also says "one transaction per task with its effects" | spelling only — the invariant clause **survives verbatim** |
+| `docs/DESIGN.md` §11 line 310, the table's spelling | spells the table `scheduled_tasks` | **corrected — edit 1 of 2, under the owner's round-5 request** (below) |
+| `docs/DESIGN.md` §11 line 310, the claim query's row lock | writes the claim as `FOR UPDATE SKIP LOCKED`, which the shipped worker does not issue | **corrected — edit 2 of 2, under the owner's round-6 request** (below). After it, §11 and the worker agree on the mode and there is no canonical-primitive divergence left to argue |
+| `docs/DESIGN.md` §11 line 310, "в одной транзакции со своими эффектами" | nothing | **untouched, and true of the delivered shape** |
+| `docs/DESIGN.md` §3.5 line 147, `SELECT session FOR UPDATE` | nothing — it is the raid-session FSM's guard query, a different mechanism | **untouched, and explicitly outside the authorisation** (below). A document-wide substitution would silently restate the raid FSM's documented lock mode |
+| `AGENTS.md` § API Stability carve-out | spells the table `scheduled_tasks` | spelling only — it quotes no lock mode |
+| `ai-docs/key-decisions.md` KD-4 | spells the table `scheduled_tasks` **and** writes the worker's claim as `FOR UPDATE SKIP LOCKED`, in one sentence; also says "each task executing in one transaction with its effects" | spelling **and** mode corrected; the invariant clause **survives verbatim** |
+| `ai-docs/context.md` Scheduler block row | spells the table `scheduled_tasks` **and** writes the worker's claim as `FOR UPDATE SKIP LOCKED`, in one sentence; also says "one transaction per task with its effects" | spelling **and** mode corrected; the invariant clause **survives verbatim** |
+| `.claude/agents/self-review.md` § 3, the Postgres-invariants rule | nothing — its claim is "a database-enforced invariant asserted against a mock → REJECT", which this change does not falsify; `FOR UPDATE SKIP LOCKED` appears there as an *example* of such an invariant, not as an assertion about this worker's query | **no edit, and the reason is recorded rather than assumed** (below) |
 | `ai-docs/domain-invariants.md` § 4, "A task executes in one transaction with its effects" | nothing — it does not name the table | **no edit** — recorded here because it is the invariant the shape was chosen to keep, and a reviewer must be able to see it was checked rather than missed |
 | `ai-docs/key-decisions.md` KD-27 | "the relaxation reaches **only** these keys" — a second optional-with-default class now exists | reworded |
 | `ai-docs/context.md` Architecture + Status paragraphs | do not name `internal/scheduler` | extended |
@@ -988,49 +1105,71 @@ wording (§ Approach).
 | `ai-docs/plans/INDEX.md` | has no row for this pair | row added |
 
 The plural-spelling rows and the invariant sentences are measured, not remembered
-[measured ac09e61 · `grep -rn 'scheduled_tasks' AGENTS.md ai-docs/context.md ai-docs/key-decisions.md docs/DESIGN.md | cut -c1-60` →
+[measured 069ab1f · `grep -rn 'scheduled_tasks' AGENTS.md ai-docs/context.md ai-docs/key-decisions.md docs/DESIGN.md | cut -c1-60` →
 `AGENTS.md:84:> **CARVE-OUT — data contracts are the opposite` /
 `ai-docs/key-decisions.md:15:**KD-4 — A self-written schedule` /
 ``ai-docs/context.md:36:| Scheduler | `scheduled_tasks` worker`` /
 `docs/DESIGN.md:310:  - Единственное исключение — **шедулер тасок`;
 the invariant sentences are quoted with their locators in § Approach], and so is the
 `env.go` sentence this change falsifies
-[measured ac09e61:internal/config/env.go:11-15 · `sed -n '11,15p' internal/config/env.go` →
+[measured 069ab1f:internal/config/env.go:11-15 · `sed -n '11,15p' internal/config/env.go` →
 `// Environment variable names, LAB_GAME_ prefixed …` … `// tuning variables (transport.go) are a separate, optional-with-default` / `// class, added on top by EnvKeys() (design D10).`]
 and KD-27's boundary sentence
-[measured ac09e61:ai-docs/key-decisions.md:73 · `grep -o 'The boundary, stated exactly:[^.]*\.' ai-docs/key-decisions.md` →
+[measured 069ab1f:ai-docs/key-decisions.md:73 · `grep -o 'The boundary, stated exactly:[^.]*\.' ai-docs/key-decisions.md` →
 `The boundary, stated exactly:* the relaxation reaches **only** these keys.`].
 
-**`docs/DESIGN.md:310` — the authorisation is for ONE WORD, and the implementor meets that bound
-at the point of the edit.** `AGENTS.md` § Project holds the design document to "**Implement from
-it. Never redesign it** without an explicit user request"
-[measured ac09e61:AGENTS.md:15 · `grep -n 'Never redesign it' AGENTS.md | cut -c1-120` →
+**`docs/DESIGN.md:310` — the authorisation is for TWO EDITS ON ONE LINE, and the implementor meets
+that bound at the point of the edit.** `AGENTS.md` § Project holds the design document to
+"**Implement from it. Never redesign it** without an explicit user request"
+[measured 069ab1f:AGENTS.md:15 · `grep -n 'Never redesign it' AGENTS.md | cut -c1-120` →
 `15:> | `docs/DESIGN.md` | **Implement from it. Never redesign it** without an explicit user request.`];
-the product owner supplied exactly that request at round 5, and the spec records it in Scope 11,
-*Key decisions* and *Source conflicts*
-[measured ac09e61:ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md · `grep -n 'explicit round-5 request\|round-5 amendment\|owner gave the explicit request' …spec.md` →
-matches in *Out of scope*, the *Key decisions* row on §11's plural spelling, the Acceptance-Criteria preamble, and AC22].
-What it authorises: the table's spelling in §11 becomes `scheduled_task`, so §11's prose obeys the
+the product owner supplied exactly that request twice — at round 5 for the spelling and at round 6
+for the lock mode — and the spec records the pair in Scope 11, *Key decisions*, *Source conflicts*
+and AC22
+[measured 069ab1f:ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md · `grep -n 'two edits' ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md | cut -c1-100` →
+matches in Scope 11 — at "for two edits **to the same line**" and at "the bound is **two edits and no more**" — plus the *Key decisions* row on editing §11 and AC22].
+
+**Edit 1 — the table's spelling.** `scheduled_tasks` → `scheduled_task`, so §11's prose obeys the
 singular-table-names decision §11 states itself — the disagreement the spec's *Source conflicts*
 records, with its own pin on both lines, and which this design does not re-derive because
 `docs/DESIGN.md`'s rules are cited by section, not by line
-[measured ac09e61:ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md:373-377 ·
-`sed -n '373,377p' …spec.md` → the two quoted §11 lines and their `[source: e64bcc6:docs/DESIGN.md:…]` pins].
+[measured 069ab1f:ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md:404-408 ·
+`sed -n '404,408p' ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md` → the quoted §11 lines — the plural spelling on line 310 and the singular-table-names decision on line 313 — with their `[source: e64bcc6:docs/DESIGN.md:…]` pins].
+
+**Edit 2 — the claim query's row-lock mode.** `FOR UPDATE SKIP LOCKED` → `FOR NO KEY UPDATE SKIP
+LOCKED` in §11's query sketch on that same line, so §11 stays true of the worker this task ships
+(§ Approach, D4). This edit is what removes the divergence rather than creating one: without it,
+the shipped worker and its own source document would state different lock modes, which is the
+condition the round-6 amendment exists to prevent.
+
+**The lock-mode edit is ONE LINE, not a document-wide substitution, and the other occurrence is
+named so the bound is checkable.** `docs/DESIGN.md` carries `FOR UPDATE` at line 310 — this
+task's — and at line 147, which is not
+[measured 069ab1f:docs/DESIGN.md:147,310 · `grep -n 'FOR UPDATE' docs/DESIGN.md | cut -c1-40` →
+`147:      SELECT session FOR UPDATE` / `310:  - Единственное исключение — **шедулер т`].
+**Line 147 is §3.5's `SELECT session FOR UPDATE` — the raid-session FSM's guard query, a different
+mechanism entirely, and it is NOT authorised.** A `sed`-style substitution across the file, or a
+careless editor-wide replace, would silently restate the documented lock mode of the raid FSM
+under cover of a scheduler change. The implementor edits line 310 and reads line 147 to confirm it
+is byte-identical afterwards; AC22 states the same bound as a criterion.
 
 **The trap on that same line, stated because the implementor will be looking straight at it.**
 Line 310 also carries *"Таска исполняется **в одной транзакции со своими эффектами** —
 exactly-once без двухфазных танцев."* — the edit target's own text, so it is pinned by line here
 rather than by section
-[measured ac09e61:docs/DESIGN.md:310 · `sed -n '310p' docs/DESIGN.md` → one line containing both
-``таблица `scheduled_tasks` (run_at, тип, payload, статус)`` and `Таска исполняется **в одной транзакции со своими эффектами** — exactly-once без двухфазных танцев.`].
+[measured 069ab1f:docs/DESIGN.md:310 · `sed -n '310p' docs/DESIGN.md` → one line carrying all three
+clauses: ``таблица `scheduled_tasks` (run_at, тип, payload, статус)``, ``воркер с `SELECT … WHERE run_at <= now() FOR UPDATE SKIP LOCKED LIMIT N```
+and `Таска исполняется **в одной транзакции со своими эффектами** — exactly-once без двухфазных танцев.` —
+the first two are the authorised edits, the third is not].
 That clause is **not** authorised, not adjustable, and not
 in need of adjustment: the shape this design delivers is one transaction per task, chosen so the
 sentence stays literally true (§ Approach). Editing it — to admit a batch, to gloss
-"subtransaction", to soften it in any direction — would be redesigning §11 under cover of a
-spelling fix, which is precisely what the authorisation excludes. The edit is: the token
-`scheduled_tasks` → `scheduled_task`, and nothing else on that line, in that paragraph, or in that
-section. `docs/**` is Russian by decision, so nothing on the line is translated either
-[measured ac09e61:AGENTS.md:4 · `grep -n 'Russian for two surfaces only' AGENTS.md | cut -c1-190` →
+"subtransaction", to soften it in any direction — would be redesigning §11 under cover of an
+authorised fix, which is precisely what the authorisation excludes. The edits are: the token
+`scheduled_tasks` → `scheduled_task`, and the clause `FOR UPDATE SKIP LOCKED` →
+`FOR NO KEY UPDATE SKIP LOCKED`, and nothing else on that line, in that paragraph, in that
+section, or on line 147. `docs/**` is Russian by decision, so nothing on the line is translated either
+[measured 069ab1f:AGENTS.md:4 · `grep -n 'Russian for two surfaces only' AGENTS.md | cut -c1-190` →
 `4:1) **English for every durable artefact** … **Russian for two surfaces only:** conversation w`].
 
 **AC19's exclusion set is exactly the classes the spec names, and no others.** After this change the
@@ -1039,13 +1178,45 @@ string `scheduled_tasks` survives only at:
 - `.gitignore`, where the match is the harness lock-file path `.claude/scheduled_tasks.lock` — a
   file belonging to the agent harness, not a spelling of this table at all, and renaming it would
   break the harness
-  [measured ac09e61:.gitignore:35 · `grep -n 'scheduled_tasks' .gitignore` → `35:.claude/scheduled_tasks.lock`];
+  [measured 069ab1f:.gitignore:35 · `grep -n 'scheduled_tasks' .gitignore` → `35:.claude/scheduled_tasks.lock`];
 - any file under `ai-docs/plans/done/`, which is history rather than a live surface;
 - this task's own spec and design, which quote the superseded spelling as the evidence for
   correcting it and would falsify themselves if they could not.
 
 `docs/DESIGN.md` is **not** in that set — it is corrected, per the row above. Round 1 excluded it,
 and that exclusion is withdrawn.
+
+**AC35's exclusion set, likewise exactly the surfaces the criterion names.** After this change a
+search for the old clause still matches, without any of the matches violating AC35:
+
+- any file under `ai-docs/plans/done/` — history rather than a live surface;
+- this task's own spec and this design, which quote the pre-change clause as the evidence for
+  changing it;
+- this task's `*.spec.md.state.md` interview state, which is retired before the PR in any case;
+- `docs/DESIGN.md` line 147 — §3.5's raid-session lock, not the scheduler's claim (above);
+- `.claude/agents/self-review.md` § 3, whose Postgres-invariants rule names `FOR UPDATE SKIP
+  LOCKED` **behaviour** as an example of a database-enforced invariant. AC35 places it outside the
+  criterion; the judgement AC35 leaves to this design is whether it nevertheless falls inside
+  AC22's propagation class, and the design's call is **no, with the reasoning recorded**: the
+  sentence asserts nothing about this worker's query, and its operative clause — asserting a
+  database-enforced invariant against a mock is a REJECT — is not falsified by the mode change.
+  What the mode change does do is make the *example* name a clause no query in the tree issues,
+  which is an under-coverage rather than a falsehood. Acting on it would edit an instruction file
+  and drag in its whole sync group
+  [measured 069ab1f:ai-docs/propagation-groups.md:7 · `grep -n 'self-review' ai-docs/propagation-groups.md | head -1 | cut -c1-140` →
+  ``7:| `.claude/agents/self-review.md` | `.claude/agents/review-findings.md` AND `.claude/skills/project-review/SKILL.md` (Review group) |``],
+  which is scope this task was not given. It is put to the owner in § Open questions as an ask,
+  not carried out as a notification.
+
+**AC36 binds this whole propagation, not only the design.** Every surface the table above touches —
+the corrected `docs/DESIGN.md` line, KD-4, the `context.md` Scheduler row, the code comments the
+implementor writes, and the commit messages — states the mode's reason as the pair in § Approach
+(the weakest lock that expresses what a claim does; the `DELETE` taking `FOR UPDATE` strength at
+the moment it is needed), together with the FK condition **at the reach AC27 actually enforces**
+(D4). None of them may frame the mode as a throughput, latency, contention or lock-weight
+improvement, and none may state the coupling as a completed guarantee. The propagation sites that
+merely *quote the clause* (KD-4, the `context.md` row) need no reason at all: replacing the clause
+is the whole edit, and adding a justification there is how a forbidden framing gets written.
 
 ---
 
@@ -1054,16 +1225,16 @@ and that exclusion is withdrawn.
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
 | 1 | Migration `00002_scheduler.sql`: `scheduled_task_state`, `scheduled_task` with the live-scoped identity index, the due index and its CHECKs, `deferred_task`, `recurrent_task`, the `journal_entry` column + CHECK + partial-unique-index extension (D5, D14). Update the migration suite: table list and `goose_db_version` row count (both gate-forced), index list and `journal_entry_exactly_one_basis` definition (**AC3-forced and ungated** — neither can fail on its own, § Risks); add the `scheduled_task` column-set assertion that carries AC31 and the AC3 shape assertion | `internal/store/migrations/00002_scheduler.sql`, `internal/store/migrate_test.go`, `internal/store/schema_test.go` | — |
-| 2 | `store.DeferredTask` / `store.RecurrentTask` implementing `PostingBasis`; rewrite the `PostingBasis` doc comment (AC20); tests for posting under each new basis, the two-non-null refusal, and ledger survival of a deleted task row (AC4, AC27) | `internal/store/basis.go`, `internal/store/basis_test.go`, `internal/store/schema_test.go` | 1 |
+| 2 | `store.DeferredTask` / `store.RecurrentTask` implementing `PostingBasis`; rewrite the `PostingBasis` doc comment (AC20); tests for posting under each new basis, the two-non-null refusal, and ledger survival of a deleted task row — the FK assertion scoped to basis-document tables, which is AC27's scope and not the wider condition D4 names (AC4, AC27) | `internal/store/basis.go`, `internal/store/basis_test.go`, `internal/store/schema_test.go` | 1 |
 | 3 | `config.Scheduler`, its defaults, `loadScheduler`, `schedulerEnvKeys()`, the `EnvKeys()` append, the `Config.Scheduler` field and `Load` wiring; the falsified doc comments in `env.go` and `config.go`; the `.env.example` block; the absent/present/malformed and example-matches-defaults tests (D13, AC15) | `internal/config/scheduler.go`, `internal/config/env.go`, `internal/config/config.go`, `internal/config/scheduler_test.go`, `.env.example` | — |
 | 4 | Package foundation with no database: `doc.go`, `errors.go`, `task.go` (`Type`, `TaskID`, `Task`, `Request`, `Outcome`, `DeadTask`, and `Handler` with the ctx-propagation contract in its doc comment — D11), `observe.go` (`Observation`, `LoopObservation`, `Observer`, `FailureKind`), `registry.go` (`Declaration`, `Recurrence`, `Registry`, `NewRegistry`), `cadence.go` (`Cadence`, `Every`) and the pure `backoff`; exact table tests for `backoff` and `Every` and the registry's refusals (D1, D8, D9, D12). Depends on nothing: none of these files reads `config.Scheduler`, which arrives with `Options` in subtask 6 | `internal/scheduler/doc.go`, `errors.go`, `task.go`, `observe.go`, `registry.go`, `cadence.go`, `cadence_test.go`, `registry_test.go` | — |
 | 5 | The insertion surface: `(*Registry).Schedule` and `DeadTasks`; the package's `TestMain` and schema fixture; tests for the payload round-trip, the unregistered-type refusal at insertion, the duplicate-identity refusal, the coexisting keyless one-shots, and re-scheduling an identity whose earlier row is dead (AC21 insertion, AC24, AC29) | `internal/scheduler/schedule.go`, `schedule_test.go`, `scheduler_test.go` | 1, 4 |
-| 6 | The execution cycle: `Options`, `New`, `RunOnce`, the discovery statement, the per-task transaction with its re-claim and handler savepoint, the Done and No-op settlement paths including the failed savepoint release (D2 step 6); tests for batch bounding and skip-not-wait, two concurrent workers, effects-and-settlement atomicity, the no-op's absent writes, the silent skip of a row another worker took, delete-on-done both directions and the recurrence's single live row (AC5, AC6, AC7, AC8, AC11, AC25) | `internal/scheduler/worker.go`, `execute.go`, `claim.go`, `worker_test.go` | 3, 5 |
+| 6 | The execution cycle: `Options`, `New`, `RunOnce`, the discovery statement and the per-id re-claim — **both `FOR NO KEY UPDATE … SKIP LOCKED`, neither `FOR UPDATE` (D4, AC35)** — the per-task transaction with its handler savepoint, the Done and No-op settlement paths including the failed savepoint release (D2 step 6); tests for batch bounding and skip-not-wait, two concurrent workers, effects-and-settlement atomicity, the no-op's absent writes, the silent skip of a row another worker took, delete-on-done both directions and the recurrence's single live row (AC5, AC6, AC7, AC8, AC11, AC25, AC35 worker half) | `internal/scheduler/worker.go`, `execute.go`, `claim.go`, `worker_test.go` | 3, 5 |
 | 7 | The failure policy: attempt counting, persisted backoff, the one-shot give-up, the recurrent reschedule-to-next-cadence, and the undeclared-type settlement that never reaches `dead` and never increments the counter; tests for exact attempt counts and the terminal state, dead-row enumeration, the decode failure, the never-terminal recurrence, the undeclared recurrence still coming due after more than `cap` refusals, and the rising/resetting counter (AC9, AC10, AC21 execution time, AC26, AC32, AC34) | `internal/scheduler/execute.go`, `failure_test.go` | 6 |
 | 8 | The loop and the seam: `Run`, the poll interval, emit-after-commit, the loop observation; tests collecting observations for a success, a no-op, a retry, a give-up and a repeatedly failing recurrence, plus non-default tuning values changing observed behaviour and the nil-observer path (AC12, AC13, AC14 worker half) | `internal/scheduler/worker.go`, `observe.go`, `observe_test.go` | 7 |
 | 9 | The per-task execution deadline: the `SET LOCAL` statement and idle-in-transaction timeouts, the handler goroutine, abandonment of that task's transaction, the connection hijack and its watchdog close, `FailureDeadline` / `FailureRolledBack`; tests for the blocked handler, the row becoming claimable within ≈ 2 × the deadline, the observation, the untouched neighbours in the same cycle, the ctx-ignoring handler as the contract's negative case, and the aborted-transaction self-healing property (AC30, AC31 behavioural half) | `internal/scheduler/execute.go`, `worker.go`, `deadline_test.go` | 8 |
-| 10 | `Reconcile`: the seed and the correction; tests for the missing-row seed, the seed against a dead row of the same identity, the shortened-cadence correction, two concurrent start-ups producing one row, and the imminent occurrence left alone (AC33) | `internal/scheduler/reconcile.go`, `reconcile_test.go` | 8 |
-| 11 | Propagation (D15): the table's spelling at its live sites — **`docs/DESIGN.md:310` included, one word only, per D15's bound** — KD-27's boundary sentence, KD-4, the `context.md` Architecture/Status/Scheduler-row updates, the `INDEX.md` row | `docs/DESIGN.md`, `AGENTS.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–10 |
+| 10 | `Reconcile`: the seed and the correction — the correction CTE takes `FOR NO KEY UPDATE … SKIP LOCKED` (D10, AC35); tests for the missing-row seed, the seed against a dead row of the same identity, the shortened-cadence correction, two concurrent start-ups producing one row, and the imminent occurrence left alone (AC33, AC35 reconcile half) | `internal/scheduler/reconcile.go`, `reconcile_test.go` | 8 |
+| 11 | Propagation (D15): the table's spelling **and the claim query's row-lock mode** at their live sites — **`docs/DESIGN.md:310` included, exactly two edits on that one line per D15's bound, with line 147 left byte-identical** — KD-4 and the `context.md` Scheduler row (two falsified claims each), KD-27's boundary sentence, the `context.md` Architecture/Status updates, the `INDEX.md` row; and the AC36 check that no surface in the change frames the mode as a performance improvement or states the FK coupling as a completed guarantee (AC19, AC22, AC35 documentation half, AC36) | `docs/DESIGN.md`, `AGENTS.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–10 |
 
 ---
 
@@ -1095,7 +1266,7 @@ Two groups, within the default maximum of 4; no user approval is required.
   names, the other being the row below; a row locked forever is invisible, because `SKIP LOCKED`
   makes every other worker pass over it silently.
   Mitigated by D11's layers, the database's being the one that does not depend on our process —
-  `[measured postgres:18.6 · a session holding `id = 8` under `SET LOCAL idle_in_transaction_session_timeout = '2s'`; a concurrent `… WHERE id = 8 … FOR UPDATE SKIP LOCKED` at `t≈0.5s` → `rows=[]`, at `t≈3.0s` → `rows=[8]`; the holder's next statement → `FATAL: terminating connection due to idle-in-transaction timeout`]`.
+  `[measured postgres:18.6 · a session holding `id = 8` under `FOR NO KEY UPDATE SKIP LOCKED` with `SET LOCAL idle_in_transaction_session_timeout = '2s'`; a concurrent `SELECT id … WHERE id = 8 … FOR NO KEY UPDATE SKIP LOCKED` at `t≈0.5s` → `(0 rows)`, at `t≈3.0s` → `8`; the holder's next statement → `FATAL: terminating connection due to idle-in-transaction timeout`]`.
 - **The row's release after a deadline breach takes up to ≈ 2 × the configured deadline**, because
   layer 2's clock starts when the session goes idle, not when the handler starts. A test written
   against a single deadline would be flaky by construction —
@@ -1112,7 +1283,7 @@ Two groups, within the default maximum of 4; no user approval is required.
   `FailureDeadline` observation that still fires, and by the watchdog's close on the handler's
   return; the mechanism that would bound it regardless of the handler is named in § Open questions
   for the owner —
-  `[measured postgres:18.6 · a session under `SET LOCAL statement_timeout = '1s'` and `SET LOCAL idle_in_transaction_session_timeout = '1s'`, holding a row `FOR UPDATE` and issuing `SELECT pg_sleep(0.2)` repeatedly → `holder-still-alive | 00:00:04.02894`, neither timeout having fired, and a concurrent `… FOR UPDATE SKIP LOCKED` on that row → `(0 rows)`]`.
+  `[measured postgres:18.6 · a session under `SET LOCAL statement_timeout = '1s'` and `SET LOCAL idle_in_transaction_session_timeout = '1s'`, holding a row under `FOR NO KEY UPDATE SKIP LOCKED` and issuing `SELECT pg_sleep(0.2)` repeatedly → `holder-still-alive | 00:00:04.026056`, neither timeout having fired, and a concurrent `SELECT id … FOR NO KEY UPDATE SKIP LOCKED` on that row → `(0 rows)`]`.
 - **A handler that swallows a database error and then reports success** aborts its subtransaction,
   so the savepoint release fails and the reported outcome cannot be written. Mitigated by settling
   it as a failure through D7's Failed rows rather than letting the transaction roll back whole —
@@ -1122,11 +1293,11 @@ Two groups, within the default maximum of 4; no user approval is required.
 - **A discovery race wastes work**: two workers polling at the same instant discover overlapping
   ids and each loses the re-claim on the ids the other took first. Bounded — the loser's cost is a
   primary-key lookup returning no rows, and no observation is emitted —
-  `[measured postgres:18.6 · a second worker's `… WHERE id = 5 … FOR UPDATE SKIP LOCKED` against a row held by an executing transaction → `(0 строк)`, and the same statement for the free `id = 6` → `6`]`.
+  `[measured postgres:18.6 · a second worker's `SELECT id … WHERE id = 5 … FOR NO KEY UPDATE SKIP LOCKED` against a row held by an executing transaction → `(0 rows)`, and the same statement for the free `id = 6` → `6`]`.
 - **One transaction per task costs a transaction per task.** The cycle now opens `BEGIN`/`COMMIT`
   per discovered id instead of once per batch. Accepted deliberately: it is what keeps §11's
   sentence and its derived sentences literally true (§ Approach, D15), and the extra work is
-  a `BEGIN`, the `SET LOCAL` statements and a primary-key `SELECT … FOR UPDATE` — `[derived → the AC5/AC6 tests, which run whole cycles against a real server]`.
+  a `BEGIN`, the `SET LOCAL` statements and a primary-key `SELECT … FOR NO KEY UPDATE SKIP LOCKED` — `[derived → the AC5/AC6 tests, which run whole cycles against a real server]`.
 - **A dead identity that never frees would stop a chain forever.** Closed by scoping the identity
   index to live rows and by never routing an undeclared row to `dead` (D5, D7) —
   `[measured postgres:18.6 · with only a dead `('day.close','day.close')` row, the D10 seed → `INSERT 0 1`, leaving `pending | dead` = `1 | 1`; with a pending row, the same seed → `INSERT 0 0`]`.
@@ -1142,9 +1313,9 @@ Two groups, within the default maximum of 4; no user approval is required.
   CHECK still contains — so those two must be extended to satisfy **AC3**, and **no gate will
   remind the implementor**. An implementor who trusts the gate ships a green suite that asserts the old
   shape —
-  `[measured 9e6c05b:internal/store/migrate_test.go:36,42 · `sed -n '36p;42p' internal/store/migrate_test.go` → `want := []string{` / `if !slices.Equal(tables, want) {`; 9e6c05b:internal/store/migrate_test.go:131 · `sed -n '131p' internal/store/migrate_test.go` → `t.Fatalf("goose_db_version rows = %d, want 2", count)`; 9e6c05b:internal/store/migrate_test.go:219,226 · `sed -n '219p;226p' internal/store/migrate_test.go` → `for _, want := range []string{` / `if !found[want] {`; 9e6c05b:internal/store/migrate_test.go:235 · `sed -n '235p' internal/store/migrate_test.go` → `"journal_entry_exactly_one_basis": "num_nonnulls",`]`.
+  `[measured 069ab1f:internal/store/migrate_test.go:36,42 · `sed -n '36p;42p' internal/store/migrate_test.go` → `want := []string{` / `if !slices.Equal(tables, want) {`; 069ab1f:internal/store/migrate_test.go:131 · `sed -n '131p' internal/store/migrate_test.go` → `t.Fatalf("goose_db_version rows = %d, want 2", count)`; 069ab1f:internal/store/migrate_test.go:219,226 · `sed -n '219p;226p' internal/store/migrate_test.go` → `for _, want := range []string{` / `if !found[want] {`; 069ab1f:internal/store/migrate_test.go:235 · `sed -n '235p' internal/store/migrate_test.go` → `"journal_entry_exactly_one_basis": "num_nonnulls",`]`.
 - **KD-27's boundary sentence and `Config`'s doc comment become false** the moment a second
-  optional-with-default class exists — `[measured ac09e61:ai-docs/key-decisions.md:73 · `grep -o 'The boundary, stated exactly:[^.]*\.' ai-docs/key-decisions.md` → `The boundary, stated exactly:* the relaxation reaches **only** these keys.`; ac09e61:internal/config/config.go:38-39 · `sed -n '38,39p' internal/config/config.go` → `// returns an error naming every rejected key. Transport is the one` / `// exception: its fields are individually optional-with-default, so an`]`.
+  optional-with-default class exists — `[measured 069ab1f:ai-docs/key-decisions.md:73 · `grep -o 'The boundary, stated exactly:[^.]*\.' ai-docs/key-decisions.md` → `The boundary, stated exactly:* the relaxation reaches **only** these keys.`; 069ab1f:internal/config/config.go:38-39 · `sed -n '38,39p' internal/config/config.go` → `// returns an error naming every rejected key. Transport is the one` / `// exception: its fields are individually optional-with-default, so an`]`.
 - **`jsonb` normalises, so a byte-exact payload round trip does not hold** — a test asserting raw
   bytes would pass by luck and fail on a reordered key —
   `[measured postgres:18.6 · `SELECT '{"b":1,"a":{"c":null},"b":2}'::jsonb` → `{"a": {"c": null}, "b": 2}`]`.
@@ -1158,12 +1329,39 @@ Two groups, within the default maximum of 4; no user approval is required.
   out-of-contract class is surfaced to the orchestrator rather than absorbed —
   `[derived → each subtask's gate re-run, per the /task Step-8 loop]`.
 - **`internal/testdb` must stay out of `cmd/bot`'s dependency graph** (KD-20)
-  `[measured ac09e61:ai-docs/key-decisions.md:53 · `grep -n 'KD-20 ' ai-docs/key-decisions.md | cut -c1-88` → ``53:**KD-20 — Tests provision Postgres through testcontainers-go, and never skip.** `inte``]`,
+  `[measured 069ab1f:ai-docs/key-decisions.md:53 · `grep -n 'KD-20 ' ai-docs/key-decisions.md | cut -c1-88` → ``53:**KD-20 — Tests provision Postgres through testcontainers-go, and never skip.** `inte``]`,
   so the scheduler's fixture is imported only from `_test.go` files — `[derived → AC18's check on the resulting tree]`.
-- **Subtask 11 edits a decisions document.** The authorisation covers one token on one line; the
-  same line carries the invariant clause this design was reshaped to preserve, so an implementor
-  editing "while they are there" would violate `AGENTS.md` § Project. Mitigated by D15 stating the
-  bound where the edit is prescribed — `[derived → the AC22 check that no other sentence of `docs/DESIGN.md` differs from its pre-change text]`.
+- **Subtask 11 edits a decisions document, twice, on one line.** The authorisation covers exactly
+  the table's spelling and the claim query's row-lock mode on line 310; the *same line* carries the
+  one-transaction-with-its-effects clause this design was reshaped to preserve, so an implementor
+  editing "while they are there" would violate `AGENTS.md` § Project. Mitigated by D15 stating both
+  bounds where the edits are prescribed — `[derived → the AC22 check that no other sentence of `docs/DESIGN.md` differs from its pre-change text]`.
+- **The lock-mode edit invites a document-wide substitution, and the second occurrence is a
+  different mechanism.** `docs/DESIGN.md` carries `FOR UPDATE` at line 310 and at line 147; a
+  `sed`-style or editor-wide replace would silently restate §3.5's raid-session guard query, which is not this
+  task's to change and whose lock mode nobody has decided. Mitigated by D15 naming line 147 as an
+  exclusion at the point of the edit, and by AC22's byte-identical requirement on every other line —
+  `[measured 069ab1f:docs/DESIGN.md:147,310 · `grep -n 'FOR UPDATE' docs/DESIGN.md | cut -c1-40` → `147:      SELECT session FOR UPDATE` / `310:  - Единственное исключение — **шедулер т`]`.
+- **The lock-mode equivalence rests on a condition wider than any criterion enforces — a named,
+  accepted residual risk.** `FOR NO KEY UPDATE` and `FOR UPDATE` behave identically here only while
+  **no table anywhere references `scheduled_task` by a foreign key**; AC27 forbids such a key from
+  **basis-document tables only** (the scope the owner kept at round 7). A foreign key added later
+  from any other table would pass every criterion in this spec and still invalidate the
+  equivalence: the referential-integrity trigger's `FOR KEY SHARE` on the referenced row, which
+  `FOR UPDATE` blocks, is permitted under the weaker mode and mints a MultiXactId instead. Not
+  mitigated, and deliberately not closed here — widening the ban is the criterion the owner
+  declined, so what this design owns is stating the risk at its true reach wherever the coupling
+  appears (D4, D14, and the propagation of D15) —
+  `[measured postgres:18.6 · a holder open on `SELECT id FROM parent WHERE id = 1 FOR NO KEY UPDATE`, a concurrent `INSERT INTO child VALUES (11,1)` → `INSERT 0 1` with the parent tuple's `heap_xmax_is_multi | t`; the same holder under `FOR UPDATE`, the concurrent insert → `ERROR: canceling statement due to statement timeout` / `SQL statement "SELECT 1 FROM ONLY "public"."parent" x WHERE "id" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x"`]`.
+- **A performance framing for the lock mode would violate AC36, and it is the framing a reader
+  reaches for.** "Weaker lock" reads as "faster", and the round-6 investigation measured no
+  separation between the modes on this task's own claim pattern. Mitigated by stating the true
+  reason and the negation together everywhere the mode is argued — § Approach, D4 and every
+  propagation site D15 lists — and by the propagation sites that merely quote the clause carrying
+  no justification at all — `[derived → AC36's check that no document, comment or commit message in the change justifies the mode as a throughput, latency, contention or lock-weight improvement]`.
+- **`make verify` is the whole-tree gate and it includes the race gate (AC23).** Each subtask runs
+  its own gates, but a tree that is green subtask-by-subtask is not thereby green as a whole —
+  `[derived → the Step-9 `make verify` run on the finished tree, whose race-enabled test gate is AC23's binding half]`.
 
 ---
 
@@ -1173,14 +1371,14 @@ Every claim in this section is about a test that does not yet exist, so every ta
 `[derived → …]`. Every database test runs against a real PostgreSQL server through
 `internal/testdb`, each in its own schema, with `TestMain` calling `testdb.Main` exactly as
 `internal/store` does
-[measured ac09e61:internal/store/store_test.go:15 · `grep -n 'os.Exit(testdb.Main(m))' internal/store/store_test.go` → `15:	os.Exit(testdb.Main(m))`]
+[measured 069ab1f:internal/store/store_test.go:15 · `grep -n 'os.Exit(testdb.Main(m))' internal/store/store_test.go` → `15:	os.Exit(testdb.Main(m))`]
 (AC17) — no fake, no mock, and no skip when no database is available.
 
 **Fixtures and helpers, in `internal/scheduler`:**
 
 - `newScheduler(tb)` — a `testdb.Schema` pool with `store.Migrate` applied, closed on cleanup; the
   shape `internal/store`'s `newStore`
-  [measured ac09e61:internal/store/store_test.go:20 · `grep -n '^func newStore' internal/store/store_test.go` → `20:func newStore(tb testing.TB) *pgxpool.Pool {`]
+  [measured 069ab1f:internal/store/store_test.go:20 · `grep -n '^func newStore' internal/store/store_test.go` → `20:func newStore(tb testing.TB) *pgxpool.Pool {`]
   already uses `[derived → subtask 5]`.
 - `recordingObserver` — collects `Observation` and `LoopObservation` values behind a mutex, so
   every assertion on the seam is exact and the collector is race-clean `[derived → AC12]`.
@@ -1227,10 +1425,12 @@ Every claim in this section is about a test that does not yet exist, so every ta
 **The execution cycle** (`worker_test.go`, subtask 6):
 
 - More due tasks than the limit: one `RunOnce` executes at most the limit, and with a second
-  transaction holding some rows the discovery claim returns the unlocked ones rather than blocking
-  `[derived → AC5]`.
+  transaction holding some rows **under the same `FOR NO KEY UPDATE … SKIP LOCKED` the worker
+  issues** the discovery claim returns the unlocked ones rather than blocking — the exclusion
+  half AC35 assigns to this test `[derived → AC5, AC35]`.
 - Two workers, many due tasks, run concurrently under `-race`: every task's handler ran exactly
-  once, counted behind a mutex `[derived → AC6]`.
+  once, counted behind a mutex — the second half of AC35's "asserted rather than assumed"
+  `[derived → AC6, AC35]`.
 - A row discovered but taken by another transaction before its re-claim is skipped **silently**:
   no handler call, no observation, and the cycle continues to the next id `[derived → AC6, D2]`.
 - A handler that writes and then returns an error: none of its writes are visible after the cycle,
@@ -1321,8 +1521,10 @@ Every claim in this section is about a test that does not yet exist, so every ta
   `[derived → AC33]`.
 - Two `Reconcile` calls racing under `-race` produce exactly one row, and the loser's insert is the
   constraint's no-op rather than a lock wait `[derived → AC33, AC29]`.
-- An imminent occurrence (inside a poll interval) and an in-flight occurrence (its row locked by an
-  open transaction) are both left untouched `[derived → AC33]`.
+- An imminent occurrence (inside a poll interval) and an in-flight occurrence (its row held by an
+  open transaction under the same `FOR NO KEY UPDATE … SKIP LOCKED` the correction CTE takes) are
+  both left untouched — the correction returns having updated nothing rather than waiting on the
+  lock `[derived → AC33, AC35]`.
 
 **In `internal/store`** (subtasks 1 and 2):
 
@@ -1337,10 +1539,38 @@ Every claim in this section is about a test that does not yet exist, so every ta
   row has exactly one non-null basis column; a row attempting two is refused by the database with
   the CHECK's name `[derived → AC4]`.
 - A task posts under a new basis type, the task row is then deleted, and the `journal_entry` and
-  `posting` rows survive and still balance `[derived → AC27]`.
+  `posting` rows survive and still balance; and neither new basis-document table declares a foreign
+  key to `scheduled_task` — AC27's scope, and not the wider no-FK-anywhere condition D4's lock-mode
+  equivalence rests on `[derived → AC27]`.
 - `scheduled_task`'s column set contains no execution marker, no heartbeat and no `completed` state
   value; the identity index's predicate names both `instance_key IS NOT NULL` and
   `state = 'pending'` `[derived → AC31, AC25, AC29]`.
+
+**How AC35 and AC36 are verified, since neither is a new test.** AC35 has two halves and they are
+discharged differently, which is the point worth writing down.
+
+- **The behavioural half** — that the exclusion protocol is unchanged under the weaker mode — is
+  what AC35's own closing sentence assigns to AC5 and AC6, "asserted rather than assumed". Those
+  tests need no new case: they exercise the discovery claim and the per-id re-claim, which now
+  issue `FOR NO KEY UPDATE … SKIP LOCKED`, so a mode that failed to exclude would fail them.
+  `Reconcile`'s in-flight case (AC33) is the third locking query's half `[derived → AC5, AC6, AC33]`.
+- **The textual half** — that *no* query against `scheduled_task` in the change takes
+  `FOR UPDATE` — is a property of the **diff**, not of any execution, and no test can establish it:
+  a test observes only the statements the paths it drives happen to issue. It is discharged by a
+  source sweep over the change in subtask 11 (`git grep -n 'FOR UPDATE'` across the tracked tree,
+  reconciled against the exclusion set D15 names) and re-run by self-review before the push
+  `[derived → AC35's textual clause, checked in subtask 11 and again at self-review]`.
+- **AC36** is likewise a property of the change's prose rather than of its behaviour: no document,
+  comment or commit message may justify the mode as a throughput, latency, contention or
+  lock-weight improvement, and every surface that states the FK coupling states it at AC27's actual
+  reach. The check is a read of the change's own text, in the same sweep
+  `[derived → AC36, checked in subtask 11 and again at self-review]`.
+
+**A note on the AC27 test's scope, so it is not read as more than it is.** The `internal/store`
+case above asserts that no *basis-document* table carries a foreign key to `scheduled_task` — the
+scope AC27 has. It does **not** establish D4's wider condition, which no criterion in this spec
+enforces; the design records that gap as a residual risk (§ Risks) and does not assert it here
+`[derived → AC27]`.
 
 **No golden fixture is specified by this task.** Nothing here is a pure simulation whose output is
 snapshotted; the combat-golden rule applies to `combat()` and its callers, not to a worker whose
@@ -1350,6 +1580,20 @@ observable outputs are database rows and observation structs.
 
 ## Open questions
 
+- **`.claude/agents/self-review.md`'s Postgres-invariants example names a clause no query in the
+  tree will issue — an ask, not a notification.** Its rule is "a ledger, item-machine or scheduler
+  test that asserts a database-enforced invariant (…, `FOR UPDATE SKIP LOCKED` behaviour) against a
+  mock or an in-memory fake → REJECT". AC35 puts that surface outside the criterion, and the
+  design's call is that AC22 does not require the edit either: the rule's operative claim is not
+  falsified, since it asserts something about mocks, not about this worker's mode (D15). What the
+  change does leave behind is an *example* that no longer names any clause in the tree, which is
+  under-coverage rather than a falsehood — a reviewer applying the example literally to a scheduler
+  test could miss the same defect under the new spelling. The minimal repair is to drop the mode
+  word so the example reads `SKIP LOCKED` behaviour, covering both. It is **not** done here for two
+  reasons: editing that file drags in its declared sync group (`review-findings.md` and
+  `project-review/SKILL.md`), and generalising a review rule nobody asked to generalise is
+  unapproved scope in the same way narrowing one would be. The owner's call — leave it, or
+  authorise the one-word generalisation plus its sync-group check as part of subtask 11.
 - **The dead-identity property is asserted as a design-level test, not as a criterion.** The
   round-2 review asked for an AC-level assertion that a seed against a dead row of the same
   identity leaves exactly one pending row. A new criterion is a spec amendment and routes through
@@ -1363,8 +1607,8 @@ observable outputs are database rows and observation structs.
   from another pooled connection after the breach — available to an ordinary role, since a role may
   terminate a backend belonging to itself
   [measured postgres:18.6 · as a role with `rolsuper = f`, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'app' AND pid <> pg_backend_pid()` → `t`,
-  then `SELECT id … FOR UPDATE SKIP LOCKED` on the row that backend held → `2 | claimable-after-terminate`,
-  and the terminated session's next statement → `connection to server was lost`], with the backend's
+  then `SELECT id … FOR NO KEY UPDATE SKIP LOCKED` on the row that backend had held under `FOR NO KEY UPDATE` → `6 | claimable-after-terminate`,
+  and the terminated session's own output → `FATAL: terminating connection due to administrator command` / `connection to server was lost`], with the backend's
   PID a plain field read on the hijacked connection
   [measured pgx/v5@v5.10.0:pgconn/pgconn.go:708-710 · `sed -n '708,710p' pgconn/pgconn.go` →
   `func (pgConn *PgConn) PID() uint32 {` / `return pgConn.pid` / `}`]. It needs no new grant — the
