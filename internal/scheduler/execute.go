@@ -18,8 +18,14 @@ const setTimeoutsSQL = `SELECT set_config('statement_timeout', $1, true), set_co
 
 // executeOne runs id's whole per-task transaction (design D2's steps
 // 1-8, minus the per-task execution deadline, which design D11/subtask 9
-// adds around the handler call below).
-func (w *Worker) executeOne(ctx context.Context, id TaskID) error {
+// adds around the handler call below). batchSize is the discovery
+// cardinality of the cycle id came from (AC12's Observation.BatchSize).
+// An Observation is emitted after COMMIT succeeds — never before, since
+// an observation emitted before the commit is a claim about work that
+// may still roll back (design D2) — except when the row was skipped at
+// re-claim, which produces no observation at all because nothing
+// executed.
+func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error {
 	tx, err := w.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("scheduler: begin task %d: %w", id, err)
@@ -46,6 +52,15 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID) error {
 		return tx.Commit(ctx)
 	}
 
+	// The execution instant t (design D3): read once, before the handler
+	// runs. Its one job is AC12's lag; every future run_at is computed
+	// from the settlement instant instead (D7).
+	t, err := readSettlementInstant(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("scheduler: read execution instant for task %d: %w", id, err)
+	}
+	obs := Observation{Type: task.Type, Lag: t.Sub(task.RunAt), BatchSize: batchSize}
+
 	decl, declared := w.registry.declaration(task.Type)
 	if !declared {
 		if err := settleUnregistered(ctx, tx, id, w.cfg.RetryMaxDelay); err != nil {
@@ -55,6 +70,10 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID) error {
 			return fmt.Errorf("scheduler: commit task %d: %w", id, err)
 		}
 		committed = true
+		obs.Outcome = OutcomeFailed
+		obs.Failure = FailureUnregistered
+		obs.ConsecutiveFailures = task.ConsecutiveFailures
+		w.observeTask(obs)
 		return nil
 	}
 
@@ -74,12 +93,18 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID) error {
 	if err := settleOutcome(ctx, tx, task, decl, outcome, handlerErr, w.cfg); err != nil {
 		return fmt.Errorf("scheduler: settle task %d: %w", id, err)
 	}
-	_ = failure // reported via the observation seam, wired in a later subtask
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("scheduler: commit task %d: %w", id, err)
 	}
 	committed = true
+
+	obs.Outcome = outcome
+	obs.Failure = failure
+	if outcome == OutcomeFailed {
+		obs.ConsecutiveFailures = task.ConsecutiveFailures + 1
+	}
+	w.observeTask(obs)
 	return nil
 }
 

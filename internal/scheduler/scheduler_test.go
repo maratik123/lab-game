@@ -77,3 +77,40 @@ func (h *fixedOutcomeHandler) Execute(_ context.Context, _ pgx.Tx, task Task) (O
 	h.seen = append(h.seen, task)
 	return h.outcome, h.err
 }
+
+// recordingObserver collects every Observation and LoopObservation
+// behind a mutex, so an assertion on the seam is exact and the collector
+// is race-clean.
+type recordingObserver struct {
+	mu    sync.Mutex
+	tasks []Observation
+	loops []LoopObservation
+}
+
+func (o *recordingObserver) ObserveTask(obs Observation) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.tasks = append(o.tasks, obs)
+}
+
+func (o *recordingObserver) ObserveLoop(obs LoopObservation) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.loops = append(o.loops, obs)
+}
+
+func (o *recordingObserver) Tasks() []Observation {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	out := make([]Observation, len(o.tasks))
+	copy(out, o.tasks)
+	return out
+}
+
+func (o *recordingObserver) Loops() []LoopObservation {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	out := make([]LoopObservation, len(o.loops))
+	copy(out, o.loops)
+	return out
+}
