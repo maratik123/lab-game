@@ -17,6 +17,17 @@
 > `docs/DESIGN.md` is cited by section per the design-writer contract, so those citations carry
 > no `[measured …]` tag — with one exception, `docs/DESIGN.md:310`, which is this change's edit
 > target and is therefore pinned by line where the edit is prescribed (D15).
+>
+> **Quoting a markdown link inside a tag: write the target as `(<…>)`, not `(…)`.** CI's
+> Harness-guards job checks that every relative link in every tracked `*.md` resolves, and it does
+> so with a **raw regex over the file's text — it does not understand code spans**, so wrapping the
+> quotation in backticks protects nothing and an elided target reddens the build. The script skips
+> any target containing `<`, which is the sanctioned way to write a link-shaped string that is a
+> quotation rather than a link
+> [measured a783fa3:.github/workflows/ci.yml:171-187 · `sed -n '171,187p' .github/workflows/ci.yml` →
+> the step `relative markdown links resolve`, matching `\[[^\]]*\]\(([^)#\s]+)(#[^)]*)?\)` over
+> `pathlib.Path(".").rglob("*.md")` and skipping a target when
+> `t.startswith(("http://", "https://", "mailto:")) or "<" in t or t == "file.md"`].
 
 ---
 
@@ -1393,7 +1404,7 @@ site, which is why the table below gives each site a verdict per claim rather th
 `ai-docs/domain-invariants.md`, which it omitted entirely although `AGENTS.md` lists that file
 among the pages read on nearly every task
 [measured 069ab1f:AGENTS.md:260,265 · `grep -n 'Read on nearly every task' AGENTS.md` → `260:Read on nearly every task:`;
-`sed -n '265p' AGENTS.md` → ``| [`ai-docs/domain-invariants.md`](…) | Ledger, telemetry, scheduler and Telegram-safety invariants |``] — are the reason the shape changed rather than the
+`sed -n '265p' AGENTS.md` → ``| [`ai-docs/domain-invariants.md`](<…>) | Ledger, telemetry, scheduler and Telegram-safety invariants |``] — are the reason the shape changed rather than the
 wording (§ Approach).
 
 | Site | What becomes false | Verdict |
