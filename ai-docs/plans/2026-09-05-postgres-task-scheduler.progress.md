@@ -8,13 +8,13 @@ _Updated: 2026-09-05 11:07_
 **Last build:** not run
 **Issue:** #20
 **Spec:** ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md
-**current_step:** Step 8 — subtask 5 of 10 complete
-**last_passed_gate:** golangci-lint run | 2026-09-05T14:50:00Z | (pending commit)
+**current_step:** Step 8 — subtask 6 of 10 complete
+**last_passed_gate:** golangci-lint run | 2026-09-05T14:40:00Z | (pending commit)
 **entry_args:** 20
 
 ## Next action
 
-**Do this immediately:** continue Group A at subtask 6 — the execution cycle (`Options`, `New`, `RunOnce`, discovery + per-id re-claim, the handler savepoint).
+**Do this immediately:** continue Group A at subtask 7 — the failure policy (exact attempt counting, dead-row enumeration, decode failures, the never-terminal recurrence, the undeclared-recurrence property).
 
 ## Subtasks
 
@@ -23,7 +23,8 @@ _Updated: 2026-09-05 11:07_
 - [x] 3. `config.Scheduler`, defaults, `loadScheduler`, `schedulerEnvKeys()`, `.env.example`
 - [x] 4. Package foundation, no database: `doc.go`, `errors.go`, `task.go`, `registry.go`, `cadence.go`, `observe.go`
 - [x] 5. The insertion surface: `(*Registry).Schedule`
-- [ ] 6. The execution cycle: `Options`, `New`, `RunOnce`, discovery + per-id re-claim  ← CURRENT
+- [x] 6. The execution cycle: `Options`, `New`, `RunOnce`, discovery + per-id re-claim
+- [ ] 7. The failure policy: attempt counting, backoff from the settlement instant  ← CURRENT
 - [ ] 5. The insertion surface: `(*Registry).Schedule`
 - [ ] 6. The execution cycle: `Options`, `New`, `RunOnce`, discovery + per-id re-claim
 - [ ] 7. The failure policy: attempt counting, backoff from the settlement instant
@@ -35,6 +36,7 @@ _Updated: 2026-09-05 11:07_
 ## Decisions log
 
 - **Step 7**: design-review reached GO at round 4; the owner raised the round cap to 5 (was 3) after round 3's two confirmed majors.
+- **Step 8 subtask 6**: added `worker.go` (`Options`, `OptionError`, `New` refusing a nil `Pool`/`Registry` or any non-positive `config.Scheduler` field, `RunOnce`), `claim.go` (the discovery statement and the per-id re-claim, both `FOR NO KEY UPDATE ... SKIP LOCKED`, never `FOR UPDATE` — AC35), and `execute.go` (the per-task transaction: `set_config` for the two timeouts per D2 step 1, the raw-SQL `SAVEPOINT`/`RELEASE`/`ROLLBACK TO` around the handler call — never `pgx.Tx.Begin`'s pseudo-nested transaction — and D7's full settlement table for Done/No-op/Failed, including the one-shot give-up and the undeclared-type row, all computed from a freshly-read settlement instant `s`, never the pre-handler instant). The per-task execution deadline (goroutine + `context.WithTimeout`) and the deferred-settlement drain are deliberately NOT here — design D11/D7 route those to subtask 9's `settle.go`; today a hung handler would hang the whole cycle, which is expected and untested until then. Tests in `worker_test.go`: batch bounded + skip-not-wait against a concurrently-held row (AC5/AC35), two workers running concurrently under `-race` with exactly-once execution (AC6/AC35), a row deleted before re-claim skipped silently, a failing handler's writes rolled back with the attempt recorded (AC7), a no-op's writes absent with the row still settled (AC8), the round-6 regression guard — a handler that swallows a real unique-violation and reports `OutcomeDone` settles as a failure because the savepoint release fails (confirmed empirically: `ROLLBACK TO SAVEPOINT` undoes *both* statements in the subtransaction, not just the failed one — the test's initial expectation of a surviving first insert was wrong and was corrected against the measured behaviour, not assumed), delete-on-done in both directions (AC25), and a recurrence's single live row surviving a committed/rolled-back/failed execution with its id unchanged (AC11). All gates green: `go build ./...`, `go vet ./...`, `go test ./...`, `go test -race ./internal/scheduler/...`, `golangci-lint fmt -d`, `golangci-lint run` (one `goconst` finding on repeated `"must be positive"` strings, fixed by a table-driven refusal loop plus a named constant).
 - **Step 8 subtask 5**: added `(*Registry).Schedule` and `DeadTasks` in `schedule.go`. `Payload` and `Request.Payload` are typed `json.RawMessage` (not `[]byte`) so pgx's registered JSON codec encodes/decodes them against the `jsonb` column correctly — verified empirically via `TestSchedule_payloadRoundTrip` against real Postgres, not assumed. `Schedule` mirrors `store.Post`'s `ON CONFLICT ... DO NOTHING RETURNING id` shape exactly, mapping `pgx.ErrNoRows` to `ErrDuplicateTask` (D9) — confirmed the transaction stays usable afterwards (no raw SQLSTATE 23505 is ever raised). **Noted, not chased further**: the Test Design section's insertion bullet says the duplicate-identity test wraps "SQLSTATE 23505 on scheduled_task_identity_key", which contradicts D9's own mechanism (`ON CONFLICT DO NOTHING` raises no SQLSTATE at all) — treated as a stale/imprecise summary sentence rather than a load-bearing design defect, since D9's mechanism is unambiguous and repeated three times; the test asserts `errors.Is(err, ErrDuplicateTask)` and transaction-usability instead. Added `internal/scheduler`'s `TestMain`/`newScheduler`/`dueNow`/`testRegistry`/`fixedOutcomeHandler` fixtures to `scheduler_test.go` (trimmed to only what this subtask uses — `golangci-lint run`'s `unused` linter caught and this subtask removed the not-yet-used `recordingObserver` and `seenCount`, to be added back in the subtask that first calls them). Tests in `schedule_test.go`: payload round-trip by decoded value (AC24), unregistered-type refusal writing no row, negative-delay refusal, duplicate live identity, two coexisting keyless one-shots, re-scheduling a dead identity (closing the round-1 trap, D5), and `DeadTasks` returning only give-up rows. All gates green: `go build ./...`, `go test ./...`, `golangci-lint fmt -d`, `golangci-lint run`.
 - **Step 8 subtask 4**: created `internal/scheduler` with no database dependency: `doc.go` (package comment — no `internal/store` import, payload-as-data-contract), `errors.go` (five sentinels), `task.go` (`Type`, `TaskID`, `Task`, `Request`, `Outcome`, `DeadTask`, `Handler` with the ctx-propagation contract in its doc comment per D11), `observe.go` (`Observation`, `LoopObservation`, `Observer`, `FailureKind` with five members), `registry.go` (`Declaration`, `Recurrence`, `Registry`, `NewRegistry`'s five refusals), `cadence.go` (`Cadence`, `Every`, pure `backoff`). `Every`'s catch-up arithmetic multiplies in plain `int64` nanoseconds rather than `Duration*Duration`, which `durationcheck` (part of `golangci-lint run`) correctly flags as a near-always-wrong shape — caught and fixed in this subtask, not deferred. Exact table tests for `backoff` (growth, ceiling clamp, strict positivity) and `Every` (smallest-occurrence, just-completed, catch-up-after-outage) in `cadence_test.go`; `NewRegistry`'s five refusals plus the accepting case in `registry_test.go`. All gates green: `go build ./...`, `go test ./internal/scheduler/...`, `go vet ./...`, `golangci-lint fmt -d`, `golangci-lint run`.
 - **Step 8 subtask 3**: added `internal/config/scheduler.go` mirroring `transport.go`'s shape — `schedulerEnvKeys()`, `Scheduler` struct, `defaultScheduler()`, `loadScheduler` — for the six `LAB_GAME_SCHEDULER_*` keys (D13's table). Appended `schedulerEnvKeys()` to `EnvKeys()` (never to the required `envKeys()`), added the `Config.Scheduler` field and `Load` wiring, and reworded the falsified doc comments in `env.go`/`config.go` naming Transport as "the one exception". Added the six keys to `.env.example` in the same commit as the loader (the design's own gate: `disjoint_test.go` requires the three key sets equal). `scheduler_test.go` mirrors `transport_test.go`'s test shape: all-absent-yields-defaults, `.env.example`-matches-defaults, values-parsed, one malformed case per key, and the unconditional-query check. All gates green: `go build ./...`, `go test ./...`, `golangci-lint fmt -d`, `golangci-lint run`.
@@ -84,3 +86,7 @@ _Updated: 2026-09-05 11:07_
 - `internal/scheduler/schedule.go` (new)
 - `internal/scheduler/schedule_test.go` (new)
 - `internal/scheduler/scheduler_test.go` (new)
+- `internal/scheduler/worker.go` (new)
+- `internal/scheduler/claim.go` (new)
+- `internal/scheduler/execute.go` (new)
+- `internal/scheduler/worker_test.go` (new)
