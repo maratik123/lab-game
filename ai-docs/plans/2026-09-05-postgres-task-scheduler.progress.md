@@ -5,11 +5,11 @@ _Updated: 2026-09-05 12:20 UTC_
 
 **Branch:** feat/2026-09-05-postgres-task-scheduler
 **base_commit:** 42c4c7ef29c98d46530ee8c05208c974e036c8ac
-**Last build:** `make verify` GREEN (0 FAIL, 14 `ok` package lines across `go test ./...` and `go test -race ./...`) | 2026-09-05T12:14:00Z
+**Last build:** PASS
 **Issue:** #20
 **Spec:** ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md
-**current_step:** Step 8 — Group B complete (subtask 11 of 11)
-**last_passed_gate:** make verify | 2026-09-05T12:14:00Z | (pending commit; the gate ran on b199052 — Group A's 2818763 plus the concurrent `design-writer` commit that landed mid-run — plus this commit's documentation edits). Note for a later reader: this timestamp is a true UTC instant from `date -u`; the Group A rows above carry local-clock (MSK, UTC+3) values labelled `Z`, so they read ~3h ahead of it.
+**current_step:** Step 9.5 — docs updated
+**last_passed_gate:** make verify + go test -count=1 -race ./... | 2026-09-05T12:32:29Z | 16dfff7cf3a37bae0a000fb19a3a3cbb1a2e0293
 **entry_args:** 20
 
 ## Next action
@@ -31,6 +31,12 @@ _Updated: 2026-09-05 12:20 UTC_
 - [x] 11. Propagation (D15) — Group B
 
 ## Decisions log
+
+- **Step 9.5**: `context-status.md` gains this run's entry with the PR locator as the literal `#TBD-at-Step-12`; `context.md` was already current (Group B updated the Architecture layout, the Status *Code* paragraph, the Scheduler block row and the heading date). No repo-root user-facing doc contradicts the change — the repository tracks no README.
+
+- **Step 9**: all 36 ACs PASS. Two first-pass instruments were wrong, not the code — a single-line grep missed the multi-line `num_nonnulls(...)` (AC3), and a filename grep counted comment mentions of `internal/testdb` as imports (AC18); both re-checked with `grep -Pzo` and `go list -deps`. AC36's keyword sweep returns 3 hits, all of them prohibitions of the forbidden framing rather than instances of it.
+- **Step 9**: panic-index needs no row — no `panic(`/`log.Fatal` in non-test code. Domain sweep clean: no balance UPDATE outside `store.Post`, and the scheduler writes no postings itself (D14).
+- **Step 9**: the CI link gate was red before this step on a pre-existing elided target in the design; it is a raw regex that does not honour code spans, and `<…>` is its own sanctioned escape.
 
 - **Step 8 subtask 11**: the D15 propagation, run as its own group with no `*.go` / `*.sql` / `.env.example` file touched. **Six files edited.** `docs/DESIGN.md` line 310 — exactly the two edits the owner authorised (round 5: the table's plural spelling → `scheduled_task`; round 6: `FOR UPDATE SKIP LOCKED` → `FOR NO KEY UPDATE SKIP LOCKED`), applied by a **line-310-anchored** `sed`, never a document-wide one. Verified after the edit rather than assumed: `git diff --numstat docs/DESIGN.md` = `1 1` (one line changed in the whole file); `git diff --word-diff` shows exactly two token changes on that line; line 147 (§3.5's `SELECT session FOR UPDATE`, the raid-session FSM guard) and line 311 (`SKIP LOCKED` with no lock mode) are **md5-identical** to their `HEAD` text; and line 310's third clause, *«Таска исполняется в одной транзакции со своими эффектами»*, is byte-identical — it needs no change, the delivered one-transaction-per-task shape keeps it literally true. Nothing on the Russian line was translated or reworded. `AGENTS.md` § API Stability carve-out: spelling only (it quotes no lock mode). `ai-docs/key-decisions.md`: KD-4 spelling **and** mode, with «each task executing in one transaction with its effects» surviving verbatim and **no justification added** (D15: adding a reason at a site that merely quotes the clause is how a forbidden AC36 framing gets written); KD-27's boundary sentence reworded, since «the relaxation reaches **only** these keys» is falsified by the six `LAB_GAME_SCHEDULER_*` keys becoming the class's second member. `ai-docs/context.md`: the Scheduler row (spelling **and** mode, invariant clause verbatim), plus the Architecture layout paragraph and the Status *Code* paragraph extended to name `internal/scheduler`, and the Status heading's date moved 2026-09-04 → 2026-09-05. `ai-docs/plans/INDEX.md`: the row for this pair, 🟢 in progress, link traced with `realpath`. `.claude/agents/self-review.md` § 3: the illustration generalised, `` `FOR UPDATE SKIP LOCKED` behaviour `` → `` row-level lock and `SKIP LOCKED` behaviour `` — **authorised scope, NOT AC22 propagation**: round 4's finding stands, the rule's claim (a database-enforced invariant asserted against a mock or an in-memory fake → REJECT `major`) is *not* falsified by this change, and the word-diff confirms its subject, trigger, verdict and severity are byte-identical. Generalising an illustration is not widening a requirement.
 
@@ -75,7 +81,7 @@ _Updated: 2026-09-05 12:20 UTC_
 
 | AC | Status |
 |----|--------|
-| AC1–AC36 | NOT_TESTED |
+| AC1–AC36 | PASS — all 36 verified at Step 9; commands recorded in the Decisions log |
 
 ## Review register
 
