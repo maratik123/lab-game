@@ -175,3 +175,15 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **Rule:** AGENTS.md § Communication already says a recorded result is a claim and must be re-derived after the LAST edit of the turn — the failure mode is not forgetting the rule but not noticing that a sentence *about* the work (its completeness, its inspectability) is as much a measurement as a number is. Before writing any such sentence, ask what a reader would run to check it and whether that command would find anything in the tree; if the evidence lives only in a subagent's return, either copy it into the artefact or do not make the claim. For a SHA that names the tree a gate ran against, record it after the commit exists, not before.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-05 — testing — a mutation that fails to compile is not a killed mutation
+**What happened:** During `/task` Step 11 I verified a strengthened assertion by mutating `execute.go`'s `Lag: t.Sub(task.RunAt)` to `Lag: 0` and recorded "MUTATION-2 KILLED" when the test command exited non-zero. The mutation does not compile — `declared and not used: t` — so the non-zero exit was a build failure, and the run proved nothing about whether the assertion discriminates. The `self-review` subagent caught it in round 2 and produced the real evidence with `Lag: t.Sub(t)`, which compiles, yields zero, and fails the assertion by name. Earlier in the same step a first mutation attempt had thrown on its own `assert` and I printed a verdict from the broken script before noticing.
+**Rule:** A mutation is only evidence when the mutant **builds**. Confirm compilation as a separate step before reading the test result, and choose a mutant that is type-correct and differs only in value — `t.Sub(t)` over `0`, a wrong-valued payload over `nil` — because a mutant that changes the shape of the program tests the compiler, not the suite. A non-zero exit is not "the test caught it" until the failure line names the assertion.
+**at:** 91a221e
+**Escalated?** no
+
+### 2026-09-05 — process — a course-correction message to a gate subagent is still a gate prompt
+**What happened:** Re-spawning `self-review` for round 2 via `SendMessage`, I included a summary of the fixes, a characterisation of the work as "no production code changed", and my own self-reported mutation results. The reviewer recorded it as `PROMPT-CONTAMINATION` (`minor`), noting the `PreToolUse` guard is scoped to `Task|Agent` spawns and so does not reach a `SendMessage` follow-up. One of the self-reported results I supplied was itself wrong.
+**Rule:** The spawn-prompt contract binds the **content**, not the tool that carries it. A follow-up round to `self-review` or `design-review` carries the same five permitted lines and nothing else — no fix summary, no "no production code changed", no self-reported gate or mutation results. The reviewer re-derives all of it from the tree, which is the point; supplying it both steers the gate and risks handing it a false premise.
+**at:** 91a221e
+**Escalated?** no
