@@ -101,11 +101,21 @@ exclusive arc that `internal/store` already implements.
    class alongside "executed with effects" and "failed" — distinguished in the
    instrumentation, never counted as an error (Scope 8).
 
-6. **Failure policy: bounded retry, a terminal give-up state, and visibility of the
-   dead.** A handler error re-schedules the task with a strictly positive, growing delay
-   up to a configured attempt cap, after which the task reaches a terminal give-up state
-   and is never claimed again. Tasks in that state are enumerable through the package
-   with enough context to diagnose them (type, `run_at`, attempts, last error).
+6. **Failure policy — and it differs by task kind, which is the owner's round-3
+   decision, not a simplification.**
+   - **One-shot:** a handler error re-schedules the task with a strictly positive,
+     growing delay up to a configured attempt cap, after which the task reaches a
+     terminal give-up state and is never claimed again. Tasks in that state are
+     enumerable through the package with enough context to diagnose them (type,
+     `run_at`, attempts, last error).
+   - **Recurrent: the chain never stops.** A handler error re-schedules the row to its
+     **next cadence instant** — the cadence *is* the retry, so the backoff schedule, the
+     attempt cap and the give-up state do not apply to this kind at all. A permanently
+     broken recurrent handler therefore fails at its cadence forever, which is the
+     deliberate trade: the day close can never silently stop. Its evidence is a
+     **persisted consecutive-failure count** on the row, which the answer itself names as
+     the visibility mechanism, surfaced through the observation seam (Scope 8) so #23 can
+     alert on it.
 
 7. **Recurrent tasks: one live row per recurrence, moved forward** (owner, round 2).
    Completing an occurrence sets the row's next `run_at` **in place**, in the same
@@ -115,14 +125,29 @@ exclusive arc that `internal/store` already implements.
    structural rather than procedural — **double-seeding one recurrence is unrepresentable
    because the table's identity constraint refuses it**, not because some code path
    remembers to check first. Which columns carry that identity, and the fact that a
-   one-shot must not be forced to invent one, are in *Key decisions*. Where the cadence
-   that computes the next `run_at` is declared is the open round-3 question, and it is
-   the last thing this spec is waiting on.
+   one-shot must not be forced to invent one, are in *Key decisions*.
+
+   **The cadence that computes the next `run_at` is declared in Go, in the handler
+   registry** (owner, round 3), with the cadence *value* still coming from configuration
+   — a declaration names which key it reads, it does not embed a number
+   (`AGENTS.md` § Code Style). Two start-up obligations follow, and together they are what
+   makes "a stopped chain is healed by the next restart" a property rather than a hope:
+   **seed** any declared recurrence that has no row, and **correct** the `run_at` of one
+   that exists when the declaration has changed. The seed is idempotent because the
+   round-2 identity constraint refuses the second insert — so several workers starting at
+   once is safe by construction, not by a lock. The correction must not disturb an
+   occurrence that is in flight or imminent. Changing a cadence is a deploy, which sits
+   correctly with KD-24's read-configuration-once-at-start-up rule.
 
 8. **Per-type lag instrumentation, through a seam rather than a registry.** The worker
    reports, per executed task, at least: task type, the lag between `run_at` and the
-   execution instant, the outcome class of Scope 5, and the size of the claim batch the
-   task came from; plus the worker loop's own duration. The shape follows the precedent
+   execution instant, the outcome class of Scope 5, the size of the claim batch the task
+   came from, and — for a failure — the row's **consecutive-failure count**; plus the
+   worker loop's own duration. The consecutive count is the one field not named in issue
+   #20's telemetry list, and it is here because the round-3 answer put the whole weight
+   of "a permanently broken recurrent handler is noticed" on the failure counter: a
+   per-type failure *rate* cannot distinguish one recurrence failing every time from many
+   recurrences failing occasionally, and only the first is an outage. The shape follows the precedent
    this repository already set for the transport — a plain struct plus a consumer-declared
    one-method interface, with the implementation supplied elsewhere
    [source: 7039e36:internal/tg/observe.go:5-33 · `cat internal/tg/observe.go`].
@@ -241,14 +266,18 @@ exclusive arc that `internal/store` already implements.
 | What a dangling reference inside a payload means | **A guard miss — the default, and a handler may classify otherwise.** §3.5 makes orphaned tasks normal by design: cancellation is unnecessary and a task whose subject has moved on dies at execution [source: 7039e36:docs/DESIGN.md:154 · `sed -n '154p' docs/DESIGN.md`]. A referent that no longer exists is that same case. What the spec fixes is that both classifications are representable and observable; which one a given handler picks travels with the mechanic. |
 | Lifecycle of a completed row | **Deleted by the transaction that completes it** (owner, round 1). The table holds pending and dead tasks only. Consequences, all of them intended: no retention step and no growth curve to manage; no terminal `completed` status value and no `executed_at`; the observation seam is the **only** place execution lag ever exists, since there is no row left to compute it from (AC12 carries the whole weight); and a guard no-op leaves no per-occurrence trace beyond its counter — see *Open questions*. |
 | Retention | **None, and none is needed** — it follows from the row above rather than being a separate decision. §11 places retention outside MVP in any case [source: 7039e36:docs/DESIGN.md:330 · `sed -n '330p' docs/DESIGN.md`]. |
-| Which direction the basis-document / task reference points | **Never from a basis document to `scheduled_task`.** Delete-on-done means the task row is gone while its basis document and postings live on, so a hard FK that way would either block the delete or cascade away ledger history. §11 fixes the direction for exactly this reason: FKs point from postings to bases, which is what makes dropping postings first always safe [source: 7039e36:docs/DESIGN.md:330 · `sed -n '330p' docs/DESIGN.md`]. A basis document carries by value whatever it needs to identify the task that produced it; which fields those are is the design's. |
+| Which direction the basis-document / task reference points | **Never from a basis document to `scheduled_task`.** Delete-on-done means the task row is gone while its basis document and postings live on, so a hard FK that way would either block the delete or cascade away ledger history. §11 fixes the direction for exactly this reason: FKs point from postings to bases, which is what makes dropping postings first always safe [source: 3de3dfe:docs/DESIGN.md:344 · `grep -n 'FK направлен от проводок' docs/DESIGN.md`]. A basis document carries by value whatever it needs to identify the task that produced it; which fields those are is the design's. |
 | The recurrent row's lifecycle | **One live row per recurrence, moved forward in place** (owner, round 2). Completing an occurrence sets the next `run_at` on the same row inside the same transaction as the effects; the row is never deleted while the schedule stands. Delete-on-done therefore governs **one-shots only**, and the two kinds differ in the schema by how they settle, not by living in different tables — which keeps §11's "class separation by a column, never a second table" intact [source: 7039e36:docs/DESIGN.md:311 · `sed -n '311p' docs/DESIGN.md`]. |
 | What makes double-seeding one recurrence impossible | **A uniqueness constraint on the task's identity, not a check in code** — the owner's stated reason for the move-forward shape. The identity is the task type plus an instance key. **A one-shot must not be forced to invent one:** a corpse-evaporation task has a natural instance key and a fan-out notification may not, so the constraint is a *partial* unique index over rows that carry an instance key, with a surrogate primary key — exactly the shape migration 00001 already uses for the basis columns of `journal_entry` [source: 7039e36:internal/store/migrations/00001_ledger_core.sql:74-75 · `sed -n '74,75p' internal/store/migrations/00001_ledger_core.sql`]. A composite primary key over (type, instance) would force every one-shot to supply a key it may not have. The design fixes the column names; AC29 fixes the property. |
 | Whether the scheduler needs a `picked` flag, a heartbeat and a dead-execution detector | **No — and the reason is a decision `docs/DESIGN.md` already made, not a preference.** A liveness protocol exists to release rows stranded by a worker that died *while holding them in a non-transactional executing state*. §11 specifies the opposite: the task executes **in one transaction with its own effects** [source: 7039e36:docs/DESIGN.md:310 · `sed -n '310p' docs/DESIGN.md`]. A worker that dies mid-execution aborts its transaction, which releases its row locks and reverts its writes, leaving the row exactly as it was — still due, and claimable by the next worker on its next poll. There is no stranded state for a detector to find, so a heartbeat column, a `picked` column and a revival handler would all be machinery guarding an unreachable state. |
 | The one failure the transactional shape does **not** self-heal | **A handler that hangs rather than crashes** — its transaction stays open, its row stays locked, and `SKIP LOCKED` means every other worker passes over that row *silently and forever*. This is the residual risk the row above creates, and it is answered by a **bounded per-task execution deadline** (Scope 9), not by a liveness protocol: a bound turns an invisible stall into a timed failure that enters the ordinary retry path and the ordinary instrumentation. Whether the bound is enforced through the handler's context, a database-side session timeout, or both is the design's; that a bound exists and that exceeding it is observable is AC30. |
-| How a recurrence is retired | **By an explicit removal, never by an omission.** Under move-forward the row outlives any deploy, so deleting a task type from the handler registry does not stop its row from coming due — it makes the row unclaimable, which AC21 requires to be a visible refusal rather than a silent accumulation. Retiring a recurrence is an act: the row is removed, by migration or by an operator, in the same change that drops its handler. |
-| Where a recurrent task's cadence is declared | **TBD — re-asked in round 3** after the owner asked, for the second time, how the prior art self-heals a recurrence before choosing. The research is recorded under *Technical constraints* § *Provenance*; what it changed about the options is that "healed by the next restart" is not one property but a **pair of primitives** — an idempotent seed keyed on instance identity, plus a bounded time-correction rule with a do-not-disturb window — and the owner's round-2 identity constraint is already the first of the two. |
-| Whether a recurrent chain can end in the terminal give-up state | **TBD — asked in round 3, and it did NOT dissolve.** Round 2 recorded that a code-declared cadence might make this question disappear. Under the owner's move-forward answer it does not: start-up seeding recreates a recurrence whose row is **missing**, but a row that exists in a terminal dead state is present, so seeding would adopt it rather than revive it. A give-up state for the recurring kind therefore has to be decided on its own. |
+| Where a recurrent task's cadence is declared | **In Go, in the handler registry** (owner, round 3) — the declaration names the configuration key its value comes from rather than embedding a number, so `AGENTS.md` § Code Style and KD-24 both stay intact and changing a cadence remains a deploy. |
+| What re-seeds a recurrence whose row is missing | **Start-up, from the declaration set, in two moves:** seed any declared recurrence that has no row, and correct the `run_at` of one that exists when the declaration has changed. The seed needs no lock and no existence check — the round-2 identity constraint refuses the second insert, so concurrent start-up of several workers is safe by construction. The correction must leave an in-flight or imminent occurrence alone; a start-up that yanks a task about to run is a worse failure than a cadence that takes one cycle to take effect. |
+| Whether a recurrent chain can end in the terminal give-up state | **No — it never stops** (owner, round 3). This **retracts the round-3 forecast recorded here**: that row previously said the question survived because start-up seeding recreates a *missing* row while a *dead* row would merely be adopted. Under this answer there is no dead recurrent row for the seeding rule to meet, so the revive branch that reasoning implied is **not** built, and the seeding rule stays the two moves above. |
+| What the give-up state and the retry budget now govern | **One-shots, and only one-shots.** The owner's answer reschedules a failed recurrence to its *next cadence instant*, which means the backoff schedule, the attempt cap and the terminal give-up state have no effect on the recurring kind: for it, the cadence **is** the retry. Stating this as a scope boundary rather than leaving it implied is deliberate — a design that applied the attempt cap to both kinds would silently reintroduce the terminal state the owner just removed. |
+| How a permanently broken recurrence is made visible | **A persisted consecutive-failure count on the row, carried in the observation.** The owner's answer names "the failure counter" as the visibility mechanism, and under move-forward the row is the only place a count can survive across occurrences. It is carried into the observation seam because a per-type failure *rate* cannot separate "one recurrence failing every single time" from "many recurrences failing now and then", and only the first is an outage. The count resets on success. Alert rules on it belong to #23. |
+| Which recurrent types this task declares | **None in production, one in tests.** Cadence declarations arrive with their mechanics — the day close is #45 — so this task ships the declaration mechanism, the seeding and correction path, and a test-only recurrent type that exercises them. The first real declaration and its configuration key land with the mechanic that needs them, matching the handler boundary issue #20 already drew. |
+| How a recurrence is retired | **By an explicit removal, never by an omission** — and the declaration set is now the authority for what *should* exist. Removing a type from the registry does not stop its row coming due; it makes the row unclaimable, which AC21 requires to be a visible refusal. Retiring a recurrence deletes the row in the same change that drops its declaration. No automatic collector of undeclared rows is built — see *Open questions*. |
 
 ## Technical constraints
 
@@ -344,10 +373,11 @@ in *Open questions*, and nothing here blocks on the answer.
 
 ## Acceptance Criteria
 
-Two criteria are still owed and land with the round-3 answers: where a recurrent task's
-cadence is declared and what re-seeds a missing recurrence, and whether the recurring kind
-can reach the terminal give-up state. Everything below is settled — the payload and
-completed-row criteria by the round-1 answers, the recurrent row's shape by round 2.
+Every criterion below is settled: the payload and completed-row shape by the round-1
+answers, the recurrent row by round 2, the cadence and the failure policy by round 3.
+Note that the failure criteria are **split by task kind** — AC9/AC10/AC26 govern one-shots
+and AC32 governs recurrences — because the two kinds settle failure differently by
+decision, not by oversight.
 
 | # | Criterion |
 |---|-----------|
@@ -359,10 +389,10 @@ completed-row criteria by the round-1 answers, the recurrent row's shape by roun
 | AC6 | Two workers running concurrently against the same table never execute the same task. A test with many due tasks and two concurrent workers asserts every task's handler ran exactly once, and passes under the race detector. |
 | AC7 | A task and its effects commit or roll back together: after a handler that writes and then returns an error, none of its writes are visible and the task row records the failed attempt rather than a success. |
 | AC8 | A handler can report a guard-miss no-op. The task reaches a terminal completed state, its writes are absent, and the outcome is reported to the observation seam as an outcome class distinct from both success-with-effects and failure. |
-| AC9 | A failing handler is retried with a strictly positive delay between attempts that grows rather than repeats, bounded by the configured attempt cap; after the cap the task is in a terminal give-up state and is never returned by a subsequent claim. A test asserts the exact attempt count and the terminal state. |
-| AC10 | Tasks in the give-up state are enumerable through the package, each carrying at least its type, its `run_at`, its attempt count and the last failure's message. |
-| AC11 | A recurrent task is one row whose `run_at` advances in place: completing an occurrence updates that row rather than deleting it and inserting another, and the row's identity is unchanged across occurrences. The count of live rows for one recurrence is exactly one at every commit boundary — after a committed execution, after a rolled-back execution (the current one, still due), and after a retried-then-succeeded execution. Never zero, never two. |
-| AC12 | For every executed task the worker reports exactly one observation carrying at least the task type, the lag between `run_at` and the execution instant, the outcome class of AC8, and the size of the claim batch the task came from; the worker also reports its loop duration. A test collects observations for a success, a guard no-op, a retry and a give-up. |
+| AC9 | A failing **one-shot** handler is retried with a strictly positive delay between attempts that grows rather than repeats, bounded by the configured attempt cap; after the cap the task is in a terminal give-up state and is never returned by a subsequent claim. A test asserts the exact attempt count and the terminal state. Neither the backoff schedule nor the attempt cap has any effect on a recurrent task — AC32 governs that kind. |
+| AC10 | One-shot tasks in the give-up state are enumerable through the package, each carrying at least its type, its `run_at`, its attempt count and the last failure's message. |
+| AC11 | A recurrent task is one row whose `run_at` advances in place: completing an occurrence updates that row rather than deleting it and inserting another, and the row's identity is unchanged across occurrences. The count of live rows for one recurrence is exactly one at every commit boundary — after a committed execution, after a rolled-back execution (the current one, still due), and after a failed execution rescheduled to its next cadence instant. Never zero, never two. |
+| AC12 | For every executed task the worker reports exactly one observation carrying at least the task type, the lag between `run_at` and the execution instant, the outcome class of AC8, the size of the claim batch the task came from, and — when the outcome is a failure — the row's consecutive-failure count; the worker also reports its loop duration. A test collects observations for a success, a guard no-op, a one-shot retry, a one-shot give-up and a repeatedly failing recurrence. |
 | AC13 | No non-test Go file in `internal/scheduler` imports a metrics-registry package, and the package compiles and its tests pass with no observation implementation installed. |
 | AC14 | Every operational tuning value — poll interval, claim batch limit, attempt cap, backoff base and backoff ceiling — is a `LAB_GAME_`-prefixed environment variable that `internal/config` reads and exposes as a typed field. No literal value for any of them appears at a call site in `internal/scheduler`, and a test constructs the worker with non-default values and observes the changed behaviour. |
 | AC15 | Each new key is optional: loading with all of them absent succeeds and yields the documented default for each; one present and well-formed yields that value; one present and malformed fails with an error naming that variable. The three-way key-set equality the configuration layer asserts — `.env.example`, the loader's consulted keys, and `config.EnvKeys()` — holds with the new keys included, each documented in `.env.example` with a non-empty value. |
@@ -376,12 +406,15 @@ completed-row criteria by the round-1 answers, the recurrent row's shape by roun
 | AC23 | Every gate `make verify` runs is green on the resulting tree, including the race-enabled test gate. |
 | AC24 | `scheduled_task` carries its type-specific data in a single JSONB payload column. A test round-trips a payload through insert, claim and execution and asserts the handler receives the value that was scheduled, including for a payload containing a nested object and a null. |
 | AC25 | A **one-shot** task that completes — whether with effects or as a guard no-op — leaves no row in `scheduled_task`: the deletion happens in the same transaction as the effects, so a rolled-back execution leaves the row present and still due. A test asserts both directions. There is no terminal `completed` status value in the schema and no retention step in the change. A recurrent task is the stated exception and is governed by AC11 instead. |
-| AC26 | A payload the handler cannot decode is classified as a failure rather than as a guard no-op, and it terminates: the task reaches the give-up state within the configured attempt cap rather than being retried indefinitely, and it is enumerable under AC10 with the decode failure as its recorded reason. |
+| AC26 | A payload the handler cannot decode is classified as a failure rather than as a guard no-op. For a one-shot it terminates: the task reaches the give-up state within the configured attempt cap rather than being retried indefinitely, and it is enumerable under AC10 with the decode failure as its recorded reason. For a recurrence it does not terminate — AC32 applies — and the evidence that it is permanently broken is the rising consecutive-failure count of AC34. |
 | AC27 | No basis-document table carries a foreign key to `scheduled_task`: deleting a completed task row neither fails nor cascades, and the basis document and its postings survive it. A test posts under a new basis type, lets the task complete and be deleted, and asserts the `journal_entry` and `posting` rows are still present and still balance. |
 | AC28 | Every persisted payload key is treated as a data contract: the design document names the payload keys each shipped task type reads, and a pending row written before a change still decodes after it. No live sentence in the tree claims that a JSONB payload is exempt from `AGENTS.md` § API Stability's forward-migration carve-out. |
 | AC29 | Scheduling a recurrence twice is refused by the database, not by a code path that checks first: with a recurrence already live, a second insert of the same task type and instance key fails on a uniqueness constraint. A one-shot task carrying no instance key is accepted, and two such one-shots of the same type coexist — the constraint does not force a one-shot to invent an identity. |
 | AC30 | A handler that neither returns nor fails within the configured per-task execution deadline is abandoned rather than left holding its row: the task's transaction ends, the row becomes claimable again, and the event is reported through the observation seam as a failure rather than passing silently. A test drives a handler that blocks past the deadline and asserts the row is claimable afterwards and the observation was made. |
 | AC31 | The schema contains no liveness-protocol machinery: no column recording that a task is currently being executed, no heartbeat timestamp, and no worker path that revives a task on the basis of a missed heartbeat. A test asserts the self-healing property this replaces — a worker whose transaction is aborted mid-execution leaves the task still due, with none of its writes visible, and the next claim returns it. |
+| AC32 | A failing **recurrent** handler never reaches a terminal state: the row is rescheduled to its next cadence instant and remains claimable, and no number of consecutive failures converts it into a give-up. A test fails a recurrence's handler more times than the one-shot attempt cap and asserts the row is still live, still recurring, and still advancing by its cadence. |
+| AC33 | Start-up reconciles the declared recurrences against the table in two moves and no more: a declared recurrence with no row is seeded, and a declared recurrence whose row disagrees with the declaration has its `run_at` corrected. Seeding is idempotent — two workers starting concurrently produce one row, refused by the constraint of AC29 rather than by a lock — and neither move disturbs an occurrence that is in flight or imminent. A test covers the missing-row seed, the changed-declaration correction, the concurrent start, and the imminent occurrence left alone. |
+| AC34 | The consecutive-failure count is persisted on the task row, incremented on each failed execution, reset on a success or a guard no-op, and carried in the failure observation of AC12. A test asserts the count rises across successive failures of one recurrence and returns to zero after a success. |
 
 ## Open questions
 
@@ -403,11 +436,19 @@ completed-row criteria by the round-1 answers, the recurrent row's shape by roun
   claim batch that is always full is the signal that lag is accumulating; §11's stated
   early signal is fan-out delaying gameplay edges, and the remedy it names is priority,
   which is out of scope here. The batch-size observation (AC12) is what will show it.
-- **Where the alert for a stopped recurrence lives, whatever the round-3 answers are.**
+- **A transient failure of a slow recurrence costs a full cycle.** "Reschedule to the
+  next cadence instant" applied to a daily job means one failed run waits a day, where a
+  bounded backoff would have retried in minutes. The owner chose this knowingly — the
+  option said exactly that, and it is what removes the terminal state — so it is recorded
+  as a consequence, not reopened. If it bites, the two ways out that do not reintroduce a
+  give-up state are a more frequent cadence for the affected type, or a handler that
+  schedules its own one-shot retry; both are the mechanic's decision, not the scheduler's.
+- **Where the alert for a stopped recurrence lives.** AC34's consecutive-failure count is
+  the signal that separates one permanently broken recurrence from ordinary noise;
   The dead-task enumeration (AC10) and the per-type counters (AC12) make a stopped
-  recurrence *visible*; turning visible into *noticed* is an alert rule, and alert rules
-  belong to #23's dashboard, which has none yet. This spec deliberately ships the signal
-  and not the rule.
+  turning visible into *noticed* is an alert rule, and alert rules belong to #23's
+  dashboard, which has none yet. This spec deliberately ships the signal and not the
+  rule.
 - **Whether a row whose task type is no longer registered should eventually be removed
   automatically.** Under move-forward a recurrence outlives every deploy, so a type
   dropped from the registry leaves a row that comes due forever and is refused every time
