@@ -443,12 +443,12 @@ decision, not by oversight.
   as a consequence, not reopened. If it bites, the two ways out that do not reintroduce a
   give-up state are a more frequent cadence for the affected type, or a handler that
   schedules its own one-shot retry; both are the mechanic's decision, not the scheduler's.
-- **Where the alert for a stopped recurrence lives.** AC34's consecutive-failure count is
-  the signal that separates one permanently broken recurrence from ordinary noise;
-  The dead-task enumeration (AC10) and the per-type counters (AC12) make a stopped
-  turning visible into *noticed* is an alert rule, and alert rules belong to #23's
-  dashboard, which has none yet. This spec deliberately ships the signal and not the
-  rule.
+- **Where the alert for a stopped recurrence lives.** Three signals make a stopped
+  recurrence *visible*: AC34's consecutive-failure count, which is the one that separates
+  a single permanently broken recurrence from ordinary noise, together with the one-shot
+  dead-task enumeration (AC10) and the per-type counters (AC12). Turning visible into
+  *noticed* is an alert rule, and alert rules belong to #23's dashboard, which has none
+  yet. This spec deliberately ships the signal and not the rule.
 - **Whether a row whose task type is no longer registered should eventually be removed
   automatically.** Under move-forward a recurrence outlives every deploy, so a type
   dropped from the registry leaves a row that comes due forever and is refused every time
