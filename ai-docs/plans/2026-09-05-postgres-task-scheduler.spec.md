@@ -177,11 +177,26 @@ exclusive arc that `internal/store` already implements.
     The claim path, the guard no-op path, the retry/give-up path and the recurrent
     successor path are database behaviour and are asserted against the database.
 
-11. **Propagation, as a class.** This change renames a table that live documents name,
-    adds an environment-variable class, and falsifies the "exactly two implementations"
-    sentence in `internal/store/basis.go`. Every site whose claim the diff falsifies is
-    updated in the same PR, membership decided by `AGENTS.md` § Propagation Rule step 4 —
-    the sites named in AC22 illustrate the class and do not bound it.
+11. **Propagation, as a class — and it now reaches the source document.** This change
+    renames a table that live documents name, adds an environment-variable class, and
+    falsifies the "exactly two implementations" sentence in `internal/store/basis.go`.
+    Every site whose claim the diff falsifies is updated in the same PR, membership
+    decided by `AGENTS.md` § Propagation Rule step 4 — the sites named in AC22 illustrate
+    the class and do not bound it.
+
+    **`docs/DESIGN.md:310` is inside that class, and the licence for it is explicit.**
+    `AGENTS.md` § Project holds the design document to "**Implement from it. Never
+    redesign it** without an explicit user request"
+    [source: e64bcc6:AGENTS.md:15 · `grep -n 'Never redesign it' AGENTS.md`]. The product
+    owner supplied exactly that request, at round 5, when deciding the *Source conflicts*
+    finding. **What it authorises is one word:** the table's spelling on line 310 becomes
+    `scheduled_task`, so that §11's prose obeys the singular-table-names decision recorded
+    three lines below it in the same section
+    [source: e64bcc6:docs/DESIGN.md:313 · `sed -n '313p' docs/DESIGN.md`]. It authorises
+    nothing further — not restructuring §11, not any other sentence of `docs/DESIGN.md`,
+    and no change whatever to the scheduler's designed behaviour. The licence is stated
+    here, where the edit is prescribed, so that a later reader or a self-review meets it
+    rather than an apparent AXIOM violation.
 
 ## Out of scope
 
@@ -210,9 +225,12 @@ exclusive arc that `internal/store` already implements.
   This task ships a package a composition root can construct, exactly as the transport
   task did.
 - **`/metrics`, the Prometheus registry and the health dashboard** — #23.
-- **Editing `docs/DESIGN.md`.** It is decisions, and a task does not redesign it
-  (`AGENTS.md` § Project). The naming inconsistency this task meets is recorded under
-  *Source conflicts* and surfaced in *Open questions* instead.
+- **Editing `docs/DESIGN.md` beyond the one authorised word.** It is decisions, and a
+  task does not redesign it (`AGENTS.md` § Project). The sole exception this task carries
+  is the table's spelling on line 310, for which the owner gave the explicit request that
+  AXIOM requires — see Scope 11 and *Source conflicts*. Every other sentence of the
+  document, the rest of §11 included, is untouched, and no scheduler behaviour described
+  there is revisited.
 - **Retention of the ledger's own tables** (postings, daily balances) — §11 puts that
   outside MVP and #45 owns day close
   [source: 7039e36:docs/DESIGN.md:330 · `sed -n '330p' docs/DESIGN.md`].
@@ -260,6 +278,7 @@ exclusive arc that `internal/store` already implements.
 | Metric coupling | **No metrics-registry import in `internal/scheduler`.** The package defines the observation point; #23 supplies the implementation, exactly as `internal/tg` did [source: 7039e36:internal/tg/observe.go:27-33 · `sed -n '27,33p' internal/tg/observe.go`]. |
 | Whether this task wires the worker into `cmd/bot` | **No — #24.** The transport task set the precedent: ship the package, let the composition root construct it [source: 7039e36:ai-docs/context.md:43 · `sed -n '43p' ai-docs/context.md`]. |
 | The table's name | **`scheduled_task`, singular**, matching issue #20's title and Scope and the 2026-09-02 table-naming decision that every table in migration 00001 already follows. §11's prose spells it plural in one place; see *Source conflicts*. |
+| Whether this task may correct §11's plural spelling in `docs/DESIGN.md` | **Yes — the owner gave the explicit request `AGENTS.md` § Project requires** (round 5), and the bounds of that authorisation are themselves the decision. **Authorised:** line 310's `scheduled_tasks` becomes `scheduled_task`, closing §11's disagreement with the singular-names decision three lines below it [source: e64bcc6:docs/DESIGN.md:310,313 · `sed -n '310p;313p' docs/DESIGN.md`]. **Not authorised:** redesigning or restructuring §11, editing any other sentence of `docs/DESIGN.md`, or altering any scheduler behaviour it describes. This is a spelling correction *inside* a decisions document, not a decision revisited — §11 already made the decision on line 313 and simply failed to apply it on line 310. |
 | Payload representation | **One `payload jsonb` column** (owner, round 1). Each handler decodes its own shape; a new task type costs no migration for its payload. The two costs are accepted explicitly in the same answer: a malformed payload is caught at execution rather than by the database, and a reference held inside the payload can dangle. Consistent with the repository's existing split — the ledger is strict schema, the event log is JSONB, and they are deliberately different tables [source: 00a58ac:ai-docs/domain-invariants.md:52 · `sed -n '52p' ai-docs/domain-invariants.md`]. |
 | Whether JSONB relaxes the data-contract rule for payload keys | **No, and this is the trap the choice creates.** `AGENTS.md` names the scheduler's payloads, by that word, among the live data that outlives every deploy and changes by forward migration only [source: 00a58ac:AGENTS.md:84 · `grep -n 'scheduler.s .scheduled_tasks. payloads' AGENTS.md`]. A payload key is a persisted name: renaming one, re-typing one, or repurposing one is the same defect as doing it to a column, and a pending row written by the previous deploy must still decode. "It is only JSON" is not a licence. |
 | What a payload the handler cannot decode means | **A failure, not a guard no-op** — and one that must not loop. It is not the "state moved on" case §3.5 describes; it is a defect that will reproduce identically on every attempt, so it must reach the terminal give-up state and become visible (AC26) rather than consume the retry budget forever. |
@@ -352,29 +371,37 @@ exclusive arc that `internal/store` already implements.
 `docs/DESIGN.md` §11 disagrees with itself about the scheduler table's name.
 
 - `docs/DESIGN.md:310` — *"таблица `scheduled_tasks` (run_at, тип, payload, статус)"*
-  [`sed -n '310p' docs/DESIGN.md`]
+  [source: e64bcc6:docs/DESIGN.md:310 · `sed -n '310p' docs/DESIGN.md`]
 - `docs/DESIGN.md:313` — *"(таблица `posting`; **имена таблиц — в единственном числе,
-  решение 2026-09-02**)"* [`sed -n '313p' docs/DESIGN.md`]
+  решение 2026-09-02**)"*
+  [source: e64bcc6:docs/DESIGN.md:313 · `sed -n '313p' docs/DESIGN.md`]
 
-The plural spelling has also propagated to three live derived sites:
-`AGENTS.md:84` (the API-stability carve-out), `ai-docs/context.md:36` (the Scheduler
-block row) and `ai-docs/key-decisions.md:15` (KD-4)
-[`grep -rn 'scheduled_tasks' AGENTS.md ai-docs/context.md ai-docs/key-decisions.md`].
+The two sites are three lines apart in the same section. The plural spelling has also
+propagated to three live derived sites: `AGENTS.md:84` (the API-stability carve-out),
+`ai-docs/context.md:36` (the Scheduler block row) and `ai-docs/key-decisions.md:15` (KD-4)
+[source: e64bcc6 · `grep -rn 'scheduled_tasks' AGENTS.md ai-docs/context.md ai-docs/key-decisions.md`].
 Every table in migration 00001 is singular — `owner`, `scope`, `account`, `posting`,
 `journal_entry`, `player_operation`, `manual_correction`
 [source: 7039e36:internal/store/migrations/00001_ledger_core.sql · `grep -n '^CREATE TABLE' internal/store/migrations/00001_ledger_core.sql`].
 
-**Resolution: singular. Chosen by the product owner in issue #20**, whose title and whose
-Scope both spell it `scheduled_task`, consistent with the dated naming decision in the
-same §11 paragraph. The plural in §11's prose predates that decision and is left
-untouched, because a task does not edit `docs/DESIGN.md` (`AGENTS.md` § Project); the
-three derived sites are corrected under Scope 11. Whether §11 itself should be fixed is
-in *Open questions*, and nothing here blocks on the answer.
+**Resolution: singular — and this task closes the conflict at the source, not only in the
+derived sites.** The name is `scheduled_task`, chosen by the product owner in issue #20,
+whose title and whose Scope both spell it that way, consistent with the dated naming
+decision three lines below the offending line in the same §11.
+
+**The round-4 reasoning for leaving line 310 alone no longer holds.** That reasoning was
+that a task does not edit `docs/DESIGN.md` (`AGENTS.md` § Project) — a rule whose own
+text makes an explicit user request the exception, and at round 5 the owner supplied
+exactly that request. All four sites are therefore corrected in this PR under Scope 11:
+the source line and the three derived ones. The two quoted lines stay on the record above
+because they document *why* the correction is right — §11 is not being redesigned, it is
+being made to obey a decision it already states.
 
 ## Acceptance Criteria
 
 Every criterion below is settled: the payload and completed-row shape by the round-1
-answers, the recurrent row by round 2, the cadence and the failure policy by round 3.
+answers, the recurrent row by round 2, the cadence and the failure policy by round 3, and
+AC19's exclusion set plus the `docs/DESIGN.md` correction by the round-5 amendment.
 Note that the failure criteria are **split by task kind** — AC9/AC10/AC26 govern one-shots
 and AC32 governs recurrences — because the two kinds settle failure differently by
 decision, not by oversight.
@@ -399,10 +426,10 @@ decision, not by oversight.
 | AC16 | Adding the deferred priority / queue column later is an additive migration, not a rewrite: the design document names the claim query and the index serving it, and states what an added priority column changes — a column, an index and an ordering — with no second table, no Go type rename and no data backfill. No Go type or query in this change is named or shaped so that a priority dimension would contradict it. |
 | AC17 | Every test in this change that touches the database runs against a real PostgreSQL server through `internal/testdb`, each in its own schema. No test in the change substitutes a fake or mock database for it. |
 | AC18 | `internal/testdb` is imported only from `_test.go` files, so `cmd/bot`'s dependency graph stays free of the container runtime. |
-| AC19 | No live surface in the tree names the scheduler's table in a spelling other than `scheduled_task`. Surfaces under `ai-docs/plans/done/` are history and are excluded from this criterion, not counterexamples to it. |
+| AC19 | The string `scheduled_tasks` occurs in no tracked file, subject to exactly these three exclusions and no others: (a) `.gitignore`, where the match is part of the harness lock-file path `.claude/scheduled_tasks.lock` — a file belonging to the agent harness, not a spelling of this table at all; (b) any file under `ai-docs/plans/done/`, which is history rather than a live surface; (c) this task's own `ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md` and `ai-docs/plans/2026-09-05-postgres-task-scheduler.design.md`, which quote the superseded spelling as the evidence for correcting it and would falsify themselves if they could not. Every other tracked surface spells the table `scheduled_task` — `docs/DESIGN.md` included, since Scope 11 corrects it rather than excluding it. |
 | AC20 | `store.PostingBasis`'s doc comment describes the set of implementations the package actually has after this change; no live sentence in the tree still asserts the sum type has exactly two. |
 | AC21 | An unregistered task type is a refusal — at registration, at insertion or at claim time — and never a claimed row that fails silently or a due row that no worker will ever take. A test asserts the refusal and asserts that such a row does not accumulate retries invisibly. |
-| AC22 | Propagation is complete for this change: every site whose claim the diff falsifies is updated in the same PR, membership decided by `AGENTS.md` § Propagation Rule step 4. Sites known at spec time — illustrative, not exhaustive: `ai-docs/context.md` (the Scheduler block row and the Status code paragraph), `ai-docs/key-decisions.md` KD-4, `AGENTS.md` § API Stability's carve-out sentence, `internal/store/basis.go`'s `PostingBasis` doc comment, `.env.example`, `internal/config/env.go`, and `ai-docs/plans/INDEX.md`. |
+| AC22 | Propagation is complete for this change: every site whose claim the diff falsifies is updated in the same PR, membership decided by `AGENTS.md` § Propagation Rule step 4. **One member is named rather than illustrative, and is required**, because `AGENTS.md` § Project's AXIOM makes it the one edit a reviewer must find authorised: `docs/DESIGN.md` §11's table spelling on line 310 reads `scheduled_task` after this change, under the owner's explicit round-5 request recorded in Scope 11 and *Source conflicts* — and no other sentence of `docs/DESIGN.md` differs from its pre-change text. The remaining sites known at spec time are illustrative, not exhaustive: `ai-docs/context.md` (the Scheduler block row and the Status code paragraph), `ai-docs/key-decisions.md` KD-4, `AGENTS.md` § API Stability's carve-out sentence, `internal/store/basis.go`'s `PostingBasis` doc comment, `.env.example`, `internal/config/env.go`, and `ai-docs/plans/INDEX.md`. |
 | AC23 | Every gate `make verify` runs is green on the resulting tree, including the race-enabled test gate. |
 | AC24 | `scheduled_task` carries its type-specific data in a single JSONB payload column. A test round-trips a payload through insert, claim and execution and asserts the handler receives the value that was scheduled, including for a payload containing a nested object and a null. |
 | AC25 | A **one-shot** task that completes — whether with effects or as a guard no-op — leaves no row in `scheduled_task`: the deletion happens in the same transaction as the effects, so a rolled-back execution leaves the row present and still due. A test asserts both directions. There is no terminal `completed` status value in the schema and no retention step in the change. A recurrent task is the stated exception and is governed by AC11 instead. |
@@ -418,13 +445,6 @@ decision, not by oversight.
 
 ## Open questions
 
-- **Should `docs/DESIGN.md` §11's prose be corrected to the singular table name?** §11
-  states the singular-names decision and then spells this one table plural, six lines
-  apart. That is an inconsistency inside a decisions document rather than a decision to
-  revisit, but `docs/DESIGN.md` is the owner's and a task does not edit it — the same
-  posture the transport task took when it found §11 incomplete on a rate-limit figure.
-  Nothing here blocks: the code, the migration and the derived documents use the singular
-  name either way.
 - **Whether "recurrent task" and "cron task (day close)" stay two basis types or
   collapse into one.** §11's starter registry names both
   [source: 7039e36:docs/DESIGN.md:331 · `sed -n '331p' docs/DESIGN.md`]; issue #20 scopes this task to two tables and
