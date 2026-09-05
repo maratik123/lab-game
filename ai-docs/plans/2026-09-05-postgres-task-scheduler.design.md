@@ -4,8 +4,13 @@
 **Date:** 2026-09-05
 
 > **Claim-tag conventions in this document.** A repo fact carries the commit of the **read**, not
-> of this document. Round 4 re-ran every repo read in one turn, so every repo tag here now carries
-> `069ab1f`; an earlier round's pin is never carried forward unresolved. A fact about
+> of this document. Round 4 re-ran every repo read in one turn, so those tags carry `069ab1f`; the
+> tags round 5 added carry `c92f96f`, the commit of its own reads. The two pins do not disagree:
+> the only file that changed between them is this design
+> [measured c92f96f · `git diff --name-only 069ab1f c92f96f` → `ai-docs/plans/2026-09-05-postgres-task-scheduler.design.md`],
+> so every `069ab1f` tag is still a read of the text it quotes. An earlier round's pin is never
+> carried forward **unresolved** — it is carried forward only with a measurement that says it did
+> not move. A fact about
 > **PostgreSQL's own behaviour** has no repo path, so its pin is the server version the probe ran
 > against (`postgres:18.6`, a throwaway container started from the image already on this machine
 > and stopped afterwards). **Round 4 re-ran every PostgreSQL probe too, and re-ran rather than
@@ -16,6 +21,25 @@
 > `docs/DESIGN.md` is cited by section per the design-writer contract, so those citations carry
 > no `[measured …]` tag — with one exception, `docs/DESIGN.md:310`, which is this change's edit
 > target and is therefore pinned by line where the edit is prescribed (D15).
+
+---
+
+## Round-5 resolution — the owner's answer on the `self-review.md` example
+
+Round 4 raised one open question and did **not** act on it: the Postgres-invariants example in
+`.claude/agents/self-review.md` § 3 names a locking clause no query in the tree will issue after
+this change. The owner has answered it — **generalise the example, in subtask 11, with its
+sync-group check** — so it stops being an open question and becomes prescribed work. D15 carries
+the edit, its exact bound, the sync-group verdicts and the keyword grep; § Open questions no longer
+lists it.
+
+| Item | Answered in | Resolution in one line |
+|---|---|---|
+| **The example is generalised** | D15, § Decomposition subtask 11 | `` `FOR UPDATE SKIP LOCKED` behaviour `` becomes `` row-level lock and `SKIP LOCKED` behaviour `` inside the existing parenthetical — the owner's own wording — and nothing else in that rule or its neighbours changes |
+| **Generalising the example is not widening the rule** | D15, § Risks | The rule's claim (a database-enforced invariant asserted against a mock or an in-memory fake → REJECT `major`) keeps exactly its current strength and severity. Only the illustration stops naming one clause and covers the class. The design says so explicitly, because that distinction is the boundary of what was approved |
+| **The reach is stated honestly: authorised scope, not propagation** | D15, § Risks | Round 4's finding stands — the rule's claim is **not** falsified by this change, so AC22 does not require the edit. It is in scope because the owner authorised it, and D15 records that at the point of the edit so a later reviewer meets the authorisation rather than an apparently unjustified harness edit |
+| **The sync group is re-resolved, not remembered** | D15 | Checked against the table itself, and the round-4 report was right about the Review group's members. The check now also names the row that could have applied and does not, and the outcome on each sibling is measured rather than assumed |
+| **Subtask 11 and Group B** | § Decomposition, § Handoff plan | The subtask gains `.claude/agents/self-review.md` and the checks that edit requires; Group B keeps its shape — `.claude/**` is the same instructions/harness change-type it already carries, so homogeneity, the terminal-group size range and the group count are all unchanged. Stated rather than left silent |
 
 ---
 
@@ -39,7 +63,7 @@ follows that, so Step 8 reads every round's write-back from one place.
 | **Every mode-dependent probe was re-run, not re-tagged** | § Approach, D2, D4, D5, D10, D11, § Risks, § Open questions | The exclusion, `LIMIT`-after-skip, savepoint, idle-in-transaction, ctx-ignoring-handler, disconnect, lease-reviver, reconcile-correction and `pg_terminate_backend` probes were re-run against `postgres:18.6` with the holder and the claimant both on `FOR NO KEY UPDATE`. The probes carrying **no locking clause at all** — `now()` versus `clock_timestamp()`, the savepoint-recovery pair, the `statement_timeout` recovery, the identity-index branches and `jsonb` normalisation — are mode-independent by inspection and were re-run anyway, so no tag in this document quotes a statement the design does not issue |
 | **Round 6 — the `docs/DESIGN.md` licence widens to two edits on line 310** | D15, § Decomposition subtask 11, § Risks | D15's bound is now *two edits and no more* on that line: the table's spelling and the claim query's row-lock mode. **The line-147 exclusion is stated where the edit is prescribed** — §3.5's `SELECT session FOR UPDATE` is the raid-session FSM's guard query, a different mechanism, and a document-wide substitution would silently change its documented lock mode. §11 therefore no longer diverges from the shipped worker on the mode, so the design has no canonical-primitive divergence left to argue |
 | **Round 7 — AC27 keeps its basis-document scope** | D4 (the coupling), D14, § Risks | The equivalence rests on *no foreign key anywhere referencing `scheduled_task`*; AC27 enforces that for **basis-document tables only**. Every surface that states the coupling states it at that reach — a **named, accepted residual risk with its failure mode**, never a completed guarantee — and the design adds **no rule of its own** re-imposing the wider scope the owner declined |
-| **AC35's exclusion surfaces and AC36's no-performance-framing check** | D15, § Test Design | D15 names the surfaces that may still match a search for the old clause without violating AC35, and the one surface whose example the design deliberately does **not** edit, with the reason and the propagation cost, flagged to the owner in § Open questions rather than acted on |
+| **AC35's exclusion surfaces and AC36's no-performance-framing check** | D15, § Test Design | D15 names the surfaces that may still match a search for the old clause without violating AC35, and the one surface whose example round 4 declined to edit on its own authority, flagged to the owner as an ask. **Superseded in round 5:** the owner authorised the edit, so `.claude/agents/self-review.md` is now a prescribed, bounded change in subtask 11 rather than an open question — see the round-5 table above |
 | **AC23**, unnamed in design rounds 1–3 | § Risks | Named where the gate discipline lives: every subtask re-runs its gate, and the whole-tree `make verify` including the race gate is the Step-9 obligation |
 
 ---
@@ -1093,7 +1117,10 @@ wording (§ Approach).
 | `AGENTS.md` § API Stability carve-out | spells the table `scheduled_tasks` | spelling only — it quotes no lock mode |
 | `ai-docs/key-decisions.md` KD-4 | spells the table `scheduled_tasks` **and** writes the worker's claim as `FOR UPDATE SKIP LOCKED`, in one sentence; also says "each task executing in one transaction with its effects" | spelling **and** mode corrected; the invariant clause **survives verbatim** |
 | `ai-docs/context.md` Scheduler block row | spells the table `scheduled_tasks` **and** writes the worker's claim as `FOR UPDATE SKIP LOCKED`, in one sentence; also says "one transaction per task with its effects" | spelling **and** mode corrected; the invariant clause **survives verbatim** |
-| `.claude/agents/self-review.md` § 3, the Postgres-invariants rule | nothing — its claim is "a database-enforced invariant asserted against a mock → REJECT", which this change does not falsify; `FOR UPDATE SKIP LOCKED` appears there as an *example* of such an invariant, not as an assertion about this worker's query | **no edit, and the reason is recorded rather than assumed** (below) |
+| `.claude/agents/self-review.md` § 3, the Postgres-invariants rule | **nothing** — its claim is "a database-enforced invariant asserted against a mock or an in-memory fake → REJECT", which this change does not falsify; `FOR UPDATE SKIP LOCKED` appears there as an *example* of such an invariant, not as an assertion about this worker's query | **example generalised — authorised scope, NOT propagation** (below). AC22 does not require this edit and the design does not claim it does |
+| `.claude/agents/review-findings.md` § 3, its counterpart line | nothing — and it already writes the example generically, without a lock mode | **no edit**; the sibling is what the generalised `self-review.md` line converges *onto*, so the Review group ends this change more consistent than it began |
+| `.claude/skills/project-review/SKILL.md` | nothing — it carries no counterpart rule at all | **no edit** |
+| `docs/DESIGN.md` §11 line 311, "SKIP LOCKED горизонтален из коробки" | nothing — it names `SKIP LOCKED` with no lock mode and no table name | **untouched, and outside the two-edit authorisation**. A sweep for `SKIP LOCKED` hits it; editing it would breach the bound |
 | `ai-docs/domain-invariants.md` § 4, "A task executes in one transaction with its effects" | nothing — it does not name the table | **no edit** — recorded here because it is the invariant the shape was chosen to keep, and a reviewer must be able to see it was checked rather than missed |
 | `ai-docs/key-decisions.md` KD-27 | "the relaxation reaches **only** these keys" — a second optional-with-default class now exists | reworded |
 | `ai-docs/context.md` Architecture + Status paragraphs | do not name `internal/scheduler` | extended |
@@ -1193,20 +1220,77 @@ search for the old clause still matches, without any of the matches violating AC
 - this task's own spec and this design, which quote the pre-change clause as the evidence for
   changing it;
 - this task's `*.spec.md.state.md` interview state, which is retired before the PR in any case;
-- `docs/DESIGN.md` line 147 — §3.5's raid-session lock, not the scheduler's claim (above);
-- `.claude/agents/self-review.md` § 3, whose Postgres-invariants rule names `FOR UPDATE SKIP
-  LOCKED` **behaviour** as an example of a database-enforced invariant. AC35 places it outside the
-  criterion; the judgement AC35 leaves to this design is whether it nevertheless falls inside
-  AC22's propagation class, and the design's call is **no, with the reasoning recorded**: the
-  sentence asserts nothing about this worker's query, and its operative clause — asserting a
-  database-enforced invariant against a mock is a REJECT — is not falsified by the mode change.
-  What the mode change does do is make the *example* name a clause no query in the tree issues,
-  which is an under-coverage rather than a falsehood. Acting on it would edit an instruction file
-  and drag in its whole sync group
-  [measured 069ab1f:ai-docs/propagation-groups.md:7 · `grep -n 'self-review' ai-docs/propagation-groups.md | head -1 | cut -c1-140` →
-  ``7:| `.claude/agents/self-review.md` | `.claude/agents/review-findings.md` AND `.claude/skills/project-review/SKILL.md` (Review group) |``],
-  which is scope this task was not given. It is put to the owner in § Open questions as an ask,
-  not carried out as a notification.
+- `docs/DESIGN.md` line 147 — §3.5's raid-session lock, not the scheduler's claim (above).
+
+**AC35 named a fifth non-violating match, and after round 5 it is not a match at all.**
+`.claude/agents/self-review.md` § 3's Postgres-invariants rule illustrated the invariant class with
+`FOR UPDATE SKIP LOCKED` **behaviour**; AC35 placed it outside the criterion, and round 4
+established that AC22 does not reach it either, its operative claim being about mocks rather than
+about this worker's mode. The owner has since authorised generalising the example, so the file
+stops matching a search for the old clause instead of matching it harmlessly — strictly less to
+reconcile at the sweep, and no criterion loosened either way. The edit, its bound and its
+authorisation are the block below; it belongs in that block and **not** in the list above, because
+the list is the set of surfaces that still match.
+
+**`.claude/agents/self-review.md` — an authorised edit that is NOT propagation, and the difference
+is load-bearing.** Round 4's finding stands and is not being quietly reversed: the rule's claim is
+not falsified by this change, so `AGENTS.md` § Propagation Rule step 4 does **not** put this file in
+AC22's class. What changed is that the owner, asked, authorised the edit as scope. Recording both
+facts at the point of the edit is the whole purpose of this block — a reviewer meeting a harness
+edit in a scheduler PR must find its authorisation here, and must **not** infer that a
+non-falsified claim is generally rewritable under AC22.
+
+*The edit, bounded.* Inside the existing parenthetical of the § 3 rule, the illustration
+`` `FOR UPDATE SKIP LOCKED` behaviour `` becomes `` row-level lock and `SKIP LOCKED` behaviour `` —
+the owner's own wording. Nothing else on that line changes: the rule's subject (a ledger,
+item-machine or scheduler test), its trigger (asserting a database-enforced invariant against a
+mock or an in-memory fake), its verdict (REJECT), its severity (`major`) and its closing sentence
+are byte-identical afterwards, as are the `-race`, determinism and FSM-edge rules around it
+[measured c92f96f:.claude/agents/self-review.md:91 · `sed -n '91p' .claude/agents/self-review.md | cut -c1-118` →
+``- **Postgres invariants tested against Postgres.** A ledger, item-machine, or scheduler test that asserts a database-``].
+
+***Generalising an example is not widening a rule*, and the design says so because that is the
+boundary of what was approved.** The rule already applies to every database-enforced invariant; the
+parenthetical only illustrates. Replacing one illustration with the class it belonged to leaves the
+set of diffs the rule REJECTs exactly as it is — a mock-based test of `FOR UPDATE SKIP LOCKED`
+behaviour is still a REJECT, and so is one of `FOR NO KEY UPDATE SKIP LOCKED` behaviour, which the
+old wording illustrated less well. Nothing adjacent is strengthened, no severity moves, and no new
+obligation is added anywhere in the file: "never weaker" authorises staying put, not movement.
+
+*The sync group, resolved against the table rather than remembered.* `.claude/agents/self-review.md`
+carries a declared group, and its members are the ones round 4 named
+[measured c92f96f:ai-docs/propagation-groups.md:7 · `grep -n 'self-review' ai-docs/propagation-groups.md | head -1 | cut -c1-150` →
+``7:| `.claude/agents/self-review.md` | `.claude/agents/review-findings.md` AND `.claude/skills/project-review/SKILL.md` (Review group) |``].
+Both were checked and **neither needs an edit**, which is the check's outcome rather than an
+assumption: `review-findings.md`'s counterpart line already writes the example generically, so the
+generalised `self-review.md` line converges onto it instead of diverging from it, and
+`project-review/SKILL.md` carries no counterpart rule
+[measured c92f96f:.claude/agents/review-findings.md:75 · `grep -rn 'SKIP LOCKED' .claude/agents/review-findings.md .claude/skills/project-review/SKILL.md` →
+``.claude/agents/review-findings.md:75:- Database-enforced invariants (zero-sum per kind, `CHECK`s, capture order, `SKIP LOCKED`) tested against a real Postgres rather than a mock?``,
+and no match in `project-review/SKILL.md`].
+One further row of that table **could** have applied and does not, named so the check is visibly
+complete rather than visibly short: the domain-invariant row fans an edit out to
+`ai-docs/domain-invariants.md`, `review-findings.md` § 1a and `design-writer.md` § Rules, but it is
+triggered by editing a *domain-invariant rule* and points at `self-review.md` **§ 4a**; this edit is
+in **§ 3, Test coverage**, and § 4a is untouched
+[measured c92f96f:.claude/agents/self-review.md:82,105 · `grep -n '^### 3\.\|^### 4a\.' .claude/agents/self-review.md` →
+`82:### 3. Test coverage` / `105:### 4a. Domain invariants (this project's hard rules)`].
+Subtask 11 re-runs both checks on the tree it produces rather than trusting this paragraph.
+
+*The keyword grep `AGENTS.md` § Propagation Rule step 1 requires, and what it finds.* The changed
+keywords are the clause and its class, so the subtask runs
+`grep -rni 'for update' .claude/ AGENTS.md ai-docs/` and `grep -rni 'skip locked' .claude/ AGENTS.md ai-docs/`
+— case-insensitive, because a sweep over prose that is not is a sweep that under-reports. Every
+live site they return is already accounted for in the table above, and there is no unlisted one
+[measured c92f96f · `grep -rni 'for update' .claude/ AGENTS.md ai-docs/ | grep -v '^ai-docs/plans/'` →
+`ai-docs/context.md:36` / `ai-docs/key-decisions.md:15` / `.claude/agents/self-review.md:91`;
+`grep -rni 'skip locked' .claude/ AGENTS.md ai-docs/ | grep -v '^ai-docs/plans/'` → those three plus
+`.claude/agents/review-findings.md:75`]. Outside that surface, step 4's user-facing sweep adds only
+`docs/DESIGN.md` line 311, which names `SKIP LOCKED` with no lock mode and no table name and is
+therefore **untouched** — it is inside the file whose edits are bounded to line 310, so a sweep hit
+there is a trap, not a site
+[measured c92f96f:docs/DESIGN.md:311 · `grep -rni 'skip locked' README.md docs/` →
+`docs/DESIGN.md:311:    - Масштабирование при нужде (не раньше): SKIP LOCKED горизонтален из коробки`].
 
 **AC36 binds this whole propagation, not only the design.** Every surface the table above touches —
 the corrected `docs/DESIGN.md` line, KD-4, the `context.md` Scheduler row, the code comments the
@@ -1234,7 +1318,7 @@ is the whole edit, and adding a justification there is how a forbidden framing g
 | 8 | The loop and the seam: `Run`, the poll interval, emit-after-commit, the loop observation; tests collecting observations for a success, a no-op, a retry, a give-up and a repeatedly failing recurrence, plus non-default tuning values changing observed behaviour and the nil-observer path (AC12, AC13, AC14 worker half) | `internal/scheduler/worker.go`, `observe.go`, `observe_test.go` | 7 |
 | 9 | The per-task execution deadline: the `SET LOCAL` statement and idle-in-transaction timeouts, the handler goroutine, abandonment of that task's transaction, the connection hijack and its watchdog close, `FailureDeadline` / `FailureRolledBack`; tests for the blocked handler, the row becoming claimable within ≈ 2 × the deadline, the observation, the untouched neighbours in the same cycle, the ctx-ignoring handler as the contract's negative case, and the aborted-transaction self-healing property (AC30, AC31 behavioural half) | `internal/scheduler/execute.go`, `worker.go`, `deadline_test.go` | 8 |
 | 10 | `Reconcile`: the seed and the correction — the correction CTE takes `FOR NO KEY UPDATE … SKIP LOCKED` (D10, AC35); tests for the missing-row seed, the seed against a dead row of the same identity, the shortened-cadence correction, two concurrent start-ups producing one row, and the imminent occurrence left alone (AC33, AC35 reconcile half) | `internal/scheduler/reconcile.go`, `reconcile_test.go` | 8 |
-| 11 | Propagation (D15): the table's spelling **and the claim query's row-lock mode** at their live sites — **`docs/DESIGN.md:310` included, exactly two edits on that one line per D15's bound, with line 147 left byte-identical** — KD-4 and the `context.md` Scheduler row (two falsified claims each), KD-27's boundary sentence, the `context.md` Architecture/Status updates, the `INDEX.md` row; and the AC36 check that no surface in the change frames the mode as a performance improvement or states the FK coupling as a completed guarantee (AC19, AC22, AC35 documentation half, AC36) | `docs/DESIGN.md`, `AGENTS.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–10 |
+| 11 | Propagation (D15): the table's spelling **and the claim query's row-lock mode** at their live sites — **`docs/DESIGN.md:310` included, exactly two edits on that one line per D15's bound, with line 147 left byte-identical** — KD-4 and the `context.md` Scheduler row (each falsified in its spelling **and** its lock mode), KD-27's boundary sentence, the `context.md` Architecture/Status updates, the `INDEX.md` row; and the AC36 check that no surface in the change frames the mode as a performance improvement or states the FK coupling as a completed guarantee. **Plus the owner-authorised generalisation of `.claude/agents/self-review.md` § 3's Postgres-invariants example** — the bounded substitution D15 specifies, which is authorised scope and not AC22 propagation — with the checks it requires, run on the produced tree: the Review-group sync check (`review-findings.md`, `project-review/SKILL.md` — expected outcome *no edit*, verified rather than assumed) and the case-insensitive keyword grep `AGENTS.md` § Propagation Rule step 1 requires, over `.claude/`, `AGENTS.md` and `ai-docs/`, reconciled against D15's site table (AC19, AC22, AC35 documentation half, AC36) | `docs/DESIGN.md`, `AGENTS.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md`, `.claude/agents/self-review.md` | 1–10 |
 
 ---
 
@@ -1252,9 +1336,15 @@ is the whole edit, and adding a justification there is how a forbidden framing g
   in Group B with fresh context.
 - **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
   (typically xHigh) — **not pinned** — 1M-token window, via the `general-purpose` subagent with no
-  inline `model=` override — subtask 11 (instructions/harness change-type: `*.md` only —
-  `docs/DESIGN.md`, `AGENTS.md`, `ai-docs/**`). Terminal group (1 subtask; within the `1..=10`
-  range).
+  inline `model=` override — subtask 11 (instructions/harness change-type: `*.md` and `.claude/**`
+  — `docs/DESIGN.md`, `AGENTS.md`, `ai-docs/**`, and `.claude/agents/self-review.md`). Terminal
+  group (1 subtask; within the `1..=10` range).
+
+**Round 5 changed subtask 11's file set; it did not change the group's shape, and that is stated
+rather than left to inference.** `.claude/agents/self-review.md` is `.claude/**`, which rule (e)
+names as the *same* instructions/harness change-type Group B already carries — so the group stays
+homogeneous, it stays one subtask (inside the terminal range `1..=10`), and no boundary is forced.
+Group A is untouched. The count of groups and their models are unchanged.
 
 Two groups, within the default maximum of 4; no user approval is required.
 
@@ -1359,6 +1449,21 @@ Two groups, within the default maximum of 4; no user approval is required.
   reason and the negation together everywhere the mode is argued — § Approach, D4 and every
   propagation site D15 lists — and by the propagation sites that merely quote the clause carrying
   no justification at all — `[derived → AC36's check that no document, comment or commit message in the change justifies the mode as a throughput, latency, contention or lock-weight improvement]`.
+- **Generalising the `self-review.md` example invites tightening the rule while standing in it.**
+  The edit is authorised for an illustration; the same line carries a trigger, a verdict and a
+  severity, and the surrounding bullets carry the `-race`, determinism and FSM-edge rules. An
+  implementor who "improves" any of those is changing a review contract nobody approved — the
+  mirror of the `docs/DESIGN.md:310` trap, and with the same answer. Mitigated by D15 stating the
+  substitution and the byte-identical remainder at the point of the edit, and by the Review-group
+  sync check, whose expected outcome is *no edit* on either sibling —
+  `[derived → subtask 11's sync-group check and keyword grep, run on the tree it produces]`.
+- **A harness edit inside a scheduler PR reads as unjustified unless its authorisation is visible.**
+  AC22 does **not** put `.claude/agents/self-review.md` in the propagation class — round 4
+  established that the rule's claim is not falsified — so a reviewer who finds the edit and looks
+  for AC22 cover will not find it. Mitigated by D15 recording it as *authorised scope, not
+  propagation*, at the point of the edit, and by this design saying in terms that a non-falsified
+  claim is not thereby rewritable —
+  `[derived → D15's authorised-edit block, which self-review meets before the push]`.
 - **`make verify` is the whole-tree gate and it includes the race gate (AC23).** Each subtask runs
   its own gates, but a tree that is green subtask-by-subtask is not thereby green as a whole —
   `[derived → the Step-9 `make verify` run on the finished tree, whose race-enabled test gate is AC23's binding half]`.
@@ -1580,20 +1685,6 @@ observable outputs are database rows and observation structs.
 
 ## Open questions
 
-- **`.claude/agents/self-review.md`'s Postgres-invariants example names a clause no query in the
-  tree will issue — an ask, not a notification.** Its rule is "a ledger, item-machine or scheduler
-  test that asserts a database-enforced invariant (…, `FOR UPDATE SKIP LOCKED` behaviour) against a
-  mock or an in-memory fake → REJECT". AC35 puts that surface outside the criterion, and the
-  design's call is that AC22 does not require the edit either: the rule's operative claim is not
-  falsified, since it asserts something about mocks, not about this worker's mode (D15). What the
-  change does leave behind is an *example* that no longer names any clause in the tree, which is
-  under-coverage rather than a falsehood — a reviewer applying the example literally to a scheduler
-  test could miss the same defect under the new spelling. The minimal repair is to drop the mode
-  word so the example reads `SKIP LOCKED` behaviour, covering both. It is **not** done here for two
-  reasons: editing that file drags in its declared sync group (`review-findings.md` and
-  `project-review/SKILL.md`), and generalising a review rule nobody asked to generalise is
-  unapproved scope in the same way narrowing one would be. The owner's call — leave it, or
-  authorise the one-word generalisation plus its sync-group check as part of subtask 11.
 - **The dead-identity property is asserted as a design-level test, not as a criterion.** The
   round-2 review asked for an AC-level assertion that a seed against a dead row of the same
   identity leaves exactly one pending row. A new criterion is a spec amendment and routes through
