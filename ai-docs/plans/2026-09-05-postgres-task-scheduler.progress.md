@@ -8,13 +8,13 @@ _Updated: 2026-09-05 11:07_
 **Last build:** not run
 **Issue:** #20
 **Spec:** ai-docs/plans/2026-09-05-postgres-task-scheduler.spec.md
-**current_step:** Step 8 — subtask 9 of 10 complete
-**last_passed_gate:** golangci-lint run | 2026-09-05T15:40:00Z | (pending commit)
+**current_step:** Step 8 — Group A complete (subtasks 1-10 of 10); handoff to Group B (subtask 11) pending
+**last_passed_gate:** golangci-lint run | 2026-09-05T16:05:00Z | (pending commit)
 **entry_args:** 20
 
 ## Next action
 
-**Do this immediately:** continue Group A at subtask 10 — `Reconcile` (the seed and the correction), and `Run` calling it once before its first cycle.
+**Do this immediately:** Group A (subtasks 1-10, this progress file's own scope) is complete. The orchestrator hands off to Group B — subtask 11, the `.claude/**`/`docs/**`/`ai-docs/**` propagation (D15) — per the design's Handoff plan, via `/context-reset`.
 
 ## Subtasks
 
@@ -27,7 +27,8 @@ _Updated: 2026-09-05 11:07_
 - [x] 7. The failure policy: attempt counting, backoff from the settlement instant
 - [x] 8. The loop and the seam: `Run`, poll interval, emit-after-commit, loop observation
 - [x] 9. The per-task deadline and the settlement of everything it abandons (`settle.go`)
-- [ ] 10. `Reconcile`: the seed and the correction  ← CURRENT
+- [x] 10. `Reconcile`: the seed and the correction
+- [ ] 11. Propagation (D15) — Group B
 - [ ] 5. The insertion surface: `(*Registry).Schedule`
 - [ ] 6. The execution cycle: `Options`, `New`, `RunOnce`, discovery + per-id re-claim
 - [ ] 7. The failure policy: attempt counting, backoff from the settlement instant
@@ -39,6 +40,9 @@ _Updated: 2026-09-05 11:07_
 ## Decisions log
 
 - **Step 7**: design-review reached GO at round 4; the owner raised the round cap to 5 (was 3) after round 3's two confirmed majors.
+- **Step 8 subtask 10**: added `reconcile.go`'s `(*Worker).Reconcile` — the seed (`ON CONFLICT ... DO NOTHING`, instance key derived as the type name) and the correction (`FOR NO KEY UPDATE ... SKIP LOCKED`, firing only when the cadence disagrees with a *later* `run_at`, i.e. shortened), iterating every declared recurrence in `w.registry.decls`, reading one `now()` per `Reconcile` call. Wired `Run` in `worker.go` to call `Reconcile` once before entering its loop, returning its error without looping if it fails; `RunOnce` still does not call it (unchanged from subtask 8), which is what keeps the cycle tests from becoming reconcile tests too. **Deviation from the design's own Files column, noted rather than silently taken**: subtask 10's Decomposition row lists only `reconcile.go`/`reconcile_test.go`, but its own task text requires `Run` to call `Reconcile` — `worker.go` had to be touched too; the column is incomplete, not the requirement, and the requirement (D10, and the subtask's own test list naming "Run-reconciles-but-RunOnce-does-not") is unambiguous. Tests in `reconcile_test.go`: the missing-row seed landing one cadence ahead with the type name as `instance_key` (AC33); seeding against a dead row of the same identity leaving exactly one pending row beside it; a shortened cadence correcting `run_at`, a lengthened cadence leaving it alone, and a repeat `Reconcile` changing nothing further; two concurrent `Reconcile` calls under `-race` producing exactly one row; an imminent occurrence (inside the poll interval) and an in-flight occurrence (row held by a separate transaction under the same lock mode) both left untouched by the correction, with the same in-flight case also proving the seed's `ON CONFLICT` inserts nothing without waiting; and `Run` seeding before its first cycle while `RunOnce` does not, plus `Run` refusing to loop when `Reconcile` fails (driven by closing the pool before calling `Run`, so `Reconcile`'s own `SELECT now()` errors). All gates green: `go build ./...`, `go vet ./...`, `go test ./...`, `go test -race ./internal/scheduler/...`, `golangci-lint fmt -d`, `golangci-lint run`, `go mod tidy` (no drift).
+
+  **Group A (subtasks 1-10) is now complete.** All ten subtasks landed as separate commits on `feat/2026-09-05-postgres-task-scheduler`, each gated individually as recorded above. `make verify`'s whole-tree race-enabled gate (AC23, § Risks) has not yet been run as a single invocation — every subtask ran `go test -race ./internal/scheduler/...` and `go test ./...` (untargeted, non-race) separately; the orchestrator's Step 9 `make verify` is the first whole-tree race run across the finished tree and is Group B's/the orchestrator's obligation, not re-run here.
 - **Step 8 subtask 9**: `execute.go`'s `executeOne` now acquires its connection via `pool.Acquire` + `conn.Begin` rather than `pool.Begin`, because a deadline breach needs `(*pgxpool.Conn).Hijack`, an operation only the acquired-connection type exposes. The handler runs on its own goroutine handed a `context.WithTimeout(ctx, TaskTimeout)`-deadlined context (D11 layer 1); the worker selects on its result or the deadline (layer 3). On breach: the connection is hijacked (never committed or rolled back — the transaction is abandoned as D2 prescribes), the task is enqueued into a new mutex-guarded `Worker.pending` map (`settle.go`'s `pendingSettlement`), a `FailureDeadline` observation is emitted immediately, and a watchdog goroutine waits for the orphaned handler goroutine to return before closing the hijacked `*pgx.Conn` — the layer-2 `statement_timeout`/`idle_in_transaction_session_timeout` (already wired in subtask 6) is what actually frees the row server-side in the meantime. A failed `COMMIT` (D2 step 8) is treated identically: same `pendingSettlement` shape, reported as `FailureRolledBack`, differing only in the `reason` text written to `last_error`. Created `settle.go`, which now owns D7 in full (moved `readSettlementInstant`/`settleUnregistered`/`settleOutcome`/`settleDoneOrNoop`/`settleFailed` out of `execute.go` verbatim) plus the new deferred-drain machinery: `Worker.enqueuePending`, `Worker.drainPending` (called at the top of `RunOnce`, before discovery — D2 step 0), one settlement instant read per drain and shared by every id in it, and `drainOne`'s guarded `WITH candidate ... FOR NO KEY UPDATE SKIP LOCKED` statement with the `run_at`-match guard, falling back to an unlocked probe on `UPDATE 0` to distinguish "still locked" (retry) from "moved on" (drop). Two `golangci-lint run` findings on the watchdog goroutine's deliberate `context.Background()` (`gosec` G118 and `contextcheck`, both silenced with a stated reason — the request ctx is expected to be already done by the time the watchdog fires, and closing the connection is what finally frees a ctx-ignoring handler's row) were the only lint issues across the whole subtask.
 
   **One test had to be redesigned against a measured timing property, not assumed.** `TestDeadline_drainDoesNotBlockOnLockedRow` originally drove a real breach then drained "immediately" expecting the row still locked — it went RED with `failures:1`, because the client-side deadline (`context.WithTimeout`) and the server-side `idle_in_transaction_session_timeout` are configured to the same duration and start counting from approximately the same instant (the session goes idle right after the `SAVEPOINT` statement, essentially at task start), so the server can release the lock at essentially the same moment the worker's own select fires — there is no guaranteed ordering between "the worker's deadline fires" and "the very next drain call happens" versus "the server has already killed the backend". Rewritten to drive `Worker.enqueuePending` and the drain directly against a lock held by a separate, test-controlled transaction, which removes the race entirely and additionally proves the retry-on-release behaviour in the same test.
@@ -109,3 +113,6 @@ _Updated: 2026-09-05 11:07_
 - `internal/scheduler/settle.go` (new — owns D7 in full, plus the pending-settlement set and its guarded drain)
 - `internal/scheduler/worker.go` (`Worker.pendingMu`/`pending` fields; `RunOnce` calls `drainPending` before discovery)
 - `internal/scheduler/deadline_test.go` (new)
+- `internal/scheduler/reconcile.go` (new)
+- `internal/scheduler/reconcile_test.go` (new)
+- `internal/scheduler/worker.go` (`Run` now calls `Reconcile` before its loop)

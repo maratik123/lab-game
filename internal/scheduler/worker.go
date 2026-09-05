@@ -122,14 +122,26 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 	return nil
 }
 
-// Run loops RunOnce at the configured poll interval until ctx is done,
-// returning ctx.Err(). It runs one cycle immediately, then waits, so a
+// Run calls Reconcile once, then loops RunOnce at the configured poll
+// interval until ctx is done, returning ctx.Err(). If Reconcile fails,
+// Run returns its error without entering the loop at all — a worker
+// that could not reconcile is one whose recurrences may be missing, and
+// running anyway would hide that behind a quiet loop (design D10).
+// RunOnce does not call Reconcile: it is the single-cycle primitive the
+// tests drive, and an implicit reconcile inside it would make every
+// cycle test a reconcile test too.
+//
+// After Reconcile, Run runs one cycle immediately, then waits, so a
 // freshly inserted due task need not wait a full poll interval to be
 // picked up on start-up. Run does not stop on a RunOnce error — each
 // cycle already reports it through ObserveLoop (design D12) — because a
 // worker that stopped on a transient discovery failure would need an
 // external restart for no reason.
 func (w *Worker) Run(ctx context.Context) error {
+	if err := w.Reconcile(ctx); err != nil {
+		return fmt.Errorf("scheduler: run: %w", err)
+	}
+
 	ticker := time.NewTicker(w.cfg.PollInterval)
 	defer ticker.Stop()
 
