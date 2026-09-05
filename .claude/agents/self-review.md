@@ -88,7 +88,7 @@ A passing test doesn't mean it's correct. Mentally comment out the production fi
 - All assertions specific — no assertion that passes for every plausible output?
 - **`-race` where it is load-bearing.** A diff adding a goroutine, touching the scheduler worker, or sharing state across requests without a `go test -race ./...` run recorded in the progress file → REJECT (`major`). A race is a defect, never a flake.
 - **Determinism asserted exactly.** A test over generation, `combat()`, or trail replay that asserts a range / "not empty" / "no error" instead of the exact seeded output → REJECT (`minor`). These are pure functions of `(seed, input)` (`docs/DESIGN.md` §2.2.2, §4) — a fuzzy assertion silently forfeits the property the design bought.
-- **Postgres invariants tested against Postgres.** A ledger, item-machine, or scheduler test that asserts a database-enforced invariant (zero-sum per kind, a `CHECK`, capture order under concurrency, `FOR UPDATE SKIP LOCKED` behaviour) against a mock or an in-memory fake → REJECT (`major`). The mock proves the mock.
+- **Postgres invariants tested against Postgres.** A ledger, item-machine, or scheduler test that asserts a database-enforced invariant (zero-sum per kind, a `CHECK`, capture order under concurrency, row-level lock and `SKIP LOCKED` behaviour) against a mock or an in-memory fake → REJECT (`major`). The mock proves the mock.
 - **FSM edge coverage.** A diff touching raid-session transitions that leaves any new edge untested — **including the timer edges whose guard fails** — → REJECT (`minor`). A stale task firing late is expected traffic, not an error path (`docs/DESIGN.md` §3.5).
 
 ### 4. Safety and correctness
