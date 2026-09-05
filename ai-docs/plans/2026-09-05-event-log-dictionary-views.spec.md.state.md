@@ -58,7 +58,16 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
-agent_id: null
-prior_qa: []
+round: 2
+agent_id: af42b6350aa60c754
+prior_qa:
+  - round: 1
+    question: "Do the two high-volume, health-flavoured types — notification_sent and button_clicked — share the `event` table with the fourteen low-volume product types, or get their own table from day one?"
+    answer: "One table + class. All sixteen types land in `event`. The registry carries a volume class per type, so the later retention pass can split them without a rewrite. Every view is one FROM."
+  - round: 1
+    question: "Four of the nine MVP views read payload keys or ledger kinds no mechanic has defined yet — raid_finished's outcome, the backpack's owner, the click-to-notification linkage, and stamina postings. How do those four ship?"
+    answer: "Ship the five. Only the families computable from the columns and today's ledger ship now. The other four land in their mechanic's PR, recorded as deferred items here."
+  - round: 1
+    question: "Both source conflicts close by touching docs/DESIGN.md: §13.1/§13.5 spell the table `events` against §11:313's singular-names decision, and §11:331's «Стартовый реестр типов оснований» omits the game event that §11:323 and §11:332 both name. Does this PR edit the design corpus?"
+    answer: "Edit both. §13.1/§13.5 spelling becomes `event`, and §11:331 gains «игровое событие (лог 13.1)». Every live doc agrees and neither conflict is re-derivable by a later reader."
 ```
