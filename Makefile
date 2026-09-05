@@ -29,7 +29,7 @@ SHELL := /bin/bash
 GO_MAX_LINES ?= 1000
 GO_MAX_TEST_LINES ?= 1500
 
-.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck
+.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet
 
 verify: fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck
 
@@ -69,3 +69,10 @@ actionlint:
 
 shellcheck:
 	find . -path ./.git -prune -o -path ./tmp -prune -o -name '*.sh' -exec shellcheck -s bash {} +
+	shellcheck -s bash .githooks/pre-commit
+
+# Check-only: never writes the ratchet file, never stages. The pre-commit hook
+# runs the same script in raise mode. Not part of `verify` — it re-runs the
+# whole suite under coverage instrumentation, and `verify` already ran it twice.
+cover-ratchet:
+	.githooks/coverage-ratchet.sh --check

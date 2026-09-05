@@ -95,6 +95,12 @@ jobs:
           go-version-file: go.mod
       - run: make test
       - run: make test-race
+      # The ratchet is the LAST gate, not the only one: the pre-commit hook is
+      # where a drop is meant to be caught. This step catches a commit made on
+      # a machine whose core.hooksPath is unset, and it re-rolls the suite's
+      # timing-dependent statements on a runner rather than on the author's
+      # machine — see the drift measurement in .githooks/coverage-ratchet.sh.
+      - run: make cover-ratchet
 
   lint:
     name: Lint
@@ -170,6 +176,7 @@ jobs:
           bash .claude/skills/ai-audit/scripts/test-spawn-contract-guard.sh
           bash .claude/skills/task/scripts/test-stop-gate.sh
           bash .claude/skills/ai-audit/scripts/test-gate-log-path-guard.sh
+          bash .claude/skills/ai-audit/scripts/test-no-verify-guard.sh
       - name: relative markdown links resolve
         run: |
           set -euo pipefail

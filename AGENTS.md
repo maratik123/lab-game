@@ -66,6 +66,31 @@ go run ./cmd/bot                                        # run the bot (exits non
 
 > **A zero exit status is evidence about the LAST pipeline stage, not about your question.** Never pipe a gate whose exit code is load-bearing — `go test ./... | tail -6` reports `tail`'s status (always 0), so a RED gate records as green, and `tail -N` can truncate away the `FAIL` line you needed. Capture to a file **under `tmp/`** and grep the saved log: `mkdir -p tmp && go test ./... > tmp/gate.log 2>&1 && echo GATE-GREEN || echo GATE-RED`, then `grep -E "^(FAIL|ok|---)" tmp/gate.log`. `tmp/` is the one ignored scratch directory — a gate log, a mutation backup or a throwaway probe written to the repository ROOT is refused by a `PreToolUse` hook, because 60 of them accumulated there unseen while this sentence named a single filename. (`set -o pipefail` also works.) A `PreToolUse` hook blocks the `go test … | tail/head` form; the principle is broader than what the hook matches — the same silent-success shape covers a `jq` filter printing `null` from an error body, and a mutating flag (`rg -r`) rewriting output while exiting 0.
 
+> **AXIOM — statement coverage may rise and may not fall.** `.githooks/pre-commit` runs
+> `.githooks/coverage-ratchet.sh`, which measures `go test -coverprofile ./...`, compares it with
+> the value recorded in [`ai-docs/coverage-ratchet.txt`](ai-docs/coverage-ratchet.txt), refuses a
+> drop past the tolerance, and records a new high-water mark in the same commit. `make cover-ratchet`
+> and CI's Test job run the identical script with `--check` — it never writes there.
+>
+> | State | What happens |
+> |---|---|
+> | No `.go` / `.sql` / `go.mod` / `go.sum` staged | Skipped, silently — coverage cannot have moved. Most commits in a `/task` run cost nothing. |
+> | Unstaged edits to such files | **Blocked.** The measurement is taken on the working tree, so with them present it describes neither the commit nor the tree. |
+> | Suite not green | **Blocked** — coverage is not measurable. Container runtime missing? `LAB_GAME_TEST_DSN` points the suite at a running server. |
+> | `go` not on `$PATH` | Skipped, loud. Named fail direction: a machine with no Go toolchain cannot measure Go coverage. |
+> | Coverage fell past the tolerance | **Blocked**, with the uncovered functions listed. |
+> | Ratchet file absent | Initialised at the measured value and staged. There is no separate setup step. |
+>
+> **The two legitimate exits from a block are: cover what the change added, or lower the recorded
+> value IN THE SAME COMMIT and say in the message why the drop is correct.** `--no-verify` is not a
+> third one — a `PreToolUse` hook refuses it, because a gate an agent can switch off is not a gate.
+> Lowering the file is deliberately easy and deliberately visible: it lands in the diff a reviewer
+> reads.
+>
+> The tolerance and the measurement behind it are documented at the top of the script, including the
+> two timing-dependent statements that make the suite's coverage drift between runs. Read that header
+> before changing the number.
+
 **CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
 
 Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-index.md)); fall back to `rg <pattern> --type go [-l | -C 3]` when `ast-index` returns empty.

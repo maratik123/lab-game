@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# git pre-commit hook. Dispatch only — every gate it runs lives in its own
+# script so `make shellcheck` and CI cover the logic.
+#
+# Reached because `core.hooksPath` points at this directory. If `git config
+# --get core.hooksPath` prints nothing, run:
+#   git config core.hooksPath .githooks
+#
+# Bypassing this hook is the owner's escape, not an agent's: a `PreToolUse`
+# guard refuses `git commit --no-verify` from inside the harness.
+
+set -uo pipefail
+
+exec .githooks/coverage-ratchet.sh
