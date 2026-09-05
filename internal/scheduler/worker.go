@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,6 +50,12 @@ type Worker struct {
 	registry *Registry
 	cfg      config.Scheduler
 	observer Observer
+
+	// pendingMu guards pending, the set of tasks whose transaction died
+	// before it could settle them — a deadline breach or a failed COMMIT
+	// (design D7, D11). Run and a caller's RunOnce may both touch it.
+	pendingMu sync.Mutex
+	pending   map[TaskID]pendingSettlement
 }
 
 // New builds a Worker from opts, refusing a nil Pool, a nil Registry, or
@@ -93,6 +100,11 @@ func New(opts Options) (*Worker, error) {
 // Run must not stop on a transient one.
 func (w *Worker) RunOnce(ctx context.Context) error {
 	start := time.Now()
+
+	if err := w.drainPending(ctx); err != nil {
+		w.observeLoop(LoopObservation{Duration: time.Since(start), Err: err})
+		return err
+	}
 
 	ids, err := discoverDue(ctx, w.pool, w.cfg.ClaimLimit)
 	if err != nil {

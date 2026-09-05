@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5"
-
-	"github.com/maratik123/lab-game/internal/config"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // setTimeoutsSQL sets the two transaction-local timeouts through
@@ -16,23 +14,42 @@ import (
 // not a parameterisable position (design D2 step 1).
 const setTimeoutsSQL = `SELECT set_config('statement_timeout', $1, true), set_config('idle_in_transaction_session_timeout', $1, true)`
 
+// handlerResult is what the handler goroutine reports back to executeOne.
+type handlerResult struct {
+	outcome                Outcome
+	handlerErr, releaseErr error
+}
+
 // executeOne runs id's whole per-task transaction (design D2's steps
-// 1-8, minus the per-task execution deadline, which design D11/subtask 9
-// adds around the handler call below). batchSize is the discovery
-// cardinality of the cycle id came from (AC12's Observation.BatchSize).
-// An Observation is emitted after COMMIT succeeds — never before, since
-// an observation emitted before the commit is a claim about work that
-// may still roll back (design D2) — except when the row was skipped at
-// re-claim, which produces no observation at all because nothing
-// executed.
+// 1-8, including the per-task execution deadline, design D11). batchSize
+// is the discovery cardinality of the cycle id came from (AC12's
+// Observation.BatchSize). An Observation is emitted after COMMIT
+// succeeds — never before, since an observation emitted before the
+// commit is a claim about work that may still roll back (design D2) —
+// except when the row was skipped at re-claim, which produces no
+// observation at all because nothing executed.
+//
+// The connection is acquired explicitly, rather than through
+// (*pgxpool.Pool).Begin, because a deadline breach must hijack it
+// (design D11) — an operation only pgxpool.Conn exposes.
 func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error {
-	tx, err := w.pool.Begin(ctx)
+	conn, err := w.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("scheduler: acquire connection for task %d: %w", id, err)
+	}
+	handled := false
+	defer func() {
+		if !handled {
+			conn.Release()
+		}
+	}()
+
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("scheduler: begin task %d: %w", id, err)
 	}
-	committed := false
 	defer func() {
-		if !committed {
+		if !handled {
 			_ = tx.Rollback(ctx)
 		}
 	}()
@@ -49,7 +66,10 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 	if !ok {
 		// Another worker took it, it was already settled, or its run_at
 		// moved on. Silently skipped: no handler call, no observation.
-		return tx.Commit(ctx)
+		err := tx.Commit(ctx)
+		handled = true
+		conn.Release()
+		return err
 	}
 
 	// The execution instant t (design D3): read once, before the handler
@@ -69,7 +89,8 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("scheduler: commit task %d: %w", id, err)
 		}
-		committed = true
+		handled = true
+		conn.Release()
 		obs.Outcome = OutcomeFailed
 		obs.Failure = FailureUnregistered
 		obs.ConsecutiveFailures = task.ConsecutiveFailures
@@ -77,27 +98,89 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 		return nil
 	}
 
-	outcome, handlerErr, releaseErr := runHandlerWithSavepoint(ctx, tx, decl.Handler, task)
+	// Layer 1 of D11: the handler runs on its own goroutine with a
+	// deadline-bearing context, handed the worker's own tx. The worker
+	// selects on either its result or the deadline (layer 3).
+	deadlineCtx, cancel := context.WithTimeout(ctx, w.cfg.TaskTimeout)
+	defer cancel()
+	resultCh := make(chan handlerResult, 1)
+	go func() {
+		outcome, handlerErr, releaseErr := runHandlerWithSavepoint(deadlineCtx, tx, decl.Handler, task)
+		resultCh <- handlerResult{outcome, handlerErr, releaseErr}
+	}()
 
+	select {
+	case r := <-resultCh:
+		handled = true // settleAndAfter owns commit/rollback and conn.Release from here
+		return w.settleAndAfter(ctx, tx, conn, task, decl, r, obs)
+	case <-deadlineCtx.Done():
+		// The deadline was breached: this task's transaction is
+		// abandoned, not committed or rolled back — the row is still
+		// locked until the server terminates the backend (layer 2) or the
+		// watchdog below closes the hijacked connection once the orphaned
+		// handler goroutine returns. Design D7's deferred settlement
+		// closes the "attempt never counted" hole this would otherwise
+		// leave.
+		pconn := conn.Hijack()
+		handled = true
+		w.enqueuePending(pendingSettlement{
+			id: id, runAt: task.RunAt, consecutiveFailures: task.ConsecutiveFailures,
+			recurrence: decl.Recurrence, reason: "deadline exceeded",
+		})
+		go func() { //nolint:gosec,contextcheck // G118/contextcheck: context.Background() is deliberate here — ctx (and deadlineCtx) may already be done by the time this fires, and closing the connection must still happen, since that is what finally releases the row's lock for a handler that ignores its own ctx (design D11)
+			<-resultCh // wait for the orphaned handler goroutine to return
+			_ = pconn.Close(context.Background())
+		}()
+		obs.Outcome = OutcomeFailed
+		obs.Failure = FailureDeadline
+		obs.ConsecutiveFailures = task.ConsecutiveFailures + 1
+		w.observeTask(obs)
+		return nil
+	}
+}
+
+// settleAndAfter applies r's settlement and commits tx, then releases
+// conn. On a commit failure it defers the same settlement instead
+// (design D2 step 8, D7): the commit that would have written it never
+// happened, so the row is left exactly as due as it was, and only a
+// later drain can count the attempt. The caller has already marked its
+// own handled flag true; this function owns tx/conn from here on.
+func (w *Worker) settleAndAfter(
+	ctx context.Context, tx pgx.Tx, conn *pgxpool.Conn,
+	task Task, decl Declaration, r handlerResult, obs Observation,
+) error {
+	defer conn.Release()
+
+	outcome := r.outcome
+	handlerErr := r.handlerErr
 	failure := FailureNone
 	switch {
-	case releaseErr != nil:
+	case r.releaseErr != nil:
 		outcome = OutcomeFailed
 		failure = FailureRolledBack
-		handlerErr = releaseErr
+		handlerErr = r.releaseErr
 	case handlerErr != nil:
 		outcome = OutcomeFailed
 		failure = FailureHandler
 	}
 
 	if err := settleOutcome(ctx, tx, task, decl, outcome, handlerErr, w.cfg); err != nil {
-		return fmt.Errorf("scheduler: settle task %d: %w", id, err)
+		_ = tx.Rollback(ctx)
+		return fmt.Errorf("scheduler: settle task %d: %w", task.ID, err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("scheduler: commit task %d: %w", id, err)
+		_ = tx.Rollback(ctx)
+		w.enqueuePending(pendingSettlement{
+			id: task.ID, runAt: task.RunAt, consecutiveFailures: task.ConsecutiveFailures,
+			recurrence: decl.Recurrence, reason: fmt.Sprintf("commit failed: %s", err),
+		})
+		obs.Outcome = OutcomeFailed
+		obs.Failure = FailureRolledBack
+		obs.ConsecutiveFailures = task.ConsecutiveFailures + 1
+		w.observeTask(obs)
+		return nil
 	}
-	committed = true
 
 	obs.Outcome = outcome
 	obs.Failure = failure
@@ -141,113 +224,4 @@ func runHandlerWithSavepoint(ctx context.Context, tx pgx.Tx, handler Handler, ta
 		return outcome, handlerErr, fmt.Errorf("scheduler: rollback to savepoint: %w", err)
 	}
 	return outcome, handlerErr, nil
-}
-
-// readSettlementInstant reads the settlement instant s (design D3, D7):
-// clock_timestamp() on tx, immediately before a settlement statement that
-// writes a run_at. Read after the handler has returned, so a backoff or
-// next-cadence instant is measured from now rather than from before the
-// handler ran.
-func readSettlementInstant(ctx context.Context, tx pgx.Tx) (time.Time, error) {
-	var s time.Time
-	if err := tx.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&s); err != nil {
-		return time.Time{}, fmt.Errorf("scheduler: read settlement instant: %w", err)
-	}
-	return s, nil
-}
-
-// settleUnregistered settles a claimed row whose type has no Declaration
-// (design D7's last row): the row is never executed, so consecutive_failures
-// and state are untouched — it can never reach dead — and run_at is pushed
-// out by ceiling so the refusal recurs at a bounded rate.
-func settleUnregistered(ctx context.Context, tx pgx.Tx, id TaskID, ceiling time.Duration) error {
-	s, err := readSettlementInstant(ctx, tx)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(ctx, `UPDATE scheduled_task SET run_at = $2 WHERE id = $1`, int64(id), s.Add(ceiling))
-	if err != nil {
-		return fmt.Errorf("scheduler: settle unregistered: %w", err)
-	}
-	return nil
-}
-
-// settleOutcome writes task's settlement statement for outcome (design
-// D7's table), computing every future run_at from the settlement instant
-// s — never from the execution instant — per D3/D7.
-func settleOutcome(ctx context.Context, tx pgx.Tx, task Task, decl Declaration, outcome Outcome, handlerErr error, cfg config.Scheduler) error {
-	switch outcome {
-	case OutcomeDone, OutcomeNoop:
-		return settleDoneOrNoop(ctx, tx, task, decl)
-	case OutcomeFailed:
-		return settleFailed(ctx, tx, task, decl, handlerErr, cfg)
-	default:
-		return fmt.Errorf("scheduler: unknown outcome %d", outcome)
-	}
-}
-
-func settleDoneOrNoop(ctx context.Context, tx pgx.Tx, task Task, decl Declaration) error {
-	if decl.Recurrence == nil {
-		if _, err := tx.Exec(ctx, `DELETE FROM scheduled_task WHERE id = $1`, int64(task.ID)); err != nil {
-			return fmt.Errorf("scheduler: delete done task: %w", err)
-		}
-		return nil
-	}
-	s, err := readSettlementInstant(ctx, tx)
-	if err != nil {
-		return err
-	}
-	next := decl.Recurrence.Cadence(task.RunAt, s)
-	if _, err := tx.Exec(ctx,
-		`UPDATE scheduled_task SET run_at = $2, consecutive_failures = 0, last_error = NULL WHERE id = $1`,
-		int64(task.ID), next,
-	); err != nil {
-		return fmt.Errorf("scheduler: reschedule recurrent task: %w", err)
-	}
-	return nil
-}
-
-func settleFailed(ctx context.Context, tx pgx.Tx, task Task, decl Declaration, handlerErr error, cfg config.Scheduler) error {
-	lastError := ""
-	if handlerErr != nil {
-		lastError = handlerErr.Error()
-	}
-	k := task.ConsecutiveFailures + 1
-
-	if decl.Recurrence == nil {
-		if k >= cfg.RetryMaxAttempts {
-			if _, err := tx.Exec(ctx,
-				`UPDATE scheduled_task SET state = 'dead', consecutive_failures = $2, last_error = $3 WHERE id = $1`,
-				int64(task.ID), k, lastError,
-			); err != nil {
-				return fmt.Errorf("scheduler: give up on task: %w", err)
-			}
-			return nil
-		}
-		s, err := readSettlementInstant(ctx, tx)
-		if err != nil {
-			return err
-		}
-		runAt := s.Add(backoff(k, cfg.RetryBaseDelay, cfg.RetryMaxDelay))
-		if _, err := tx.Exec(ctx,
-			`UPDATE scheduled_task SET consecutive_failures = $2, last_error = $3, run_at = $4 WHERE id = $1`,
-			int64(task.ID), k, lastError, runAt,
-		); err != nil {
-			return fmt.Errorf("scheduler: settle failed one-shot: %w", err)
-		}
-		return nil
-	}
-
-	s, err := readSettlementInstant(ctx, tx)
-	if err != nil {
-		return err
-	}
-	next := decl.Recurrence.Cadence(task.RunAt, s)
-	if _, err := tx.Exec(ctx,
-		`UPDATE scheduled_task SET consecutive_failures = $2, last_error = $3, run_at = $4 WHERE id = $1`,
-		int64(task.ID), k, lastError, next,
-	); err != nil {
-		return fmt.Errorf("scheduler: settle failed recurrent: %w", err)
-	}
-	return nil
 }
