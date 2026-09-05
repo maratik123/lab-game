@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -26,7 +27,7 @@ type Task struct {
 	InstanceKey string
 	// Payload is the row's raw JSON payload, exactly as stored (jsonb
 	// normalises key order, whitespace and duplicate keys — design D5).
-	Payload []byte
+	Payload json.RawMessage
 	// RunAt is the instant this task became due.
 	RunAt time.Time
 	// ConsecutiveFailures is the row's failure count before this attempt.
@@ -45,10 +46,11 @@ type Request struct {
 	// database's identity constraint. Empty means keyless: no identity is
 	// enforced, and any number of such one-shots may coexist.
 	InstanceKey string
-	// Payload is the task's JSON payload, stored as jsonb. Nil is valid
-	// and is stored as JSON null's absence is not implied — callers that
-	// want an empty object pass json.RawMessage(`{}`).
-	Payload []byte
+	// Payload is the task's JSON payload, stored as jsonb. Nil is stored
+	// as JSON null; callers that want an empty object pass
+	// json.RawMessage(`{}`). A malformed value (not valid JSON) is refused
+	// with ErrInvalidPayload.
+	Payload json.RawMessage
 	// Delay is how far in the future this task becomes due, relative to
 	// the database's own clock at insertion. Negative is refused with
 	// ErrInvalidDelay; zero means due immediately.
