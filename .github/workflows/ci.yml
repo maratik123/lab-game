@@ -177,6 +177,10 @@ jobs:
           bash .claude/skills/task/scripts/test-stop-gate.sh
           bash .claude/skills/ai-audit/scripts/test-gate-log-path-guard.sh
           bash .claude/skills/ai-audit/scripts/test-no-verify-guard.sh
+          bash .claude/skills/ai-audit/scripts/test-ac-shape.sh
+          bash .claude/skills/ai-audit/scripts/test-review-register.sh
+      - name: acceptance criteria state conditions, not tests
+        run: bash .claude/skills/ai-audit/scripts/check-ac-shape.sh
       - name: relative markdown links resolve
         run: |
           set -euo pipefail
