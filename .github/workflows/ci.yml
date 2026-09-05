@@ -169,6 +169,7 @@ jobs:
           bash .claude/skills/ai-audit/scripts/test-piped-gate-guard.sh
           bash .claude/skills/ai-audit/scripts/test-spawn-contract-guard.sh
           bash .claude/skills/task/scripts/test-stop-gate.sh
+          bash .claude/skills/ai-audit/scripts/test-gate-log-path-guard.sh
       - name: relative markdown links resolve
         run: |
           set -euo pipefail

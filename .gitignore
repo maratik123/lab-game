@@ -9,7 +9,17 @@
 .env.*
 !.env.example
 
-# Gate logs (AGENTS.md § Build & Test — capture to a file, never pipe a gate)
+# Scratch. Every gate log, mutation backup and throwaway probe a flow writes
+# lands here (AGENTS.md § Build & Test — capture to a file, never pipe a gate).
+# One ignored directory instead of a spreading pattern: 60 `*.gate.log` files
+# had accumulated in the repository root by 2026-09-05, invisible to
+# `git status` and therefore to everyone, because the ignore rule was a glob
+# over a filename the canonical command never fixed.
+/tmp/
+
+# The names those 60 files were written under. Kept so a tree that still holds
+# them stays clean for the flows' `git status --porcelain` probes; delete the
+# files and this pair goes with them.
 /gate.log
 *.gate.log
 
