@@ -8,7 +8,7 @@ _Updated: 2026-09-06 13:05_
 **Last build:** go build ./... green | 2026-09-06T10:05Z
 **Issue:** #21
 **Spec:** ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md
-**current_step:** Step 9.5 — docs updated
+**current_step:** Step 10 — self-review APPROVE (Round 1)
 **last_passed_gate:** golangci-lint run | 2026-09-06T09:25:39Z | e4f884ff2221740e6acce65831813d3a062c727f
 **entry_args:** 21
 
@@ -43,6 +43,8 @@ _Updated: 2026-09-06 13:05_
 - **Step 9**: `go test -race ./...` is RED 2-of-3 whole-suite runs, always on `TestFailurePolicy_oneShotAttemptsGrowAndGiveUp` in the untouched `internal/scheduler` — the pre-existing flake now filed as #59. `internal/store` was green in every one of those runs and 3/3 under `-race` in isolation, so the race gate is clean for this diff's own package.
 - **Step 9.5**: no open question in `context.md` is resolved by this task — §16.7 (player↔chat membership) is *touched* by the funnel's attribution choice and deliberately left open, with #30 recorded as its owner.
 - **Step 9.5**: `check-citations.sh` is RED locally on this branch and GREEN on the base, and the citation it rejects is correct. Its ceiling is the newest **PR** (#58), while #59 is an **issue** filed by this run; the two share a numbering space. Recorded in `ai-docs/harness-gaps.md` rather than worked around. Expected to clear once this branch's PR raises the ceiling — **verify that at Step 12 by re-running the guard, do not assume it**.
+- **Step 10**: APPROVE in round 1; seven register rows, all `accepted@1`, none above the severity floor. Two of them corrected my own Step-9 evidence lines rather than the code — the AC5 row quoted a grep whose real output is 3 (a doc-comment hit) and the AC3 locator had drifted as the migration grew.
+- **Step 10**: commit `7412bcb`'s message over-claimed. It said it corrected those two evidence lines; the edit script had aborted on a non-unique anchor, so that commit carried only the reviewer's own register writes. The corrections landed in the following commit, which says so. Recorded because a commit message is a durable claim about work, and the tree is the only thing that settles it.
 
 ## Key discoveries (don't re-investigate)
 
@@ -61,9 +63,9 @@ scope (`/task` § Patterns 1). Grep-shaped rows were run with a positive control
 |----|--------|------------------------------|
 | AC1 | PASS | `go test -count=1 ./internal/store -run TestMigrate` — shape + second-apply |
 | AC2 | PASS | `grep -rniE '^\s*--\s*\+goose\s+Down' internal/store/migrations/` → none; the pattern fired on a planted line |
-| AC3 | PASS | `sed -n '74,78p' 00003_event_log.sql` — the CHECK names all five arc columns; `journal_entry_event_key` is the partial unique index |
+| AC3 | PASS | `sed -n '72,80p' internal/store/migrations/00003_event_log.sql` (coordinate re-resolved after R1-4 — the arc extension moved as the file grew) — the CHECK names all five arc columns; `journal_entry_event_key` is the partial unique index |
 | AC4 | PASS | `go test -count=1 ./internal/store -run TestSchema` — 23514 zero-basis, 23514 two-basis, 23505 re-reference |
-| AC5 | PASS | seed statement holds 16 rows, high_volume on 14/15 only; `grep -c 'Code: Event' catalog.go` → 16 and `VolumeHigh` → 2; `TestCatalog_mirrors_database` compares element-for-element, ordered |
+| AC5 | PASS | seed statement holds 16 rows, high_volume on 14/15 only; `grep -c 'Code: Event' catalog.go` → 16 and `grep -c 'VolumeClass: VolumeHigh' catalog.go` → 2 (bare `VolumeHigh` returns 3, one hit being the slice's own doc comment — corrected per R1-2); `TestCatalog_mirrors_database` compares element-for-element, ordered |
 | AC6 | PASS | `go test -count=1 ./internal/store -run TestEvent` |
 | AC7 | PASS | `go test -count=1 ./internal/store -run TestEvent` |
 | AC8 | PASS | `go test -count=1 ./internal/store -run TestEvent` |
