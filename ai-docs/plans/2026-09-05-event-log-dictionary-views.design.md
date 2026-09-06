@@ -13,7 +13,7 @@ and the doc-page edits. No mechanic emits anything here.
 ### A note on evidence
 
 Two tag shapes appear below. `[measured <commit>:<path>:<lines> · …]` cites this tree at the
-commit named — every one below pins `8617a7c`. `[measured probe · psql on docker.io/library/postgres:18 → …]` cites a
+commit named. `[measured probe · psql on docker.io/library/postgres:18 → …]` cites a
 throwaway container run against the image the suite itself uses — it carries **no** repo
 coordinate, because the fact is Postgres's, not this repository's. Every Postgres semantic
 this design leans on is probed rather than asserted, because a design rule resting on
@@ -39,13 +39,56 @@ metric's own definition (§13.3 names D1/D7 retention) and query structure, not 
 balance — the spec settles this in its own Key decisions row
 `[measured 8617a7c:ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md:175 · sed -n '175p' … → "Balance numbers | None. This task ships no tuning value; depth, counts and window lengths inside a view are query structure, not game balance (§16.5)."]`.
 
-**And no future PR owes this task a payload field or a column value.** That is worth
-stating explicitly, because the absence of an obligation is exactly what a later author
-looks for and cannot find. The views read only the type, the timestamp, `player_id`,
-`chat_id`, `depth`, and today's ledger. In particular — see § The views — **no view requires
-`chat_id` on any event other than `bot_added_to_chat`, `player_started` and
-`notification_sent`.** A mechanic emitting `raid_started` or `death` may set `chat_id` if it
-has one, and no metric shipped here degrades if it does not.
+### What the shipped views require of the mechanics that will emit events
+
+This task emits nothing, but its views read columns that other PRs must populate. **The
+obligation is real and it must be written down in both directions**, because every way of
+getting it wrong is silent: a view whose input column is always null returns zero rows, not
+an error, and this task's own fixture satisfies AC12 regardless of what any mechanic
+actually emits.
+
+| Event type | Dimension it must carry | What reads it | What a null does |
+|---|---|---|---|
+| `bot_added_to_chat` | `chat_id` | the funnel's **row set** | that chat has no funnel row at all — §13.3's headline MVP number is silently empty for it |
+| `player_started` | `chat_id` | the funnel's **attribution map** | the player is attributed to no chat and is counted in no stage of any funnel |
+| `player_started` | `player_id` | the funnel's attribution map; retention's new-player cohort | as above, and the cohort loses the player |
+| `raid_started` | `player_id` | the funnel's raided and returned stages; retention's raid count and D1/D7 | the raid counts toward no player and no chat |
+| `notification_sent` | `chat_id` | `metric_notification_per_chat_day` | the row is excluded — the spam-budget metric under-reports with no sign that it did |
+| `death` | `depth` | `metric_death_by_depth` | the death lands in the null-depth group; **this is the one degradation that is visible**, because the group appears as its own row |
+| `death` | `player_id` | that view's distinct-player column | the distinct-player count under-counts |
+
+**And the non-obligations, which matter just as much because a reader looks for them.** No
+shipped view reads `chat_id` from `raid_started` or from `death`; none reads `maze_id`; none
+reads any payload key. A mechanic may set them and nothing here degrades if it does not.
+
+The whole table, both halves, goes into `ai-docs/domain-invariants.md` §5 (subtask 6) —
+that is the page a mechanic author reads, and a page carrying only the non-obligations would
+be worse than silence.
+
+### The payload rule, and why it is the rule (AC15's "why")
+
+**The §13.4 dimensions — player, chat, maze, depth — are columns; everything else is
+JSONB.** Four reasons, and they are the reasoning subtask 6 transcribes rather than invents:
+
+- §13.4 declares them *universal across types* — «Везде, где применимо: игрок, чат,
+  лабиринт, глубина»
+  `[measured 8617a7c:docs/DESIGN.md:428 · sed -n '428p' docs/DESIGN.md → "Стартовый словарь: `bot_added_to_chat`, … Везде, где применимо: игрок, чат, лабиринт, глубина."]`
+  — so they are the one part of an event's shape that is not per-type.
+- Every shipped view filters or groups on at least one of them (see the table above); no
+  shipped view reads a payload key at all. A dimension a view groups by wants a btree index,
+  and an index on a JSONB path is an expression index that has to be written per key.
+- Two of them carry foreign keys to `owner`. JSONB cannot express referential integrity, so
+  putting the player or the chat in the payload would abandon the guarantee the ledger's
+  address space depends on.
+- Everything else is per-type and unknowable in advance: a `combat_resolved` payload and a
+  `shop_sale` payload share no field. Promoting either to a column would be a migration per
+  mechanic plus a column that is null on every other type.
+
+The rule is uniform across types, so it is one paragraph and not one per type. The escape
+hatch runs one way only, deliberately: a payload key that turns out to be read by every view
+can be promoted to a column by a later forward migration, whereas demoting a column is the
+expensive direction — which is why the columns are the ones §13.4 already fixed, and not a
+guess about what a future dashboard might want.
 
 ### The schema, as a forward migration
 
@@ -60,6 +103,16 @@ design; it asks for names that describe the axis rather than today's members
 `[measured 8617a7c:ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md:311-313 · sed -n '311,313p' … → "**Volume-class member names.** The partition is fixed (Scope 2); the names are not … choose names that describe the retention axis rather than the current two members."]`.
 The axis the spec itself names is **volume** («volume class»), so the members name volume,
 not the readers (`product` / `health`) and not a retention policy this task does not ship.
+
+**Why the class may be an enum when the type registry may not.** The hygiene gate's cost —
+an `ALTER TYPE … ADD VALUE` file may do nothing else — is paid per *addition*, and the two
+axes are added at very different rates. A new event type is routine: every mechanic PR
+brings one or more, and each would need a second migration file for its class row. A new
+volume class is rare and is itself a retention-policy change that wants its own migration
+and its own review, so the gate's cost lands where it belongs. The asymmetry also runs the
+other way: a *type* carries an attribute (its class), so it needs a row; a *class* carries
+nothing, so an enum member is the whole of it, and the database then refuses an unknown
+class outright rather than needing a CHECK.
 
 **`event_type_definition`** — the registry, shaped exactly like the existing seeded
 catalogs: a `smallint` primary key, a `text` `code` with a UNIQUE constraint, and
@@ -156,8 +209,9 @@ leans on a later family arriving by `CREATE OR REPLACE VIEW` — but that statem
 `[measured probe · psql on docker.io/library/postgres:18, CREATE VIEW v AS SELECT a, b FROM e then four CREATE OR REPLACE VIEW variants → appending c succeeded; dropping c → "42P16: cannot drop columns from view"; renaming b → "42P16: cannot change name of view column \"b\" to \"bb\""; reordering → "42P16: cannot change name of view column \"a\" to \"b\""; retyping b to text → "42P16: cannot change data type of view column \"b\" from integer to text"]`.
 So the column names, order and types this task ships are as durable as the table's: a later
 change that is not an append is `DROP VIEW` + `CREATE VIEW` in a forward migration, and any
-Grafana panel bound to the old shape breaks with it. Name the columns as if they were
-columns of a table, because for maintenance purposes they are.
+Grafana panel bound to the old shape breaks with it. **This is why § The views names every
+column of every view rather than describing them** — a contract that permanent is not the
+implementor's to choose.
 
 ### The registry as a table, not a Postgres enum
 
@@ -170,7 +224,7 @@ file from doing anything else
 — so every future mechanic that registers a type would need its label in a migration file
 that may do nothing else, and its class row in another, with a window between them where a
 label exists with no class. The catalog table registers a type and its class in one
-`INSERT`.
+`INSERT`. (The same gate is why the *class* stays an enum — see above.)
 
 ### The Go surface, placed by the package's existing by-kind layout
 
@@ -278,10 +332,13 @@ These rules bind **every** view, and each is correctness, not style:
    `[measured 8617a7c:internal/testdb/testdb.go:155 · sed -n '155p' internal/testdb/testdb.go → "cfg.ConnConfig.RuntimeParams[\"search_path\"] = name"]`,
    so a container default and a `LAB_GAME_TEST_DSN` server could disagree and the same
    query would return different numbers on different machines.
-2. **Every denominator is wrapped in `NULLIF(x, 0)` and every aggregate that can be empty
-   in `COALESCE(…, 0)`.** Neither guard is cosmetic: division by zero raises rather than
-   yielding NULL, and a `FILTER` that matches nothing yields NULL rather than zero
-   `[measured probe · psql on docker.io/library/postgres:18 → SELECT 1/0 raises "22012: division by zero"; over a table holding only a positive row, sum(v) FILTER (WHERE v < 0) IS NULL returns t]`.
+2. **Every denominator is wrapped in `NULLIF(x, 0)`, every aggregate that can be empty in
+   `COALESCE(…, 0)`, and every ratio's numerator cast to `numeric`.** None of them is
+   cosmetic: division by zero raises rather than yielding NULL; a `FILTER` that matches
+   nothing yields NULL rather than zero; and `count(…) / count(…)` is **integer** division,
+   which silently returns `0` for every ratio below 1 — the worst of them, because it
+   is a plausible-looking wrong answer rather than an error
+   `[measured probe · psql on docker.io/library/postgres:18 → SELECT 1/0 raises "22012: division by zero"; sum(v) FILTER (WHERE v < 0) IS NULL returns t over a table holding only a positive row; count(*) / NULLIF(count(*)*3, 0) returns 0 while count(*)::numeric / NULLIF(count(*)*3, 0) returns 0.33333333333333333333]`.
 3. **A column whose type is a custom enum is cast to `text` in the view.** Only
    `metric_faucet_sink` has one (`account_definition.kind`). The cast is not there because
    a failure was observed — pgx already decodes `ledger_kind` as text elsewhere in this
@@ -290,6 +347,11 @@ These rules bind **every** view, and each is correctness, not style:
    — but AC14's test adds an enum member at run time on a pooled connection, and `::text`
    removes any dependence on when a given connection resolved that type's OID. A view is
    also read by Grafana, which is not pgx.
+4. **A count column is `0`, never NULL, including when its stage matched nothing.** This is
+   structural rather than a guard to remember: `count(expr)` over an outer-joined miss
+   returns `0`
+   `[measured probe · psql on docker.io/library/postgres:18, SELECT count(x.id), count(x.id) IS NULL FROM e LEFT JOIN (SELECT 99 AS id) x ON x.id = e.id → 0, f]`.
+   Only the *ratio* columns are nullable, and only where their denominator is empty.
 
 Naming: a `metric_` prefix. It groups the views together in the Grafana Postgres
 datasource's picker, and it keeps them clear of §11's singular-table-name decision, which
@@ -302,13 +364,10 @@ the Russian surface is `docs/**` and owner conversation, nothing else
 and a line reference into a document that gets edited rots
 `[measured 8617a7c:ai-docs/doc-convention.md:49 · grep -n 'Cite the section number' ai-docs/doc-convention.md → "Cite the section number, never a line number: the design document is edited, and `§2.2.4` survives what `:118` does not."]`.
 
-| View | The §13.3 question it answers | Grain |
-|---|---|---|
-| `metric_activation_funnel` | the activation funnel — §13.3's headline MVP number | one row per chat that has a `bot_added_to_chat` |
-| `metric_retention_daily` | returns: D1/D7 retention, and raids per player per day | one row per UTC day that has any event |
-| `metric_death_by_depth` | deaths by depth | one row per `depth` value among `death` events |
-| `metric_faucet_sink` | faucet/sink balance per resource | one row per (UTC day, `ledger_kind`) |
-| `metric_notification_per_chat_day` | notifications per chat per day | one row per (UTC day, chat) |
+**Column names, order and types are fixed here, not by the implementor** — they are the
+permanent contract the forward-migration paragraph describes. Types are what the listed
+expression yields
+`[measured probe · psql on docker.io/library/postgres:18, information_schema.columns over a view of (ts AT TIME ZONE 'UTC')::date, count(*), and count(*)::numeric / NULLIF(count(*),0) → date, bigint, numeric]`.
 
 #### `metric_activation_funnel` — attribution runs through `player_started`
 
@@ -327,15 +386,23 @@ The attribution is therefore a property of the **player**, not of the raid:
 - **The row set** is still one row per chat holding a `bot_added_to_chat`, with that event's
   earliest instant. A chat that was never added has no funnel row even if players attribute
   to it.
-- **Stage — started:** the players attributed to that chat.
-- **Stage — first raided:** of those, the ones with any `raid_started`, joined on
-  **`player_id` alone**. `raid_started.chat_id` is never read.
-- **Stage — returned next day:** of those, the ones with a `raid_started` on the day
-  immediately after the day of their own earliest `raid_started`.
+- **The raid stages** join on **`player_id` alone**. `raid_started.chat_id` is never read.
 
 Because every stage filters the same attributed population, the funnel is **monotone by
 construction** — each stage is a subset of the one before it, which the earlier shape did
 not guarantee.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `chat_id` | `bigint` | the chat's `owner.id` |
+| `added_at` | `timestamptz` | earliest `bot_added_to_chat` instant for that chat |
+| `player_started` | `bigint` | players attributed to this chat; `0` when none |
+| `player_first_raided` | `bigint` | of those, players with any `raid_started`; `0` when none |
+| `player_returned_next_day` | `bigint` | of those, players with a `raid_started` on the day after their own earliest raid day; `0` when none |
+
+Every stage column obeys rule 4: an empty stage is `0`, never NULL, so a chat whose players
+never raided still shows its `player_started` count against explicit zeroes rather than
+against blanks a reader must interpret.
 
 **The cost, which the owner accepted and which must be stated.** A player active in several
 chats is always credited to the chat they started from, even for raids that conceptually
@@ -348,18 +415,26 @@ Note what §16.7's own proposed default implies: once a raid session is bound to
 better attribution exists and this view becomes a candidate for replacement — a
 same-column-set `CREATE OR REPLACE VIEW`, so cheap under the constraint above.
 
-**Consequence for other PRs: none.** No future PR owes `chat_id` on `raid_started` for this
-metric to work. That sentence belongs in subtask 6's `domain-invariants.md` paragraph too,
-because it is where a mechanic author would look for the obligation and must find its
-absence stated.
+**Consequences for other PRs, both directions.** `raid_started` owes this view **no**
+`chat_id`. `bot_added_to_chat` and `player_started` owe it one, and owe it a `player_id`
+where the table in § What the shipped views require says so — that table, whole, is what
+subtask 6 carries into `domain-invariants.md`.
 
 #### The remaining views
 
-**`metric_retention_daily`** — columns: the day; distinct players with any event that day;
-`raid_started` count that day; raids per active player (guarded denominator); the day's new
-players (those whose earliest `player_started` is that day); how many of them raided on
-day + 1 and on day + 7; and the rates over the new-player denominator (guarded, so a day
-with no new players yields NULL rather than an error).
+**`metric_retention_daily`**
+
+| Column | Type | Meaning |
+|---|---|---|
+| `day` | `date` | the UTC day |
+| `active_player` | `bigint` | distinct players with any event that day |
+| `raid` | `bigint` | `raid_started` count that day |
+| `raid_per_active_player` | `numeric` | `raid` over `active_player`; NULL when no player was active |
+| `new_player` | `bigint` | players whose earliest `player_started` is that day |
+| `d1_retained` | `bigint` | of those, players with a `raid_started` on day + 1 |
+| `d7_retained` | `bigint` | of those, players with a `raid_started` on day + 7 |
+| `d1_rate` | `numeric` | `d1_retained` over `new_player`; NULL when the cohort is empty |
+| `d7_rate` | `numeric` | `d7_retained` over `new_player`; NULL when the cohort is empty |
 
 Two readings are *chosen* here rather than read off §13.3, and both go in the view's SQL
 comment as well as § Open questions, because §13.3 writes only «Возвраты: D1/D7 retention»:
@@ -371,27 +446,53 @@ comment as well as § Open questions, because §13.3 writes only «Возвра�
 - **D1 and D7 are exactly day + 1 and day + 7**, not "within N days".
 
 The comment must also carry the **cohort-immaturity** warning, because the numbers lie
-without it: a cohort born fewer than seven days ago cannot yet have a D7, and the view
-reports `0`, not NULL, for it. A reader scanning the recent end of the series sees a
+without it: a cohort born fewer than seven days ago cannot yet have a D7, and by rule 4 the
+view reports `0`, not NULL, for it. A reader scanning the recent end of the series sees a
 retention cliff that is an artefact of the window, not of the game. The same holds for D1 on
 today's cohort.
 
-**`metric_death_by_depth`** — the `depth` value, the death count, and the distinct-player
-count. A `death` whose `depth` is null forms its own group rather than being dropped: the
-row is a data anomaly worth seeing, and silently discarding it would misreport the total.
+**`metric_death_by_depth`**
 
-**`metric_faucet_sink`** — reached through `posting → journal_entry` (for the day),
-`posting → account → account_definition` (for the kind, cast to `text` per rule 3) and
-`account → scope → owner` restricted to `owner.kind = 'world'`. Faucet is the negated sum of
-the World legs that are negative (value leaving World for the economy); sink is the sum of
-the positive ones; net is the negated total. Both are `COALESCE`d to `0`. **AC14 falls out
-of the construction**: the view names no `ledger_kind` member anywhere — it groups by
-`account_definition.kind` — so a new member appears as soon as postings of that kind exist.
+| Column | Type | Meaning |
+|---|---|---|
+| `depth` | `integer` | the depth; **NULL is a real group** — deaths with no recorded depth |
+| `death` | `bigint` | deaths at that depth |
+| `player` | `bigint` | distinct players who died at that depth |
 
-**`metric_notification_per_chat_day`** — the day, the chat, and the count of
-`notification_sent`. Rows with a null chat are **excluded**: §13.3's metric is the per-chat
-spam budget («штук в чат в день»), and a chat-less notification is not a per-chat number.
-The exclusion is asserted by a fixture row, not left implicit.
+The null-depth group is deliberate: the row is a data anomaly worth seeing, and silently
+discarding it would misreport the total. It is also the only degradation in the § What the
+shipped views require table that a reader can actually notice.
+
+**`metric_faucet_sink`**
+
+| Column | Type | Meaning |
+|---|---|---|
+| `day` | `date` | the UTC day, taken from `journal_entry.ts` |
+| `kind` | `text` | `account_definition.kind`, cast per rule 3 |
+| `faucet` | `numeric` | value leaving World for the economy; `0` when none |
+| `sink` | `numeric` | value returning to World; `0` when none |
+| `net_to_economy` | `numeric` | `faucet` − `sink` |
+
+Reached through `posting → journal_entry` (for the day), `posting → account →
+account_definition` (for the kind) and `account → scope → owner` restricted to
+`owner.kind = 'world'`. Faucet is the negated sum of the World legs that are negative; sink
+is the sum of the positive ones; net is the negated total. Both are `COALESCE`d to `0`.
+**AC14 falls out of the construction**: the view names no `ledger_kind` member anywhere — it
+groups by `account_definition.kind` — so a new member appears as soon as postings of that
+kind exist.
+
+**`metric_notification_per_chat_day`**
+
+| Column | Type | Meaning |
+|---|---|---|
+| `day` | `date` | the UTC day |
+| `chat_id` | `bigint` | the chat's `owner.id` |
+| `notification` | `bigint` | `notification_sent` events for that chat that day |
+
+Rows with a null chat are **excluded**: §13.3's metric is the per-chat spam budget («штук в
+чат в день»), and a chat-less notification is not a per-chat number. The exclusion is
+asserted by a fixture row, not left implicit — and it is why `notification_sent` appears in
+the obligation table above.
 
 **`bot_kicked` gets no view, and that is the answer, not an omission.** §13.3 calls it the
 terminal metric with «Каждое событие — вскрытие» — *every event is an autopsy*, i.e. the
@@ -426,10 +527,10 @@ project's own append-only positive control exists to prevent (`AGENTS.md` § Pat
 | `TestMigrate_indexes_constraints_and_column_types`'s index list | A membership loop (`if !found[want]`) over a literal `want` list — an index absent from the list cannot fail it — `[measured 8617a7c:internal/store/migrate_test.go:221-233 · sed -n '221,224p;229,233p' internal/store/migrate_test.go → "for _, want := range []string{ \"owner_kind_telegram_id_key\", … }" … "if !found[want] { t.Errorf(\"index %s is missing (have %v)\", want, found) }"]` | AC1 |
 | The `journal_entry_exactly_one_basis` assertion | Matched on the substring `num_nonnulls`, which the pre-change form already contains, so it passes on a CHECK that never gained the new arc column — `[measured 8617a7c:internal/store/migrate_test.go:239 · sed -n '239p' internal/store/migrate_test.go → "\"journal_entry_exactly_one_basis\":     \"num_nonnulls\","]` | AC3 |
 | `TestEnums_mirror_database` | An explicit `{enum, want}` slice; a new enum is simply not among the cases — `[measured 8617a7c:internal/store/enums_test.go:16-23 · sed -n '16,23p' internal/store/enums_test.go → "{\"owner_kind\", stringsOf(ownerKinds)}, {\"ledger_kind\", stringsOf(kinds)}, {\"operation_source\", stringsOf(operationSources)}"]` | AC5 |
-| `TestCatalog_mirrors_database` | Two hand-written queries against the two existing catalogs; a third catalog is never read — `[measured 8617a7c:internal/store/enums_test.go:52,73-74 · sed -n '52p;73,74p' internal/store/enums_test.go → "SELECT id, code, owner_kind FROM scope_definition ORDER BY id" / "SELECT id, scope_definition_id, code, kind, controlled FROM account_definition ORDER BY id"]` | AC5 |
+| `TestCatalog_mirrors_database` | Hand-written queries against the seeded catalogs; a further catalog is never read — `[measured 8617a7c:internal/store/enums_test.go:52,73-74 · sed -n '52p;73,74p' internal/store/enums_test.go → "SELECT id, code, owner_kind FROM scope_definition ORDER BY id" / "SELECT id, scope_definition_id, code, kind, controlled FROM account_definition ORDER BY id"]` | AC5 |
 | `TestMigrate_hygiene` | Its regex set has no rule pattern, so a `CREATE RULE` in a migration is invisible to it — `[measured 8617a7c:internal/store/migrate_test.go:137-148 · sed -n '137,148p' internal/store/migrate_test.go → downRe, renameValueRe, dropValueRe, createTrigRe, grantRe, upRe, addValueRe, createTableRe, insertRe, updateRe — no CREATE RULE pattern]` | AC10 |
-| `TestAppendOnly_…` | Its pattern names only the two ledger tables, so it cannot fire on `event` — `[measured 8617a7c:internal/store/append_only_test.go:13 · sed -n '13p' internal/store/append_only_test.go → "regexp.MustCompile(`(?i)update\\s+(posting\\|journal_entry)\\b\\|delete\\s+from\\s+(posting\\|journal_entry)\\b`)"]` | AC10 |
-| `TestBasis_nil_returns_ErrNoBasis_without_panicking` | Hand-enumerates the four existing implementations, asserting `ErrNoBasis` on **both** `entrySQL()` and `insert()` for each; a new implementation with a missing nil guard is neither reached nor asserted — `[measured 8617a7c:internal/store/basis_test.go:12-67 · sed -n '12,67p' internal/store/basis_test.go → "var nilPO *PlayerOperation … nilPO.entrySQL() … nilPO.insert(ctx, tx)" and the same pair for ManualCorrection, DeferredTask and RecurrentTask]` | the spec's "every implementation nil-receiver-safe … A fifth implementation follows that contract exactly" |
+| `TestAppendOnly_…` | Its pattern names only the ledger tables, so it cannot fire on `event` — `[measured 8617a7c:internal/store/append_only_test.go:13 · sed -n '13p' internal/store/append_only_test.go → "regexp.MustCompile(`(?i)update\\s+(posting\\|journal_entry)\\b\\|delete\\s+from\\s+(posting\\|journal_entry)\\b`)"]` | AC10 |
+| `TestBasis_nil_returns_ErrNoBasis_without_panicking` | Hand-enumerates each existing implementation, asserting `ErrNoBasis` on **both** `entrySQL()` and `insert()`; a new implementation with a missing nil guard is neither reached nor asserted — `[measured 8617a7c:internal/store/basis_test.go:12-67 · sed -n '12,67p' internal/store/basis_test.go → "var nilPO *PlayerOperation … nilPO.entrySQL() … nilPO.insert(ctx, tx)" and the same pair for ManualCorrection, DeferredTask and RecurrentTask]` | the spec's "every implementation nil-receiver-safe … A fifth implementation follows that contract exactly" |
 | The view-set assertion | Does not exist at all today; nothing enumerates views | AC11, AC13 |
 | `TestFKCoverage` | Needs no edit — it is generic over the schema and it is the gate the index set above is built to satisfy — `[measured 8617a7c:internal/store/fkcover_test.go:35-40 · sed -n '35,40p' internal/store/fkcover_test.go → "SELECT conname, conrelid::bigint, conkey FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace WHERE c.contype = 'f' AND n.nspname = current_schema()"]` | — |
 
@@ -441,8 +542,8 @@ project's own append-only positive control exists to prevent (`AGENTS.md` § Pat
 | 2 | Go mirrors: `EventVolumeClass`, `EventType` + the §13.4 members, `EventTypeDefinition` + the registry slice; extend both mirror tests (AC5) | `internal/store/enums.go`, `internal/store/catalog.go`, `internal/store/enums_test.go` | 1 |
 | 3 | Write API: `EventID`, `Event` as a `PostingBasis` implementation, `AppendEvent`, `ErrUnknownEventType` with the `errors.go`/`post.go` doc edits § Approach names, `PostingBasis`'s doc comment; tests for both paths, the nil-guard pair, the sentinel and transaction ownership (AC6–AC9) | `internal/store/ids.go`, `internal/store/event.go`, `internal/store/errors.go`, `internal/store/post.go`, `internal/store/basis.go`, `internal/store/basis_test.go`, `internal/store/event_test.go` | 2 |
 | 4 | Append-only sweep: extend the pattern to `event`, add its planted controls and the `event_type_definition` decoy, and extend the non-vacuity guard to the new migration (AC10) | `internal/store/append_only_test.go` | 1 |
-| 5 | The views: append them to the migration with their English `§13.3` comments (the funnel's `player_started` attribution, retention's cohort-immaturity and raid-signal clauses), add the exact-view-set assertion, and the fixture-driven per-view expectations with their boundary cases plus the `ledger_kind` genericity test. **Each expected row is a literal in the test, never recomputed from the fixture** — a test that recomputes a view's own logic asserts nothing, and this is the one instruction that stops it (AC11–AC14) | `internal/store/migrations/00003_event_log.sql`, `internal/store/migrate_test.go`, `internal/store/views_test.go` | 1, 2 |
-| 6 | `domain-invariants.md` §5: the payload rule with its reasoning; the mechanic-facing arc consequences (1:1, and no idempotency key); the funnel's attribution and the **absence** of any `chat_id`-on-`raid_started` obligation; the §13.5 dashboard limb recorded as suspended with its lift condition; the deferred view families with their owning issues; the `events` → `event` spelling (AC15, AC16, and §5's share of AC18) | `ai-docs/domain-invariants.md` | — |
+| 5 | The views: append them to the migration **with the exact column names, order and types § The views tables fix** and their English `§13.3` comments (the funnel's `player_started` attribution, retention's cohort-immaturity and raid-signal clauses), add the exact-view-set assertion, and the fixture-driven per-view expectations with their boundary cases plus the `ledger_kind` genericity test. **Each expected row is a literal in the test, never recomputed from the fixture** — a test that recomputes a view's own logic asserts nothing, and this is the one instruction that stops it (AC11–AC14) | `internal/store/migrations/00003_event_log.sql`, `internal/store/migrate_test.go`, `internal/store/views_test.go` | 1, 2 |
+| 6 | `domain-invariants.md` §5: the payload rule **with the reasoning § Approach states**; the whole § *What the shipped views require* table — obligations **and** non-obligations together; the mechanic-facing arc consequences (1:1, and no idempotency key); the §13.5 dashboard limb recorded as suspended with its lift condition; the deferred view families with their owning issues; the `events` → `event` spelling (AC15, AC16, and §5's share of AC18) | `ai-docs/domain-invariants.md` | — |
 | 7 | `docs/DESIGN.md`, in Russian: the log table's name at §13.1 and §13.5; «игровое событие (лог 13.1)» added to §11's «Стартовый реестр типов оснований» (AC17) | `docs/DESIGN.md` | — |
 | 8 | Propagation sweep by `AGENTS.md` § *Propagation Rule* step 4's criterion over `.claude/`, `AGENTS.md`, `ai-docs/`, `docs/**` and repo-root user-facing docs; the known members are `context.md`'s observability row and the architecture/status prose the landed code falsifies. History surfaces and `_inbox.jsonl` untouched (AC18) | `ai-docs/context.md`, plus whatever the criterion returns | 6, 7 |
 
@@ -475,11 +576,12 @@ Group A has landed.
 Two design-defined groups, inside the default maximum of 4 — no user approval needed.
 
 Subtask 5 carries the most judgement in Group A, and it runs at the `sonnet`/`medium` tier
-like the rest of the group. That is deliberate rather than overlooked: § The views fixes
-each view's grain, columns, exclusions and guards, and § Test Design fixes the fixture's
-boundary cases — so the subtask is transcription against a spec, not open design. The one
-instruction that must not be softened in transit is the literal-expectations rule, which is
-why it appears in the decomposition row, in § Test Design and here.
+like the rest of the group. That is deliberate rather than overlooked, and it is why
+§ The views now fixes each view's **column names, order and types** as well as its grain,
+exclusions and guards: nothing durable is left to the implementor's choice, so the subtask
+is transcription against a spec. The one instruction that must not be softened in transit is
+the literal-expectations rule, which is why it appears in the decomposition row, in § Test
+Design and here.
 
 ## Risks
 
@@ -489,12 +591,20 @@ why it appears in the decomposition row, in § Test Design and here.
   extensions, AC10's hygiene and sweep extensions, and AC11's view-set assertion. Mitigation:
   the two-group split above, with the forcing AC named on every Group 2 row, and Step 9's
   per-AC sweep as the backstop — `[derived → the per-AC verification of AC3, AC5, AC10, AC11]`.
-- **An attribution that reads `chat_id` off the wrong event fails silently forever.** The
-  superseded funnel design would have depended on a value no PR was told to emit, with a
-  null producing no anomaly row and this task's own fixture passing AC12 regardless.
-  Mitigation: the owner's `player_started` attribution, plus the explicit "no future PR owes
-  `chat_id` on `raid_started`" statement carried into `domain-invariants.md` —
-  `[derived → the funnel's AC12 boundary rows, whose fixture emits `raid_started` with no chat at all]`.
+- **A view whose input column is never populated returns zero rows, not an error**, and no
+  gate in this task can catch it, because this task writes its own fixture. The funnel's row
+  set needs `chat_id` on `bot_added_to_chat`, its attribution needs `chat_id` on
+  `player_started`, and the notification metric needs `chat_id` on `notification_sent` — if
+  #22, #30 or #43 emits without them, §13.3's headline number and the spam-budget metric are
+  silently empty forever. Mitigation: § *What the shipped views require* states each
+  obligation, the metric it feeds and its failure mode, and subtask 6 carries that table —
+  both halves — into the page a mechanic author actually reads —
+  `[derived → subtask 6's `domain-invariants.md` §5 content, and AC15/AC16's reading check]`.
+- **The permanent half of a view is its column set**, and `CREATE OR REPLACE VIEW` can only
+  append: a drop, rename, reorder or retype is `42P16` and forces `DROP VIEW` plus every
+  reader bound to it. Mitigation: § The views fixes every column's name, order and type, and
+  § Handoff plan explains that this is what keeps subtask 5 transcription rather than design
+  — `[measured probe · psql on docker.io/library/postgres:18 → the four CREATE OR REPLACE VIEW variants above; appending succeeded, dropping/renaming/reordering/retyping each raised 42P16]`.
 - **The table-list assertion silently becomes a view-list assertion.**
   `information_schema.tables` reports views alongside base tables, and the existing exact-set
   assertion applies no type filter, so the first `CREATE VIEW` breaks it in a way that reads
@@ -517,21 +627,22 @@ why it appears in the decomposition row, in § Test Design and here.
   never calls `insert`, and `AppendEvent` takes a value. Mitigation: subtask 3 extends the
   package-internal nil test, which asserts both methods for every implementation —
   `[measured 8617a7c:internal/store/post.go:76-82 · sed -n '76,82p' internal/store/post.go → "if basis == nil { return ErrNoBasis } entrySQL, err := basis.entrySQL() if err != nil { return err }" — phase a returns before phase d's insert]`.
+- **An uncast ratio is a plausible wrong answer, not an error.** `count(…) / count(…)` is
+  integer division, so every rate below 1 renders as `0` and a reader sees "no retention"
+  rather than a failure. Mitigation: view rule 2's `::numeric` on every numerator, and
+  fixture expectations with a fractional rate so the truncation cannot pass — probed under
+  rule 2 above, `[derived → AC12's retention expectations, whose D1 rate is a fraction]`.
 - **A view that divides by an empty denominator errors instead of returning NULL**, and a
   freshly-migrated database hides it because there are no rows to divide. Mitigation:
   `NULLIF` on every denominator, and a fixture day whose new-player count is zero —
-  probed under view rule 2 above, `[derived → AC12's empty-denominator boundary in `metric_retention_daily`]`.
+  probed under rule 2 above, `[derived → AC12's empty-denominator boundary in `metric_retention_daily`]`.
 - **`sum(…) FILTER (…)` returns NULL over an empty filter**, so a kind with only a faucet
   would report a NULL sink rather than `0`. Mitigation: `COALESCE(…, 0)` on both legs —
-  probed under view rule 2 above, `[derived → AC12's faucet-only fixture row in `metric_faucet_sink`]`.
+  probed under rule 2 above, `[derived → AC12's faucet-only fixture row in `metric_faucet_sink`]`.
 - **A bare `ts::date` makes the same view return different numbers on different machines**,
   because the suite pins only `search_path` and a `LAB_GAME_TEST_DSN` server's `TimeZone`
   need not match a container's. Mitigation: `(ts AT TIME ZONE 'UTC')::date` everywhere —
   `[measured 8617a7c:internal/testdb/testdb.go:155 · sed -n '155p' internal/testdb/testdb.go → "cfg.ConnConfig.RuntimeParams[\"search_path\"] = name" — the only runtime parameter set]`.
-- **A shipped view column set cannot be narrowed later.** `CREATE OR REPLACE VIEW` appends
-  only; a drop, rename, reorder or retype is `42P16` and forces `DROP VIEW` plus whatever
-  reads it. Mitigation: § Approach's forward-migration paragraph, and naming the columns as
-  deliberately as table columns — probed there.
 - **`ErrUnknownEventType` leaves an aborted transaction**, and a caller that treats it like
   `ErrUnknownAccount` (transaction still usable) will fail confusingly on its next
   statement. Mitigation: the doc comment says so in the register the aborting sentinels
@@ -695,10 +806,12 @@ fact about the tree, the assertion is not.
   each view computes what § The views specifies, on rows the test wrote itself. It is **not**
   evidence about the emission pipeline — nothing emits events yet, and no assertion here can
   tell whether a future mechanic populates a column the way the view expects. That gap is
-  closed by design rather than by test: the funnel reads `chat_id` only from event types
-  whose emitters are the same PRs that create the chat relationship, and reads none from
-  `raid_started` at all. `[derived → AC12]`
+  closed by writing the obligation down (§ What the shipped views require, carried into
+  `domain-invariants.md` by subtask 6), not by a test this task can run. `[derived → AC12]`
 - **Scenarios.**
+  - **Column contract.** Each view's column names, order and types match § The views'
+    tables, read from `information_schema.columns`. This is cheap and it is the only thing
+    that pins a contract `CREATE OR REPLACE VIEW` cannot later loosen. `[derived → AC11]`
   - **Empty log.** On a freshly migrated database every view is queryable and returns zero
     rows — the assertion is "zero rows", never "no error", because an error is the failure
     mode being excluded. `[derived → AC11]`
@@ -718,11 +831,13 @@ fact about the tree, the assertion is not.
       a player whose second raid is the **same** day and one whose second raid is **two**
       days later (neither is a next-day return, while a player raiding on exactly the next
       day is); a player who pressed Start but never raided (counted at the started stage
-      only); a player with a `player_started` in a second chat *later* (credited to the
-      first, per the earliest-then-lowest-id rule); and a `player_started` with a null chat
-      (attributed nowhere, so present in no chat's row). `[derived → AC12]`
+      only, and the later stages must read `0`, not blank, per rule 4); a player with a
+      `player_started` in a second chat *later* (credited to the first, per the
+      earliest-then-lowest-id rule); and a `player_started` with a null chat (attributed
+      nowhere, so present in no chat's row). `[derived → AC12]`
     - retention — a day with events but **no** new players, so both rate columns are NULL
-      rather than a division error. `[derived → AC12]`
+      rather than a division error; and a cohort whose D1 rate is a **fraction**, so an
+      uncast integer division would render `0` and fail. `[derived → AC12]`
     - deaths by depth — a `death` with a null `depth`, which forms its own row.
       `[derived → AC12]`
     - faucet/sink — a kind with a faucet and no sink, so the sink column is `0` and not
@@ -766,9 +881,9 @@ only, minus `ai-docs/plans/` — so it covers subtasks 6 and 8 and does **not** 
 `docs/DESIGN.md`
 `[measured 8617a7c:.claude/skills/ai-audit/scripts/check-citations.sh:130-132 · sed -n '130,132p' … → "grep -rnoE '(^|[^a-zA-Z0-9/_-])#[0-9]+\\b' .claude/ AGENTS.md ai-docs/ … | grep -v '^ai-docs/plans/' | grep -v '^ai-docs/deferred/'"]`.
 Consequence for subtask 6: every `#N` it writes into `ai-docs/domain-invariants.md` — for a
-deferred family's owning issue, and for #30 beside the funnel's attribution note — must
-resolve against this repository's own numbering, which the guard checks at run time against
-the live pull-request high-water mark
+deferred family's owning issue, for #30 beside the funnel's attribution note, and for the
+emitters named in the obligation table — must resolve against this repository's own
+numbering, which the guard checks at run time against the live pull-request high-water mark
 `[measured 8617a7c:.claude/skills/ai-audit/scripts/check-citations.sh:58 · sed -n '58p' … → "LOCAL_MAX=$(gh pr list --state all --limit 1 --json number --jq '.[0].number // 0' 2>/dev/null)"]`.
 Every issue named by the spec's *Deferred* section and by this design is inside this
 repository's numbering; a number outside it would need its namespace spelled.
