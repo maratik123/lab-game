@@ -8,8 +8,8 @@ _Updated: 2026-09-06 08:27_
 **Last build:** not run
 **Issue:** #21
 **Spec:** ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md
-**current_step:** Step 8 — subtask 1 of 8 complete
-**last_passed_gate:** golangci-lint run | 2026-09-06T08:33:38Z | bedb0e89b72ae338e95ad706bd8959313f12856c
+**current_step:** Step 8 — subtask 2 of 8 complete
+**last_passed_gate:** golangci-lint run | 2026-09-06T08:36:44Z | e8b3c3ac98b8a231aba781e136d02740a04a630d
 **entry_args:** 21
 
 ## Next action
@@ -19,7 +19,7 @@ _Updated: 2026-09-06 08:27_
 ## Subtasks
 
 - [x] 1. Migration: `event_volume_class`, `event_type_definition` + §13.4 seeds, `event` + indexes, the `journal_entry` arc extension; table-list and goose-count assertions
-- [ ] 2. Go mirrors: `EventVolumeClass`, `EventType`, `EventTypeDefinition` + registry slice; extend both mirror tests (AC5)
+- [x] 2. Go mirrors: `EventVolumeClass`, `EventType`, `EventTypeDefinition` + registry slice; extend both mirror tests (AC5)
 - [ ] 3. Write API: `EventID`, `Event` as a `PostingBasis`, `AppendEvent`, `ErrUnknownEventType` + the doc edits (AC6–AC9)
 - [ ] 4. Append-only sweep: extend the pattern to `event`, planted controls, the `event_type_definition` decoy, non-vacuity guard (AC10)
 - [ ] 5. The views: five views with fixed column names/order/types + §13.3 comments, exact-view-set assertion, literal per-view expectations (AC11–AC14)
@@ -72,3 +72,6 @@ _Updated: 2026-09-06 08:27_
 - `internal/store/migrations/00003_event_log.sql` (new)
 - `internal/store/migrate_test.go`
 - `internal/store/schema_test.go`
+- `internal/store/enums.go`
+- `internal/store/catalog.go`
+- `internal/store/enums_test.go`
