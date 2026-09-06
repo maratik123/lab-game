@@ -14,7 +14,7 @@ _Updated: 2026-09-06 08:27_
 
 ## Next action
 
-**Do this immediately:** spawn Group A (subtasks 1–5) through `/context-reset` into `code-writer`, per the design's `## Handoff plan`.
+**Do this immediately:** spawn Group B (subtasks 6–8) through `/context-reset` into `general-purpose`, per the design's `## Handoff plan`.
 
 ## Subtasks
 
@@ -34,12 +34,15 @@ _Updated: 2026-09-06 08:27_
 - **Step 8 subtask 3**: `Event.insert` maps SQLSTATE 23503 on constraint `event_type_fkey` specifically (not any FK violation) to `ErrUnknownEventType`, mirroring `Post`'s `ErrOverdraft` mapping pattern in `post.go`. `sqlstateForeignKeyViolation`/`constraintEventTypeFKey` live in `event.go` since nothing else in the package needs them. Verified with `go test -race ./internal/store/` (green) in addition to the plain suite, since the write API adds a new `pgx.Tx`-facing code path.
 - **Step 8 subtask 4**: one full-suite run failed with `unable to find network with name or ID reaper_default: network not found` — a transient podman/testcontainers infra hiccup, not a code defect; an immediate re-run of the same unchanged command was green. Recorded here because the instructions require isolating and reproducing a gate failure before treating it as transient: re-running the identical `go test ./internal/store/ -count=1` a second time is what established that, not an assumption.
 - **Step 8 subtask 5**: chose a single-schema, single-fixture design across all five view subtests (per the design's "each view's subtest reads the same world"), which means `metric_retention_daily`'s expected table has to account for every event any other view's fixture data planted (deaths, notifications) since it aggregates over the whole `event` table regardless of type. Picked fixture day offsets and player counts by hand so every ratio column lands on a terminating decimal (0, 0.4, 0.5, 1.5, 1.0) rather than a repeating one, to avoid having to guess Postgres's numeric-division display scale; ratio/faucet/sink columns are scanned into `decimal.Decimal`/`*decimal.Decimal` and compared with `.Equal`, which is scale-independent, as the actual mechanism that sidesteps the formatting question. All literal expectations were verified by hand before running, then confirmed to pass unmodified on first execution against real Postgres — no expectation was adjusted to match observed output. `metric_faucet_sink`'s fixture is written by direct SQL against `manual_correction`/`journal_entry`/`posting` with explicit `ts` values, independent of the `event` table entirely, so it does not interact with the retention/funnel/death fixture at all. Removed an unused `//nolint:gosec` (that linter isn't enabled in this repo's `.golangci.yml`) that `nolintlint` correctly flagged as dead.
+- **Step 8 (group boundary)**: pushed the branch at the first group return per the Step-8 visibility rule; no PR yet, and CI triggers only on `main` and pull requests, so nothing ran.
 
 ## Key discoveries (don't re-investigate)
 
 - The design's 83 repo tags all pin `8617a7c`; `git diff --stat 8617a7c HEAD` over the source tree is empty, so every pin is still current at implementation start.
 - `go test ./internal/store/ -count=1` is green in ~15 s with no `LAB_GAME_TEST_DSN`: testcontainers reaches podman over `DOCKER_HOST`, and `postgres:18` is in the local image store.
 - Only two existing assertions go RED on the new schema (the table list and the `goose_db_version` count). Everything else in the suite stays green while an AC still forces the coverage — see the design's § *What the existing suite catches, and what it does not*.
+
+- **`TestFailurePolicy_oneShotAttemptsGrowAndGiveUp` is a pre-existing flake in `internal/scheduler`, not this task's doing.** It asserts a wall-clock backoff delta grows strictly, and the delta includes the time spent inside `RunOnce`, so under `-race` with the store package's containers running in parallel the measurement noise can exceed the backoff growth. Measured: RED once in a full `go test -race ./...` on this branch (22.561ms after 28.438ms), 5/5 green in isolation on HEAD, 20/20 green in isolation on the base commit, and **RED 1-of-3 on a full `-race` run of the base commit in a clean worktree** (22.909ms after 27.101ms) — the control reproduced it without this change. `git diff 8617a7c..HEAD -- internal/scheduler/` is empty. Do not chase it as a defect of this task; do not treat a single green `-race` run as proof either.
 
 ## AC Status
 
