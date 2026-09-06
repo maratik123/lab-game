@@ -47,9 +47,9 @@ re-expresses **both** existing sites in terms of it. The call sites after this c
 outbound queue is the "more to come" trajectory the rule names.
 
 **`Exponential` clamps at `ceiling` *before* the doubling that would overflow, and that is part of
-the exported contract rather than an implementation detail the tests happen to miss.** Both ramps
-being replaced are overflow-proof by construction, and by construction in the same way: each tests
-the ceiling *before* doubling and leaves the loop there — `internal/tg`'s at
+the exported contract rather than an implementation detail the tests happen to miss.** Neither ramp
+being replaced doubles a value it has not first tested against the ceiling, and both leave the loop
+at that test — `internal/tg`'s at
 [measured c221784:internal/tg/retry.go:33-34 · `sed -n '33,34p' internal/tg/retry.go` →
 `if d > maxDelay/2 {` / `d = maxDelay`], `internal/scheduler`'s at
 [measured c221784:internal/scheduler/cadence.go:46-47 · `sed -n '46,47p'
@@ -66,10 +66,17 @@ error)` whose only rejection is `if err != nil || n <= 0`], and `internal/schedu
 internal/scheduler/settle.go` → `142:		runAt := s.Add(backoff(k, cfg.RetryBaseDelay,
 cfg.RetryMaxDelay))` and the same expression at `242`]. A negative delay there persists a `run_at` in
 the past: a hot-looping dead task, which would be a data-visible regression inside a change this
-design bills as behaviour-preserving. `Exponential`'s stated contract is therefore, for **every**
-`attempt` including arbitrarily large ones: the result is strictly positive, never exceeds `ceiling`,
-and never decreases as `attempt` grows. Subtask 1's table pins it at attempts far past any a naive
-shift survives.
+design bills as behaviour-preserving. `Exponential`'s stated contract is therefore, over the domain
+both adopters' own constructors already enforce — `base > 0` and `ceiling > 0`
+[measured c37e642:internal/tg/client.go:109-113 and internal/scheduler/worker.go:78-84 ·
+`sed -n '109,113p' internal/tg/client.go; sed -n '78,84p' internal/scheduler/worker.go` →
+`if opts.Transport.RetryBaseDelay <= 0 {` and `if opts.Transport.RetryMaxDelay <= 0 {`, each
+returning `optionErrorf(…, "must be positive, got %s", …)`, and a `positiveFields` list carrying
+`{"RetryBaseDelay", opts.Config.RetryBaseDelay}` and `{"RetryMaxDelay", opts.Config.RetryMaxDelay}`
+rejected by `if f.value <= 0`] — and for **every** `attempt` including arbitrarily large ones: the
+result is strictly positive, never exceeds `ceiling`, and never decreases as `attempt` grows.
+Subtask 1's table pins it at attempts far past any a naive shift survives, and what happens outside
+that domain is decided below rather than left to the implementor.
 
 **The contract quantifies over `base` too, because one adopter already depends on that half.**
 `base > ceiling` is not a degenerate case a shared implementation may leave undefined here: a shipped
@@ -81,11 +88,40 @@ shippedMax/2 {` with the failure message `post-loop clamp: base alone already ex
 [measured df9b1a2:internal/scheduler/cadence.go:51-53 · `sed -n '51,53p'
 internal/scheduler/cadence.go` → `if d > ceiling {` / `return ceiling`]. An `Exponential` that clamps
 only *inside* the doubling loop returns `base` for `attempt = 0` and breaks that assertion the moment
-`internal/tg` re-points at it. So the contract reads: for every `attempt` **and every `base`**,
+`internal/tg` re-points at it. So the contract reads: for every `attempt` **and every `base > 0`**,
 including a `base` already above `ceiling`, the result is strictly positive, never exceeds `ceiling`,
 and never decreases as `attempt` grows — and subtask 1's table carries a `base > ceiling` row of its
 own, so `internal/backoff`'s table covers the adopters' full input domain instead of leaning on
 subtask 2 to catch a hole in it.
+
+**Outside that domain the answer is decided here, not discovered at implementation.** The `base > 0`
+bound is what makes "strictly positive" satisfiable at all, and it must not be read as licence to
+clamp from below: neither replaced ramp has a lower clamp — every clamp in either body acts on a
+value that has grown *above* its ceiling [measured c37e642:internal/tg/retry.go:30-44 and
+internal/scheduler/cadence.go:40-55 · `sed -n '30,44p' internal/tg/retry.go; sed -n '40,55p'
+internal/scheduler/cadence.go` → the whole of each function: `if d > maxDelay/2 { d = maxDelay }`
+then `if d > maxDelay { d = maxDelay }`, and `if d >= ceiling { return ceiling }` then
+`if d > ceiling { return ceiling }`, with no comparison in either body raising a value] — so an
+implementor honouring an unbounded reading would add a behaviour neither shipped ramp has, inside a
+change billed as behaviour-preserving and where no shipped assertion would catch it. The decided
+answers, in this order: **`base <= 0` returns `base` unchanged at every attempt** — no doubling, no
+lower clamp; **otherwise `ceiling <= 0` returns `ceiling`**. At `base = 0`, and at a non-positive
+`ceiling`, that is what the replaced ramps already answer — `internal/tg`'s
+in its equal-jitter half — while at a *negative* `base` they are deliberately not followed, because
+what they do there is diverge and wrap
+[measured c37e642 · a probe over verbatim copies of both shipped ramps · `go run .` → at `base = 0`
+both answer `0s` at every attempt tried; at `base = 1s` with `ceiling = -1s` `internal/scheduler`'s
+answers `-1s` and `internal/tg`'s answers `-500ms`; at `base = -1ns` both diverge negatively and wrap
+through `-2562047h47m16.854775808s` to `0s`] — which is the very outcome this contract exists to
+exclude. `EqualJitter` answers each row with its equal-jitter half of the same value. Neither input
+is reachable from any adopter — the adopters' constructors above refuse a non-positive base or
+ceiling, `internal/ingest`'s `New` refuses a non-positive tuning field (D15), and `internal/config`
+refuses a non-positive duration for the keys that feed them
+[measured c37e642:internal/config/transport.go:223-230 · `sed -n '223,230p'
+internal/config/transport.go` → `func lookupPositiveDuration(lookup Lookup, key string)
+(time.Duration, bool, error) {` rejecting `if err != nil || d <= 0` with `must be a positive
+duration, got %q`] — so these rows pin a decision rather than a behaviour anyone can observe, and
+subtask 1 carries them.
 
 **Scope — settled by the owner, round 2.** `internal/backoff` ships **and** both `internal/tg` and
 `internal/scheduler` adopt it. Adopting it in only one would leave the shared package standing
@@ -449,7 +485,7 @@ than adding a second spelling.** The package's own test file already declares an
 interface of exactly this shape for exactly this reason
 [measured c221784:internal/store/post_test.go:72-75 · `sed -n '72,75p' internal/store/post_test.go` →
 `// queryRower is satisfied by both pgx.Tx and *pgxpool.Pool.` / `type queryRower interface {` /
-`QueryRow(ctx context.Context, sql string, args ...any) pgx.Row`], and its consumer is the
+`QueryRow(ctx context.Context, sql string, args ...any) pgx.Row`], and it is consumed by the
 `balanceOf` helper in the same file. Exporting `Queryer` beside it and leaving `queryRower` standing
 would put two names for one method set in one package — the shape `design-writer` § Rules refuses at
 the package level and there is no reason to accept at the file level. Subtask 5 deletes `queryRower`
@@ -580,9 +616,10 @@ that file, `EnvKeys()` and the keys the loader consults (KD-23).
 `attemptCtx, cancel = context.WithTimeout(ctx, to)` under `if to := c.client.transport.AttemptTimeout;
 to > 0`], and it defaults to 30s [measured 1fce8b5:internal/config/transport.go:123-128 · `sed -n
 '123,128p' internal/config/transport.go` → `AttemptTimeout: 30 * time.Second` among
-`defaultTransport`'s fields]. A long-poll timeout at or above it turns every healthy poll into a
-cancelled attempt. `Load` is the only place holding both structs, so the check lands there and
-reports a `*KeyError` naming `LAB_GAME_INGEST_LONG_POLL_TIMEOUT` (AC27).
+`defaultTransport`'s fields]. A long-poll timeout at or above it turns every poll that runs its full
+window — every poll with no update to return, which on an idle bot is all of them — into a cancelled
+attempt. `Load` holds both structs, so the check lands there and reports a `*KeyError` naming
+`LAB_GAME_INGEST_LONG_POLL_TIMEOUT` (AC27).
 
 **The whole-seconds requirement is a second `config.Load` check on the same key, not a loop-side
 truncation.** The Bot API parameter is an integer count of seconds
@@ -607,7 +644,8 @@ pick, and a minimum enforced here would reject a legitimately tuned pair on a fa
 still being too small on a slow one. What the design *does* commit to is that the shipped defaults
 carry a real margin — `25s` against `AttemptTimeout`'s `30s` — and that both values are separately
 tunable and both appear in `.env.example`, so the margin is visible rather than implicit. Only the
-degenerate case, where every healthy poll is guaranteed to be cancelled, is a start-up error.
+degenerate case, where every poll that runs its full window is guaranteed to be cancelled, is a
+start-up error.
 
 **D17 — the composition order the gate implies, stated once.** `Options.Gate` is set at `tg.New` and
 never afterwards [measured 1fce8b5:internal/tg/client.go:28-31,127-135 · `sed -n '28,31p;127,135p'
@@ -628,11 +666,13 @@ quotes both clauses at Scope 8). Written naively —
 create the row, then DM before returning — the gate refuses that DM on the attempt and identically on
 every retry (each retry is a fresh transaction, D6, so the row is no more visible), and the update
 ends in `ingest_dead_update`. This design states the constraint rather than leaving #30 to discover
-it. Nothing in the project overrides the transaction isolation level: the tree's one production
-`Begin` takes no options [measured c221784:internal/scheduler/execute.go:65 · `sed -n '65p'
-internal/scheduler/execute.go` → `tx, err := conn.Begin(ctx)`], so the visibility rule the gate lives
-under is the server's default one, and subtask 10's uncommitted-owner-row scenario is what pins it
-against a real Postgres `[derived → subtask 10's uncommitted-owner-row scenario]`.
+it. Nothing in the project overrides the transaction isolation level: no production `Begin` in the
+tree passes `pgx.TxOptions` [measured c37e642 · `rg -U --type go -n '\.Begin(Tx)?\(' internal/ cmd/`
+restricted to non-test files → every production hit is a plain `conn.Begin(ctx)` with no options
+argument; `rg -U --type go -n 'TxOptions' internal/ cmd/` → no match (exit 1)], so the visibility
+rule the gate lives under is the server's default one, and subtask 10's uncommitted-owner-row
+scenario is what pins it against a real Postgres
+`[derived → subtask 10's uncommitted-owner-row scenario]`.
 
 **The rule belongs on the `Handler` contract, and it is not a gate workaround.** A handler MUST NOT
 issue an outbound Bot API call whose permission rests on a row its own uncommitted transaction
@@ -687,9 +727,11 @@ policy in a package that already sits behind two: `internal/tg` retries a retrya
 attempt up to `RetryMaxAttempts`, waiting `EqualJitter` between attempts, before returning anything
 to its caller [measured c221784:internal/tg/caller.go:122-126 · `sed -n '122,126p'
 internal/tg/caller.go` → `if !out.retryable || attempts >= c.client.transport.RetryMaxAttempts {`
-returning a give-up error, so the loop continues otherwise], so a poll error reaching `Run` is one
-the transport layer has already backed off over. Adding a ramp here would compound two delays for one
-fault and give the loop a state variable that survives across cycles, which `internal/scheduler` also
+returning a give-up error, so the loop continues otherwise], so a *retryable* poll error reaching
+`Run` is one the transport layer has already backed off over — and a non-retryable one, which that
+same branch returns without waiting, is bounded by the poll interval like every other cycle. Adding
+a ramp here would compound two delays for one fault and give the loop a state variable that survives
+across cycles, which `internal/scheduler` also
 declined. If measured behaviour later shows the flat interval is too aggressive against a sustained
 outage, that is a tuning change to `LAB_GAME_INGEST_POLL_INTERVAL`, not a new mechanism.
 
@@ -719,11 +761,11 @@ server therefore leaves the loop exactly where it was, and the next cycle re-ask
 | 4 | Forward migration `00004_ingest.sql`: `ingest_offset` (guarded singleton, seeded) and `ingest_dead_update`. **The two new tables break `internal/store`'s exact base-table assertion**, which enumerates the whole set and compares with `slices.Equal` [measured febae63:internal/store/migrate_test.go:41-47 · `sed -n '41,47p' internal/store/migrate_test.go` → `want := []string{` … `"account", "account_balance", "account_definition",` … `"scope", "scope_definition",` … `}`]; that set is extended with both new names in this subtask, and the new tables' constraints get their cases in `schema_test.go`, so Group A leaves `internal/store` green on its own rather than relying on its consumer in Group B | `internal/store/migrations/00004_ingest.sql`, `internal/store/migrate_test.go`, `internal/store/schema_test.go` | — |
 | 5 | `store.Queryer` and `store.PlayerExists` — the read-only owner lookup, with its tests; **and the delete-and-re-point of the package's shipped test-local near-duplicate** per D11: `queryRower` is removed and `balanceOf` takes `store.Queryer`, so one method set has one name in this package | `internal/store/owner.go`, `internal/store/owner_test.go`, `internal/store/post_test.go` | — |
 | 6 | `internal/ingest` core types: package comment, `Kind` with D4's table and its date/chat extractors, `IDSpace` and the unexported `operation_id` builder, `Handler`/`Update`, `Route`/`Router`/`NewRouter`/`Kinds`, the package's sentinels. **The `Handler` doc comment carries more than the ctx-propagation obligation**: propagate the handed `ctx` to every call on `tx` (D7's risk row); use that handed `ctx` and never the one riding inside the update, which for an update off this poll path is a `context.Background()` (D9, spec *Technical constraints* item 5); and issue no outbound Bot API call whose permission rests on a row this transaction has not committed (D18). `Update` holds the raw `telego.Update` in a named field, never embedded (D9) | `internal/ingest/doc.go`, `internal/ingest/kind.go`, `internal/ingest/operation.go`, `internal/ingest/router.go`, `internal/ingest/errors.go`, plus their `_test.go` files | — |
-| 7 | Offset and give-up storage: read/guarded-advance statements, `DeadUpdate`, `DeadUpdates` over a caller-owned `pgx.Tx` with a deterministic order | `internal/ingest/offset.go`, `internal/ingest/dead.go`, plus their `_test.go` files | 4, 6 |
+| 7 | Offset and give-up storage: read/guarded-advance statements, `DeadUpdate`, `DeadUpdates` over a caller-owned `pgx.Tx` with a deterministic order. **The package's `TestMain` over `testdb.Main` lands here**, in the first subtask whose scenarios take a schema: `testdb.Schema` fails the calling test when `Main` has not provisioned a database [measured c37e642:internal/testdb/testdb.go:112-116 · `sed -n '112,116p' internal/testdb/testdb.go` → `func Schema(tb testing.TB) *pgxpool.Config {` … `tb.Fatalf("testdb: Schema called before testdb.Main provisioned a database")`], so leaving it to a later subtask would red every database-backed scenario of subtasks 7, 9 and 10 until that subtask landed — against this design's own each-step-leaves-its-package-green norm, stated for subtasks 4 and 5 | `internal/ingest/offset.go`, `internal/ingest/dead.go`, plus their `_test.go` files, and `internal/ingest/main_test.go` | 4, 6 |
 | 8 | The observation seam: `Outcome`, `Observation`, `LoopObservation`, `Observer`, and the nil-checked report helpers | `internal/ingest/observe.go`, `internal/ingest/observe_test.go` | 6 |
 | 9 | The loop: `Options`/`New`/`OptionError`, the requested-kinds set with D3's sentinel, `PollOnce`, `Run` with D19's poll-error policy (observe through `LoopObservation.Err` and continue at the poll interval; return non-nil only on cancellation, as `ctx.Err()`), per-attempt transaction, `recover`, sentinel classification, bounded retry, settlement and offset advance (writing `update_id + 1` per D14), give-up row. **The Files column names this row's home, not a one-file mandate**: the responsibilities listed here are a plausible run at the soft file-size bands [measured df9b1a2:AGENTS.md:128 · `grep -n 'File size' AGENTS.md` → `- **File size:** soft 500/800; hard 1000, and 1500 for \`_test.go\` — both gated; exemptions and the don't-over-split counter-rule are in \`code-style.md\`.`], so split along the seams this row already names — the poll cycle, the per-update attempt loop, the settlement — deliberately at authoring time rather than reactively at the gate, after reading `code-style.md`'s don't-over-split counter-rule | `internal/ingest/loop.go` (splitting as above), `internal/ingest/loop_test.go`, `internal/ingest/retry_test.go` | 1, 3, 6, 7, 8 |
 | 10 | The gate: `PlayerLookup`, the pool-backed implementation, `Gate`, `NewGate`, the positive-only cache | `internal/ingest/gate.go`, `internal/ingest/gate_test.go` | 5, 6 |
-| 11 | Guard tests: no `panic(`/`log.Fatal`/`os.Exit` in the package's non-test source, no metrics-library import, the `telego.Update` field-vs-kind-table drift check, the package's `TestMain` over `testdb.Main`, and the structural source walks § Test Design specifies — AC2's ctx-first walk with D9's riding-context clauses, AC8's no-transaction-handed-out walk, and AC38's no-second-Bot-API-path walk | `internal/ingest/guards_test.go`, `internal/ingest/main_test.go` | 6, 9, 10 |
+| 11 | Guard tests: no `panic(`/`log.Fatal`/`os.Exit` in the package's non-test source, no metrics-library import, the `telego.Update` field-vs-kind-table drift check, and the structural source walks § Test Design specifies — AC2's ctx-first walk with D9's riding-context clauses, AC8's no-transaction-handed-out walk, and AC38's no-second-Bot-API-path walk | `internal/ingest/guards_test.go` | 6, 9, 10 |
 | 12 | Propagation: the layout paragraph and the code inventory in `ai-docs/context.md`; the allowlist and sanitisation bullets in `ai-docs/domain-invariants.md` — the player carve-out, the cache-invalidation obligation, D18's no-outbound-call-on-an-uncommitted-row obligation, and the concrete §12.5 targets this task creates per D14 (reset `ingest_offset`, which is what the existing «reset the updates offset» clause now names; rewrite `ingest_dead_update`'s chat id; blank its `last_error` free text); the new Key-Decision entries; the `INDEX.md` row. **`ai-docs/context-status.md` is written for this task, and not by this subtask** — spec *Technical constraints* item 8 names it among the propagation class, and it receives its entry the way it receives every entry: appended by `/task` Step 9.5 after implementation, since it is that step's own append-only per-task log [measured 07e5177:ai-docs/context-status.md:3 · `sed -n '3p' ai-docs/context-status.md` → `The detailed, append-only implementation log: one entry per completed task … Written by /task Step 9.5, read on demand when touching the area an entry covers.`]. This row therefore leaves that append to Step 9.5 rather than duplicating it here, and touches none of the file's past entries — the same standing `AGENTS.md` § Propagation Rule step 4 gives `ai-docs/learnings.md` and `ai-docs/plans/done/**`, which it says to leave untouched. AC32's class is satisfied by that division of labour, not by an exclusion from the class | `ai-docs/context.md`, `ai-docs/domain-invariants.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–11 |
 
 ## Handoff plan
@@ -837,13 +879,14 @@ default maximum of `4` design-defined groups, so no user approval for an overflo
   `grep -n 'func Test.*[Bb]ackoff' internal/scheduler/cadence_test.go internal/tg/retry_test.go` →
   `TestRetry_JitterOptionThreadedThroughToBackoff`, `TestBackoffDelay_JitterBoundsExactly`,
   `TestBackoff_exactTable`, `TestBackoff_strictlyGrowingUntilCeiling`]`.
-- **A shared `Exponential` written the obvious way overflows where the two ramps it replaces could
-  not, and the damage lands in persisted data.** Both shipped ramps test the ceiling *before*
-  doubling and leave the loop there `[measured c221784:internal/tg/retry.go:33-34 and
+- **A shared `Exponential` written the obvious way overflows where the ramps it replaces do not, and
+  the damage lands in persisted data.** Neither shipped ramp doubles a value it has not first tested
+  against the ceiling `[measured c221784:internal/tg/retry.go:33-34 and
   internal/scheduler/cadence.go:46-47 · `sed -n '33,34p' internal/tg/retry.go; sed -n '46,47p'
   internal/scheduler/cadence.go` → `if d > maxDelay/2 {` / `d = maxDelay` and `if d >= ceiling {` /
-  `return ceiling`]`, so neither can wrap `time.Duration`'s `int64`. A `base << attempt`, or a loop
-  whose ceiling test comes after the doubling, can — and the attempt is operator-reachable, since the
+  `return ceiling`]`, so the doubling each does is one the ceiling has already bounded. A
+  `base << attempt`, or a loop whose ceiling test comes after the doubling, has no such bound — and
+  the attempt is operator-reachable, since the
   attempt caps are parsed by a helper that bounds only from below `[measured
   c221784:internal/config/transport.go:207-217 · `sed -n '207,217p' internal/config/transport.go` →
   `func lookupPositiveInt(…)` whose only rejection is `if err != nil || n <= 0`]` and
@@ -972,6 +1015,13 @@ anywhere `[derived → AC29]`.
   the function would pass against the defect it was written to catch. Repeated for a base at the
   small end (`1ns`, where doubling reaches the wrap soonest) and at an operationally realistic one
   (`1s`) `[derived → AC23 and D2's clamp-before-overflow contract]`.
+- **The out-of-domain rows D2 decides, so the answer is pinned rather than discovered.** `base <= 0`
+  returns `base` unchanged — asserted at `0` and at a negative base, at the zeroth attempt and at a
+  large one, which is what pins "no doubling and no lower clamp" rather than merely "not positive" —
+  and, for a positive `base`, `ceiling <= 0` returns `ceiling`; `EqualJitter` answers each with its
+  equal-jitter half of the same value. Neither input is reachable from any adopter (D2), so these
+  rows exist to stop an implementor reading the in-domain contract as licence to clamp from below
+  `[derived → AC23 and D2's out-of-domain rows]`.
 - Fixtures: a deterministic `jitter func() float64` stub. No database, no bubble.
 
 **Subtask 2 — the adoption** (no new test file; the shipped test files listed in § Decomposition
@@ -1062,7 +1112,7 @@ row 2 are edited)
   with no owner row reports false; a closed pool surfaces the error rather than a false; the same
   call through a `pgx.Tx` and through a `*pgxpool.Pool` behaves identically `[derived → AC28, AC33]`.
 - **The `queryRower` re-point is gated by compilation, not by a new test.** `post_test.go`'s
-  `balanceOf` is the only consumer, so deleting the near-duplicate and re-pointing it at
+  `balanceOf` consumes it, so deleting the near-duplicate and re-pointing every consumer at
   `store.Queryer` either compiles or does not; the package's shipped posting tests are what prove the
   helper still reads the same balances, and — as in subtask 2 — **every assertion and expected value
   in them stays byte-identical, only the parameter type changes**. `go test ./internal/store/` is run
@@ -1087,14 +1137,17 @@ row 2 are edited)
   unregistered kind reports absence `[derived → AC4]`.
 - Fixtures: hand-built `telego.Update` values; no database.
 
-**Subtask 7 — offset and give-up storage** (`internal/ingest/offset_test.go`, `dead_test.go`)
+**Subtask 7 — offset and give-up storage** (`internal/ingest/offset_test.go`, `dead_test.go`,
+`main_test.go`)
 - Entry points: the offset read, the guarded advance, `DeadUpdates`.
 - Scenarios: a fresh schema reads the seeded offset; an advance to a higher value is stored and read
   back by a *new* reader (no in-process value is the sole record); an advance to a value at or below
   the stored one is a no-op; a rolled-back advance leaves the stored value untouched; `DeadUpdates`
   returns rows in a deterministic order under a caller-owned transaction, honours its limit, and
   neither commits nor rolls back `[derived → AC6, AC25, AC37]`.
-- Fixtures: `testdb.Schema(t)`, `store.Migrate`.
+- Fixtures: `testdb.Schema(t)`, `store.Migrate`, and the package's `TestMain` over `testdb.Main`,
+  authored here because this is the first subtask to take a schema and inherited by every
+  database-backed scenario subtasks 9 and 10 add `[derived → subtask 7's offset scenarios]`.
 
 **Subtask 8 — the observation seam** (`internal/ingest/observe_test.go`)
 - Entry points: the nil-checked report helpers and each observation type's rendering.
@@ -1107,9 +1160,19 @@ row 2 are edited)
 - Entry points: `New`, `PollOnce`, `Run`.
 - Scenarios:
   - *Request shape.* Every `getUpdates` the loop issues carries an `allowed_updates` field, with an
-    empty router and with a populated one; every registered kind appears in it; the offset and the
-    long-poll timeout are transmitted. Asserted by decoding the request body the `tgtest` handler
-    receives `[derived → AC3, AC4, AC5]`.
+    empty router and with a populated one; every registered kind appears in it; and the long-poll
+    timeout is transmitted on every cycle, the first included — it is a positive value by
+    construction (D15's default, D16's checks, and `New`'s refusal of a non-positive tuning field),
+    so `omitempty` never reaches it. **The offset is asserted present only for a non-zero stored
+    value**, because `GetUpdatesParams.Offset` carries `json:"offset,omitempty"`
+    [measured c37e642:telego@v1.11.2/methods.go:18 · `grep -n 'json:"offset'
+    $(go env GOMODCACHE)/github.com/mymmrac/telego@v1.11.2/methods.go` →
+    `18:	Offset int \`json:"offset,omitempty"\`` in `GetUpdatesParams`] and `encoding/json` erases a
+    zero under it — the same erasure D3 turns on for `allowed_updates`. At D14's seeded `0` the field
+    is legitimately **absent**, which is what § Risks' first-start row rests on, so the first cycle's
+    assertion is that no `offset` is transmitted and the *transmitted offset after a settlement*
+    scenario below covers the non-zero case. Asserted by decoding the request body the `tgtest`
+    handler receives `[derived → AC3, AC4, AC5]`.
   - *Happy path.* A routed update reaches its handler with the loop's transaction and the derived
     operation key; the handler's writes survive; the offset advances past it; the observer sees a
     handled outcome with a duration `[derived → AC8, AC17]`.
@@ -1208,7 +1271,7 @@ row 2 are edited)
 - Fixtures: a `PlayerLookup` stub (fixed answers, an error mode, and a call counter), the pool-backed
   implementation over `testdb.Schema(t)`, `tgtest.Server`, `config.Transport` defaults.
 
-**Subtask 11 — guards** (`internal/ingest/guards_test.go`, `main_test.go`)
+**Subtask 11 — guards** (`internal/ingest/guards_test.go`)
 - Entry points: a source walk over the package's non-test files, and a reflection walk over
   `telego.Update`.
 - Scenarios: no `panic(`, `log.Fatal` or `os.Exit` appears in the package's non-test source; no
@@ -1274,7 +1337,7 @@ row 2 are edited)
     written down rather than silently allowed
     `[derived → AC2, D9 and spec *Technical constraints* item 5]`.
 - Fixtures: the repository-root resolver `internal/tg/guards_test.go` already establishes for this
-  shape; `testdb.Main` in `TestMain`.
+  shape. These walks need no database, and the package's `TestMain` is subtask 7's.
 
 **Cross-cutting — the gates, not a test file**
 - AC1's doc-comment and package-comment obligations are held by `revive`'s `exported` and
