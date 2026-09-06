@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/maratik123/lab-game/internal/config"
 )
 
 // alwaysFailHandler always returns OutcomeFailed with a fixed error.
@@ -33,6 +36,66 @@ func (decodeFailHandler) Execute(_ context.Context, _ pgx.Tx, task Task) (Outcom
 	return OutcomeDone, nil
 }
 
+// slowFirstAttemptHandler fails every attempt like alwaysFailHandler, but
+// makes the FIRST attempt take firstDelay longer than the others. That
+// asymmetry is what turns the run_at anchoring into a deterministic
+// assertion instead of a load-dependent one: a measurement anchored
+// outside RunOnce carries this delay, a measurement anchored to the
+// settlement instant does not.
+type slowFirstAttemptHandler struct {
+	mu         sync.Mutex
+	seen       int
+	firstDelay time.Duration
+	err        error
+}
+
+func (h *slowFirstAttemptHandler) Execute(ctx context.Context, _ pgx.Tx, _ Task) (Outcome, error) {
+	h.mu.Lock()
+	h.seen++
+	first := h.seen == 1
+	h.mu.Unlock()
+	if first {
+		select {
+		case <-time.After(h.firstDelay):
+		case <-ctx.Done():
+			return OutcomeFailed, ctx.Err()
+		}
+	}
+	return OutcomeFailed, h.err
+}
+
+// backoffProbeConfig is testConfig with a task deadline wide enough that
+// slowFirstAttemptHandler's deliberate delay cannot breach it -- this test
+// is about backoff anchoring, not about deadlines. RetryBaseDelay is
+// raised to 200ms (RetryMaxDelay stays at 1s, so backoff is 200ms then
+// 400ms, both under the ceiling): this costs nothing in wall-clock time,
+// since the row is forced due on every iteration and the backoff is
+// never waited on. The base must also stay strictly below
+// slowFirstAttemptHandler's 400ms first-attempt delay, and that is what
+// keeps this test's guard deterministic rather than probabilistic: a
+// regression that anchors the measurement outside RunOnce again would
+// measure backoff(1)+~402ms = ~602ms for attempt 1 but backoff(2)+~1ms
+// = ~401ms for attempt 2, so its "the delay grew" check fails on every
+// run instead of once in three.
+func backoffProbeConfig() config.Scheduler {
+	cfg := testConfig()
+	cfg.TaskTimeout = 10 * time.Second
+	cfg.RetryBaseDelay = 200 * time.Millisecond
+	return cfg
+}
+
+// captureNow returns the server's clock_timestamp(), for bracketing a
+// settlement instant that is read inside a transaction sometime between
+// two of these calls.
+func captureNow(t *testing.T, pool *pgxpool.Pool) time.Time {
+	t.Helper()
+	var now time.Time
+	if err := pool.QueryRow(context.Background(), `SELECT clock_timestamp()`).Scan(&now); err != nil {
+		t.Fatalf("capture now: %v", err)
+	}
+	return now
+}
+
 // forceDue sets id's run_at to now(), so the next RunOnce claims it
 // without waiting for a persisted backoff to elapse.
 func forceDue(t *testing.T, pool *pgxpool.Pool, id TaskID) {
@@ -43,8 +106,9 @@ func forceDue(t *testing.T, pool *pgxpool.Pool, id TaskID) {
 }
 
 // TestFailurePolicy_oneShotAttemptsGrowAndGiveUp is AC9: driven attempt
-// by attempt (each cycle preceded by making the row due), the persisted
-// run_at deltas grow, the exact attempt count at give-up equals the
+// by attempt (each cycle preceded by making the row due), each persisted
+// run_at falls within the exact backoff bracket computed around the
+// settlement instant, the exact attempt count at give-up equals the
 // configured cap, the state is terminal, and a subsequent discovery does
 // not return it.
 func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
@@ -52,8 +116,8 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 
 	pool := newScheduler(t)
 	ctx := context.Background()
-	cfg := testConfig()
-	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: &alwaysFailHandler{err: errBoom}})
+	cfg := backoffProbeConfig()
+	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: &slowFirstAttemptHandler{firstDelay: 400 * time.Millisecond, err: errBoom}})
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)
 	}
@@ -64,12 +128,12 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	var prevDelta time.Duration
 	for attempt := 1; attempt <= cfg.RetryMaxAttempts; attempt++ {
 		before := forceDueAndCapture(t, pool, id)
 		if err := w.RunOnce(ctx); err != nil {
 			t.Fatalf("RunOnce attempt %d: %v", attempt, err)
 		}
+		after := captureNow(t, pool)
 
 		state, failures, lastError, runAt, found := schedulerTaskRow(t, pool, id)
 		if attempt < cfg.RetryMaxAttempts {
@@ -79,14 +143,19 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 			if failures != attempt {
 				t.Fatalf("attempt %d: consecutive_failures = %d, want %d", attempt, failures, attempt)
 			}
-			delta := runAt.Sub(before)
-			if delta <= 0 {
-				t.Fatalf("attempt %d: run_at delta = %v, want strictly positive", attempt, delta)
+			// The settlement instant s (settle.go's clock_timestamp() read,
+			// after the handler returned) satisfies before <= s <= after by
+			// construction: all three are server clock reads, and before and
+			// after bracket the RunOnce call that reads s. run_at = s +
+			// backoff(attempt), so it must land in
+			// [before+backoff, after+backoff] -- an exact bracket, not merely
+			// a "grew" check, and independent of how long RunOnce itself
+			// takes to execute.
+			want := backoff(attempt, cfg.RetryBaseDelay, cfg.RetryMaxDelay)
+			lo, hi := before.Add(want), after.Add(want)
+			if runAt.Before(lo) || runAt.After(hi) {
+				t.Fatalf("attempt %d: run_at = %v, want within [%v, %v] (before=%v after=%v backoff=%v)", attempt, runAt, lo, hi, before, after, want)
 			}
-			if attempt > 1 && delta <= prevDelta {
-				t.Fatalf("attempt %d: run_at delta = %v, want strictly greater than the previous delta %v", attempt, delta, prevDelta)
-			}
-			prevDelta = delta
 			if lastError == nil || !strings.Contains(*lastError, "boom") {
 				t.Fatalf("attempt %d: last_error = %v, want it to mention the handler error", attempt, lastError)
 			}

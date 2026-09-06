@@ -201,3 +201,10 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **at:** 837952e
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-06 — testing — one green full-suite run does not refute a flake reported at a stated rate
+**What happened:** Reproducing issue #59 — a scheduler test reported as failing "roughly once in three" full `-race` runs — my first full `go test -count=1 -race ./...` came back green. Recording "could not reproduce locally" and proceeding from the issue's own evidence was available and cheap. Running the suite four times instead put run 2 RED, but on a **different** test than the one the issue named: `TestDeadline_drainDoesNotBlockOnLockedRow`, absent from the issue, which then turned out to share the reported test's root cause (a retry delay of the same order as the worker's own execution time). Fixing only the named test would have left the suite failing at close to the original rate, and the next investigator would have re-derived the same root cause from scratch.
+**Rule:** For a defect reported as intermittent at a stated rate, a single green run is not a reproduction attempt — it is one Bernoulli trial, and at 1-in-3 it comes up green half the time in two tries. Run enough trials that P(all green) is small, and read **which** test failed rather than only whether the suite did: a pass/fail summary hides the case where a neighbouring test is the same defect wearing a different symptom. This is `AGENTS.md` § *Patterns* 2 ("a green instrument is a claim about the instrument") in its probabilistic shape — absence of a failure and inability to observe one are the same observation until the trial count makes them different.
+**at:** 6dd6418
+**Kind:** validation
+**Escalated?** no
