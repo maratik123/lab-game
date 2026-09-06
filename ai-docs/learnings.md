@@ -247,3 +247,10 @@ wrong-surface text by message twelve.
 **at:** e19e42c
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-06 — testing — re-created the defect one step earlier while writing the fix for it
+**What happened:** In `/bugfix 63` the trace's own *Expected behaviour* section, which I wrote and the product owner confirmed, said the fix must use `t.Errorf` "so the `schedulerTaskRow` check still runs and its evidence reaches the log on the same failing run". My Step-4 plan then specified three NEW observation assertions and said nothing about their failure kind, so they were authored as `t.Fatalf` and landed AHEAD of the very `t.Errorf` the same commit created. On any neighbour failure the first of them still aborted the test, so divergence #2 was moved earlier, not removed — and a second face I had not seen at all: `Done/FailureNone` is emitted only after a successful COMMIT, so once the neighbour assertion passed, the demoted `t.Errorf` could never fire, making the demotion worthless on its own. Self-review round 1 caught both and proved the first by re-running my own Step-3 probe: one evidence line where the fix promised three. I had run that probe post-fix myself and read its single line as success, because it satisfied the clause I was looking at.
+**Rule:** When a fix's stated goal is "reach the later checks", the failure kind of every assertion added AHEAD of them is part of the fix, not an incidental style choice — specify it in the plan, or the delegate will reasonably default to the surrounding file's `t.Fatalf`. And when the acceptance criterion has more than one clause, check the output against the CLAUSES one by one rather than against the impression the output makes: a probe that reddens in a new and satisfying way is the most likely moment to stop reading, which is exactly when a half-met criterion gets recorded as met.
+**at:** ffec013
+**Kind:** correction
+**Escalated?** no
