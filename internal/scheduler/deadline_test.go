@@ -184,17 +184,22 @@ func TestDeadline_breachIsSettledNotMerelyAbandoned(t *testing.T) {
 }
 
 // TestDeadline_successiveBreaches_growingDelay is AC9 for the breach
-// class: driven attempt by attempt, each settled run_at is later than
-// the drain instant that wrote it, and the deltas grow until the
-// ceiling.
+// class: driven attempt by attempt, each settled run_at falls within the
+// exact backoff bracket computed around the drain instant that wrote it.
 func TestDeadline_successiveBreaches_growingDelay(t *testing.T) {
 	t.Parallel()
 
 	pool := newScheduler(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
+	// RetryBaseDelay is raised locally to 200ms (the ceiling here is
+	// 500ms, so 200ms then 400ms both fit): this test never waits for
+	// the backoff to elapse, so the higher base costs nothing, and it
+	// keeps the bracket well clear of drain/scheduling jitter. Do not
+	// change the shared shortDeadlineConfig() TaskTimeout -- other tests
+	// depend on its 100ms value.
+	cfg.RetryBaseDelay = 200 * time.Millisecond
 
-	var prevDelta time.Duration
 	for attempt := 1; attempt < cfg.RetryMaxAttempts; attempt++ {
 		h := newBlockingHandler()
 		reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
@@ -232,20 +237,23 @@ func TestDeadline_successiveBreaches_growingDelay(t *testing.T) {
 		if err := w.RunOnce(ctx); err != nil {
 			t.Fatalf("RunOnce (drain %d): %v", attempt, err)
 		}
+		after := captureNow(t, pool)
 		close(h.release)
 
 		_, failures, _, runAt, found := schedulerTaskRow(t, pool, id)
 		if !found || failures != attempt {
 			t.Fatalf("attempt %d: consecutive_failures = %d (found=%v), want %d", attempt, failures, found, attempt)
 		}
-		delta := runAt.Sub(drainInstant)
-		if delta <= 0 {
-			t.Fatalf("attempt %d: run_at delta from drain instant = %v, want strictly positive", attempt, delta)
+		// Same before <= s <= after argument as
+		// TestFailurePolicy_oneShotAttemptsGrowAndGiveUp, anchored to the
+		// drain instant: the backoff base for this path is read inside
+		// drainPending (settle.go), strictly between drainInstant and
+		// after.
+		want := backoff(attempt, cfg.RetryBaseDelay, cfg.RetryMaxDelay)
+		lo, hi := drainInstant.Add(want), after.Add(want)
+		if runAt.Before(lo) || runAt.After(hi) {
+			t.Fatalf("attempt %d: run_at = %v, want within [%v, %v] (drainInstant=%v after=%v backoff=%v)", attempt, runAt, lo, hi, drainInstant, after, want)
 		}
-		if attempt > 1 && delta <= prevDelta {
-			t.Fatalf("attempt %d: delta = %v, want strictly greater than the previous delta %v", attempt, delta, prevDelta)
-		}
-		prevDelta = delta
 	}
 }
 
@@ -453,6 +461,19 @@ func TestDeadline_drainDoesNotBlockOnLockedRow(t *testing.T) {
 	pool := newScheduler(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
+	// RetryBaseDelay/RetryMaxDelay are both raised locally so that the
+	// drain's persisted run_at = s + backoff(1) is far in the future.
+	// Without this, backoff(1) with the shared 20ms base can already have
+	// elapsed by the time discovery's next WHERE run_at <= now() runs,
+	// re-claiming the row within the same test before the lock-release
+	// assertion below; the fixedOutcomeHandler{OutcomeDone} would then
+	// succeed and delete the one-shot row, producing found=false instead
+	// of the expected failures=1. Raising RetryMaxDelay too is required:
+	// the shared 500ms ceiling would otherwise clamp the 30s base back
+	// down. This costs zero wall-clock time -- the test never waits for
+	// that run_at to arrive.
+	cfg.RetryBaseDelay = 30 * time.Second
+	cfg.RetryMaxDelay = time.Minute
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: &fixedOutcomeHandler{outcome: OutcomeDone}})
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)
