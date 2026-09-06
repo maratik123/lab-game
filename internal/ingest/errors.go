@@ -22,4 +22,9 @@ var (
 	// ErrEmptyID is returned by the operation_id builder when its raw
 	// identifier is empty (design D9).
 	ErrEmptyID = errors.New("ingest: empty id")
+
+	// ErrChatRefused is Gate.AllowCall's sentinel: the destination is
+	// unverifiable (ChatUnknown), not an integer chat id, or neither
+	// allowlisted nor a known player (design D10).
+	ErrChatRefused = errors.New("ingest: chat refused")
 )
