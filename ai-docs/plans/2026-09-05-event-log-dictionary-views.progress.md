@@ -8,8 +8,8 @@ _Updated: 2026-09-06 08:27_
 **Last build:** not run
 **Issue:** #21
 **Spec:** ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md
-**current_step:** Step 8 — subtask 4 of 8 complete
-**last_passed_gate:** golangci-lint run | 2026-09-06T08:44:10Z | 8e931e1a5756e8a3cfd2d5e1dcd385321fb75738
+**current_step:** Step 8 — subtask 5 of 8 complete (Group A finished)
+**last_passed_gate:** golangci-lint run | 2026-09-06T08:56:50Z | ffd11bfb4061f5a45081e4d5c13cc30416b623f4
 **entry_args:** 21
 
 ## Next action
@@ -22,7 +22,7 @@ _Updated: 2026-09-06 08:27_
 - [x] 2. Go mirrors: `EventVolumeClass`, `EventType`, `EventTypeDefinition` + registry slice; extend both mirror tests (AC5)
 - [x] 3. Write API: `EventID`, `Event` as a `PostingBasis`, `AppendEvent`, `ErrUnknownEventType` + the doc edits (AC6–AC9)
 - [x] 4. Append-only sweep: extend the pattern to `event`, planted controls, the `event_type_definition` decoy, non-vacuity guard (AC10)
-- [ ] 5. The views: five views with fixed column names/order/types + §13.3 comments, exact-view-set assertion, literal per-view expectations (AC11–AC14)
+- [x] 5. The views: five views with fixed column names/order/types + §13.3 comments, exact-view-set assertion, literal per-view expectations (AC11–AC14)
 - [ ] 6. `domain-invariants.md` §5: payload rule + reasoning, the whole obligations/non-obligations table, arc consequences, suspended §13.5 limb, deferred families (AC15, AC16, AC18)
 - [ ] 7. `docs/DESIGN.md` in Russian: the log table's name at §13.1/§13.5; «игровое событие (лог 13.1)» into §11's registry (AC17)
 - [ ] 8. Propagation sweep by the Propagation Rule step-4 criterion (AC18)
@@ -33,6 +33,7 @@ _Updated: 2026-09-06 08:27_
 - **Step 8 subtask 1**: `event_volume_class` members are `low_volume`/`high_volume` per the design (names the axis, not the reader). `event.type`'s FK to `event_type_definition (code)` is named `event_type_fkey` so the write API (subtask 3) can map its SQLSTATE 23503 violation to `ErrUnknownEventType`. Strengthened the pre-existing `journal_entry_exactly_one_basis` substring check to name all five arc columns rather than the bare `num_nonnulls` substring that the pre-change form already satisfied. Filtered `TestMigrate_shape_and_seeds`'s table-list query to `table_type = 'BASE TABLE'` ahead of subtask 5 introducing views. A migration comment using the word "grant" (in prose, not SQL) tripped `TestMigrate_hygiene`'s `GRANT` pattern — reworded to avoid the substring.
 - **Step 8 subtask 3**: `Event.insert` maps SQLSTATE 23503 on constraint `event_type_fkey` specifically (not any FK violation) to `ErrUnknownEventType`, mirroring `Post`'s `ErrOverdraft` mapping pattern in `post.go`. `sqlstateForeignKeyViolation`/`constraintEventTypeFKey` live in `event.go` since nothing else in the package needs them. Verified with `go test -race ./internal/store/` (green) in addition to the plain suite, since the write API adds a new `pgx.Tx`-facing code path.
 - **Step 8 subtask 4**: one full-suite run failed with `unable to find network with name or ID reaper_default: network not found` — a transient podman/testcontainers infra hiccup, not a code defect; an immediate re-run of the same unchanged command was green. Recorded here because the instructions require isolating and reproducing a gate failure before treating it as transient: re-running the identical `go test ./internal/store/ -count=1` a second time is what established that, not an assumption.
+- **Step 8 subtask 5**: chose a single-schema, single-fixture design across all five view subtests (per the design's "each view's subtest reads the same world"), which means `metric_retention_daily`'s expected table has to account for every event any other view's fixture data planted (deaths, notifications) since it aggregates over the whole `event` table regardless of type. Picked fixture day offsets and player counts by hand so every ratio column lands on a terminating decimal (0, 0.4, 0.5, 1.5, 1.0) rather than a repeating one, to avoid having to guess Postgres's numeric-division display scale; ratio/faucet/sink columns are scanned into `decimal.Decimal`/`*decimal.Decimal` and compared with `.Equal`, which is scale-independent, as the actual mechanism that sidesteps the formatting question. All literal expectations were verified by hand before running, then confirmed to pass unmodified on first execution against real Postgres — no expectation was adjusted to match observed output. `metric_faucet_sink`'s fixture is written by direct SQL against `manual_correction`/`journal_entry`/`posting` with explicit `ts` values, independent of the `event` table entirely, so it does not interact with the retention/funnel/death fixture at all. Removed an unused `//nolint:gosec` (that linter isn't enabled in this repo's `.golangci.yml`) that `nolintlint` correctly flagged as dead.
 
 ## Key discoveries (don't re-investigate)
 
@@ -44,20 +45,20 @@ _Updated: 2026-09-06 08:27_
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
-| AC10 | NOT_TESTED |
-| AC11 | NOT_TESTED |
-| AC12 | NOT_TESTED |
-| AC13 | NOT_TESTED |
-| AC14 | NOT_TESTED |
+| AC1 | TESTED |
+| AC2 | TESTED |
+| AC3 | TESTED |
+| AC4 | TESTED |
+| AC5 | TESTED |
+| AC6 | TESTED |
+| AC7 | TESTED |
+| AC8 | TESTED |
+| AC9 | TESTED |
+| AC10 | TESTED |
+| AC11 | TESTED |
+| AC12 | TESTED |
+| AC13 | TESTED |
+| AC14 | TESTED |
 | AC15 | NOT_TESTED |
 | AC16 | NOT_TESTED |
 | AC17 | NOT_TESTED |
@@ -85,3 +86,4 @@ _Updated: 2026-09-06 08:27_
 - `internal/store/basis_test.go`
 - `internal/store/event_test.go` (new)
 - `internal/store/append_only_test.go`
+- `internal/store/views_test.go` (new)
