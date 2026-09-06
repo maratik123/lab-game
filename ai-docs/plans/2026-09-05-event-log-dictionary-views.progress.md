@@ -1,5 +1,5 @@
 # Progress: Event log — the `event` table, the §13.4 dictionary, and the MVP SQL views — ACTIVE
-_Updated: 2026-09-06 10:10_
+_Updated: 2026-09-06 13:05_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -83,6 +83,13 @@ scope (`/task` § Patterns 1). Grep-shaped rows were run with a positive control
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
+| R1-1 | round 1 | nit | accepted@1 — below severity floor. `Event`'s doc comment attributes the nil-payload default to "the migration's own DEFAULT"; on this path the column IS named in the INSERT, so the DEFAULT never fires and the `'{}'::jsonb` literal in `Event.insert`'s own SQL is what stores it. Reads as ambiguous rather than false; behaviour is correct and asserted. | `sed -n '30,33p' internal/store/event.go` |
+| R1-2 | round 1 | minor | accepted@1 — below severity floor. The AC5 row records `` `VolumeHigh` → 2 ``; the literal command returns `3` (one hit is the mirror slice's own doc comment). The reproducing pattern is `VolumeClass: VolumeHigh`. AC5's substance is unaffected — it is established by `TestCatalog_mirrors_database`'s ordered element-for-element comparison, which is green. Evidence-record precision only. | `grep -c 'VolumeHigh' internal/store/catalog.go` → 3; `grep -c 'VolumeClass: VolumeHigh' internal/store/catalog.go` → 2 |
+| R1-3 | round 1 | nit | accepted@1 — below severity floor. The funnel's determinism tie-break (`ORDER BY e.player_id, e.ts, e.chat_id`) is a clause no fixture reaches: no player has two `player_started` rows at equal `ts`, so deleting `, e.chat_id` leaves the suite green (this file's § Patterns 2). The *earliest*-wins half IS covered (player B, chat1 01-01 11:00 vs chat2 01-03 09:00). Design's Test Design lists no tie-break boundary. | `go test -count=1 ./internal/store -run TestViews_fixtureExpectations` after deleting `, e.chat_id` from the `attribution` CTE |
+| R1-4 | round 1 | nit | accepted@1 — locator drift, re-resolved by the verifier (not an amendment trigger). The AC3 row cites `sed -n '74,78p' 00003_event_log.sql`; the arc extension now sits at **:72-80**. The citation still describes the artefact correctly. Unpinned coordinate. | `sed -n '72,80p' internal/store/migrations/00003_event_log.sql` |
+| R1-5 | round 1 | minor | accepted@1 — pre-existing, not falsified by this diff. `ai-docs/key-decisions.md:47` (KD-17) still enumerates the exclusive arc as «`player_operation` or `manual_correction`». `00002_scheduler.sql` widened it to four columns without touching that line, so the claim was already false before this diff; AC18's criterion is "sites **this diff** falsifies". Surfaced in the Decisions log as `/triage` material. | `grep -n 'player_operation. or .manual_correction' ai-docs/key-decisions.md` |
+| R1-6 | round 1 | minor | accepted@1 — instrument defect, correctly parked. `check-citations.sh` is RED on this branch because `#59` (a real OPEN issue, verified) exceeds the guard's ceiling, which reads `gh pr list` alone while issues and PRs share one numbering space. Not in `make verify`'s list and not in AC19. Recorded in `ai-docs/harness-gaps.md:208-214`. **Step 12 must re-run the guard, not assume it clears** when the PR raises the ceiling. | `bash .claude/skills/ai-audit/scripts/check-citations.sh` → `FAIL: 4 unresolvable citation(s)`; `gh issue view 59 --json state` → OPEN |
+| R1-7 | round 1 | minor | accepted@1 — pre-existing flake, controlled. `go test -race ./...` is RED intermittently on `TestFailurePolicy_oneShotAttemptsGrowAndGiveUp` in the untouched `internal/scheduler` (`git diff 8f9bb8d..HEAD -- internal/scheduler/` is empty), reproduced on the base commit in a clean worktree and filed as #59. This diff adds no goroutine and shares no state across requests. | `go test -race ./internal/store/ -count=1` (green 3/3, recorded); `go test -race ./...` |
 
 ## Files touched
 
@@ -104,3 +111,97 @@ scope (`/task` § Patterns 1). Grep-shaped rows were run with a positive control
 - `ai-docs/domain-invariants.md`
 - `docs/DESIGN.md`
 - `ai-docs/context.md`
+
+## Self-Review (Round 1)
+
+**Verdict:** APPROVE
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| — | — | — | No `blocker` or `major` finding clears the severity floor. Three `minor` and four `nit`/locator items ride along as `accepted@1` register rows R1-1…R1-7. | — |
+
+**Minor/nit count and file list (no table rows, per § Rules):** 3 `minor` + 4 `nit`/drift —
+`internal/store/event.go` (doc-comment attribution of the nil-payload default),
+`internal/store/views_test.go` + `internal/store/migrations/00003_event_log.sql` (the funnel's
+`, e.chat_id` tie-break is a clause no fixture reaches), this progress file's AC3 and AC5
+evidence cells (a drifted `sed` range and an over-narrow `grep -c` count),
+`ai-docs/key-decisions.md:47` (KD-17's arc enumeration, stale before this diff),
+`.claude/skills/ai-audit/scripts/check-citations.sh` (ceiling read from PRs only),
+`internal/scheduler` (#59, pre-existing `-race` flake).
+
+### What was checked
+
+**Spawn-prompt contract:** clean — invocation line, `Spec:`, `Design:`, `Progress:`, range. No
+`PROMPT-CONTAMINATION`.
+
+**Progress-file required fields:** `Branch`, `base_commit`, `Last build`, `current_step`,
+`last_passed_gate`, `entry_args`, `## Decisions log` all present; `parent_skill` correctly
+omitted (`/task` is the parent flow). Presence only — content not reviewed, per § Instructions 2.
+
+**Spec conformance — every AC re-verified against the shipped tree, not against the record:**
+
+| AC | Command re-run in this round | Result |
+|----|------------------------------|--------|
+| AC1 | `go test -count=1 ./internal/store` (incl. `TestMigrate_eventShape`: exact column set, per-column nullability, `identity_generation = ALWAYS`, named `event_type_fkey`) | PASS |
+| AC2 | `grep -rniE '^\s*--\s*\+goose\s+Down' internal/store/migrations/` | PASS (no hit) |
+| AC3 | `sed -n '72,80p' internal/store/migrations/00003_event_log.sql` — CHECK names all five arc columns; `journal_entry_event_key … WHERE event_id IS NOT NULL` | PASS (coordinate re-resolved, R1-4) |
+| AC4 | `schema_test.go` — pre-existing `journal_entry_zero_bases` (23514) + new `journal_entry_event_and_player_operation` (23514) + `journal_entry_second_for_same_event` (23505) | PASS |
+| AC5 | seed rows 1–16 with `high_volume` on 14/15 only; `TestCatalog_mirrors_database` compares ordered element-for-element | PASS |
+| AC6–AC9 | `go test -count=1 ./internal/store -run TestEvent` + `TestAppendEvent` + `TestBasis_nil…`; typed-nil asserted with the statement recorder (zero statements) | PASS |
+| AC10 | `append_only_test.go` pattern extended to `event`; planted controls fire, the `event_type_definition` decoy does not (`\b` before `_`); non-vacuity guard now names `event.go` and `00003_event_log.sql` | PASS |
+| AC11 | `grep -oiE 'CREATE VIEW [a-z_]+' 00003_event_log.sql` → exactly the five; `TestViews_exactViewSet` + `TestViews_emptyLog_zeroRows` + `TestViews_columnContract` | PASS |
+| AC12 | Every literal expectation **re-derived by hand from the fixture** in this round — funnel `(4,3,1)`/`(0,0,0)`, all eight retention rows incl. the 01-30 empty-denominator NULLs and the 0.4/0.5/1.5 fractions, the three death rows with the NULL-depth group, the three faucet/sink rows, the single notification row | PASS |
+| AC13 | AC11 grep piped through `grep -iE 'outcome\|backpack\|ctr\|button\|stamina'` → no match; `TestViews_exactViewSet` is the real gate (an extra view fails set equality) | PASS |
+| AC14 | `TestMetricFaucetSink_ledgerKindGenericity` — control (`count = 0` before the kind exists) precedes the `ALTER TYPE … ADD VALUE`, so a query that would match anything is excluded | PASS |
+| AC15 | `domain-invariants.md` § *The payload rule* states the four-column line and all four reasons; the page is listed at `agent-docs-index.md:15` | PASS |
+| AC16 | § *The §13.5 dashboard limb is suspended* (lift condition + the no-panel-line rule) and § *Four view families are owed* (#39/#40/#43+#37/#31) | PASS |
+| AC17 | `grep -c 'events' docs/DESIGN.md` → **0**; `:331` carries «игровое событие (лог 13.1)» appended, no other content on the line changed | PASS |
+| AC18 | Independent tree-wide `grep -rni '\bevents\b'` over `.claude/`, `AGENTS.md`, `ai-docs/`, `docs/`, `*.go/*.sql/*.yml/*.json/*.sh`, excluding history surfaces: **no surviving site names the table** — every remaining hit is the plural English word | PASS |
+| AC19 | Re-run here: `go build ./...` + `go vet ./...` (exit 0) · `golangci-lint run` → `0 issues.` · `go test -count=1 ./...` → all 7 packages `ok` · `make file-limits` · `golangci-lint fmt -d` · `go mod tidy` + `git diff --exit-code go.mod go.sum` — all green | PASS |
+
+**Design conformance.** Decomposition rows 1–8 all present in the diff and in `## Files touched`.
+The two things the design refused to leave to the implementor both landed verbatim: every view's
+column **names, order and types** are pinned by `TestViews_columnContract`, and every expected row
+is a **literal**, never recomputed from the fixture. Views live in the goose migration; the
+`metric_` prefix, the UTC day grain spelled `(ts AT TIME ZONE 'UTC')::date`, `NULLIF` on every
+denominator, `::numeric` on every ratio numerator, `COALESCE(…, 0)` on every count and on both
+faucet/sink legs, and `ad.kind::text` (rule 3) are all present. The registry is a seeded catalog
+table with an enum volume class, `id` documented as order-carrying-and-referenced-by-nothing. The
+funnel implements the round-3 attribution (`player_started`, earliest, tie by lower chat id) and
+`raid_started.chat_id` is read nowhere. No architectural decision was taken on the fly.
+
+**Mutation reasoning (§ Patterns 2 — is each guard's own clause reached?).** `::numeric` — row 1's
+`d1_rate = 0.4` renders `0` under integer division, so the assertion fails. `NULLIF` — row 8
+(2024-01-30) has `active_player = 0`, so without it the view raises `22012` rather than returning
+NULL. `COALESCE` on `sum(…) FILTER` — the 01-06 faucet-only rows expect `sink = 0`, and a NULL
+would fail the non-pointer `decimal.Decimal` scan. `::text` on `ad.kind` — the column contract
+asserts `text`, which `USER-DEFINED` fails. The strengthened `journal_entry_exactly_one_basis`
+substring names `event_id`, so a re-added CHECK omitting it fails (the bare `num_nonnulls` form did
+not). The one clause the fixture does **not** reach is R1-3.
+
+**Safety and correctness.** Panic sweep over non-test `internal/` + `cmd/` →
+`grep -nE '(^|[^[:alnum:]_.])(panic\(|log\.(Fatal|Panic)[a-z]*\()'` returns nothing, so
+`ai-docs/panic-index.md` correctly stays empty. No `_ = err`, no `== Err…` comparison, no new
+`context.Background()` outside tests, `ctx` first everywhere, no context in a struct, no
+`…Unchecked` function added. `ErrUnknownEventType` is a package-level `errors.New` sentinel,
+wrapped with `%w`, distinctness asserted by a loop over the whole sentinel set.
+
+**Domain invariants (§ 4a).** No balance column is UPDATEd and no holding row inserted outside
+`store.Post` — the faucet/sink fixture writes a **balanced** posting pair by direct SQL with an
+explicit `ts`, which the design requires so the view's `day` can be a literal. The arc extension
+adds a fifth column and re-adds `CHECK (num_nonnulls(…) = 1)` over all five, so every group still
+has exactly one basis. Not a mechanic: nothing is emitted, so §13.4's telemetry obligation does not
+fire (the design argues this from KD-11's «Post is not a mechanic»). No tuning value in Go — `depth`,
+the D1/D7 offsets and the day grain are the metric's definition. Forward migration only, nothing
+renamed or renumbered, arc column added nullable so every pre-existing `journal_entry` still
+satisfies the re-added CHECK. No chat-send path. No `time.Now()` on a pure path. No secret.
+
+**Style and documentation.** Every new exported item (`EventVolumeClass`, `EventType`,
+`EventTypeDefinition`, `EventID`, `Event`, `AppendEvent`, `ErrUnknownEventType`) carries a doc
+comment opening with its own identifier in the third person; both const blocks carry a block
+comment; every design citation is by section (`§11`, `§13.1`, `§13.4`) and none by line; no `TODO`,
+no commented-out code. Largest files: `views_test.go` 651 and `migrate_test.go` 442 (limit 1500),
+`post.go` 193 and the migration 275 — all inside the soft bands. `sqlstateForeignKeyViolation` and
+`constraintEventTypeFKey` are named constants; the diff adds no `//nolint` (it removes a dead one).
+
+**Objection quality (§ 7).** Not applicable — round 1, register was empty.
