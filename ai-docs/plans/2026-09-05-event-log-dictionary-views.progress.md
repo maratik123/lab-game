@@ -9,7 +9,7 @@ _Updated: 2026-09-06 10:10_
 **Issue:** #21
 **Spec:** ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md
 **current_step:** Step 8 — subtask 8 of 8 complete (Group B finished)
-**last_passed_gate:** go build ./... + ci relative-markdown-link check + check-citations.sh | 2026-09-06T10:07Z | a5a5d7b
+**last_passed_gate:** golangci-lint run | 2026-09-06T09:25:39Z | e4f884ff2221740e6acce65831813d3a062c727f
 **entry_args:** 21
 
 ## Next action
