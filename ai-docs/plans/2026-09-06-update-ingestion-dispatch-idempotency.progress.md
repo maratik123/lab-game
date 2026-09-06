@@ -8,8 +8,8 @@ _Updated: 2026-09-06
 **Last build:** not run
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Step 8 — subtask 5 of 6 complete (Group A)
-**last_passed_gate:** go test ./internal/store/... GREEN, golangci-lint run/fmt -d clean, go vet clean | 4f89646
+**current_step:** Step 8 — Group A complete (subtasks 1-6); handoff to Group B pending
+**last_passed_gate:** go test ./internal/ingest/... GREEN (26/26 kind rows), whole-module go build/vet/lint clean, go mod tidy no-op | 939caad
 **entry_args:** 22
 
 ## Next action
@@ -25,7 +25,7 @@ _Updated: 2026-09-06
 - [x] 3. `config.Ingest` + the `LAB_GAME_INGEST_` reader and both `Load` cross-checks (Group A)
 - [x] 4. Migration `00004_ingest.sql`: `ingest_offset`, `ingest_dead_update`; extend the exact base-table assertion (Group A)
 - [x] 5. `store.Queryer` + `store.PlayerExists`; delete and re-point `queryRower` (Group A)
-- [ ] 6. `internal/ingest` core types: `Kind`, `IDSpace`, the `operation_id` builder, `Handler`/`Update`, `Router` (Group A)  ← CURRENT
+- [x] 6. `internal/ingest` core types: `Kind`, `IDSpace`, the `operation_id` builder, `Handler`/`Update`, `Router` (Group A)
 - [ ] 7. Offset and give-up storage; the package's `TestMain` lands here (Group B)
 - [ ] 8. The observation seam: `Outcome`, `Observation`, `LoopObservation`, `Observer` (Group B)
 - [ ] 9. The loop: `Options`/`New`, requested kinds, `PollOnce`, `Run` with D19's poll-error policy (Group B)
@@ -42,6 +42,7 @@ _Updated: 2026-09-06
 - **Subtask 3**: `config.Ingest` added mirroring `Transport`/`Scheduler`'s optional-with-default shape exactly (`loadIngest`, `defaultIngest`, `ingestEnvKeys`, appended to `EnvKeys()`). `loadIngest` validates `BatchLimit` against the Bot API's 1-100 range locally; `checkIngestLongPollTimeout` (D16's pair — strictly below `Transport.AttemptTimeout`, and a whole number of seconds) runs from `Load` once both `Ingest` and `Transport` have loaded successfully, naming `LAB_GAME_INGEST_LONG_POLL_TIMEOUT` either way. `.env.example` gained the six new lines with defaults matching `defaultIngest()` exactly (asserted by `TestLoadIngest_ExampleMatchesDefaults`). `go test ./internal/config/...` green (60+ subtests, including the D16 boundary cases: `25500ms`/`1500ms` rejected, `25s` accepted, and the equal/above/below-`AttemptTimeout` trio), `golangci-lint run`/`fmt -d` clean, `go vet` clean, whole-module `go build ./...` clean.
 - **Subtask 4**: migration `00004_ingest.sql` adds `ingest_offset` (guarded singleton — `PRIMARY KEY (id)` plus `CHECK (id = 1)`, seeded at `next_update_id = 0` by the migration itself) and `ingest_dead_update` (update_id, kind with a non-empty CHECK, nullable chat_id, consecutive_failures with a positive CHECK, last_error, created_at). No `-- +goose Down` section. `migrate_test.go`'s exact base-table set and `goose_db_version` row count (4 → 5) both extended; `schema_test.go` gained four new subtests (singleton-refused, seeded-exactly-once, empty-kind-refused) under `TestSchema_constraints`. `go test ./internal/store/...` green including `TestMigrate_hygiene/00004_ingest.sql`, `golangci-lint run`/`fmt -d` clean, `go vet` clean — `internal/store` is green on its own; the tables' consumer (`internal/ingest`) lands in Group B.
 - **Subtask 5**: `store.Queryer` (the single `QueryRow` method) and `store.PlayerExists(ctx, q, telegramID)` added to `owner.go`, over the `(kind, telegram_id)` pair per D10/D11 — a chat sharing a player's telegram_id must report false, pinned by `TestPlayerExists_kindPairIsThePredicate`. `post_test.go`'s shipped `queryRower` (consumed only by `balanceOf`) deleted and `balanceOf` re-pointed at `store.Queryer` — compile-gated, no assertion moved. `go test ./internal/store/...` green including the four new `PlayerExists` tests (kind-pair, no-owner, closed-pool-surfaces-error, tx-and-pool-agree), `golangci-lint run`/`fmt -d` clean, `go vet` clean, whole-module `go build ./...` clean.
+- **Subtask 6**: new `internal/ingest` package. `Kind` is a 26-row explicit table (`kind.go`) — one row per Bot API update type, each an explicit `present` probe plus optional `date`/`chatID` extractors supplied per PAYLOAD TYPE per D4 (`*telego.Message`'s 7 kinds share `messageDate`/`messageChatID`; `KindMyChatMember`/`KindChatMember` share `chatMemberDate`/`chatMemberChatID`; every other kind — including `KindCallbackQuery`, which declares no date field at all — carries nil extractors). `Derive`/`Date`/`ChatID` are total: an update matching no row yields the zero `Kind` (unrouted). `IDSpace` + the unexported `operationID` builder implement D9's `"<space>:<id>"` grammar over `IDSpaceUpdate`/`IDSpaceCallbackQuery`, refusing an empty space (`ErrEmptyIDSpace`) or id (`ErrEmptyID`). `Update` holds the raw `telego.Update` in a NAMED field (never embedded, per D9's context-leak rationale); `NewUpdate` derives `Kind` and both operation ids. `Handler`'s doc comment states all three D18 obligations (ctx propagation, never read the update's own riding context, no outbound call on an uncommitted row). `Route`/`Router`/`NewRouter`/`Kinds` refuse an unknown kind (`ErrUnknownKind`) or a duplicate route (`ErrDuplicateRoute`), `Kinds()` sorted deterministic. `go test ./internal/ingest/...` green (`TestDerive_perRow` covers all 26 table rows plus the no-payload zero-kind case — 26/26 subtests pass), `golangci-lint run`/`fmt -d` clean, `go vet` clean, whole-module `go build`/`vet`/`golangci-lint run` clean, `go mod tidy` a no-op (no new dependency). **Group A (subtasks 1-6) is now complete** — handoff to Group B (subtasks 7-11) is the orchestrator's next step per the design's Handoff plan.
 
 ## Key discoveries (don't re-investigate)
 
@@ -70,3 +71,4 @@ _Updated: 2026-09-06
 - `internal/config/ingest.go`, `internal/config/ingest_test.go` (new), `internal/config/config.go`, `internal/config/env.go`, `.env.example`
 - `internal/store/migrations/00004_ingest.sql` (new), `internal/store/migrate_test.go`, `internal/store/schema_test.go`
 - `internal/store/owner.go`, `internal/store/owner_test.go`, `internal/store/post_test.go`
+- `internal/ingest/doc.go`, `internal/ingest/kind.go`, `internal/ingest/kind_test.go`, `internal/ingest/operation.go`, `internal/ingest/operation_test.go`, `internal/ingest/router.go`, `internal/ingest/router_test.go`, `internal/ingest/errors.go` (all new)
