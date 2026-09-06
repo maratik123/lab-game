@@ -8,8 +8,8 @@ _Updated: 2026-09-06
 **Last build:** not run
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** design-review GO (round 5) | 2026-09-06T22:59:07Z | a09d26f56df4b72ab15c49e328b007b900668ca4
+**current_step:** Step 8 — subtask 1 of 6 complete (Group A)
+**last_passed_gate:** go test ./internal/backoff/... GREEN, golangci-lint run/fmt -d clean, go vet clean | c1a357b
 **entry_args:** 22
 
 ## Next action
@@ -20,8 +20,8 @@ _Updated: 2026-09-06
 
 ## Subtasks
 
-- [ ] 1. `internal/backoff`: `Exponential` + `EqualJitter`, table and monotonicity tests  ← CURRENT (Group A)
-- [ ] 2. Adopt `internal/backoff` in `internal/tg` and `internal/scheduler` — call-site gate first, then mutation probe, then re-point (Group A)
+- [x] 1. `internal/backoff`: `Exponential` + `EqualJitter`, table and monotonicity tests (Group A)
+- [ ] 2. Adopt `internal/backoff` in `internal/tg` and `internal/scheduler` — call-site gate first, then mutation probe, then re-point (Group A)  ← CURRENT
 - [ ] 3. `config.Ingest` + the `LAB_GAME_INGEST_` reader and both `Load` cross-checks (Group A)
 - [ ] 4. Migration `00004_ingest.sql`: `ingest_offset`, `ingest_dead_update`; extend the exact base-table assertion (Group A)
 - [ ] 5. `store.Queryer` + `store.PlayerExists`; delete and re-point `queryRower` (Group A)
