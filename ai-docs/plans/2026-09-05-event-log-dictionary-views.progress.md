@@ -1,5 +1,5 @@
 # Progress: Event log — the `event` table, the §13.4 dictionary, and the MVP SQL views — ACTIVE
-_Updated: 2026-09-06 09:40_
+_Updated: 2026-09-06 09:52_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,13 +8,13 @@ _Updated: 2026-09-06 09:40_
 **Last build:** not run
 **Issue:** #21
 **Spec:** ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md
-**current_step:** Step 8 — subtask 6 of 8 complete
-**last_passed_gate:** ci relative-markdown-link check + check-citations.sh | 2026-09-06T09:38Z | dbe33bb
+**current_step:** Step 8 — subtask 7 of 8 complete
+**last_passed_gate:** ci relative-markdown-link check | 2026-09-06T09:50Z | 73e5c78
 **entry_args:** 21
 
 ## Next action
 
-**Do this immediately:** continue Group B — subtask 7 (`docs/DESIGN.md`, Russian), then subtask 8 (the propagation sweep).
+**Do this immediately:** continue Group B — subtask 8, the propagation sweep by `AGENTS.md` § *Propagation Rule* step 4's criterion.
 
 ## Subtasks
 
@@ -24,7 +24,7 @@ _Updated: 2026-09-06 09:40_
 - [x] 4. Append-only sweep: extend the pattern to `event`, planted controls, the `event_type_definition` decoy, non-vacuity guard (AC10)
 - [x] 5. The views: five views with fixed column names/order/types + §13.3 comments, exact-view-set assertion, literal per-view expectations (AC11–AC14)
 - [x] 6. `domain-invariants.md` §5: payload rule + reasoning, the whole obligations/non-obligations table, arc consequences, suspended §13.5 limb, deferred families (AC15, AC16, AC18)
-- [ ] 7. `docs/DESIGN.md` in Russian: the log table's name at §13.1/§13.5; «игровое событие (лог 13.1)» into §11's registry (AC17)
+- [x] 7. `docs/DESIGN.md` in Russian: the log table's name at §13.1/§13.5; «игровое событие (лог 13.1)» into §11's registry (AC17)
 - [ ] 8. Propagation sweep by the Propagation Rule step-4 criterion (AC18)
 
 ## Decisions log
@@ -35,6 +35,7 @@ _Updated: 2026-09-06 09:40_
 - **Step 8 subtask 4**: one full-suite run failed with `unable to find network with name or ID reaper_default: network not found` — a transient podman/testcontainers infra hiccup, not a code defect; an immediate re-run of the same unchanged command was green. Recorded here because the instructions require isolating and reproducing a gate failure before treating it as transient: re-running the identical `go test ./internal/store/ -count=1` a second time is what established that, not an assumption.
 - **Step 8 subtask 5**: chose a single-schema, single-fixture design across all five view subtests (per the design's "each view's subtest reads the same world"), which means `metric_retention_daily`'s expected table has to account for every event any other view's fixture data planted (deaths, notifications) since it aggregates over the whole `event` table regardless of type. Picked fixture day offsets and player counts by hand so every ratio column lands on a terminating decimal (0, 0.4, 0.5, 1.5, 1.0) rather than a repeating one, to avoid having to guess Postgres's numeric-division display scale; ratio/faucet/sink columns are scanned into `decimal.Decimal`/`*decimal.Decimal` and compared with `.Equal`, which is scale-independent, as the actual mechanism that sidesteps the formatting question. All literal expectations were verified by hand before running, then confirmed to pass unmodified on first execution against real Postgres — no expectation was adjusted to match observed output. `metric_faucet_sink`'s fixture is written by direct SQL against `manual_correction`/`journal_entry`/`posting` with explicit `ts` values, independent of the `event` table entirely, so it does not interact with the retention/funnel/death fixture at all. Removed an unused `//nolint:gosec` (that linter isn't enabled in this repo's `.golangci.yml`) that `nolintlint` correctly flagged as dead.
 - **Step 8 subtask 6**: `domain-invariants.md` §5 gained five named subsections rather than a single run-on block, because the section now carries five separable obligations (payload rule, the view-input table, the arc consequences, the suspended §13.5 limb, the deferred families) and a mechanic author arrives looking for one of them. The obligation table is transcribed from the design's § *What the shipped views require* with both halves — obligations and non-obligations — and carries no issue column, per the design's reasoning that a wrong-but-existing `#N` passes the citation guard unchallenged; the obligation is recorded against the event type instead. Every factual claim in the new text was read back against the landed migration and `basis.go` in this invocation: the five `CREATE VIEW` names, the funnel's `ORDER BY e.player_id, e.ts, e.chat_id` tie-break, `journal_entry_event_key`'s partial unique index, the five-column `num_nonnulls` CHECK, and `PlayerOperation.insert`'s `ON CONFLICT … DO NOTHING` → `ErrAlreadyPosted`. AC15/AC16 are recorded `PASS`, not `TESTED`: the design's § Test Design says subtasks 6–8 have no Go tests and their acceptance is established by reading, so `TESTED` would be a false claim while `PASS` is the template's own token (`ai-docs/templates/progress-format.md:53`).
+- **Step 8 subtask 7**: «игровое событие (лог 13.1)» is appended to the END of §11:331's list rather than inserted at the position :323 uses, because the owner authorised the membership and not an ordering, and appending leaves every existing item of the line untouched — the smallest diff that satisfies AC17's "no other content on the touched lines changes". The `events`→`event` rename is identifier-only at all three sites; `grep -n 'events' docs/DESIGN.md` now returns nothing, which is what establishes AC17's "at every site that names it" rather than the spec's three line numbers. :323's missing «переход рейд-сессии» is left open on purpose — #36's, per the spec's Deferred section.
 - **Step 8 (group boundary)**: pushed the branch at the first group return per the Step-8 visibility rule; no PR yet, and CI triggers only on `main` and pull requests, so nothing ran.
 
 ## Key discoveries (don't re-investigate)
@@ -65,7 +66,7 @@ _Updated: 2026-09-06 09:40_
 | AC14 | TESTED |
 | AC15 | PASS |
 | AC16 | PASS |
-| AC17 | NOT_TESTED |
+| AC17 | PASS |
 | AC18 | NOT_TESTED |
 | AC19 | NOT_TESTED |
 
@@ -92,3 +93,4 @@ _Updated: 2026-09-06 09:40_
 - `internal/store/append_only_test.go`
 - `internal/store/views_test.go` (new)
 - `ai-docs/domain-invariants.md`
+- `docs/DESIGN.md`
