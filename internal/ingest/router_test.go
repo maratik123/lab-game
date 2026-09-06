@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/mymmrac/telego"
 )
 
 // noopHandler is a Handler that does nothing, for router scenarios that
@@ -109,4 +110,49 @@ func TestNewRouter_empty(t *testing.T) {
 	if got := r.Kinds(); len(got) != 0 {
 		t.Errorf("Kinds() = %v, want empty", got)
 	}
+}
+
+// TestNewUpdate_derivesKindAndOperationIDs asserts NewUpdate derives Kind,
+// the canonical update_id operation_id, and — only when Raw carries a
+// callback query — the callback_query.id operation_id (design D9).
+func TestNewUpdate_derivesKindAndOperationIDs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("plain_message_carries_no_callback_query_operation_id", func(t *testing.T) {
+		t.Parallel()
+
+		raw := telego.Update{UpdateID: 42, Message: &telego.Message{Chat: telego.Chat{ID: 7}}}
+		u, err := NewUpdate(raw)
+		if err != nil {
+			t.Fatalf("NewUpdate: %v", err)
+		}
+		if u.Kind != KindMessage {
+			t.Errorf("Kind = %q, want %q", u.Kind, KindMessage)
+		}
+		if u.OperationID != "update_id:42" {
+			t.Errorf("OperationID = %q, want %q", u.OperationID, "update_id:42")
+		}
+		if u.CallbackQueryOperationID != "" {
+			t.Errorf("CallbackQueryOperationID = %q, want empty (no callback query on this update)", u.CallbackQueryOperationID)
+		}
+	})
+
+	t.Run("callback_query_carries_both_operation_ids", func(t *testing.T) {
+		t.Parallel()
+
+		raw := telego.Update{UpdateID: 43, CallbackQuery: &telego.CallbackQuery{ID: "cbq-1"}}
+		u, err := NewUpdate(raw)
+		if err != nil {
+			t.Fatalf("NewUpdate: %v", err)
+		}
+		if u.Kind != KindCallbackQuery {
+			t.Errorf("Kind = %q, want %q", u.Kind, KindCallbackQuery)
+		}
+		if u.OperationID != "update_id:43" {
+			t.Errorf("OperationID = %q, want %q", u.OperationID, "update_id:43")
+		}
+		if u.CallbackQueryOperationID != "callback_query.id:cbq-1" {
+			t.Errorf("CallbackQueryOperationID = %q, want %q", u.CallbackQueryOperationID, "callback_query.id:cbq-1")
+		}
+	})
 }
