@@ -61,7 +61,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 3
 agent_id: a1ae9486e8e4caa8e
 prior_qa:
   - round: 1
@@ -72,5 +72,11 @@ prior_qa:
     answer: "Retry, then advance - bounded in-process retry with a growing delay up to a cap, then advance past it and record a poison update. Mirrors the scheduler's one-shot failure policy and its terminal give-up state."
   - round: 1
     question: "What does the outbound gate do with a chat id that is not in ALLOWED_CHAT_IDS?"
-    answer: "DM always allowed - the list governs group and channel chats; every private chat is allowed. Simplest, no database read; the safety net then covers group traffic only."
+    answer: "SUPERSEDED in round 2 - originally answered 'DM always allowed'; the owner re-opened the round-1 block and revised it. See the round-2 entry for the binding answer."
+  - round: 2
+    question: "What does the outbound gate do with a chat id that is not in ALLOWED_CHAT_IDS? (re-asked; revises the round-1 answer)"
+    answer: "DM if player known - the list governs group and channel chats; a private chat is allowed when the destination is a player the database already knows. The gate reads the database on the outbound path, cached in process. This REPLACES the round-1 'DM always allowed' answer and dissolves the round-2 'how does the gate recognise a private chat' question: no chat-kind classification is needed, so the undocumented positive-id convention is not relied on."
+  - round: 2
+    question: "When the retry cap is exhausted and the update is dropped, what survives?"
+    answer: "Row, no payload - identity, kind, chat id, attempts and last error, the shape scheduler.DeadTask already has (internal/scheduler/task.go:79). Enumerable and diagnosable; one chat id for §12.5 sanitisation to rewrite; the message content is not persisted."
 ```
