@@ -8,8 +8,8 @@ _Updated: 2026-09-06 08:27_
 **Last build:** not run
 **Issue:** #21
 **Spec:** ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** go build ./... | 2026-09-06T08:27:02Z | 8f9bb8da0177a70fb63713bb504b2d0f9a6e9f55
+**current_step:** Step 8 — subtask 1 of 8 complete
+**last_passed_gate:** golangci-lint run | 2026-09-06T08:33:38Z | bedb0e89b72ae338e95ad706bd8959313f12856c
 **entry_args:** 21
 
 ## Next action
@@ -18,7 +18,7 @@ _Updated: 2026-09-06 08:27_
 
 ## Subtasks
 
-- [ ] 1. Migration: `event_volume_class`, `event_type_definition` + §13.4 seeds, `event` + indexes, the `journal_entry` arc extension; table-list and goose-count assertions  ← CURRENT
+- [x] 1. Migration: `event_volume_class`, `event_type_definition` + §13.4 seeds, `event` + indexes, the `journal_entry` arc extension; table-list and goose-count assertions
 - [ ] 2. Go mirrors: `EventVolumeClass`, `EventType`, `EventTypeDefinition` + registry slice; extend both mirror tests (AC5)
 - [ ] 3. Write API: `EventID`, `Event` as a `PostingBasis`, `AppendEvent`, `ErrUnknownEventType` + the doc edits (AC6–AC9)
 - [ ] 4. Append-only sweep: extend the pattern to `event`, planted controls, the `event_type_definition` decoy, non-vacuity guard (AC10)
@@ -30,6 +30,7 @@ _Updated: 2026-09-06 08:27_
 ## Decisions log
 
 - **Step 8**: Group A (1–5, `code-writer`, model pinned by frontmatter) runs before Group B (6–8, `general-purpose`, inherit) — subtask 8's sweep must run against the tree the code produced.
+- **Step 8 subtask 1**: `event_volume_class` members are `low_volume`/`high_volume` per the design (names the axis, not the reader). `event.type`'s FK to `event_type_definition (code)` is named `event_type_fkey` so the write API (subtask 3) can map its SQLSTATE 23503 violation to `ErrUnknownEventType`. Strengthened the pre-existing `journal_entry_exactly_one_basis` substring check to name all five arc columns rather than the bare `num_nonnulls` substring that the pre-change form already satisfied. Filtered `TestMigrate_shape_and_seeds`'s table-list query to `table_type = 'BASE TABLE'` ahead of subtask 5 introducing views. A migration comment using the word "grant" (in prose, not SQL) tripped `TestMigrate_hygiene`'s `GRANT` pattern — reworded to avoid the substring.
 
 ## Key discoveries (don't re-investigate)
 
@@ -68,4 +69,6 @@ _Updated: 2026-09-06 08:27_
 
 ## Files touched
 
-_(none yet)_
+- `internal/store/migrations/00003_event_log.sql` (new)
+- `internal/store/migrate_test.go`
+- `internal/store/schema_test.go`
