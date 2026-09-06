@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/maratik123/lab-game/internal/store"
 )
 
 // readOffset reads the singleton ingest_offset row's next_update_id — the
@@ -12,9 +14,14 @@ import (
 // seen (design D14). The migration seeds exactly one row, so a missing
 // row is an infrastructure error rather than a legitimate "no offset yet"
 // state.
-func readOffset(ctx context.Context, tx pgx.Tx) (int64, error) {
+//
+// q is a store.Queryer rather than a pgx.Tx: the poll cycle reads the
+// offset straight off the pool, with no transaction of its own, while a
+// caller that already holds a transaction may still pass it — both
+// satisfy the same single-method interface.
+func readOffset(ctx context.Context, q store.Queryer) (int64, error) {
 	var next int64
-	if err := tx.QueryRow(ctx, `SELECT next_update_id FROM ingest_offset WHERE id = 1`).Scan(&next); err != nil {
+	if err := q.QueryRow(ctx, `SELECT next_update_id FROM ingest_offset WHERE id = 1`).Scan(&next); err != nil {
 		return 0, fmt.Errorf("ingest: read offset: %w", err)
 	}
 	return next, nil
