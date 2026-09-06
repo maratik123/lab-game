@@ -208,3 +208,35 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **at:** 6dd6418
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-06 — process — conducted the whole product-owner conversation in English
+**What happened:** Running `/bugfix 62` I wrote every user-facing turn — status updates, findings, the
+reproduction summary — in English, through roughly a dozen messages, before noticing. `AGENTS.md`'s
+first CRITICALLY rule splits the surfaces explicitly: English for every durable artefact, "Russian for
+two surfaces only: conversation with the product owner, and `docs/**`". The durable side was correct
+throughout (the trace artefact, the probe, this log are all English); the conversational side was not.
+Nothing in the entry arguments prompted the slip — `/bugfix 62` carries no natural language at all,
+so there was no Russian cue in the turn to imitate, and the surrounding context is English.
+**Rule:** The language of a surface is a property of the SURFACE, not of the language the request
+arrived in. A bare slash-command invocation supplies no cue either way, and its absence is not a
+licence to default to the language of the instruction files — it is exactly the case where the rule,
+not the context, has to decide. Check the surface before the first user-facing sentence of a flow, not
+after a dozen of them: a language slip is cheap to correct in message one and re-reads as a wall of
+wrong-surface text by message twelve.
+**at:** fe46893
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-06 — testing — attributed a flake's reproduction to one harness while a second, heavier one was running
+**What happened:** Reproducing issue #62 I had two load harnesses in flight at once: a focused probe loop with 8 CPU burners, and a full-suite loop with 16. Probe rounds 1-4 reproduced the failure, and I wrote into the trace artefact that the 8-burner loop was "calibrated, ~4-5% per instance". I then killed the 16-burner loop as over-driven — and probe rounds 7-10 — the first ones genuinely running with 8 burners and nothing else — came back 0 failures across 80 instances. (Rounds 5-6 still overlapped the loaded loop's last in-flight run; their 52.0s / 41.0s package times against rounds 7-10's ~23.2s are what show it. I first wrote this entry citing rounds 5-9 and 100 instances, which repeated the very error the entry is about.) The reproducing condition had been the SUM of both harnesses the whole time; the label named only the half I happened to be looking at. The measured mechanism was unaffected, but the calibration claim was false the moment I wrote it, and it is the load-bearing half: a post-fix green run means nothing unless the instrument goes red on the pre-fix tree at the same setting.
+**Rule:** When two load generators run concurrently, neither one's name describes the condition — the condition is their sum, and any per-instance rate computed under both belongs to neither alone. Before recording that a harness reproduces something, isolate it: stop every other load source and see the failure again at that setting, or label the condition by everything that was running. The tell is having started a second harness "to save wall-clock" and then reporting a result as though the first had produced it. `AGENTS.md` § *Patterns* 2 covers the green direction (a clean instrument is a claim about the instrument); this is its red twin — a RED result is a claim about the whole environment, and attributing it to one component is the same unexamined inference wearing a success's clothes.
+**at:** fe46893
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-06 — testing — read a driver's derived summary as the record when its raw logs held one more round
+**What happened:** I stopped the 16-burner load arm early, having decided it was not the reproducing condition. Bash had finished that round's `go test` but had not yet appended its line to `summary.txt`, so the summary held one row while `round-*.log` held two files. I read the summary, recorded "16 CPU burners alone gave 0/20", and shipped that into a commit message bound for `main`. `round-02.log` in fact contained a real failure carrying the canonical signature (`INSERT took 100.952185ms`, `failure=Deadline`) — the arm was 1 failure in 40 instances, and the conclusion I drew from it, "CPU starvation alone does not reproduce this", was backwards. Self-review round 2 found it by re-deriving every number from the raw logs instead of the prose.
+**Rule:** A driver's summary file is a DERIVED artefact, and a killed driver truncates it at an arbitrary point — the last completed unit of work is exactly the one most likely to be missing, because the kill lands between the work and the bookkeeping. Before quoting any harness's aggregate, reconcile its row count against the primary artefacts (`ls round-*.log | wc -l` against `grep -c '^round=' summary.txt` — count the driver's own rows, not `wc -l`, which also counts its terminal `DONE` line and so reports a false mismatch on every completed run); when they disagree the logs win, and the summary is evidence about the driver's lifetime, not about the runs. The trap is sharpest for an arm stopped early on purpose: that is the same arm whose result you are most likely to be writing up as "did not reproduce", so the missing row and the conclusion point the same way.
+**at:** fe46893
+**Kind:** correction
+**Escalated?** no
