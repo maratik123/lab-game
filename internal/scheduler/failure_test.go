@@ -181,13 +181,23 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 	}
 }
 
-// forceDueAndCapture forces id due and returns the server's now() at that
-// moment, so callers can compare a later run_at against it.
+// forceDueAndCapture forces id due and returns the server's clock at that
+// moment, so callers can bracket a later run_at against it.
+//
+// The row's new run_at is deliberately NOT the returned instant: it is
+// set a second into the past instead. Returning the row's own run_at
+// would make the bracket's lower bound (before + backoff) identical to
+// the value a regression anchoring run_at to task.RunAt produces, so the
+// assertion would be blind to exactly the defect it exists to catch --
+// the one readSettlementInstant's doc comment in settle.go warns about.
+// Separating the two by a second is what makes that mutation land a full
+// second below the bound. A past run_at still satisfies discovery's
+// WHERE run_at <= now().
 func forceDueAndCapture(t *testing.T, pool *pgxpool.Pool, id TaskID) time.Time {
 	t.Helper()
 	var now time.Time
 	if err := pool.QueryRow(context.Background(),
-		`UPDATE scheduled_task SET run_at = now() WHERE id = $1 RETURNING run_at`, int64(id),
+		`UPDATE scheduled_task SET run_at = clock_timestamp() - interval '1 second' WHERE id = $1 RETURNING clock_timestamp()`, int64(id),
 	).Scan(&now); err != nil {
 		t.Fatalf("force due: %v", err)
 	}
