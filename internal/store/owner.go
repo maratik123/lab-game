@@ -7,6 +7,33 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Queryer is the single QueryRow method a read shared between a
+// transaction and a pool-backed caller needs — satisfied by both pgx.Tx
+// and *pgxpool.Pool. It is declared here, by PlayerExists' own package,
+// per this project's interfaces-declared-by-the-consumer rule (AGENTS.md
+// § API Naming, design D11): PlayerExists runs both on a handler's tx and
+// on internal/ingest's gate, which has no transaction to borrow.
+type Queryer interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// PlayerExists reports whether an owner row with kind = 'player' and the
+// given telegramID exists, queried through q. The predicate names the
+// kind because owner's uniqueness is on the (kind, telegram_id) pair and
+// a chat's own id lives in the same column (design D10) — a lookup keyed
+// on telegram_id alone would match every chat the bot was ever added to.
+func PlayerExists(ctx context.Context, q Queryer, telegramID int64) (bool, error) {
+	var exists bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM owner WHERE kind = $1 AND telegram_id = $2)`,
+		OwnerPlayer, telegramID,
+	).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("player exists: %w", err)
+	}
+	return exists, nil
+}
+
 // Account is one instance of a catalog AccountDefinition, created for a
 // specific owner's scope. Kind and Controlled are copied from the
 // definition at creation time for convenient access; the database remains
