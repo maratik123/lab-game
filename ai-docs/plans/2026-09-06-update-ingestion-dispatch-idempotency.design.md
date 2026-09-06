@@ -42,20 +42,63 @@ time.Duration) time.Duration`]. AC23 needs one more. `design-writer` § Rules fo
 copy-paste and forbids "minimal surface" as the justification for one, so this task creates
 `internal/backoff` exporting `Exponential(attempt int, base, ceiling time.Duration)` (zero-based
 attempt) and `EqualJitter(attempt int, base, ceiling time.Duration, jitter func() float64)`, and
-re-expresses **both** existing sites in terms of it — `internal/tg` keeps its own `defaultJitter`
-and its jitter-bounds contract, `internal/scheduler` keeps its one-based `failures` call shape at
-the call site. Adopting it in only one of them would leave the shared package standing beside a
-surviving copy of the same ramp one directory away. The call sites after this change are
+re-expresses **both** existing sites in terms of it. The call sites after this change are
 `internal/backoff` (definition), `internal/tg`, `internal/scheduler` and `internal/ingest`, and #43's
-outbound queue is the "more to come" trajectory the rule names. The adoption is behaviour-preserving
-by construction and is pinned by tests that already exist in both packages
-[measured 1fce8b5:internal/scheduler/cadence_test.go:8,33 and internal/tg/retry_test.go:127,682 ·
-`grep -n 'func Test.*[Bb]ackoff' internal/scheduler/cadence_test.go internal/tg/retry_test.go` →
+outbound queue is the "more to come" trajectory the rule names.
+
+**Scope — settled by the owner, round 2.** `internal/backoff` ships **and** both `internal/tg` and
+`internal/scheduler` adopt it. Adopting it in only one would leave the shared package standing
+beside a surviving copy of the same ramp one directory away, which is the outcome
+`design-writer` § Rules exists to prevent. This is no longer an open question.
+
+**Per package, the decision is *delete and re-point*, never *keep a thin adapter*.** `AGENTS.md`
+§ API Stability's table names a delegating wrapper as the thing to delete
+[measured febae63:AGENTS.md:108 · `grep -n 'Keep \`func OldName' AGENTS.md` → `108:> | Keep \`func
+OldName(...)\` delegating to \`NewName\` "for compat" | **DELETE** it — call sites update
+directly |`], and an unexported one is
+not exempt: there is no downstream client forcing either shape, so an adapter here would exist
+solely so that call sites need not change. In `internal/scheduler` the adapter is not merely
+disfavoured but unavailable under its present name — Go refuses a package-scope identifier that an
+import of the same name also declares, and the refusal is package-wide rather than per-file
+[measured febae63 · a two-file probe module declaring `func sub()` in `a.go` and importing
+`probe2/sub` in `b.go`, `go build ./...` → `./a.go:3:6: sub already declared through import of
+package sub ("probe2/sub")` / `./b.go:3:8: other declaration of sub`], so keeping `func backoff`
+would force either a rename or an import alias — cost with no benefit.
+
+| package | deleted | re-pointed to |
+|---|---|---|
+| `internal/tg` | `backoffDelay` | `backoff.EqualJitter` (attempt argument first), at the production call site in `internal/tg/caller.go` and at the direct calls in `internal/tg/retry_test.go` [measured febae63 · `rg -U --type go -n 'backoffDelay\s*\(' internal/tg/` → the declaration in `internal/tg/retry.go`, one call in `internal/tg/caller.go`, and calls plus failure-message mentions in `internal/tg/retry_test.go`; no other file]. `defaultJitter` and the jitter-bounds contract stay in `internal/tg`. |
+| `internal/scheduler` | `backoff` | `backoff.Exponential`, at the persisted-`run_at` computations in `internal/scheduler/settle.go` and at the direct calls in `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go` [measured febae63 · `rg -U --pcre2 --type go -n '(?<![A-Za-z_.])backoff\s*\(' internal/scheduler/` → the declaration in `internal/scheduler/cadence.go`, calls in `internal/scheduler/settle.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go`, plus comment and failure-message mentions in the last three; no other file]. The one-based→zero-based translation is written at the call site, where the `consecutive_failures` value it converts is visible [measured febae63:internal/scheduler/settle.go:142 · `sed -n '142p' internal/scheduler/settle.go` → `runAt := s.Add(backoff(k, cfg.RetryBaseDelay, cfg.RetryMaxDelay))`, with `k` the row's `consecutive_failures`]. |
+
+The scan above is multiline-aware (`rg -U`) per `design-writer` § Rules, and it reaches three
+classes the implementor must not conflate: **call expressions**, which re-point; **comment prose**
+naming `backoff(k)`, which is re-worded to name the shared function; and **`t.Errorf` format
+strings**, which are failure-message text, not assertions — re-wording them is free, and doing so
+does not touch the expected values the gate below fixes.
+
+**What "behaviour-preserving" can be gated on.** A delete-and-re-point does not leave the shipped
+ramp tests *compiling* unchanged, so "they pass unchanged" is not an available gate and must not be
+written as one. The gate is narrower and actually checkable: in `internal/tg/retry_test.go`,
+`internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go` and
+`internal/scheduler/deadline_test.go`, **every assertion and every expected value stays
+byte-identical; only the call expression is re-pointed.** A changed expected value in any of them is
+the signal that the adoption was not behaviour-preserving, and is a scope-boundary item for the
+orchestrator rather than something the implementor absorbs. Those tests exist today and are what the
+re-pointing preserves [measured 1fce8b5:internal/scheduler/cadence_test.go:8,33 and
+internal/tg/retry_test.go:127,682 · `grep -n 'func Test.*[Bb]ackoff'
+internal/scheduler/cadence_test.go internal/tg/retry_test.go` →
 `TestRetry_JitterOptionThreadedThroughToBackoff`, `TestBackoffDelay_JitterBoundsExactly`,
-`TestBackoff_exactTable`, `TestBackoff_strictlyGrowingUntilCeiling`]. *Rejected:* a fourth private copy in
-`internal/ingest` (the rule's named anti-pattern); a third-party backoff module (the stdlib plus
-this arithmetic is the whole requirement — `AGENTS.md` § Dependency Versions asks the comparison and
-there is nothing here a package would carry).
+`TestBackoff_exactTable`, `TestBackoff_strictlyGrowingUntilCeiling`]. `internal/backoff` carries its
+own exact table besides, in its own zero-based units, so the shared contract is pinned independently
+of either adopter.
+
+*Rejected:* a fourth private copy in `internal/ingest` (the rule's named anti-pattern); a
+third-party backoff module (the stdlib plus this arithmetic is the whole requirement — `AGENTS.md`
+§ Dependency Versions asks the comparison and there is nothing here a package would carry); a thin
+unexported adapter in either package (it would shrink the diff and make the gate literal, at the
+price of the shim `AGENTS.md` § API Stability tells you to delete — and the translation it would
+hide, one-based `failures` against a zero-based attempt, is exactly what a reader of `settle.go`
+should be able to see).
 
 **D3 — `allowed_updates` is always transmitted, and the empty-route case rides a reserved sentinel
 kind.** `telego.GetUpdatesParams.AllowedUpdates` carries `json:"allowed_updates,omitempty"`
@@ -76,7 +119,8 @@ because a shipping query arrives only for an invoice with a flexible price
 [measured 1fce8b5:telego@v1.11.2/types.go:81 · `grep -n 'ShippingQuery - Optional'
 $(go env GOMODCACHE)/github.com/mymmrac/telego@v1.11.2/types.go` → `81:	// ShippingQuery - Optional.
 New incoming shipping query. Only for invoices with flexible price.`], and this project sends no
-invoices. The sentinel is present **only** when the route set is empty, so a kind with no route
+invoices [measured febae63 · `grep -rn 'invoice\|shipping' --include=*.go internal/ cmd/` → no
+match (exit 1)]. The sentinel is present **only** when the route set is empty, so a kind with no route
 still never arrives once any mechanic registers one (spec Scope 3). *Rejected:* refusing to start a
 routeless loop (makes AC5 vacuous and diverges from `internal/scheduler`, which ships with an empty
 registry); bypassing `telego.GetUpdatesParams` with a hand-built request (breaks AC3's
@@ -171,6 +215,21 @@ member nor an `owner.telegram_id` (AC28). A lookup error refuses the call (AC34)
 **positive** results only, for the process's lifetime; nothing negative is remembered, so a player
 who presses Start after a refusal is allowed on the next attempt with no restart (AC35).
 
+**The cache's shape is a mutex-guarded `map[int64]struct{}`, not a bare map.** `AllowCall` sits on
+the outbound path, which is concurrent by construction — the per-chat and class-global limiters
+downstream of it exist precisely because concurrent senders do, and they hold their own state under
+a single mutex [measured febae63:internal/tg/limit.go:202-207 · `sed -n '202,207p'
+internal/tg/limit.go` → `type Limiter struct {` / `mu     sync.Mutex` / `global [3]*schedule` /
+`chats  map[chatKey]*schedule`]. An unsynchronised map on that seam is a `concurrent map writes`
+fatal error on the one component whose job is to stop a write to an unintended chat, and it is a
+race `go test -race` is a required gate for (`AGENTS.md` § Go Test Conventions). The critical
+section is a map lookup and, on a miss that the lookup confirms, one insert; the database call
+itself happens **outside** the lock, so a slow lookup never serialises other destinations, at the
+cost of a benign duplicate lookup on a first concurrent miss for the same id (the value written is
+the same either way). *Rejected:* `sync.Map` — its wins are stable read-mostly keys under heavy
+core-count contention, which this seam does not have, and it would trade the shipped limiter's
+already-reviewed mutex idiom for a second concurrency vocabulary in the same call path.
+
 **D11 — the owner read is `internal/store`'s, and it takes a queryer, not a transaction.** The gate
 runs on the outbound path, where there is no transaction to borrow, so the new read is
 `store.PlayerExists(ctx, q, telegramID)` over a consumer-declared `store.Queryer` — the single
@@ -184,6 +243,19 @@ This keeps `owner`'s schema knowledge in the package that owns the table and lea
 untouched (AC21). `ingest.PlayerLookup` is the consumer-declared interface the gate depends on, with
 a pool-backed implementation in this package, so the gate is testable against a fake and against a
 real schema without either being a mock of this package's own making (AC29).
+
+**Why two interfaces over one read, stated so a later reader does not collapse them.** They narrow
+at two different seams and each is declared by its own consumer, which is this project's rule for
+interfaces (`AGENTS.md` § API Naming). `store.Queryer` narrows what `PlayerExists` needs from its
+*handle* — one `QueryRow` method — so the same read serves a `pgx.Tx` on a handler's path and a
+`*pgxpool.Pool` on the gate's without `internal/store` naming a pool type in a signature.
+`ingest.PlayerLookup` narrows what the *gate* needs from the read — one boolean answer — which is
+what lets the cache scenarios substitute a stub carrying a call counter and assert that a second
+`AllowCall` for a cached id issues no second lookup (AC35). Collapsing them costs one of those
+two properties: giving the gate a `Queryer` puts a fake of `internal/store`'s row-scanning
+semantics inside `internal/ingest` (a mock of another package's read, and no place to count calls),
+while giving `internal/store` a `PlayerLookup` puts the gate's caching vocabulary into the table's
+owning package.
 
 **D12 — the observation is one per attempt plus one per attempt-less settlement.** §13.2 wants
 handler duration, handler errors *and* panics, and idempotency hits on the health surface
@@ -223,9 +295,27 @@ ConsecutiveFailures / LastError`] — and **not** the raw update payload. Table 
 KD-17. **Forward-only, and its rollback:** both tables are created by this migration, so no row
 predates it and no code reads a second shape during a deploy window; undoing it is a later forward
 migration that drops them, at the cost of the offset (a fresh deploy then resumes from Telegram's
-earliest unconfirmed update). Widening the offset to a per-bot key is likewise a later forward
-migration adding a column and relaxing the `CHECK` — this task takes the MVP's one-bot-per-database
-shape rather than a speculative key.
+earliest unconfirmed update).
+
+**Granularity — settled by the owner, round 2.** The offset row stays the singleton this decision
+specifies. Widening it to a per-bot key is a later forward migration adding a column and relaxing
+the `CHECK`; this task takes the MVP's one-bot-per-database shape rather than a speculative key.
+This is no longer an open question.
+
+**Both of `ingest_dead_update`'s identifying columns are §12.5 sanitisation targets — the chat id
+*and* `last_error`.** The chat id column is the obvious one. `last_error` is free text produced by
+whatever the handler returned, so it can embed a real chat or user id that a column-targeted rewrite
+would walk straight past, and §12.5's whole obligation is that a restored snapshot cannot address a
+real person. The only read this design gives the column is `DeadUpdates`' projection (AC37), which
+carries it to an operator and branches on nothing in it, so the column is diagnostic data at rest
+and sanitisation is free to **blank** it rather than rewrite ids inside it — cheaper and safer than
+a regex over arbitrary error prose `[derived → AC36, AC37, and the `DeadUpdates` scenarios in
+§ Test Design subtask 7]`. The design states this
+so §12.5's script author does not have to infer it, and subtask 12 writes the same obligation into
+`ai-docs/domain-invariants.md` beside the existing sanitisation bullet
+[measured febae63:ai-docs/domain-invariants.md:115 · `sed -n '115p' ai-docs/domain-invariants.md` →
+`A production snapshot reaches testing only through sanitisation — rewrite chat/user ids, drain the
+outbound notification queue, reset the updates offset.`].
 
 **D15 — the tuning keys join KD-27's optional-with-default class.** `internal/config` gains an
 `Ingest` struct and a `LAB_GAME_INGEST_` reader, mirroring `loadScheduler` exactly
@@ -258,6 +348,16 @@ reports a `*KeyError` naming `LAB_GAME_INGEST_LONG_POLL_TIMEOUT` (AC27). The loo
 requires a whole number of seconds' worth of timeout, since the Bot API parameter is an integer count
 of seconds, and transmits it explicitly so no poll degrades into short polling.
 
+**The check is a strict inequality by design; no slack term is enforced, and the margin ships in the
+defaults.** `LongPollTimeout < AttemptTimeout` admits a pair as tight as `25s` against `26s`,
+leaving a second for the whole round trip — deliberately. The slack an operator actually needs is a
+property of their network path to their `telegram-bot-api` instance, not a number this package can
+pick, and a minimum enforced here would reject a legitimately tuned pair on a fast local hop while
+still being too small on a slow one. What the design *does* commit to is that the shipped defaults
+carry a real margin — `25s` against `AttemptTimeout`'s `30s` — and that both values are separately
+tunable and both appear in `.env.example`, so the margin is visible rather than implicit. Only the
+degenerate case, where every healthy poll is guaranteed to be cancelled, is a start-up error.
+
 **D17 — the composition order the gate implies, stated once.** `Options.Gate` is set at `tg.New` and
 never afterwards [measured 1fce8b5:internal/tg/client.go:28-31,127-135 · `sed -n '28,31p;127,135p'
 internal/tg/client.go` → `Gate, when non-nil, is consulted before every outbound call` and
@@ -282,9 +382,9 @@ not rediscover it.
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
 | 1 | New shared package `internal/backoff`: `Exponential` and `EqualJitter`, package comment, exported doc comments, table + monotonicity tests | `internal/backoff/backoff.go`, `internal/backoff/backoff_test.go` | — |
-| 2 | Adopt `internal/backoff` in the two shipped sites; delete both local ramps (clean break, no shim) | `internal/scheduler/cadence.go`, `internal/scheduler/settle.go`, `internal/tg/retry.go` | 1 |
+| 2 | Adopt `internal/backoff` in the two shipped packages per D2: delete `backoffDelay` and `backoff`, re-point **every** call site — production and test — keeping each test's assertions and expected values byte-identical. The listed sites are a floor enumerated by `rg -U`; `make verify` is re-run after they clear, and any newly revealed site outside this contract is surfaced, not absorbed | `internal/tg/retry.go`, `internal/tg/caller.go`, `internal/tg/retry_test.go`, `internal/scheduler/cadence.go`, `internal/scheduler/settle.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go`, `internal/scheduler/deadline_test.go` | 1 |
 | 3 | `config.Ingest` + the `LAB_GAME_INGEST_` reader; `EnvKeys()` append; the `LongPollTimeout` < `AttemptTimeout` cross-check in `Load`; `.env.example` lines | `internal/config/ingest.go`, `internal/config/config.go`, `internal/config/env.go`, `internal/config/ingest_test.go`, `.env.example` | — |
-| 4 | Forward migration `00004_ingest.sql`: `ingest_offset` (guarded singleton, seeded) and `ingest_dead_update` | `internal/store/migrations/00004_ingest.sql` | — |
+| 4 | Forward migration `00004_ingest.sql`: `ingest_offset` (guarded singleton, seeded) and `ingest_dead_update`. **The two new tables break `internal/store`'s exact base-table assertion**, which enumerates the whole set and compares with `slices.Equal` [measured febae63:internal/store/migrate_test.go:41-47 · `sed -n '41,47p' internal/store/migrate_test.go` → `want := []string{` … `"account", "account_balance", "account_definition",` … `"scope", "scope_definition",` … `}`]; that set is extended with both new names in this subtask, and the new tables' constraints get their cases in `schema_test.go`, so Group A leaves `internal/store` green on its own rather than relying on its consumer in Group B | `internal/store/migrations/00004_ingest.sql`, `internal/store/migrate_test.go`, `internal/store/schema_test.go` | — |
 | 5 | `store.Queryer` and `store.PlayerExists` — the read-only owner lookup, with its tests | `internal/store/owner.go`, `internal/store/owner_test.go` | — |
 | 6 | `internal/ingest` core types: package comment, `Kind` with D4's table and its date/chat extractors, `IDSpace` and the unexported `operation_id` builder, `Handler`/`Update`, `Route`/`Router`/`NewRouter`/`Kinds`, the package's sentinels | `internal/ingest/doc.go`, `internal/ingest/kind.go`, `internal/ingest/operation.go`, `internal/ingest/router.go`, `internal/ingest/errors.go`, plus their `_test.go` files | — |
 | 7 | Offset and give-up storage: read/guarded-advance statements, `DeadUpdate`, `DeadUpdates` over a caller-owned `pgx.Tx` with a deterministic order | `internal/ingest/offset.go`, `internal/ingest/dead.go`, plus their `_test.go` files | 4, 6 |
@@ -292,7 +392,7 @@ not rediscover it.
 | 9 | The loop: `Options`/`New`/`OptionError`, the requested-kinds set with D3's sentinel, `PollOnce`, `Run`, per-attempt transaction, `recover`, sentinel classification, bounded retry, settlement and offset advance, give-up row | `internal/ingest/loop.go`, `internal/ingest/loop_test.go`, `internal/ingest/retry_test.go` | 1, 3, 6, 7, 8 |
 | 10 | The gate: `PlayerLookup`, the pool-backed implementation, `Gate`, `NewGate`, the positive-only cache | `internal/ingest/gate.go`, `internal/ingest/gate_test.go` | 5, 6 |
 | 11 | Guard tests: no `panic(`/`log.Fatal`/`os.Exit` in the package's non-test source, no metrics-library import, the `telego.Update` field-vs-kind-table drift check, and the package's `TestMain` over `testdb.Main` | `internal/ingest/guards_test.go`, `internal/ingest/main_test.go` | 6, 9, 10 |
-| 12 | Propagation: the layout paragraph and the code inventory in `ai-docs/context.md`; the allowlist and sanitisation bullets in `ai-docs/domain-invariants.md` (the player carve-out, the cache-invalidation obligation, the give-up table as a new sanitisation target); the new Key-Decision entries; the `INDEX.md` row | `ai-docs/context.md`, `ai-docs/domain-invariants.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–11 |
+| 12 | Propagation: the layout paragraph and the code inventory in `ai-docs/context.md`; the allowlist and sanitisation bullets in `ai-docs/domain-invariants.md` (the player carve-out, the cache-invalidation obligation, and the give-up table as a new sanitisation target naming **both** its chat id column and its `last_error` free text, per D14); the new Key-Decision entries; the `INDEX.md` row | `ai-docs/context.md`, `ai-docs/domain-invariants.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–11 |
 
 ## Handoff plan
 
@@ -329,13 +429,31 @@ default maximum of `4` design-defined groups, so no user approval for an overflo
 ## Risks
 
 - **The `internal/tg` and `internal/scheduler` adoption of `internal/backoff` (D2) changes shipped,
-  well-tested code that no AC of this task names.** Mitigation: both packages already own exact-table
-  and monotonicity tests for their ramps, and the adoption must leave them passing unchanged; a
-  failure there is a scope-boundary item for the orchestrator, not something the implementor absorbs
-  — `[measured 1fce8b5:internal/scheduler/cadence_test.go:8,33; internal/tg/retry_test.go:127,682 ·
+  well-tested code that no AC of this task names, and its blast radius reaches production and test
+  files in both packages.** The production reach is `internal/tg/caller.go`'s retry wait and
+  `internal/scheduler/settle.go`'s two persisted `run_at` computations; the test reach is the direct
+  calls in `internal/tg/retry_test.go`, `internal/scheduler/cadence_test.go`,
+  `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go`
+  `[measured febae63 · `rg -U --type go -n 'backoffDelay\s*\(' internal/tg/` and
+  `rg -U --pcre2 --type go -n '(?<![A-Za-z_.])backoff\s*\(' internal/scheduler/` → those files and
+  no others, each package's declaration included]`.
+  Mitigation — and the gate is stated as what it can actually be, because after a delete-and-re-point
+  those test files do **not** compile unchanged and "they pass unchanged" would be a mitigation that
+  cannot hold: **every assertion and expected value in them stays byte-identical and only the call
+  expression is re-pointed**, so a changed expected value is the signal that the adoption was not
+  behaviour-preserving and is a scope-boundary item for the orchestrator, not something the
+  implementor absorbs. The tests being preserved are the ones already shipped
+  `[measured 1fce8b5:internal/scheduler/cadence_test.go:8,33; internal/tg/retry_test.go:127,682 ·
   `grep -n 'func Test.*[Bb]ackoff' internal/scheduler/cadence_test.go internal/tg/retry_test.go` →
   `TestRetry_JitterOptionThreadedThroughToBackoff`, `TestBackoffDelay_JitterBoundsExactly`,
   `TestBackoff_exactTable`, `TestBackoff_strictlyGrowingUntilCeiling`]`.
+- **`00004_ingest.sql` reds `internal/store`'s own suite the moment it lands**, because that suite
+  asserts the whole base-table set by equality rather than by containment, so any new table is a
+  failure until the expectation is extended `[measured febae63:internal/store/migrate_test.go:41-49 ·
+  `sed -n '41,49p' internal/store/migrate_test.go` → the `want := []string{…}` base-table list
+  followed by `if !slices.Equal(tables, want)`]`. Mitigation: subtask 4 owns the migration and that
+  expectation in one step, so its group leaves `internal/store` green without waiting for its
+  consumer in the next group — `[derived → AC7, AC30]`.
 - **The sentinel kind of D3 is a claim about what this bot can receive, and only the shipped code can
   keep it true.** If a future mechanic ever sends an invoice with a flexible price, the sentinel
   becomes a live update kind. Mitigation: the sentinel is transmitted only while the route set is
@@ -363,6 +481,17 @@ default maximum of `4` design-defined groups, so no user approval for an overflo
   a later mechanic that deletes or re-keys a player owner row must invalidate it. Mitigation: the
   obligation is written into `ai-docs/domain-invariants.md` in subtask 12, not only into a code
   comment — `[derived → AC35 and subtask 12]`.
+- **`AllowCall` is a concurrent seam, so the cache's shape is a correctness question, not a
+  performance one.** An unsynchronised map there is a `concurrent map writes` fatal error on the
+  component whose whole job is to stop a write to an unintended chat — the worst possible place for
+  a crash — and the outbound path is concurrent by construction, which is why the limiter
+  immediately downstream keeps its own state under a mutex `[measured
+  febae63:internal/tg/limit.go:202-207 · `sed -n '202,207p' internal/tg/limit.go` → `type Limiter
+  struct {` / `mu     sync.Mutex` / `chats  map[chatKey]*schedule`]`. Mitigation: D10 fixes the
+  concrete shape (a mutex-guarded `map[int64]struct{}`, with the lookup issued outside the lock),
+  and subtask 10 carries a scenario driving `AllowCall` from concurrent goroutines under
+  `go test -race`, which `AGENTS.md` § Go Test Conventions makes a required gate for shared state —
+  `[derived → AC35 and subtask 10's concurrency scenario]`.
 - **Timing tests cannot run inside a `testing/synctest` bubble here.** KD-26 makes `synctest` this
   project's clock, but the loop's every path touches a real Postgres connection, which is not durably
   blockable inside a bubble. Mitigation: the retry-timing cases use small real durations from
@@ -392,7 +521,6 @@ default maximum of `4` design-defined groups, so no user approval for an overflo
 
 ## Test Design
 
-Everything below is about artefacts this task creates; the tags are `[derived → …]` throughout.
 `internal/ingest`'s database-backed cases take a fresh schema from `testdb.Schema(t)` and apply
 `store.Migrate`, and its Bot API cases point `tg.New` at a `tgtest.Server` through
 `Options.HTTPClient`, `tgtest.BaseURL` and `tgtest.Token` — no mock of this package's own making
@@ -407,9 +535,20 @@ anywhere `[derived → AC29]`.
   a value just under 1, and its monotonicity for a fixed jitter `[derived → AC23]`.
 - Fixtures: a deterministic `jitter func() float64` stub. No database, no bubble.
 
-**Subtask 2 — the adoption** (no new test file)
-- The gate is that `internal/scheduler`'s and `internal/tg`'s existing backoff tests pass unchanged
-  after the local ramps are deleted `[derived → AC30]`.
+**Subtask 2 — the adoption** (no new test file; the shipped test files listed in § Decomposition
+row 2 are edited)
+- Entry points: unchanged — the production behaviour under test is `internal/tg`'s retry wait and
+  `internal/scheduler`'s persisted `run_at`, now computed through `internal/backoff`.
+- The gate, stated as what a delete-and-re-point can achieve: in `internal/tg/retry_test.go`,
+  `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go` and
+  `internal/scheduler/deadline_test.go`, **every assertion and every expected value is byte-identical
+  to the shipped one and only the call expression is re-pointed**; the suites are then green. "Passing
+  unchanged" is *not* the gate and must not be recorded as one — after the local ramps are deleted
+  those files do not compile until their call expressions move, so a test that has not been edited
+  has not passed `[derived → AC30]`.
+- The `internal/backoff` table of subtask 1 is independent of these edits, so a re-pointed expected
+  value that had to change would show up as a disagreement between two suites rather than as a
+  silently adjusted constant `[derived → AC23, AC30]`.
 
 **Subtask 3 — `config.Ingest`** (`internal/config/ingest_test.go`)
 - Entry points: `Load`, and the package's existing disjointness and required-variable suites.
@@ -423,10 +562,15 @@ anywhere `[derived → AC29]`.
 
 **Subtask 4 — the migration** (`internal/store/migrate_test.go`, `internal/store/schema_test.go`)
 - Entry point: `store.Migrate` against a fresh schema.
-- Scenarios: applying every migration creates both tables; a second `Migrate` is a no-op; the offset
+- Scenarios: the shipped exact base-table assertion — which compares the whole set with
+  `slices.Equal`, so it fails on any addition until extended — is extended with `ingest_offset` and
+  `ingest_dead_update`, and nothing else about it changes; a second `Migrate` is a no-op; the offset
   row exists exactly once after migration and a second row is refused by the singleton `CHECK`; a
   give-up row with an empty kind is refused; the migration file carries no `-- +goose Down` section
   and the shipped migration files' contents are unchanged `[derived → AC7]`.
+- This subtask's group must leave `internal/store` green on its own — its consumer lands in a later
+  group — so the expectation edit belongs here, in the same step as the `.sql` file, not with the
+  code that reads the tables `[derived → AC30]`.
 - Fixtures: `testdb.Schema(t)`, `slog.New(slog.DiscardHandler)`.
 
 **Subtask 5 — `store.PlayerExists`** (`internal/store/owner_test.go`)
@@ -515,6 +659,13 @@ anywhere `[derived → AC29]`.
   allowed once the row exists, within the same gate instance and with no restart; a positive result
   is served from the cache without a second lookup (counted through a lookup stub)
   `[derived → AC15, AC28, AC33, AC34, AC35]`.
+- Concurrency scenario, run under `go test -race`: many goroutines call `AllowCall` on one gate at
+  once — a mix of ids that the stub allows and ids it refuses, including several goroutines racing
+  on the *same* not-yet-cached allowed id — and every call returns the answer the stub's fixed
+  answers imply, with no data race reported and no panic. This is the scenario that would fail on a
+  bare `map[int64]bool`, so it is the one that makes D10's mutex load-bearing rather than
+  decorative; the same-id racers additionally pin that a duplicate first lookup is benign (both
+  writers write the same value) `[derived → AC35 and D10's cache shape]`.
 - Integration scenario: with the gate installed at `tg.New`, a refused outbound call reaches the
   `tgtest` server not at all and is reported through `tg.Observation` with no attempt recorded, and a
   subsequent allowed call into the same chat and method class is not delayed by a limiter window the
@@ -557,11 +708,6 @@ anywhere `[derived → AC29]`.
 
 ## Open questions
 
-- **Does the `internal/tg` half of D2's adoption stay in scope?** The design includes it because
-  leaving it out preserves a third copy of the same ramp beside the new shared package, which
-  `design-writer` § Rules forbids. It is nonetheless a change to a shipped transport that no
-  acceptance criterion of this task names, and the orchestrator may prefer to split it into its own
-  issue. If it is split, `internal/backoff` still ships and `internal/scheduler` still adopts it.
 - **A per-update execution deadline.** D7 ships none. A handler that ignores its context stalls the
   sequential loop with no bound; the scheduler solved the same problem with a transaction-local
   `statement_timeout` and a hijackable connection. Nothing in this task's ACs requires it and no
@@ -569,6 +715,8 @@ anywhere `[derived → AC29]`.
 - **Whether `cmd/bot` becomes a running process here.** The spec says no, on #19's precedent; this
   design follows the spec and records the composition order (D17) instead. Changing that is a scope
   change, not a design amendment.
-- **The offset's granularity.** D14 takes the MVP's one-bot-per-database singleton and states the
-  widening as a later forward migration. If the owner expects a token change before the first
-  mechanic ships, the column is cheaper to add now than later.
+
+**Settled in round 2 and no longer open** — recorded here so a later reader does not reopen them:
+the `internal/tg` half of D2's adoption stays in scope (`internal/backoff` ships and **both**
+adopters are re-expressed in terms of it — D2), and the offset row stays the singleton D14
+specifies, with the per-bot widening left to a later forward migration (D14).
