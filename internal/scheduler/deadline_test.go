@@ -530,6 +530,19 @@ func TestDeadline_neighboursSurvive(t *testing.T) {
 	pool := newScheduler(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
+	// TaskTimeout is raised locally to 1s: blockingHandler blocks on
+	// <-h.release, which is closed only by this test's own deferred
+	// close(blocker.release) at exit, so the blocker breaches ANY finite
+	// TaskTimeout by construction -- the 100ms value never made the
+	// blocker breach, it only set how long the test waits for that
+	// breach to settle. The raise IS required, though: the same value
+	// is also the succeeding neighbour's budget, and the neighbour's own
+	// SAVEPOINT + INSERT + RELEASE was measured at 96-112ms under
+	// parallel -race load -- the same order as 100ms, which is what made
+	// this test flaky (issue #62). Do not change the shared
+	// shortDeadlineConfig() TaskTimeout -- other tests depend on its
+	// 100ms value.
+	cfg.TaskTimeout = time.Second
 	blocker := newBlockingHandler()
 	defer close(blocker.release)
 	succeeder := &writingHandler{outcome: OutcomeDone, reason: "neighbour-survives"}
