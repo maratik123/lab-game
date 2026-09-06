@@ -148,6 +148,7 @@
       "Bash(gh *)",
       "Bash(ast-index *)",
       "Bash(psql *)",
+      "Bash(podman *)",
       "Bash(actionlint *)",
       "Bash(shellcheck *)",
       "Bash(grep *)",

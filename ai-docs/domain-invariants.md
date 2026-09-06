@@ -29,7 +29,7 @@ Holders of the item machine and accounts of the quantitative machine share **one
 
 ## 3. Basis documents — exclusive arc, not a polymorphic pair
 
-Each basis-document type is its **own table** with its own schema and lifecycle (player operation — `player_operation`, raid-session transition, cron day-close, deferred one-shot, recurring task, manual correction, season close). A posting carries one nullable FK column per type plus `CHECK (num_nonnulls(...) = 1)`. A polymorphic `(doc_type, doc_id)` pair without referential integrity was considered and **rejected** (§11).
+Each basis-document type is its **own table** with its own schema and lifecycle (player operation — `player_operation`, raid-session transition, cron day-close, deferred one-shot, recurring task, manual correction, season close, game event — `event`, the product log of §13.1). A posting carries one nullable FK column per type plus `CHECK (num_nonnulls(...) = 1)`. A polymorphic `(doc_type, doc_id)` pair without referential integrity was considered and **rejected** (§11).
 
 Adding a document type is a migration plus a `CHECK` edit — deliberately: a new kind of document passes an explicit review, and the `CHECK` doubles as a greppable registry of every type that exists.
 
@@ -49,7 +49,65 @@ A session is a row: `(id, maze_id, position, state, leader, participants, arrive
 
 > **A new mechanic declares its events in the same PR that implements it** (§13.4). If it moves balances, it also declares the **posting signature** of its basis document, and the contract test checks the actual postings against that signature.
 
-The product dashboard reads the raw `events` log, never pre-aggregated counters — what you did not record, you cannot ask later. The ledger and the event log are **different tables** (strict schema vs JSONB, different retention, different readers); postings reference an event as one of their basis types.
+The product dashboard reads the raw `event` log, never pre-aggregated counters — what you did not record, you cannot ask later. The ledger and the event log are **different tables** (strict schema vs JSONB, different retention, different readers); postings reference an event as one of their basis types.
+
+### The payload rule — four dimensions are columns, everything else is JSONB
+
+**The §13.4 dimensions — player, chat, maze, depth — are columns on `event`; everything else about an event is `payload` JSONB.** The rule is uniform across types, so it is one paragraph and not one per type. Four reasons, and they are why the line falls exactly there:
+
+- §13.4 declares those four *universal across types* — «Везде, где применимо: игрок, чат, лабиринт, глубина» — so they are the one part of an event's shape that is not per-type.
+- Every shipped view filters or groups on at least one of them; no shipped view reads a payload key at all. A dimension a view groups by wants a btree index, and an index on a JSONB path is an expression index that has to be written per key.
+- `player_id` and `chat_id` carry foreign keys to `owner`. JSONB cannot express referential integrity, so putting the player or the chat in the payload would abandon the guarantee the ledger's address space depends on.
+- Everything else is per-type and unknowable in advance: a `combat_resolved` payload and a `shop_sale` payload share no field. Promoting either to a column would be a migration per mechanic plus a column that is null on every other type.
+
+**The escape hatch runs one way only, deliberately.** A payload key that turns out to be read by every view can be promoted to a column by a later forward migration, whereas demoting a column is the expensive direction — which is why the columns are the ones §13.4 already fixed, and not a guess about what a future dashboard might want.
+
+### What the shipped views require of the mechanics that emit events
+
+The five MVP views read columns that the mechanic PRs must populate, and **every way of getting it wrong is silent**: a view whose input column is always null returns zero rows rather than an error, and the views' own test fixture passes regardless of what any mechanic actually emits. The obligation is recorded here against the **event type**, because that is what the emitting PR can check itself against.
+
+| Event type | Dimension it must carry | What reads it | What a null does |
+|---|---|---|---|
+| `bot_added_to_chat` | `chat_id` | `metric_activation_funnel`'s **row set** | that chat has no funnel row at all — §13.3's headline MVP number is silently empty for it |
+| `player_started` | `chat_id` | the funnel's **attribution map** | the player is attributed to no chat and is counted in no stage of any funnel |
+| `player_started` | `player_id` | the funnel's attribution map; retention's new-player cohort | as above, and the cohort loses the player |
+| `raid_started` | `player_id` | the funnel's raided and returned stages; `metric_retention_daily`'s raid count and D1/D7 | the raid counts toward no player and no chat |
+| `notification_sent` | `chat_id` | `metric_notification_per_chat_day` | the row is excluded — the spam-budget metric under-reports with no sign that it did |
+| `death` | `depth` | `metric_death_by_depth` | the death lands in the null-depth group; **this is the one degradation that is visible**, because the group appears as its own row |
+| `death` | `player_id` | that view's distinct-player column | the distinct-player count under-counts |
+
+**And the non-obligations, which matter just as much because a reader looks for them.** No shipped view reads `chat_id` from `raid_started` or from `death`; none reads `maze_id`; none reads any payload key. A mechanic may set them and nothing here degrades if it does not.
+
+**The funnel attributes a player to the chat they started in, and that is not a membership decision.** A player active in several chats is credited to the chat of their earliest `player_started` — ties broken by the lower chat id — even for raids that conceptually belong to another chat. `docs/DESIGN.md` §16.7 «Привязка игрок↔чат (membership)» is an **open question**, owned by #30; this view does not resolve it. Once a raid session is bound to a chat, a better attribution exists and the view becomes a candidate for a same-column-set replacement.
+
+### An event as a basis document — two consequences a mechanic author must be told
+
+1. **One event backs at most one posting group.** `journal_entry.event_id` carries a partial unique index, so the arc is 1:1. A mechanic that must move balances twice under one conceptual occurrence needs **two events, or a different basis type**. A second `Post` under an already-referenced event is refused by the database with `23505`, not silently merged.
+2. **An event carries no idempotency key**, and that is the difference from `player_operation`, which deduplicates on `(source, operation_id)` and turns a replay into `ErrAlreadyPosted`. Two `Post` calls built from equal `Event` values write two event rows and two journal entries. Retry safety for an event-backed mechanic therefore rides on the rail it already has — `player_operation` for a player-initiated action, the scheduler's `(state, seq)` guard for a timer edge (§3.5) — never on the event. Adding a key later is a forward migration; **assuming one exists is a duplication bug.**
+
+### The §13.5 dashboard limb is suspended, not dropped
+
+§13.5's third limb — «харнесс обновляет дашборд при добавлении событий» — is **suspended, not dropped**. There is no dashboard to update: the SQL views ship, the Grafana Postgres datasource and its panels do not.
+
+| If you are... | Then |
+|---|---|
+| Adding a mechanic that registers new event types | You owe the registry rows, by migration — and **no panel line**, until the check below exists |
+| Shipping the infrastructure pass (Grafana datasource, panels, provisioning) | You owe the **lift condition**: a check that reads `event_type_definition` and fails while any registered type has no panel |
+
+Until that check exists, `event_type_definition` is the ledger of what is owed. The limb is written down as suspended rather than left silently unenforced because a limb nobody can satisfy is a limb everybody learns to skip.
+
+### Four view families are owed, each by a named issue
+
+Five of §13.3's families ship as views — `metric_activation_funnel`, `metric_retention_daily`, `metric_death_by_depth`, `metric_faucet_sink`, `metric_notification_per_chat_day`. The other four are blocked on an input that does not exist yet, and each lands as a **later forward migration in its mechanic's PR**, never as an edit to the migration that shipped the first five.
+
+| Family | Blocking input | Owed by |
+|---|---|---|
+| Raid outcomes | `raid_finished`'s outcome, and a key pairing a finish with its start — neither is a column and no mechanic has defined the payload | #39 |
+| Backpack fate | the bare dropped/looted/expired counts follow from the types alone, but §13.3's social metric («Доля подобранных чужих рюкзаков») needs the backpack's owner, which is payload | #40 |
+| Button CTR | the linking key between `notification_sent` and `button_clicked` — the two are emitted by different PRs, which must agree on it | #43 and #37 |
+| Stamina utilisation | stamina postings, which need a stamina `ledger_kind` member; and an amount in `stamina_burned_overflow`'s payload | #31 |
+
+`bot_kicked` gets no view deliberately, and that is an answer rather than an omission: §13.3 calls it the terminal metric — «Каждое событие — вскрытие» — so the reader wants the individual rows, and the query is `SELECT * FROM event WHERE type = 'bot_kicked'`.
 
 ## 6. Telegram safety
 

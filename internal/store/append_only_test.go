@@ -8,9 +8,13 @@ import (
 	"testing"
 )
 
-// appendOnlyPattern is the spec's AC9 pattern (KD-3): no statement may
-// UPDATE or DELETE FROM the ledger tables posting and journal_entry.
-var appendOnlyPattern = regexp.MustCompile(`(?i)update\s+(posting|journal_entry)\b|delete\s+from\s+(posting|journal_entry)\b`)
+// appendOnlyPattern is the spec's AC9 pattern (KD-3), extended by this task's
+// AC10 to the event table: no statement may UPDATE or DELETE FROM the
+// append-only tables posting, journal_entry and event. The word boundary
+// after each alternative is what keeps "event" from matching
+// "event_type_definition" — that table is a seeded catalog, not append-only,
+// and is exercised by the decoy loop below.
+var appendOnlyPattern = regexp.MustCompile(`(?i)update\s+(posting|journal_entry|event)\b|delete\s+from\s+(posting|journal_entry|event)\b`)
 
 // TestAppendOnly_no_update_or_delete_on_ledger_tables is the in-suite twin
 // of the Step-9 AC9 sweep (design § Test Design → AC9): every non-test Go
@@ -27,6 +31,8 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 		"delete from posting where id = 1",
 		"UPDATE journal_entry SET ts = now()",
 		"delete from journal_entry where id = 1",
+		"UPDATE event SET payload = '{}'",
+		"delete from event where id = 1",
 	} {
 		if !appendOnlyPattern.MatchString(planted) {
 			t.Fatalf("positive control failed: pattern does not match %q", planted)
@@ -35,6 +41,10 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 	for _, decoy := range []string{
 		"update postings_archive set amount = 0",
 		"delete from journal_entry_archive where id = 1",
+		// event_type_definition is a seeded catalog, not append-only; the
+		// word boundary after "event" must not spill into its name.
+		"update event_type_definition set volume_class = 'low_volume'",
+		"delete from event_type_definition where id = 1",
 	} {
 		if appendOnlyPattern.MatchString(decoy) {
 			t.Fatalf("positive control failed: pattern matches the decoy %q", decoy)
@@ -86,8 +96,9 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 	for _, src := range sources {
 		names = append(names, src.name)
 	}
-	if !slices.Contains(names, "post.go") || !slices.Contains(names, "migrations/00001_ledger_core.sql") {
-		t.Fatalf("append-only scan is vacuous: post.go and migrations/00001_ledger_core.sql must be in the scanned set; collected %d files: %v", len(names), names)
+	if !slices.Contains(names, "post.go") || !slices.Contains(names, "migrations/00001_ledger_core.sql") ||
+		!slices.Contains(names, "event.go") || !slices.Contains(names, "migrations/00003_event_log.sql") {
+		t.Fatalf("append-only scan is vacuous: post.go, event.go, migrations/00001_ledger_core.sql and migrations/00003_event_log.sql must be in the scanned set; collected %d files: %v", len(names), names)
 	}
 
 	// Scan: one failure per forbidden statement, naming file and match.

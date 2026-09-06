@@ -20,6 +20,7 @@ func TestEnums_mirror_database(t *testing.T) {
 		{"owner_kind", stringsOf(ownerKinds)},
 		{"ledger_kind", stringsOf(kinds)},
 		{"operation_source", stringsOf(operationSources)},
+		{"event_volume_class", stringsOf(eventVolumeClasses)},
 	} {
 		var members []string
 		if err := pool.QueryRow(ctx, `SELECT enum_range(NULL::`+tc.enum+`)::text[]`).Scan(&members); err != nil {
@@ -90,5 +91,31 @@ func TestCatalog_mirrors_database(t *testing.T) {
 	}
 	if !slices.Equal(gotAcc, accountDefinitions) {
 		t.Fatalf("account_definition mirror = %+v, database = %+v", accountDefinitions, gotAcc)
+	}
+
+	// event_type_definition, read ordered by id — the column that exists
+	// solely so this comparison can be element-for-element ordered rather
+	// than set-wise (AC5): a type present on one side only, one whose class
+	// differs, or a reordering all fail this equality.
+	erows, err := pool.Query(ctx, `SELECT id, code, volume_class FROM event_type_definition ORDER BY id`)
+	if err != nil {
+		t.Fatalf("query event_type_definition: %v", err)
+	}
+	var gotEvents []EventTypeDefinition
+	for erows.Next() {
+		var ed EventTypeDefinition
+		var code, volumeClass string
+		if err := erows.Scan(&ed.ID, &code, &volumeClass); err != nil {
+			t.Fatalf("scan event_type_definition: %v", err)
+		}
+		ed.Code = EventType(code)
+		ed.VolumeClass = EventVolumeClass(volumeClass)
+		gotEvents = append(gotEvents, ed)
+	}
+	if err := erows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if !slices.Equal(gotEvents, eventTypeDefinitions) {
+		t.Fatalf("event_type_definition mirror = %+v, database = %+v", eventTypeDefinitions, gotEvents)
 	}
 }

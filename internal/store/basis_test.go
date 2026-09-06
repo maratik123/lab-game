@@ -52,6 +52,19 @@ func TestBasis_nil_returns_ErrNoBasis_without_panicking(t *testing.T) {
 		t.Fatalf("(*RecurrentTask)(nil).insert() = %v, want ErrNoBasis", err)
 	}
 
+	// Event's nil guard is unreachable from either public entry point: Post
+	// rejects a typed-nil basis in phase a via entrySQL and never reaches
+	// insert, and AppendEvent takes an Event by value. This is the only
+	// assertion holding the spec's "fifth implementation follows that
+	// contract exactly" for Event.
+	var nilEv *Event
+	if _, err := nilEv.entrySQL(); !errors.Is(err, ErrNoBasis) {
+		t.Fatalf("(*Event)(nil).entrySQL() = %v, want ErrNoBasis", err)
+	}
+	if _, err := nilEv.insert(ctx, tx); !errors.Is(err, ErrNoBasis) {
+		t.Fatalf("(*Event)(nil).insert() = %v, want ErrNoBasis", err)
+	}
+
 	// A typed-nil pointer stored in the interface is still != nil, and
 	// entrySQL/insert on it must go through the same guarded path, not
 	// panic. staticcheck SA4023 flags both lines below as statically

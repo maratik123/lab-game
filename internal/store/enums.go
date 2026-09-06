@@ -44,3 +44,17 @@ const (
 )
 
 var operationSources = []OperationSource{SourceTelegram}
+
+// EventVolumeClass mirrors the database enum event_volume_class: the
+// traffic-volume partition of the event-type registry
+// (event_type_definition.volume_class), read by the retention pass to split
+// storage without re-classifying every type (docs/DESIGN.md §11, §13.4).
+type EventVolumeClass string
+
+// EventVolumeClass members, in the database's declaration order.
+const (
+	VolumeLow  EventVolumeClass = "low_volume"
+	VolumeHigh EventVolumeClass = "high_volume"
+)
+
+var eventVolumeClasses = []EventVolumeClass{VolumeLow, VolumeHigh}
