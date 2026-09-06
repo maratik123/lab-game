@@ -8,7 +8,7 @@ _Updated: 2026-09-06 10:10_
 **Last build:** go build ./... green | 2026-09-06T10:05Z
 **Issue:** #21
 **Spec:** ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** golangci-lint run | 2026-09-06T09:25:39Z | e4f884ff2221740e6acce65831813d3a062c727f
 **entry_args:** 21
 
@@ -41,6 +41,8 @@ _Updated: 2026-09-06 10:10_
 - **Step 9**: no panic-index change — the non-test scan of `internal/` and `cmd/` for `panic(` / `log.Fatal` returns nothing, and the index's table is empty by design.
 - **Step 9**: domain-invariant sweep clean. Its only hits are the ledger's own `UPDATE account_balance` and `INSERT INTO posting` inside `store.Post` — whose diff this round is doc-comment-only — and the faucet/sink test fixture, which writes a balanced posting pair by direct SQL with an explicit `ts`, exactly as the design requires so that view's expectations can be literals. No balance constant in Go, no new `time.Now()`, no secret.
 - **Step 9**: `go test -race ./...` is RED 2-of-3 whole-suite runs, always on `TestFailurePolicy_oneShotAttemptsGrowAndGiveUp` in the untouched `internal/scheduler` — the pre-existing flake now filed as #59. `internal/store` was green in every one of those runs and 3/3 under `-race` in isolation, so the race gate is clean for this diff's own package.
+- **Step 9.5**: no open question in `context.md` is resolved by this task — §16.7 (player↔chat membership) is *touched* by the funnel's attribution choice and deliberately left open, with #30 recorded as its owner.
+- **Step 9.5**: `check-citations.sh` is RED locally on this branch and GREEN on the base, and the citation it rejects is correct. Its ceiling is the newest **PR** (#58), while #59 is an **issue** filed by this run; the two share a numbering space. Recorded in `ai-docs/harness-gaps.md` rather than worked around. Expected to clear once this branch's PR raises the ceiling — **verify that at Step 12 by re-running the guard, do not assume it**.
 
 ## Key discoveries (don't re-investigate)
 
