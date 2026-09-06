@@ -8,8 +8,8 @@ _Updated: 2026-09-06
 **Last build:** not run
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Step 8 — subtask 3 of 6 complete (Group A)
-**last_passed_gate:** go test ./internal/config/... GREEN, golangci-lint run/fmt -d clean, go vet clean | 804f40f
+**current_step:** Step 8 — subtask 5 of 6 complete (Group A)
+**last_passed_gate:** go test ./internal/store/... GREEN, golangci-lint run/fmt -d clean, go vet clean | 4f89646
 **entry_args:** 22
 
 ## Next action
@@ -23,9 +23,9 @@ _Updated: 2026-09-06
 - [x] 1. `internal/backoff`: `Exponential` + `EqualJitter`, table and monotonicity tests (Group A)
 - [x] 2. Adopt `internal/backoff` in `internal/tg` and `internal/scheduler` — call-site gate first, then mutation probe, then re-point (Group A)
 - [x] 3. `config.Ingest` + the `LAB_GAME_INGEST_` reader and both `Load` cross-checks (Group A)
-- [ ] 4. Migration `00004_ingest.sql`: `ingest_offset`, `ingest_dead_update`; extend the exact base-table assertion (Group A)  ← CURRENT
-- [ ] 5. `store.Queryer` + `store.PlayerExists`; delete and re-point `queryRower` (Group A)
-- [ ] 6. `internal/ingest` core types: `Kind`, `IDSpace`, the `operation_id` builder, `Handler`/`Update`, `Router` (Group A)
+- [x] 4. Migration `00004_ingest.sql`: `ingest_offset`, `ingest_dead_update`; extend the exact base-table assertion (Group A)
+- [x] 5. `store.Queryer` + `store.PlayerExists`; delete and re-point `queryRower` (Group A)
+- [ ] 6. `internal/ingest` core types: `Kind`, `IDSpace`, the `operation_id` builder, `Handler`/`Update`, `Router` (Group A)  ← CURRENT
 - [ ] 7. Offset and give-up storage; the package's `TestMain` lands here (Group B)
 - [ ] 8. The observation seam: `Outcome`, `Observation`, `LoopObservation`, `Observer` (Group B)
 - [ ] 9. The loop: `Options`/`New`, requested kinds, `PollOnce`, `Run` with D19's poll-error policy (Group B)
@@ -40,6 +40,8 @@ _Updated: 2026-09-06
 - **Subtask 1**: `internal/backoff.Exponential`/`EqualJitter` implemented per D2's full contract (in-domain, base>ceiling, and the out-of-domain rows). `go test ./internal/backoff/...` green, `golangci-lint run`/`fmt -d` clean, `go vet` clean.
 - **Subtask 2**: ran the three-step spawn contract exactly as ordered. (a) Landed a literal one-based ramp (`map[int]time.Duration{1: 200*time.Millisecond, 2: 400*time.Millisecond}`) in `failure_test.go` and `deadline_test.go`, and ran `go test ./internal/scheduler/ -run 'TestFailurePolicy_oneShotAttemptsGrowAndGiveUp|TestDeadline_successiveBreaches_growingDelay'` — GREEN against the still-shipped one-based `backoff`, confirming the literals equal what the shipped ramp computes at those attempts. (b) Wrote `backoff(k+1, cfg.RetryBaseDelay, cfg.RetryMaxDelay)` at both `settle.go` call sites over a `cp` backup, re-ran the same two tests — RED, both failing on the run_at bracket by the expected margin — then restored `settle.go` from the `cp` backup (verified `git diff` empty on it afterward). (c) Deleted `internal/tg`'s `backoffDelay` and `internal/scheduler`'s `backoff`, re-pointed every call site (`caller.go`, `retry_test.go`, `settle.go` with the `k-1` translation, `cadence_test.go`'s two ramp tests with the `tc.failures-1`/`f-1` translation in the argument only) — every pre-existing assertion and expected value in those four files stays byte-identical. `go test ./internal/tg/ ./internal/scheduler/` green as its own step; `go build ./...`, `go vet ./...`, `golangci-lint run ./...`, `golangci-lint fmt -d` (whole module) all clean.
 - **Subtask 3**: `config.Ingest` added mirroring `Transport`/`Scheduler`'s optional-with-default shape exactly (`loadIngest`, `defaultIngest`, `ingestEnvKeys`, appended to `EnvKeys()`). `loadIngest` validates `BatchLimit` against the Bot API's 1-100 range locally; `checkIngestLongPollTimeout` (D16's pair — strictly below `Transport.AttemptTimeout`, and a whole number of seconds) runs from `Load` once both `Ingest` and `Transport` have loaded successfully, naming `LAB_GAME_INGEST_LONG_POLL_TIMEOUT` either way. `.env.example` gained the six new lines with defaults matching `defaultIngest()` exactly (asserted by `TestLoadIngest_ExampleMatchesDefaults`). `go test ./internal/config/...` green (60+ subtests, including the D16 boundary cases: `25500ms`/`1500ms` rejected, `25s` accepted, and the equal/above/below-`AttemptTimeout` trio), `golangci-lint run`/`fmt -d` clean, `go vet` clean, whole-module `go build ./...` clean.
+- **Subtask 4**: migration `00004_ingest.sql` adds `ingest_offset` (guarded singleton — `PRIMARY KEY (id)` plus `CHECK (id = 1)`, seeded at `next_update_id = 0` by the migration itself) and `ingest_dead_update` (update_id, kind with a non-empty CHECK, nullable chat_id, consecutive_failures with a positive CHECK, last_error, created_at). No `-- +goose Down` section. `migrate_test.go`'s exact base-table set and `goose_db_version` row count (4 → 5) both extended; `schema_test.go` gained four new subtests (singleton-refused, seeded-exactly-once, empty-kind-refused) under `TestSchema_constraints`. `go test ./internal/store/...` green including `TestMigrate_hygiene/00004_ingest.sql`, `golangci-lint run`/`fmt -d` clean, `go vet` clean — `internal/store` is green on its own; the tables' consumer (`internal/ingest`) lands in Group B.
+- **Subtask 5**: `store.Queryer` (the single `QueryRow` method) and `store.PlayerExists(ctx, q, telegramID)` added to `owner.go`, over the `(kind, telegram_id)` pair per D10/D11 — a chat sharing a player's telegram_id must report false, pinned by `TestPlayerExists_kindPairIsThePredicate`. `post_test.go`'s shipped `queryRower` (consumed only by `balanceOf`) deleted and `balanceOf` re-pointed at `store.Queryer` — compile-gated, no assertion moved. `go test ./internal/store/...` green including the four new `PlayerExists` tests (kind-pair, no-owner, closed-pool-surfaces-error, tx-and-pool-agree), `golangci-lint run`/`fmt -d` clean, `go vet` clean, whole-module `go build ./...` clean.
 
 ## Key discoveries (don't re-investigate)
 
@@ -66,3 +68,5 @@ _Updated: 2026-09-06
 - `internal/tg/retry.go`, `internal/tg/caller.go`, `internal/tg/retry_test.go`
 - `internal/scheduler/cadence.go`, `internal/scheduler/settle.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go`, `internal/scheduler/deadline_test.go`
 - `internal/config/ingest.go`, `internal/config/ingest_test.go` (new), `internal/config/config.go`, `internal/config/env.go`, `.env.example`
+- `internal/store/migrations/00004_ingest.sql` (new), `internal/store/migrate_test.go`, `internal/store/schema_test.go`
+- `internal/store/owner.go`, `internal/store/owner_test.go`, `internal/store/post_test.go`
