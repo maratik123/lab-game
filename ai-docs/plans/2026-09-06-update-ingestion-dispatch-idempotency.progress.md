@@ -5,18 +5,18 @@ _Updated: 2026-09-06
 
 **Branch:** feat/2026-09-06-update-ingestion-dispatch-idempotency
 **base_commit:** a09d26f56df4b72ab15c49e328b007b900668ca4
-**Last build:** not run
+**Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Step 8 — Group A complete (subtasks 1-6); handoff to Group B pending
-**last_passed_gate:** go test ./internal/ingest/... GREEN (26/26 kind rows), whole-module go build/vet/lint clean, go mod tidy no-op | 939caad
+**current_step:** Step 8 — Group A complete (subtasks 1-6), gates re-verified by the orchestrator; Group B pending
+**last_passed_gate:** go test -race ./... | 2026-09-06T23:30:02Z | 0b86c19cd135edbfa4cc83a7c08099f6f2ee10c6
 **entry_args:** 22
 
 ## Next action
 
-**Do this immediately:** start Group A at subtask 1.
+**Do this immediately:** start Group B at subtask 7.
 
-**Design:** `ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.design.md` — read its `## Handoff plan` before touching subtask 2. That section carries subtask 2's binding contract in three parts, and the order is not negotiable: (a) land the literal one-based ramp in `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go` and see it GREEN against the still-shipped `backoff`, (b) run the mutation probe — `backoff(k+1, …)` over a `cp` backup of `settle.go`, which must turn the two named tests RED, and **a green probe is a STOP: return to the orchestrator rather than proceeding**, (c) only then delete the local ramps and re-point. Restore from the `cp` backup, never with `git checkout -- <file>`. `go test ./internal/tg/ ./internal/scheduler/` must be green as its own step before the group returns, and `go test ./internal/store/` likewise after subtask 5.
+**Design:** `ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.design.md` — Group B is subtasks 7-11, all `internal/ingest`. Subtask 7 carries the package's `TestMain` over `testdb.Main`, because `testdb.Schema` fatals any test that calls it before `Main` has provisioned a database; 9 and 10 depend on that landing first. Subtask 9 implements D19's poll-error policy (observe through `LoopObservation.Err` and continue at the poll interval; `Run` returns non-nil only on cancellation) and D3's `allowed_updates` sentinel; subtask 10 implements D10's positive-only, mutex-guarded cache and D18's refusal of a destination visible only inside an uncommitted transaction — that scenario is a PAIR (refused while uncommitted, allowed after commit, the commit the only variable), not a single case.
 
 ## Subtasks
 
@@ -36,6 +36,7 @@ _Updated: 2026-09-06
 ## Decisions log
 
 - **Step 7**: design-review reached GO on round 5; the owner raised the round cap to 5 (was 3) after round 3, and every round found new material rather than re-opening an earlier one.
+- **Step 8 group A**: the orchestrator re-ran the subtask-2 mutation probe itself after the re-point (`Exponential(k-1)` → `Exponential(k)` at `settle.go:143,243` over a cp backup): RED at both sites with the predicted 200ms discrepancy, restored from backup, tree clean. The literal-ramp gate discriminates.
 - **Step 7**: the four round-5 GO notes were folded into the design before Step 8, per Step 8's first-action rule; none was spec-amending, so no Spec Amendment recipe ran.
 - **Subtask 1**: `internal/backoff.Exponential`/`EqualJitter` implemented per D2's full contract (in-domain, base>ceiling, and the out-of-domain rows). `go test ./internal/backoff/...` green, `golangci-lint run`/`fmt -d` clean, `go vet` clean.
 - **Subtask 2**: ran the three-step spawn contract exactly as ordered. (a) Landed a literal one-based ramp (`map[int]time.Duration{1: 200*time.Millisecond, 2: 400*time.Millisecond}`) in `failure_test.go` and `deadline_test.go`, and ran `go test ./internal/scheduler/ -run 'TestFailurePolicy_oneShotAttemptsGrowAndGiveUp|TestDeadline_successiveBreaches_growingDelay'` — GREEN against the still-shipped one-based `backoff`, confirming the literals equal what the shipped ramp computes at those attempts. (b) Wrote `backoff(k+1, cfg.RetryBaseDelay, cfg.RetryMaxDelay)` at both `settle.go` call sites over a `cp` backup, re-ran the same two tests — RED, both failing on the run_at bracket by the expected margin — then restored `settle.go` from the `cp` backup (verified `git diff` empty on it afterward). (c) Deleted `internal/tg`'s `backoffDelay` and `internal/scheduler`'s `backoff`, re-pointed every call site (`caller.go`, `retry_test.go`, `settle.go` with the `k-1` translation, `cadence_test.go`'s two ramp tests with the `tc.failures-1`/`f-1` translation in the argument only) — every pre-existing assertion and expected value in those four files stays byte-identical. `go test ./internal/tg/ ./internal/scheduler/` green as its own step; `go build ./...`, `go vet ./...`, `golangci-lint run ./...`, `golangci-lint fmt -d` (whole module) all clean.
