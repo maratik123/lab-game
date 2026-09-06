@@ -8,7 +8,7 @@ _Updated: 2026-09-06 10:10_
 **Last build:** go build ./... green | 2026-09-06T10:05Z
 **Issue:** #21
 **Spec:** ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md
-**current_step:** Step 8 — subtask 8 of 8 complete (Group B finished)
+**current_step:** Step 9 — Verify (ALL PASS)
 **last_passed_gate:** golangci-lint run | 2026-09-06T09:25:39Z | e4f884ff2221740e6acce65831813d3a062c727f
 **entry_args:** 21
 
@@ -38,6 +38,9 @@ _Updated: 2026-09-06 10:10_
 - **Step 8 subtask 7**: «игровое событие (лог 13.1)» is appended to the END of §11:331's list rather than inserted at the position :323 uses, because the owner authorised the membership and not an ordering, and appending leaves every existing item of the line untouched — the smallest diff that satisfies AC17's "no other content on the touched lines changes". The `events`→`event` rename is identifier-only at all three sites; `grep -n 'events' docs/DESIGN.md` now returns nothing, which is what establishes AC17's "at every site that names it" rather than the spec's three line numbers. :323's missing «переход рейд-сессии» is left open on purpose — #36's, per the spec's Deferred section.
 - **Step 8 subtask 8**: the sweep found four members — `context.md`'s Observability row, its Architecture "Layout so far" clause for `internal/store`, its Status → Code inventory (with the Status date moved to match), and `domain-invariants.md` §3's basis-document type list, which omitted the game event that `docs/DESIGN.md` §11's registry now names. **Non-members, each checked rather than assumed:** `ai-docs/context-status.md` and `ai-docs/metrics/task-runs.jsonl` declare themselves append-only per-task records written by `/task`, so they are history rather than live claim surfaces; `.claude/**` names the table nowhere, and its `self-review.md` § 4a / `review-findings.md` § 1a / `design-writer.md` § Rules already route the reader to `domain-invariants.md` with **Telemetry lag** triggers that stay true — adding a review row for the new per-type dimension obligations would be a NEW rule, which is unapproved scope, so it was not done. **`ai-docs/key-decisions.md` KD-17 is stale and this diff is not why:** it enumerates the exclusive arc as «`player_operation` or `manual_correction`», which `00002_scheduler.sql` already falsified by widening the arc to four columns without touching the line. This diff does not change its truth value, so it is surfaced here rather than fixed as unrelated scope — a candidate for `/triage` or the next ledger-touching task. **Instrument check (`AGENTS.md` § Patterns 2):** the identical grep run against `8f9bb8d` fires on exactly the five pre-change sites and returns nothing against the tree now, so the clean result is evidence about the sites and not about the pattern.
 - **Step 8 (group boundary)**: pushed the branch at the first group return per the Step-8 visibility rule; no PR yet, and CI triggers only on `main` and pull requests, so nothing ran.
+- **Step 9**: no panic-index change — the non-test scan of `internal/` and `cmd/` for `panic(` / `log.Fatal` returns nothing, and the index's table is empty by design.
+- **Step 9**: domain-invariant sweep clean. Its only hits are the ledger's own `UPDATE account_balance` and `INSERT INTO posting` inside `store.Post` — whose diff this round is doc-comment-only — and the faucet/sink test fixture, which writes a balanced posting pair by direct SQL with an explicit `ts`, exactly as the design requires so that view's expectations can be literals. No balance constant in Go, no new `time.Now()`, no secret.
+- **Step 9**: `go test -race ./...` is RED 2-of-3 whole-suite runs, always on `TestFailurePolicy_oneShotAttemptsGrowAndGiveUp` in the untouched `internal/scheduler` — the pre-existing flake now filed as #59. `internal/store` was green in every one of those runs and 3/3 under `-race` in isolation, so the race gate is clean for this diff's own package.
 
 ## Key discoveries (don't re-investigate)
 
@@ -49,27 +52,30 @@ _Updated: 2026-09-06 10:10_
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | TESTED |
-| AC2 | TESTED |
-| AC3 | TESTED |
-| AC4 | TESTED |
-| AC5 | TESTED |
-| AC6 | TESTED |
-| AC7 | TESTED |
-| AC8 | TESTED |
-| AC9 | TESTED |
-| AC10 | TESTED |
-| AC11 | TESTED |
-| AC12 | TESTED |
-| AC13 | TESTED |
-| AC14 | TESTED |
-| AC15 | PASS |
-| AC16 | PASS |
-| AC17 | PASS |
-| AC18 | PASS |
-| AC19 | NOT_TESTED |
+Each row's command is the verifier's own, written for this AC and run over the AC's own stated
+scope (`/task` § Patterns 1). Grep-shaped rows were run with a positive control first.
+
+| AC | Status | Verifying command / evidence |
+|----|--------|------------------------------|
+| AC1 | PASS | `go test -count=1 ./internal/store -run TestMigrate` — shape + second-apply |
+| AC2 | PASS | `grep -rniE '^\s*--\s*\+goose\s+Down' internal/store/migrations/` → none; the pattern fired on a planted line |
+| AC3 | PASS | `sed -n '74,78p' 00003_event_log.sql` — the CHECK names all five arc columns; `journal_entry_event_key` is the partial unique index |
+| AC4 | PASS | `go test -count=1 ./internal/store -run TestSchema` — 23514 zero-basis, 23514 two-basis, 23505 re-reference |
+| AC5 | PASS | seed statement holds 16 rows, high_volume on 14/15 only; `grep -c 'Code: Event' catalog.go` → 16 and `VolumeHigh` → 2; `TestCatalog_mirrors_database` compares element-for-element, ordered |
+| AC6 | PASS | `go test -count=1 ./internal/store -run TestEvent` |
+| AC7 | PASS | `go test -count=1 ./internal/store -run TestEvent` |
+| AC8 | PASS | `go test -count=1 ./internal/store -run TestEvent` |
+| AC9 | PASS | `go test -count=1 ./internal/store -run TestEvent` |
+| AC10 | PASS | `grep -rniE 'update\s+event\b\|delete\s+from\s+event\b' --include='*.go' internal/store/ \| grep -v _test.go` → none; migrations swept for `CREATE TRIGGER\|CREATE RULE\|GRANT` → none. Both patterns fired on planted lines |
+| AC11 | PASS | `grep -oiE 'CREATE VIEW [a-z_]+' 00003_event_log.sql` → exactly the five; `go test -count=1 ./internal/store -run TestViews` covers the empty-log case |
+| AC12 | PASS | `go test -count=1 ./internal/store -run TestViews` |
+| AC13 | PASS | the AC11 grep piped through `grep -iE 'outcome\|backpack\|ctr\|button\|stamina'` → no match |
+| AC14 | PASS | `go test -count=1 ./internal/store -run TestViews` |
+| AC15 | PASS | `domain-invariants.md:54-63` states the rule and its four reasons; the page is listed at `agent-docs-index.md:15` |
+| AC16 | PASS | `domain-invariants.md:88-97` (suspended limb + lift condition + no-panel-line rule) and `:105-108` (the four deferred families with owners) |
+| AC17 | PASS | `grep -c 'events' docs/DESIGN.md` → 0; `:331` carries «игровое событие (лог 13.1)» |
+| AC18 | PASS | case-insensitive tree sweep for `` `events` `` excluding history surfaces and `_inbox.jsonl` → none. **Instrument control:** the identical sweep at `8f9bb8d` fires on five sites (context.md 1, domain-invariants.md 1, DESIGN.md 3), so the clean result is evidence about the sites and not about the pattern |
+| AC19 | PASS | build · vet · `go test -count=1 ./...` · `golangci-lint fmt -d` · `golangci-lint run` · `go mod tidy` (no delta) · `make file-limits` — all green; `make cover-ratchet` → 89.60% holds against 89.60%. `-race`: `internal/store` green in 3/3 isolated and in all three full runs; the full suite is RED 2-of-3 on `TestFailurePolicy_oneShotAttemptsGrowAndGiveUp` in the untouched `internal/scheduler`, filed as #59 |
 
 ## Review register
 
