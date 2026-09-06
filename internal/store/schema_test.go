@@ -100,6 +100,54 @@ func TestSchema_constraints(t *testing.T) {
 		sqlstate(t, err, "23505", "journal_entry_player_operation_key")
 	})
 
+	t.Run("journal_entry_event_and_player_operation", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		var poID, eventID int64
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO player_operation (source, operation_id) VALUES ('telegram', 'arc-1') RETURNING id`,
+		).Scan(&poID); err != nil {
+			t.Fatalf("insert player_operation: %v", err)
+		}
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO event (type, payload) VALUES ('raid_started', '{}') RETURNING id`,
+		).Scan(&eventID); err != nil {
+			t.Fatalf("insert event: %v", err)
+		}
+
+		_, err = tx.Exec(ctx,
+			`INSERT INTO journal_entry (player_operation_id, event_id) VALUES ($1, $2)`, poID, eventID)
+		sqlstate(t, err, "23514", "journal_entry_exactly_one_basis")
+	})
+
+	t.Run("journal_entry_second_for_same_event", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		var eventID int64
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO event (type, payload) VALUES ('raid_started', '{}') RETURNING id`,
+		).Scan(&eventID); err != nil {
+			t.Fatalf("insert event: %v", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO journal_entry (event_id) VALUES ($1)`, eventID); err != nil {
+			t.Fatalf("first entry: %v", err)
+		}
+
+		_, err = tx.Exec(ctx, `INSERT INTO journal_entry (event_id) VALUES ($1)`, eventID)
+		sqlstate(t, err, "23505", "journal_entry_event_key")
+	})
+
 	t.Run("second_world_owner", func(t *testing.T) {
 		t.Parallel()
 		tx, err := pool.Begin(ctx)
