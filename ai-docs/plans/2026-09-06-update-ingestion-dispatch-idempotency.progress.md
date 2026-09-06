@@ -14,7 +14,9 @@ _Updated: 2026-09-06
 
 ## Next action
 
-**Do this immediately:** hand off Group A (subtasks 1–6) to `code-writer` via `/context-reset`, per the design's `## Handoff plan`, carrying subtask 2's spawn contract verbatim.
+**Do this immediately:** start Group A at subtask 1.
+
+**Design:** `ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.design.md` — read its `## Handoff plan` before touching subtask 2. That section carries subtask 2's binding contract in three parts, and the order is not negotiable: (a) land the literal one-based ramp in `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go` and see it GREEN against the still-shipped `backoff`, (b) run the mutation probe — `backoff(k+1, …)` over a `cp` backup of `settle.go`, which must turn the two named tests RED, and **a green probe is a STOP: return to the orchestrator rather than proceeding**, (c) only then delete the local ramps and re-point. Restore from the `cp` backup, never with `git checkout -- <file>`. `go test ./internal/tg/ ./internal/scheduler/` must be green as its own step before the group returns, and `go test ./internal/store/` likewise after subtask 5.
 
 ## Subtasks
 
