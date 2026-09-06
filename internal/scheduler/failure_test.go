@@ -151,7 +151,25 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 			// [before+backoff, after+backoff] -- an exact bracket, not merely
 			// a "grew" check, and independent of how long RunOnce itself
 			// takes to execute.
-			want := backoff(attempt, cfg.RetryBaseDelay, cfg.RetryMaxDelay)
+			//
+			// The bracket's delay is a LITERAL one-based ramp, not a call to
+			// backoff or to internal/backoff.Exponential (design D2, subtask
+			// 2's call-site gate): 200ms then 400ms is exactly what the
+			// shipped one-based backoff(attempt, 200ms, 1s) computes at
+			// attempts 1 and 2 -- verified green against the still-shipped
+			// backoff before backoff.go's ramp was ever re-pointed. Pinning
+			// it as a literal here is what lets this assertion catch an
+			// omitted one-based-to-zero-based translation at settle.go's own
+			// call site: cadence_test.go's table alone cannot, because it
+			// pins the shared function, not the argument settle.go passes it.
+			literalOneBasedRamp := map[int]time.Duration{
+				1: 200 * time.Millisecond,
+				2: 400 * time.Millisecond,
+			}
+			want, ok := literalOneBasedRamp[attempt]
+			if !ok {
+				t.Fatalf("attempt %d: no literal ramp entry (want one for every attempt < RetryMaxAttempts)", attempt)
+			}
 			lo, hi := before.Add(want), after.Add(want)
 			if runAt.Before(lo) || runAt.After(hi) {
 				t.Fatalf("attempt %d: run_at = %v, want within [%v, %v] (before=%v after=%v backoff=%v)", attempt, runAt, lo, hi, before, after, want)
