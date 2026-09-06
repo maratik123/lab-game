@@ -15,10 +15,8 @@ and the doc-page edits. No mechanic emits anything here.
 Two tag shapes appear below. `[measured <commit>:<path>:<lines> · …]` cites this tree at the
 commit named. `[measured probe · psql on docker.io/library/postgres:18 → …]` cites a
 throwaway container run against the image the suite itself uses — it carries **no** repo
-coordinate, because the fact is Postgres's, not this repository's. Every Postgres semantic
-this design leans on is probed rather than asserted, because a design rule resting on
-remembered database behaviour is the same defect as a design rule resting on remembered
-code.
+coordinate, because the fact is Postgres's, not this repository's. A design rule resting on
+remembered database behaviour is the same defect as one resting on remembered code.
 
 ### Not a mechanic — the telemetry and posting-signature rules do not fire
 
@@ -59,7 +57,10 @@ actually emits.
 
 **And the non-obligations, which matter just as much because a reader looks for them.** No
 shipped view reads `chat_id` from `raid_started` or from `death`; none reads `maze_id`; none
-reads any payload key. A mechanic may set them and nothing here degrades if it does not.
+reads any payload key. A mechanic may set them and nothing here degrades if it does not —
+which is a property of the views this task writes, so it is established by them and by
+AC12's fixture, not by anything readable today
+`[derived → the view definitions of AC11, and AC12's funnel fixture, whose `raid_started` rows carry no chat at all]`.
 
 The whole table, both halves, goes into `ai-docs/domain-invariants.md` §5 (subtask 6) —
 that is the page a mechanic author reads, and a page carrying only the non-obligations would
@@ -270,7 +271,8 @@ because neither `Post` nor `AppendEvent` can reach `(*Event)(nil).insert`, that 
 
 **Nullable fields are pointers, uniformly**, each named after its column so the struct and
 the schema read the same: `PlayerID *OwnerID`, `ChatID *OwnerID`, `MazeID *int64`,
-`Depth *int32` — the `…ID` suffix following `DeferredTask.TaskID`'s precedent.
+`Depth *int32` — the `…ID` suffix following `DeferredTask.TaskID`'s precedent
+`[measured 8617a7c:internal/store/basis.go:104-109 · sed -n '104,109p' internal/store/basis.go → "type DeferredTask struct { TaskID int64; TaskType string; InstanceKey string; RunAt time.Time }"]`.
 *Rejected:* the zero-as-NULL shape `DeferredTask` uses
 `[measured 8617a7c:internal/store/basis.go:124-127 · sed -n '124,127p' internal/store/basis.go → "INSERT INTO deferred_task (task_id, task_type, instance_key, run_at) VALUES (NULLIF($1, 0), $2, NULLIF($3, ''), $4)"]`
 — it works for ids that are never zero, but **depth 0 is a real depth** (the entrance), so
@@ -317,7 +319,8 @@ so subtask 3 carries more than the new declaration:
 - the block comment gains "…and one which `AppendEvent` also raises", so "see Post's doc
   comment for which phase raises each" stops being a false universal;
 - `Post`'s own phase-d line names `ErrUnknownEventType` beside `ErrAlreadyPosted`, or the
-  phase list becomes the incomplete comment DOC-5 forbids.
+  phase list becomes the incomplete comment DOC-5 forbids
+  `[measured 8617a7c:ai-docs/doc-convention.md:51,56 · sed -n '51p;56p' ai-docs/doc-convention.md → "## DOC-5 — What not to write" / "- No stale comment: changing behaviour without updating the comment above it is the same defect class as a broken test."]`.
 
 ### The views
 
@@ -373,7 +376,7 @@ expression yields
 
 **This is an owner decision (round 3), and it replaces an earlier design that attributed a
 raid to a chat by reading `chat_id` off the `raid_started` event itself.** That earlier
-shape imposed an unrecorded obligation on whoever emits `raid_started` (#36/#38) to populate
+shape imposed an unrecorded obligation on whoever emits `raid_started` to populate
 `chat_id`, and it failed *silently* in both directions: a null chat produced no anomaly row,
 and this task's own fixture would have satisfied AC12 forever regardless.
 
@@ -436,8 +439,15 @@ subtask 6 carries into `domain-invariants.md`.
 | `d1_rate` | `numeric` | `d1_retained` over `new_player`; NULL when the cohort is empty |
 | `d7_rate` | `numeric` | `d7_retained` over `new_player`; NULL when the cohort is empty |
 
+**Row set:** one row per UTC day on which **any** event occurred — not a generated calendar
+range and not only days that have a cohort. A day with no events is therefore absent rather
+than zero-filled, and a day whose `new_player` is `0` still appears because something else
+happened on it. (`CREATE OR REPLACE VIEW` polices the column list and not the row set, so
+every view below states its own.)
+
 Two readings are *chosen* here rather than read off §13.3, and both go in the view's SQL
-comment as well as § Open questions, because §13.3 writes only «Возвраты: D1/D7 retention»:
+comment as well as § Open questions, because §13.3 names the metric without defining it
+`[measured 8617a7c:docs/DESIGN.md:419 · sed -n '419p' docs/DESIGN.md → "- Возвраты: D1/D7 retention, рейдов на игрока в день."]`:
 
 - **The return signal is a raid, not any activity** (owner, round 3). "Any event that day"
   is the commoner industry reading and is literally one column over in this same view, so a
@@ -455,9 +465,24 @@ today's cohort.
 
 | Column | Type | Meaning |
 |---|---|---|
+| `day` | `date` | the UTC day |
 | `depth` | `integer` | the depth; **NULL is a real group** — deaths with no recorded depth |
-| `death` | `bigint` | deaths at that depth |
-| `player` | `bigint` | distinct players who died at that depth |
+| `death` | `bigint` | deaths at that depth that day |
+| `player` | `bigint` | distinct players who died at that depth that day |
+
+**Row set:** one row per (UTC day, `depth`) that has at least one `death`, with NULL depth
+forming its own group.
+
+**Why a `day` column, when §13.3 asks only «Смерти по глубине»**
+`[measured 8617a7c:docs/DESIGN.md:421 · sed -n '421p' docs/DESIGN.md → "- Смерти по глубине; судьба рюкзаков: брошен / подобран / испарился. …"]`.
+Round 4 shipped this view all-time, which left a Grafana panel unable to restrict it to a
+range and left the choice unmade rather than made. The two directions are not symmetric: with
+a day column a reader recovers the all-time distribution with `GROUP BY depth`, whereas
+without one no query recovers the daily split, and adding the grain later is not an append —
+it changes the row set, so it costs `DROP VIEW` + `CREATE VIEW` plus every panel bound to the
+old shape. The day leads the column list, as it does in the other day-grained views. The
+argument against — that a daily cut at MVP scale is the noise §13.4 warns about — is a
+panel-configuration matter, and the collapse is one clause away.
 
 The null-depth group is deliberate: the row is a data anomaly worth seeing, and silently
 discarding it would misreport the total. It is also the only degradation in the § What the
@@ -472,6 +497,9 @@ shipped views require table that a reader can actually notice.
 | `faucet` | `numeric` | value leaving World for the economy; `0` when none |
 | `sink` | `numeric` | value returning to World; `0` when none |
 | `net_to_economy` | `numeric` | `faucet` − `sink` |
+
+**Row set:** one row per (UTC day, kind) for which at least one posting touched a
+World-owned account that day. A kind with no World traffic on a day is absent, not zero.
 
 Reached through `posting → journal_entry` (for the day), `posting → account →
 account_definition` (for the kind) and `account → scope → owner` restricted to
@@ -489,16 +517,22 @@ kind exist.
 | `chat_id` | `bigint` | the chat's `owner.id` |
 | `notification` | `bigint` | `notification_sent` events for that chat that day |
 
-Rows with a null chat are **excluded**: §13.3's metric is the per-chat spam budget («штук в
-чат в день»), and a chat-less notification is not a per-chat number. The exclusion is
+**Row set:** one row per (UTC day, chat) with at least one chat-bearing `notification_sent`.
+A quiet chat-day is absent, not a zero row — which matters for a spam-budget panel, because
+"no row" and "zero notifications" read the same on a graph and differently in a query.
+
+Rows with a null chat are **excluded**: §13.3's metric is the per-chat spam budget
+`[measured 8617a7c:docs/DESIGN.md:424 · sed -n '424p' docs/DESIGN.md → "- **Нотификации: штук в чат в день + CTR кнопок.** Одновременно продукт и здоровье: спам-бюджет — дизайн-обязательство (см. 1), за ним надзор."]`,
+and a chat-less notification is not a per-chat number. The exclusion is
 asserted by a fixture row, not left implicit — and it is why `notification_sent` appears in
 the obligation table above.
 
 **`bot_kicked` gets no view, and that is the answer, not an omission.** §13.3 calls it the
-terminal metric with «Каждое событие — вскрытие» — *every event is an autopsy*, i.e. the
-reader wants the individual rows. An aggregate over `bot_kicked` destroys exactly what the
-metric is for; the query is `SELECT * FROM event WHERE type = 'bot_kicked'`. The spec left
-this to this design
+terminal metric — *every event is an autopsy*
+`[measured 8617a7c:docs/DESIGN.md:425 · sed -n '425p' docs/DESIGN.md → "- Терминальная метрика: **бот кикнут из чата.** Каждое событие — вскрытие."]`
+— i.e. the reader wants the individual rows. An aggregate over `bot_kicked` destroys
+exactly what the metric is for; the query is
+`SELECT * FROM event WHERE type = 'bot_kicked'`. The spec left this to this design
 `[measured 8617a7c:ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md:307-310 · sed -n '307,310p' … → "**`bot_kicked` as a view.** … `design-writer` may fold it into the notifications view or leave it out."]`.
 No JSONB GIN index either, for the reason the spec gives: no shipped view filters on a
 payload key.
@@ -542,7 +576,7 @@ project's own append-only positive control exists to prevent (`AGENTS.md` § Pat
 | 2 | Go mirrors: `EventVolumeClass`, `EventType` + the §13.4 members, `EventTypeDefinition` + the registry slice; extend both mirror tests (AC5) | `internal/store/enums.go`, `internal/store/catalog.go`, `internal/store/enums_test.go` | 1 |
 | 3 | Write API: `EventID`, `Event` as a `PostingBasis` implementation, `AppendEvent`, `ErrUnknownEventType` with the `errors.go`/`post.go` doc edits § Approach names, `PostingBasis`'s doc comment; tests for both paths, the nil-guard pair, the sentinel and transaction ownership (AC6–AC9) | `internal/store/ids.go`, `internal/store/event.go`, `internal/store/errors.go`, `internal/store/post.go`, `internal/store/basis.go`, `internal/store/basis_test.go`, `internal/store/event_test.go` | 2 |
 | 4 | Append-only sweep: extend the pattern to `event`, add its planted controls and the `event_type_definition` decoy, and extend the non-vacuity guard to the new migration (AC10) | `internal/store/append_only_test.go` | 1 |
-| 5 | The views: append them to the migration **with the exact column names, order and types § The views tables fix** and their English `§13.3` comments (the funnel's `player_started` attribution, retention's cohort-immaturity and raid-signal clauses), add the exact-view-set assertion, and the fixture-driven per-view expectations with their boundary cases plus the `ledger_kind` genericity test. **Each expected row is a literal in the test, never recomputed from the fixture** — a test that recomputes a view's own logic asserts nothing, and this is the one instruction that stops it (AC11–AC14) | `internal/store/migrations/00003_event_log.sql`, `internal/store/migrate_test.go`, `internal/store/views_test.go` | 1, 2 |
+| 5 | The views: append them to the migration **with the exact column names, order and types § The views tables fix** and their English `§13.3` comments (the funnel's `player_started` attribution **and its next-day return semantic**, retention's cohort-immaturity and raid-signal clauses), add the exact-view-set assertion, and the fixture-driven per-view expectations with their boundary cases plus the `ledger_kind` genericity test. **Each expected row is a literal in the test, never recomputed from the fixture** — a test that recomputes a view's own logic asserts nothing, and this is the one instruction that stops it (AC11–AC14) | `internal/store/migrations/00003_event_log.sql`, `internal/store/migrate_test.go`, `internal/store/views_test.go` | 1, 2 |
 | 6 | `domain-invariants.md` §5: the payload rule **with the reasoning § Approach states**; the whole § *What the shipped views require* table — obligations **and** non-obligations together; the mechanic-facing arc consequences (1:1, and no idempotency key); the §13.5 dashboard limb recorded as suspended with its lift condition; the deferred view families with their owning issues; the `events` → `event` spelling (AC15, AC16, and §5's share of AC18) | `ai-docs/domain-invariants.md` | — |
 | 7 | `docs/DESIGN.md`, in Russian: the log table's name at §13.1 and §13.5; «игровое событие (лог 13.1)» added to §11's «Стартовый реестр типов оснований» (AC17) | `docs/DESIGN.md` | — |
 | 8 | Propagation sweep by `AGENTS.md` § *Propagation Rule* step 4's criterion over `.claude/`, `AGENTS.md`, `ai-docs/`, `docs/**` and repo-root user-facing docs; the known members are `context.md`'s observability row and the architecture/status prose the landed code falsifies. History surfaces and `_inbox.jsonl` untouched (AC18) | `ai-docs/context.md`, plus whatever the criterion returns | 6, 7 |
@@ -595,9 +629,14 @@ Design and here.
   gate in this task can catch it, because this task writes its own fixture. The funnel's row
   set needs `chat_id` on `bot_added_to_chat`, its attribution needs `chat_id` on
   `player_started`, and the notification metric needs `chat_id` on `notification_sent` — if
-  #22, #30 or #43 emits without them, §13.3's headline number and the spam-budget metric are
-  silently empty forever. Mitigation: § *What the shipped views require* states each
-  obligation, the metric it feeds and its failure mode, and subtask 6 carries that table —
+  any of those is emitted without it, §13.3's headline number and the spam-budget metric are
+  silently empty forever. The obligation is recorded against the **event type**, not against
+  an issue number, because a wrong-but-existing `#N` passes the citation guard unchallenged;
+  the emitters whose issue titles actually name them are #30 and #43
+  `[measured 8617a7c:. · gh issue view 30/43 --json number,title,state → #30 [OPEN] "Chat location, deep-link onboarding, and player-to-chat membership"; #43 [OPEN] "Chat notification queue: rate limiter, the MVP set, deep-link buttons"]`,
+  and no open issue title names an emitter for `bot_added_to_chat`. Mitigation: § *What the
+  shipped views require* states each obligation, the metric it feeds and its failure mode,
+  and subtask 6 carries that table —
   both halves — into the page a mechanic author actually reads —
   `[derived → subtask 6's `domain-invariants.md` §5 content, and AC15/AC16's reading check]`.
 - **The permanent half of a view is its column set**, and `CREATE OR REPLACE VIEW` can only
@@ -650,7 +689,8 @@ Design and here.
   `[measured 8617a7c:internal/store/errors.go:36-48 · sed -n '36,48p' internal/store/errors.go → "ErrOverdraft … The transaction is aborted; the caller must roll back." / "ErrBalanceRowMissing … the caller must still roll back."]`.
 - **Adding the sentinel falsifies the doc comments that describe the sentinel set and the
   phase that raises each**, and a stale comment is the same defect class as a broken test
-  (DOC-5). Mitigation: the edits § Approach names for subtask 3 —
+  (DOC-5 — measured under § Approach's sentinel paragraph). Mitigation: the edits
+  § Approach names for subtask 3 —
   `[measured 8617a7c:internal/store/errors.go:5-6 · sed -n '5,6p' internal/store/errors.go → "// Post's eight sentinels. Compare with errors.Is; see Post's doc comment for" / "// which phase raises each and what state the transaction is left in."]`.
 - **The AC14 genericity test adds an enum member, which cannot be used by the transaction
   that added it.** Postgres refuses the use outright
@@ -820,9 +860,15 @@ fact about the tree, the assertion is not.
     enumerates views today, so this assertion is wholly new. `[derived → AC11, AC13]`
   - **One shared fixture, hand-computed expectations per view.** Events spanning several
     types, players, chats and days, inserted by direct SQL with explicit `ts` values (the Go
-    API stamps `now()` by design, so a multi-day fixture is necessarily SQL), plus a posting
-    group for the faucet/sink view. **Each view's expected rows are written out in the test
-    as a literal table, never recomputed from the fixture** — a test that recomputes the
+    API stamps `now()` by design, so a multi-day fixture is necessarily SQL). The faucet/sink
+    view's rows come the same way and for the same reason: its `day` is taken from
+    `journal_entry.ts`, which `Post` would stamp `now()`, so the fixture writes its
+    `journal_entry` and `posting` rows by **direct SQL with an explicit `ts`** — otherwise the
+    expected `day` could not be a literal, and computing it in the test would reintroduce a
+    midnight-boundary edge the literal exists to avoid. (The new `event_id` arc is available
+    to that fixture, so a ledger row written this way can still name its event.) **Each
+    view's expected rows are written out in the test as a literal table, never recomputed
+    from the fixture** — a test that recomputes the
     view's own logic asserts nothing, and would pass against almost any wrong view.
     `[derived → AC12]`
   - **Boundary case per view, each chosen so the window edge decides the answer:**
@@ -838,8 +884,9 @@ fact about the tree, the assertion is not.
     - retention — a day with events but **no** new players, so both rate columns are NULL
       rather than a division error; and a cohort whose D1 rate is a **fraction**, so an
       uncast integer division would render `0` and fail. `[derived → AC12]`
-    - deaths by depth — a `death` with a null `depth`, which forms its own row.
-      `[derived → AC12]`
+    - deaths by depth — a `death` with a null `depth`, which forms its own row; and deaths
+      on more than one UTC day, so the new `day` column is exercised rather than assumed
+      constant. `[derived → AC12]`
     - faucet/sink — a kind with a faucet and no sink, so the sink column is `0` and not
       NULL. `[derived → AC12]`
     - notifications — a `notification_sent` with a null chat, which is absent from the
@@ -861,6 +908,13 @@ fact about the tree, the assertion is not.
 - **Fixtures / helpers:** one seeding helper returning the owner ids it created, so each
   view's subtest reads the same world; and the existing rollback helper where a subtest
   mutates. `[derived → AC12]`
+- **Budget note, not a projected problem.** This file is one shared fixture plus a literal
+  expectation table per view, and `_test.go` is hard-gated
+  `[measured 8617a7c:Makefile:29-30,48-50 · sed -n '29,30p;48,50p' Makefile → "GO_MAX_LINES ?= 1000" / "GO_MAX_TEST_LINES ?= 1500" / the file-limits recipe applying the test limit to any path matching _test\.go$]`.
+  Nothing here is expected to approach it; the point is that its implementor should know the
+  gate exists **before** choosing how verbose the expectation tables get, because the cheap
+  fix is a second `_test.go`, not a terser table — terseness is what the literal-expectations
+  rule forbids.
 
 ### Subtasks 6–8 — the documentation subtasks
 
@@ -876,10 +930,11 @@ The mechanical half is narrower than it looks, and the difference matters to sub
 CI's link check globs **every** `.md` in the tree, so a relative link written in any of
 these subtasks is checked
 `[measured 8617a7c:.github/workflows/ci.yml:198 · sed -n '198p' .github/workflows/ci.yml → "for f in (p for p in pathlib.Path(\".\").rglob(\"*.md\") if \".git/\" not in str(p)):"]`.
-The citation guard is **not** that broad: it reads `.claude/`, `AGENTS.md` and `ai-docs/`
-only, minus `ai-docs/plans/` — so it covers subtasks 6 and 8 and does **not** reach
+The citation guard is **not** that broad: it reads `.claude/`, `AGENTS.md` and `ai-docs/`,
+minus `ai-docs/learnings.md`, `ai-docs/bugfix/`, `ai-docs/plans/`, `ai-docs/deferred/` and
+the guards' own test fixtures — so it covers subtasks 6 and 8 and does **not** reach
 `docs/DESIGN.md`
-`[measured 8617a7c:.claude/skills/ai-audit/scripts/check-citations.sh:130-132 · sed -n '130,132p' … → "grep -rnoE '(^|[^a-zA-Z0-9/_-])#[0-9]+\\b' .claude/ AGENTS.md ai-docs/ … | grep -v '^ai-docs/plans/' | grep -v '^ai-docs/deferred/'"]`.
+`[measured 8617a7c:.claude/skills/ai-audit/scripts/check-citations.sh:130-134 · sed -n '130,134p' … → "grep -rnoE '(^|[^a-zA-Z0-9/_-])#[0-9]+\\b' .claude/ AGENTS.md ai-docs/ 2>/dev/null | grep -v learnings.md | grep -v '^ai-docs/bugfix/' | grep -v '^ai-docs/plans/' | grep -v '^ai-docs/deferred/' | grep -v '/scripts/test-[a-z-]*\\.sh:'"]`.
 Consequence for subtask 6: every `#N` it writes into `ai-docs/domain-invariants.md` — for a
 deferred family's owning issue, for #30 beside the funnel's attribution note, and for the
 emitters named in the obligation table — must resolve against this repository's own
@@ -907,6 +962,11 @@ are cheap to revisit: each is a same-column-set replacement, which is the one ki
   reading and sits one column over in the same view, so the choice is declared in the view's
   comment as well as here.
 - **D1 and D7 are exactly day + 1 and day + 7**, not "active within the first N days".
+- **The funnel's last stage reads "returned" the same way**: a `raid_started` on the day
+  immediately after that player's own earliest raid day — not "raided again at any later
+  point", and not "was active the next day". It is the same class of chosen reading as the
+  two above and it feeds §13.3's headline MVP number, so it is declared in the view's SQL
+  comment rather than left inside the column table.
 - **The activation funnel attributes a player to the chat they started in** (owner, round 3),
   so a player active in several chats is credited to one. The general question is
   `docs/DESIGN.md` §16.7 «Привязка игрок↔чат (membership)», owned by #30 — this design does
