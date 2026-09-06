@@ -240,3 +240,10 @@ wrong-surface text by message twelve.
 **at:** fe46893
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-06 — testing — a test-diagnosability fix has no "red test" until you mutate a DIFFERENT failure class
+**What happened:** Running `/bugfix 63` — whose bug is that `TestDeadline_neighboursSurvive` cannot tell six scheduler outcomes apart — I hit Step 3's requirement for a failing test before the fix, and the requirement does not fit: the deliverable IS the test's discriminating power, so the "test" and the "fix" are one artefact and writing the assertions makes them pass immediately. Asserting that the enhanced test works would have been circular. Instead I measured the instrument: a throwaway probe (`err: pgx.ErrNoRows` on the succeeding neighbour's handler, over a `cp` backup) induced outcome (e) `FailureHandler` — deliberately NOT the outcome (c) `FailureDeadline` the test is about — and the pre-fix test printed the byte-identical opaque line `the succeeding neighbour's effects were not committed`, never reaching its own row check. Post-fix, the same probe printed `Failure:1` on `test.oneshot.ok` against `Failure:3` on the blocker. Baseline on the clean tree was PASS both before and after, which is what proved the probe rather than the tree was doing the work.
+**Rule:** When the defect is that a test cannot distinguish outcomes, the red/green pair is not "test fails, then passes" — under a probe that induces a real failure the test must STAY red, and the success criterion is that the failure line now NAMES the class. Pick the probe from a failure class the test is *not* about, or a probe inducing the class it already tolerates proves nothing. Run the clean-tree baseline on both sides of the fix too: without it, a probe that reddens is evidence about the probe, not about the instrument. This is `AGENTS.md` § *Patterns* 2 applied where the apparatus and the subject are the same file — the case the pattern's own examples do not cover, because there the instrument was always separable from what it measured.
+**at:** e19e42c
+**Kind:** validation
+**Escalated?** no

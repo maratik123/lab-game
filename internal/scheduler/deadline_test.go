@@ -557,7 +557,8 @@ func TestDeadline_neighboursSurvive(t *testing.T) {
 	dueNow(t, pool, reg, Request{Type: "test.oneshot.block"})
 	okID := dueNow(t, pool, reg, Request{Type: "test.oneshot.ok"})
 
-	w, err := New(Options{Pool: pool, Registry: reg, Config: cfg})
+	obs := &recordingObserver{}
+	w, err := New(Options{Pool: pool, Registry: reg, Config: cfg, Observer: obs})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -565,12 +566,38 @@ func TestDeadline_neighboursSurvive(t *testing.T) {
 		t.Fatalf("RunOnce: %v", err)
 	}
 
+	tasks := obs.Tasks()
+	block, blockFound := findObservationByType(tasks, "test.oneshot.block")
+	ok, okFound := findObservationByType(tasks, "test.oneshot.ok")
+	if len(tasks) != 2 || !blockFound || !okFound {
+		t.Fatalf("observations = %+v, want exactly one test.oneshot.block and one test.oneshot.ok", tasks)
+	}
+	if block.Outcome != OutcomeFailed || block.Failure != FailureDeadline {
+		t.Fatalf("observations = %+v, want test.oneshot.block Failed/FailureDeadline", tasks)
+	}
+	if ok.Outcome != OutcomeDone || ok.Failure != FailureNone {
+		t.Fatalf("observations = %+v, want test.oneshot.ok Done/FailureNone", tasks)
+	}
+
 	if manualCorrectionCount(t, pool, "neighbour-survives") != 1 {
-		t.Fatalf("the succeeding neighbour's effects were not committed")
+		t.Errorf("the succeeding neighbour's effects were not committed")
 	}
 	if _, _, _, _, found := schedulerTaskRow(t, pool, okID); found {
 		t.Fatalf("succeeding neighbour's row still present, want it deleted (Done, one-shot)")
 	}
+}
+
+// findObservationByType returns the first Observation in tasks whose Type
+// matches typ, and whether one was found. Keyed on Type rather than a
+// positional index, so the assertion does not silently depend on
+// discoverDue's ORDER BY run_at, id matching insertion order.
+func findObservationByType(tasks []Observation, typ Type) (Observation, bool) {
+	for _, task := range tasks {
+		if task.Type == typ {
+			return task, true
+		}
+	}
+	return Observation{}, false
 }
 
 // TestDeadline_ctxIgnoringHandler_negativeCase is D11's residue: a

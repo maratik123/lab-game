@@ -12,6 +12,21 @@ import (
 // setTimeoutsSQL sets the two transaction-local timeouts through
 // set_config(name, $1, true) rather than SET LOCAL name = $1, which is
 // not a parameterisable position (design D2 step 1).
+//
+// $1 is bound twice, deliberately: w.cfg.TaskTimeout drives both server-
+// side timeouts through the one knob, and context.WithTimeout below
+// (executeOne's deadlineCtx) is a third consumer of the same value, so
+// TaskTimeout drives three deadlines in total. The two set here differ
+// in what they measure: statement_timeout bounds one statement's own
+// duration, while idle_in_transaction_session_timeout bounds the Go-side
+// gaps BETWEEN statements inside this open transaction — the time the
+// worker itself spends between round trips, not any single query.
+//
+// That distinction matters when choosing a value: the deadline branch
+// (see the breach case below) hijacks the connection without rolling
+// back, so idle_in_transaction_session_timeout is what eventually
+// releases the row's lock — it is load-bearing for lock-release timing,
+// not only for classifying the failure as FailureDeadline.
 const setTimeoutsSQL = `SELECT set_config('statement_timeout', $1, true), set_config('idle_in_transaction_session_timeout', $1, true)`
 
 // handlerResult is what the handler goroutine reports back to executeOne.
