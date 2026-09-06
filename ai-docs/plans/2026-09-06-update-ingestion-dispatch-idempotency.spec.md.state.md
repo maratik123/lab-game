@@ -61,7 +61,16 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
-agent_id: null
-prior_qa: []
+round: 2
+agent_id: a1ae9486e8e4caa8e
+prior_qa:
+  - round: 1
+    question: "Where is a repeated update caught - in the loop before dispatch, or at the handler's store.Post?"
+    answer: "Handler's Post - the handler builds the PlayerOperation basis from the update key the loop hands it and passes it to store.Post; the existing ErrAlreadyPosted path refuses the replay and internal/store is untouched. An update that moves no balance writes no document and its non-ledger effects replay in full."
+  - round: 1
+    question: "When a handler returns an error, does the polling offset advance past that update?"
+    answer: "Retry, then advance - bounded in-process retry with a growing delay up to a cap, then advance past it and record a poison update. Mirrors the scheduler's one-shot failure policy and its terminal give-up state."
+  - round: 1
+    question: "What does the outbound gate do with a chat id that is not in ALLOWED_CHAT_IDS?"
+    answer: "DM always allowed - the list governs group and channel chats; every private chat is allowed. Simplest, no database read; the safety net then covers group traffic only."
 ```
