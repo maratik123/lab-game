@@ -8,8 +8,8 @@ _Updated: 2026-09-06 08:27_
 **Last build:** not run
 **Issue:** #21
 **Spec:** ai-docs/plans/2026-09-05-event-log-dictionary-views.spec.md
-**current_step:** Step 8 — subtask 2 of 8 complete
-**last_passed_gate:** golangci-lint run | 2026-09-06T08:36:44Z | e8b3c3ac98b8a231aba781e136d02740a04a630d
+**current_step:** Step 8 — subtask 3 of 8 complete
+**last_passed_gate:** golangci-lint run | 2026-09-06T08:41:48Z | 121e7a3a793d801b0207df2c9eab4f5fbecda349
 **entry_args:** 21
 
 ## Next action
@@ -20,7 +20,7 @@ _Updated: 2026-09-06 08:27_
 
 - [x] 1. Migration: `event_volume_class`, `event_type_definition` + §13.4 seeds, `event` + indexes, the `journal_entry` arc extension; table-list and goose-count assertions
 - [x] 2. Go mirrors: `EventVolumeClass`, `EventType`, `EventTypeDefinition` + registry slice; extend both mirror tests (AC5)
-- [ ] 3. Write API: `EventID`, `Event` as a `PostingBasis`, `AppendEvent`, `ErrUnknownEventType` + the doc edits (AC6–AC9)
+- [x] 3. Write API: `EventID`, `Event` as a `PostingBasis`, `AppendEvent`, `ErrUnknownEventType` + the doc edits (AC6–AC9)
 - [ ] 4. Append-only sweep: extend the pattern to `event`, planted controls, the `event_type_definition` decoy, non-vacuity guard (AC10)
 - [ ] 5. The views: five views with fixed column names/order/types + §13.3 comments, exact-view-set assertion, literal per-view expectations (AC11–AC14)
 - [ ] 6. `domain-invariants.md` §5: payload rule + reasoning, the whole obligations/non-obligations table, arc consequences, suspended §13.5 limb, deferred families (AC15, AC16, AC18)
@@ -31,6 +31,7 @@ _Updated: 2026-09-06 08:27_
 
 - **Step 8**: Group A (1–5, `code-writer`, model pinned by frontmatter) runs before Group B (6–8, `general-purpose`, inherit) — subtask 8's sweep must run against the tree the code produced.
 - **Step 8 subtask 1**: `event_volume_class` members are `low_volume`/`high_volume` per the design (names the axis, not the reader). `event.type`'s FK to `event_type_definition (code)` is named `event_type_fkey` so the write API (subtask 3) can map its SQLSTATE 23503 violation to `ErrUnknownEventType`. Strengthened the pre-existing `journal_entry_exactly_one_basis` substring check to name all five arc columns rather than the bare `num_nonnulls` substring that the pre-change form already satisfied. Filtered `TestMigrate_shape_and_seeds`'s table-list query to `table_type = 'BASE TABLE'` ahead of subtask 5 introducing views. A migration comment using the word "grant" (in prose, not SQL) tripped `TestMigrate_hygiene`'s `GRANT` pattern — reworded to avoid the substring.
+- **Step 8 subtask 3**: `Event.insert` maps SQLSTATE 23503 on constraint `event_type_fkey` specifically (not any FK violation) to `ErrUnknownEventType`, mirroring `Post`'s `ErrOverdraft` mapping pattern in `post.go`. `sqlstateForeignKeyViolation`/`constraintEventTypeFKey` live in `event.go` since nothing else in the package needs them. Verified with `go test -race ./internal/store/` (green) in addition to the plain suite, since the write API adds a new `pgx.Tx`-facing code path.
 
 ## Key discoveries (don't re-investigate)
 
@@ -75,3 +76,10 @@ _Updated: 2026-09-06 08:27_
 - `internal/store/enums.go`
 - `internal/store/catalog.go`
 - `internal/store/enums_test.go`
+- `internal/store/ids.go`
+- `internal/store/errors.go`
+- `internal/store/basis.go`
+- `internal/store/post.go`
+- `internal/store/event.go` (new)
+- `internal/store/basis_test.go`
+- `internal/store/event_test.go` (new)
