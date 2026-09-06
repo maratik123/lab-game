@@ -10,10 +10,10 @@ import (
 )
 
 // PostingBasis is the sealed sum type of documents a journal_entry may
-// reference — exactly the store package's four implementations,
-// *PlayerOperation, *ManualCorrection, *DeferredTask and *RecurrentTask.
-// The unexported methods make it unrepresentable to satisfy from outside
-// the package, and every method is safe to call on a nil receiver:
+// reference — exactly the store package's five implementations,
+// *PlayerOperation, *ManualCorrection, *DeferredTask, *RecurrentTask and
+// *Event. The unexported methods make it unrepresentable to satisfy from
+// outside the package, and every method is safe to call on a nil receiver:
 // entrySQL returns ErrNoBasis instead of issuing SQL, which is what lets
 // Post reject a typed-nil basis before any statement.
 type PostingBasis interface {

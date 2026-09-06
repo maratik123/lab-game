@@ -18,3 +18,6 @@ const WorldMoney AccountID = 1
 // WorldExperience is the seeded id of the World's uncontrolled experience
 // account.
 const WorldExperience AccountID = 2
+
+// EventID identifies a row in the event table.
+type EventID int64

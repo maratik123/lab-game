@@ -58,8 +58,9 @@ const (
 //	   nothing).
 //	c. zero-sum check per kind, no SQL (ErrUnbalanced, untouched).
 //	d. insert the basis document, then the journal_entry
-//	   (ErrAlreadyPosted on a player-operation replay, untouched; any
-//	   other error: aborted).
+//	   (ErrAlreadyPosted on a player-operation replay, untouched;
+//	   ErrUnknownEventType on an event basis naming an unregistered type,
+//	   aborted; any other error: aborted).
 //	e. one plain UPDATE per controlled account with a non-zero delta, in
 //	   ascending account_id (ErrOverdraft or ErrBalanceRowMissing, or any
 //	   other wrapped database error — all leave the transaction aborted,
