@@ -568,15 +568,15 @@ func TestDeadline_neighboursSurvive(t *testing.T) {
 
 	tasks := obs.Tasks()
 	block, blockFound := findObservationByType(tasks, "test.oneshot.block")
-	ok, okFound := findObservationByType(tasks, "test.oneshot.ok")
+	neighbour, okFound := findObservationByType(tasks, "test.oneshot.ok")
 	if len(tasks) != 2 || !blockFound || !okFound {
-		t.Fatalf("observations = %+v, want exactly one test.oneshot.block and one test.oneshot.ok", tasks)
+		t.Errorf("observations = %+v, want exactly one test.oneshot.block and one test.oneshot.ok", tasks)
 	}
 	if block.Outcome != OutcomeFailed || block.Failure != FailureDeadline {
-		t.Fatalf("observations = %+v, want test.oneshot.block Failed/FailureDeadline", tasks)
+		t.Errorf("observations = %+v, want test.oneshot.block Failed/FailureDeadline", tasks)
 	}
-	if ok.Outcome != OutcomeDone || ok.Failure != FailureNone {
-		t.Fatalf("observations = %+v, want test.oneshot.ok Done/FailureNone", tasks)
+	if neighbour.Outcome != OutcomeDone || neighbour.Failure != FailureNone {
+		t.Errorf("observations = %+v, want test.oneshot.ok Done/FailureNone", tasks)
 	}
 
 	if manualCorrectionCount(t, pool, "neighbour-survives") != 1 {
