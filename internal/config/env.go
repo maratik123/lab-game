@@ -46,14 +46,15 @@ type Lookup func(key string) (value string, ok bool)
 // built on every call (AC1 — no package-level mutable state). It is the
 // set AC16's "consults no environment variable outside the documented set"
 // is checked against, and the set .env.example is asserted to equal
-// exactly (AC8). transportEnvKeys() and schedulerEnvKeys() — the two
-// optional-with-default tuning classes — are appended alongside
-// envBalancePath and envWorldPath, each validated by its own dedicated
-// reader rather than by loadEnv (design D10, D13).
+// exactly (AC8). transportEnvKeys(), schedulerEnvKeys() and
+// ingestEnvKeys() — the three optional-with-default tuning classes — are
+// appended alongside envBalancePath and envWorldPath, each validated by
+// its own dedicated reader rather than by loadEnv (design D10, D13, D15).
 func EnvKeys() []string {
 	keys := append(envKeys(), envBalancePath, envWorldPath)
 	keys = append(keys, transportEnvKeys()...)
-	return append(keys, schedulerEnvKeys()...)
+	keys = append(keys, schedulerEnvKeys()...)
+	return append(keys, ingestEnvKeys()...)
 }
 
 // envValues holds the environment layer's validated results: the two
