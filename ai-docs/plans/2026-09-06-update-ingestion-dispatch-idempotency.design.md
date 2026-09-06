@@ -109,7 +109,7 @@ would force either a rename or an import alias — cost with no benefit.
 | package | deleted | re-pointed to |
 |---|---|---|
 | `internal/tg` | `backoffDelay` | `backoff.EqualJitter` (attempt argument first), at the production call site in `internal/tg/caller.go` and at the direct calls in `internal/tg/retry_test.go` [measured febae63 · `rg -U --type go -n 'backoffDelay\s*\(' internal/tg/` → the declaration in `internal/tg/retry.go`, call sites in `internal/tg/caller.go` and `internal/tg/retry_test.go`, plus failure-message mentions in the latter; no other file]. `defaultJitter` and the jitter-bounds contract stay in `internal/tg`. |
-| `internal/scheduler` | `backoff` | `backoff.Exponential`, at the persisted-`run_at` computations in `internal/scheduler/settle.go` and at the direct calls in `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go` [measured febae63 · `rg -U --pcre2 --type go -n '(?<![A-Za-z_.])backoff\s*\(' internal/scheduler/` → the declaration in `internal/scheduler/cadence.go`, calls in `internal/scheduler/settle.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go`, plus comment and failure-message mentions in the last three; no other file]. The one-based→zero-based translation is written at the call site, where the `consecutive_failures` value it converts is visible [measured febae63:internal/scheduler/settle.go:142 · `sed -n '142p' internal/scheduler/settle.go` → `runAt := s.Add(backoff(k, cfg.RetryBaseDelay, cfg.RetryMaxDelay))`, with `k` the row's `consecutive_failures`]. |
+| `internal/scheduler` | `backoff` | `backoff.Exponential`, at the persisted-`run_at` computations in `internal/scheduler/settle.go` and at the direct calls in `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go` [measured febae63 · `rg -U --pcre2 --type go -n '(?<![A-Za-z_.])backoff\s*\(' internal/scheduler/` → the declaration in `internal/scheduler/cadence.go`, calls in `internal/scheduler/settle.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go`, plus comment and failure-message mentions in the last three; no other file]. The one-based→zero-based translation is written at the call site, where the `consecutive_failures` value it converts is visible [measured febae63:internal/scheduler/settle.go:142 · `sed -n '142p' internal/scheduler/settle.go` → `runAt := s.Add(backoff(k, cfg.RetryBaseDelay, cfg.RetryMaxDelay))`, with `k` the row's `consecutive_failures`]. **Per test file, the disposition is fixed, not left open.** `cadence_test.go`'s `TestBackoff_exactTable` and `TestBackoff_strictlyGrowingUntilCeiling` stay, with the same translation written into their *arguments* so their one-based `cases` table and every asserted bound stay byte-identical — see the disposition paragraph above. `failure_test.go` and `deadline_test.go` call no ramp at all afterwards: their `backoff(attempt, …)`-derived expected value is replaced by the literal one-based ramp of the call-site gate. |
 
 The scan above is multiline-aware (`rg -U`) per `design-writer` § Rules, and it reaches three
 classes the implementor must not conflate: **call expressions**, which re-point; **comment prose**
@@ -122,17 +122,40 @@ ramp tests *compiling* unchanged, so "they pass unchanged" is not an available g
 written as one. The first half of the gate is narrower and actually checkable: in
 `internal/tg/retry_test.go`, `internal/scheduler/cadence_test.go`,
 `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go`, **every
-*pre-existing* assertion and every *pre-existing* expected value stays byte-identical; only the call
-expression is re-pointed.** A changed pre-existing expected value in any of them is the signal that
-the adoption was not behaviour-preserving, and is a scope-boundary item for the orchestrator rather
-than something the implementor absorbs. Those tests exist today and are what the re-pointing
-preserves [measured 1fce8b5:internal/scheduler/cadence_test.go:8,33 and
-internal/tg/retry_test.go:127,682 · `grep -n 'func Test.*[Bb]ackoff'
-internal/scheduler/cadence_test.go internal/tg/retry_test.go` →
+*pre-existing* assertion and every *pre-existing* expected value stays byte-identical; the call
+expression is re-pointed, and its *argument* may carry the one-based→zero-based translation.**
+The rule reads in that order and only in that order: *an argument may carry the translation; an
+assertion or an expected value may not move.* A changed pre-existing expected value in any of them is
+the signal that the adoption was not behaviour-preserving, and is a scope-boundary item for the
+orchestrator rather than something the implementor absorbs. The tests this rule governs exist today
+[measured 1fce8b5:internal/scheduler/cadence_test.go:8,33 and internal/tg/retry_test.go:127,682 ·
+`grep -n 'func Test.*[Bb]ackoff' internal/scheduler/cadence_test.go internal/tg/retry_test.go` →
 `TestRetry_JitterOptionThreadedThroughToBackoff`, `TestBackoffDelay_JitterBoundsExactly`,
 `TestBackoff_exactTable`, `TestBackoff_strictlyGrowingUntilCeiling`].
 
-**That half is necessary and NOT sufficient, and the hole sits exactly where the translation is.**
+**The argument half is not a loophole — it is mandatory at one site, and that site is a test.**
+`cadence_test.go` pins the scheduler's ramp through a `cases` table whose key column is **one-based**
+[measured 07e5177:internal/scheduler/cadence_test.go:12-24 · `sed -n '12,24p'
+internal/scheduler/cadence_test.go` → `failures int` / `want time.Duration` over
+`{1, time.Second}` … `{7, 30 * time.Second}`], so a re-point that leaves `tc.failures` standing in
+front of a zero-based `Exponential` reds it — measured below. Keeping that table byte-identical
+therefore *requires* translating the argument there, exactly as `settle.go` translates `k`. Nothing
+about that buys a green run for a moved expectation: what may not move is the expected value, and the
+site where a wrong argument still silently **passes** is the production call site, which is the
+literal ramp's job further down.
+
+**Disposition of `cadence_test.go`'s ramp tests, fixed here so the implementor does not have to
+choose.** `TestBackoff_exactTable` and `TestBackoff_strictlyGrowingUntilCeiling` both survive the
+adoption in place, re-pointed at `backoff.Exponential` with the translation written into the argument
+— `tc.failures` in the table-driven one, the seed and the loop variable in the monotonicity one —
+so the `cases` table, every expected duration and every asserted bound stay byte-identical. They are
+neither deleted as superseded by subtask 1's table nor re-indexed in their data: what they pin after
+the adoption is `internal/scheduler`'s **one-based** `failures → delay` mapping, cheaply and with no
+database, and that mapping stays this package's meaning even though the arithmetic has moved one
+directory away. What they do not pin — and never did — is which argument `settle.go` passes.
+
+**That first half of the gate is necessary and NOT sufficient, and the hole sits exactly where the
+translation is.**
 `internal/scheduler`'s persisted-`run_at` sites are the ones needing the one-based→zero-based
 translation, and the shipped assertions over a persisted retry `run_at` compute their expected value
 through **the same function the call site uses**
@@ -140,16 +163,46 @@ through **the same function the call site uses**
 · `rg -n --pcre2 '(?<![A-Za-z_.])backoff\s*\(' internal/scheduler/*_test.go` → `want :=
 backoff(attempt, cfg.RetryBaseDelay, cfg.RetryMaxDelay)` at each, the test's `attempt` asserted equal
 to the row's `consecutive_failures` on the preceding lines; every other test hit is `cadence_test.go`
-pinning the function itself, or comment and failure-message prose]. So an implementor applying the
-*natural* mechanical re-point — `backoff(x, …)` → `backoff.Exponential(x, …)` at production and test
-sites alike — omits the translation **consistently**: every expected value stays byte-identical,
-`cadence_test.go`'s exact table still passes (it pins `Exponential`, not the call site),
-`internal/backoff`'s own table still passes, and `make verify` is green — while every scheduler
-retry's persisted `run_at` doubles and the give-up cadence moves with it. That is the data-visible
-regression the paragraphs above name, and **no shipped suite can see it**. `internal/tg` is not
-exposed: its expected values are literals and its adoption needs no translation — which is why the
-hole is invisible from the adopter that does have a table, and why "the shared package has its own
-table" is not an answer to it.
+pinning the function itself, or comment and failure-message prose]. What that suite can and cannot
+see was measured on a scratch copy of this tree, and the shape of the hole is narrower — and worse —
+than "the suite is blind".
+
+**Measured, un-translated everywhere: the suite catches it, at the one test that pins the ramp
+directly.** Re-pointing every `backoff(x, …)` to `backoff.Exponential(x, …)` with every argument left
+standing reds `cadence_test.go`'s one-based `TestBackoff_exactTable`
+[measured 07e5177 · a scratch copy of this tree with `internal/backoff.Exponential` added,
+`internal/scheduler`'s `backoff` deleted and every call re-pointed with its argument untouched ·
+`go test ./internal/scheduler/` → `--- FAIL: TestBackoff_exactTable` reporting
+`backoff(1, 1s, 30s) = 2s, want 1s` through `backoff(5, 1s, 30s) = 30s, want 16s`, with
+`TestBackoff_strictlyGrowingUntilCeiling`, `TestFailurePolicy_oneShotAttemptsGrowAndGiveUp` and
+`TestDeadline_successiveBreaches_growingDelay` green]. An earlier revision of this design asserted
+the opposite — that the natural re-point keeps every suite green — and ordered that sentence into
+the implementor's prompt; it is false, and neither the gate below nor its spawn contract may be
+justified by it.
+
+**Measured, translated only where that red forces it: the suite goes green, and the persisted delay
+doubles.** The only way to keep the `cases` table byte-identical is to translate the argument in
+`cadence_test.go`. An implementor who does exactly that — the minimal fix for the only failure the
+suite reports — and leaves the argument alone at `settle.go` and at both `want :=` lines gets a
+wholly green package
+[measured 07e5177 · the same scratch tree with `cadence_test.go`'s argument translated
+(`Exponential(tc.failures-1, …)`, its table untouched) and `settle.go` plus both `want :=` lines left
+zero-based · `go test ./internal/scheduler/` → `ok  	github.com/maratik123/lab-game/internal/scheduler`],
+while every scheduler retry's persisted `run_at` doubles and the give-up cadence moves with it.
+
+**Measured, translated correctly: the suite returns the same green.** With the translation written at
+`settle.go` and at both of those lines, the package passes again
+[measured 07e5177 · the same scratch tree with `Exponential(k-1, …)` at both `settle.go` sites and
+`Exponential(attempt-1, …)` at both `want :=` lines · `go test ./internal/scheduler/` →
+`ok  	github.com/maratik123/lab-game/internal/scheduler`]. So the shipped suite's verdict is
+**invariant** to the call-site translation: the same green for the adoption that preserves every
+persisted `run_at` and for the one that doubles it. That invariance — not blindness in general — is
+the hole, and its cause is structural: the assertions that watch a persisted `run_at` derive their
+expected value from the very function the call site calls, so both legs move together.
+`internal/backoff`'s own table cannot close it either, since that table pins the shared function and
+the defect is in the argument handed to it. `internal/tg` is not exposed at all — its expected values
+are literals and its adoption needs no translation — so no amount of green from the other adopter
+says anything about this one.
 
 **So the second half of the gate pins the CALL SITE, independent of the shared function.** In
 `internal/scheduler/failure_test.go`, which drives the one-shot settlement
@@ -169,9 +222,9 @@ ceilings their base configs set], so the one-based ramp (`200ms`, `400ms`) and t
 (`400ms`, `800ms`-clamped-to-`500ms`) disagree at **every** attempt either test asserts: the omitted
 translation reds both, by a readable factor rather than by a flake.
 
-**That substitution is the sole carve-out from the byte-identical rule, and in substance it is not an
-exception to it.** The literal ramp reproduces the *same durations* the shipped
-`backoff(attempt, …)` computes for those attempts — which is exactly what step (a)'s green run
+**That substitution is the sole carve-out from the expected-value half of the byte-identical rule,
+and in substance it is not an exception to it.** The literal ramp reproduces the *same durations* the
+shipped `backoff(attempt, …)` computes for those attempts — which is exactly what step (a)'s green run
 against the still-shipped ramp proves before anything is re-pointed. What changes is where the
 expected value comes from, never what it is; and after step (a) the literal ramp is itself a
 pre-existing expected value that step (c)'s re-point must leave byte-identical. Nowhere else in
@@ -181,9 +234,26 @@ these files does new assertion text land.
 trustworthy.** The literal ramp lands **first**, against the still-shipped one-based `backoff`, and
 is green there; only then is the re-point applied. And because a green instrument is a claim about
 the instrument until it has been seen to go red (`AGENTS.md` § Patterns 2), the implementor confirms
-it discriminates before trusting it: with the literal ramp in place, apply the *wrong* translation
-(`Exponential(k, …)` at both `settle.go` sites), run
-`go test ./internal/scheduler/ -run 'TestFailurePolicy|TestDeadline'`, observe **RED**, then restore.
+it discriminates before trusting it: with the literal ramp in place and the re-point not yet applied,
+apply the *wrong* delay at both `settle.go` sites — written in the shipped ramp's own units as
+`backoff(k+1, …)` — run `go test ./internal/scheduler/ -run
+'TestFailurePolicy_oneShotAttemptsGrowAndGiveUp|TestDeadline_successiveBreaches_growingDelay'`,
+observe **RED**, then restore.
+
+Two properties of that expression are deliberate. It computes exactly what the omitted translation's
+`Exponential(k, …)` would [measured 07e5177 · a probe comparing the shipped `backoff` with the
+`Exponential` this design specifies · `go run .` → `Exponential(k,b,c) == backoff(k+1,b,c) over every
+(base,ceiling,k) tried: mismatches=0`, over the base/ceiling pairs these tests and `cadence_test.go`
+use and attempts past the ceiling]. And it **compiles**, which `Exponential(k, …)` at this point in
+the sequence does not: while `func backoff` still stands in the package, no file of
+`internal/scheduler` may import `internal/backoff` at all
+[measured 07e5177 · a scratch copy of this tree with `internal/backoff` added and `settle.go`
+importing it while `cadence.go`'s `backoff` still stands · `go build ./internal/scheduler/` →
+`internal/scheduler/cadence.go:34:6: backoff already declared through import of package backoff
+("github.com/maratik123/lab-game/internal/backoff")`] — the same package-wide collision D2's
+delete-and-re-point table already turns on. The probe's RED is attributable to the literal ramp
+rather than to a surviving `backoff(attempt, …)` expected value, because step (a) has already
+replaced both `want :=` lines with it.
 The restore is a `cp` backup of `settle.go` taken before the probe and copied back — never
 `git checkout -- <file>`, which `AGENTS.md` § Workflow names as the command that silently discards
 every other uncommitted edit to the file. A probe that comes back **green** means the gate is not the
@@ -302,6 +372,32 @@ where the update is a callback query. That is the structural form of spec Scope 
 requirement: a handler cannot assemble an `operation_id` from raw Telegram fields because it has no
 function to assemble one with. AC13, AC14. A third id space costs a new member and a new field, never
 a migration of stored rows.
+
+**`ingest.Update` holds the raw `telego.Update` in a NAMED field, and a handler's context is its
+first parameter.** Spec *Technical constraints* item 5 states the rule; what the dependency actually
+does makes it a design obligation rather than a reminder to be careful. `telego.Update` carries an
+unexported `context.Context` reachable through `Update.Context()` and `Update.WithContext()`
+[measured 07e5177:telego@v1.11.2/types.go:126-129,163-165,171-177 ·
+`sed -n '126,129p;163,165p;171,177p' $(go env GOMODCACHE)/github.com/mymmrac/telego@v1.11.2/types.go`
+→ `ctx context.Context` under `// ctx - Internal context value can be retrieved using
+[Update.Context] and set by [Update.WithContext]`; `// The returned context is always non-nil; it
+defaults to the background context.`; and `// Warning: Panics if nil context passed.` over
+`func (u Update) WithContext(ctx context.Context) Update {` / `if ctx == nil {` /
+`panic("Telego: nil context not allowed")`]; and the generated `GetUpdates` this loop polls through
+unmarshals its result and attaches no context to it
+[measured 07e5177:telego@v1.11.2/methods.go:70-77 · `sed -n '70,77p'
+$(go env GOMODCACHE)/github.com/mymmrac/telego@v1.11.2/methods.go` → `var updates []Update` /
+`err := b.performRequest(ctx, "getUpdates", params, &updates)` / `return updates, nil`]. So the
+context riding in every update this package sees is a `context.Background()`: a handler reading it
+would hold a context with no cancellation and no deadline, silently escaping both the loop's `ctx`
+and D6's per-attempt transaction — the failure would look like a handler that keeps working after the
+loop was cancelled, which is D7's risk row seen from the other end. Therefore: the raw update is a
+**named** field of `ingest.Update`, never embedded, because embedding would promote `Context()` and
+`WithContext()` onto this package's own exported type; the `Handler`'s context is its first
+parameter; the riding one is never read; and `WithContext` is never called — it panics on a nil
+context, as the measurement above shows, and D7's zero-panic posture has no reason to invite that
+`panic` into a handler's call path. Subtask 11's ctx walk covers each of those — the field's type,
+the embedding, and the calls. AC2.
 
 **D10 — the gate asks *who*, never *what kind of chat*.** `ingest.Gate` implements `tg.Gate`:
 `ChatNone` is allowed, `ChatUnknown` is refused, and a `ChatKnown` destination is allowed when its
@@ -618,17 +714,17 @@ server therefore leaves the loop exactly where it was, and the next cycle re-ask
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
 | 1 | New shared package `internal/backoff`: `Exponential` and `EqualJitter`, package comment, exported doc comments, table + monotonicity tests | `internal/backoff/backoff.go`, `internal/backoff/backoff_test.go` | — |
-| 2 | Adopt `internal/backoff` in the two shipped packages per D2, in this order. **(a) First, the call-site gate**, against the still-shipped one-based `backoff`: in `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go`, replace the `backoff(attempt, …)`-derived expected `run_at` with a **literal one-based ramp table** that calls no ramp function, and confirm it is green — the green run is what proves the literals are the durations the shipped ramp already computes, which is why this substitution is the sole carve-out from (c)'s byte-identical rule rather than a break in it. **(b) Then prove the instrument**: apply the wrong translation (`Exponential(k, …)`) at both `settle.go` sites over a `cp` backup, run the scheduler suite (`go test ./internal/scheduler/`), require **RED** on the failure- and deadline-policy tests, restore from the backup (never `git checkout -- <file>`). A green probe is a STOP for the orchestrator. **(c) Then the adoption**: delete `backoffDelay` and `backoff`, re-point **every** call site — production and test — with the one-based→zero-based translation written at `settle.go`'s call sites, keeping every *pre-existing* assertion and expected value byte-identical. The listed sites are a floor enumerated by `rg -U`; `make verify` is re-run after they clear, and any newly revealed site outside this contract is surfaced, not absorbed | `internal/tg/retry.go`, `internal/tg/caller.go`, `internal/tg/retry_test.go`, `internal/scheduler/cadence.go`, `internal/scheduler/settle.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go`, `internal/scheduler/deadline_test.go` | 1 |
+| 2 | Adopt `internal/backoff` in the two shipped packages per D2, in this order. **(a) First, the call-site gate**, against the still-shipped one-based `backoff`: in `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go`, replace the `backoff(attempt, …)`-derived expected `run_at` with a **literal one-based ramp table** that calls no ramp function, and confirm it is green — the green run is what proves the literals are the durations the shipped ramp already computes, which is why this substitution is the sole carve-out from (c)'s expected-value rule rather than a break in it. **(b) Then prove the instrument**: apply the wrong delay at both `settle.go` sites over a `cp` backup — `backoff(k+1, …)`, in the shipped ramp's own units, which is the omitted translation's arithmetic and, unlike `Exponential(k, …)`, compiles while `func backoff` still stands — run `go test ./internal/scheduler/ -run 'TestFailurePolicy_oneShotAttemptsGrowAndGiveUp\|TestDeadline_successiveBreaches_growingDelay'`, require **RED**, restore from the backup (never `git checkout -- <file>`). A green probe is a STOP for the orchestrator. **(c) Then the adoption**: delete `backoffDelay` and `backoff`, re-point **every** call site — production and test — with the one-based→zero-based translation written at `settle.go`'s call sites **and** at `cadence_test.go`'s, per D2's per-file disposition; every *pre-existing* assertion and expected value stays byte-identical, an argument may carry the translation and nothing else in those files moves. `cadence_test.go`'s `TestBackoff_exactTable` and `TestBackoff_strictlyGrowingUntilCeiling` stay in place under that rule — a re-point that leaves their argument standing reds the one-based table (measured in D2), and re-indexing that table's `failures` column instead of the argument is a scope-boundary item to surface, never the fix. The listed sites are a floor enumerated by `rg -U`; `make verify` is re-run after they clear, and any newly revealed site outside this contract is surfaced, not absorbed | `internal/tg/retry.go`, `internal/tg/caller.go`, `internal/tg/retry_test.go`, `internal/scheduler/cadence.go`, `internal/scheduler/settle.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go`, `internal/scheduler/deadline_test.go` | 1 |
 | 3 | `config.Ingest` + the `LAB_GAME_INGEST_` reader; `EnvKeys()` append; **both** `Load` cross-checks on `LAB_GAME_INGEST_LONG_POLL_TIMEOUT` per D16 — strictly below `AttemptTimeout`, and a whole number of seconds — each a `*KeyError` naming that variable; `.env.example` lines | `internal/config/ingest.go`, `internal/config/config.go`, `internal/config/env.go`, `internal/config/ingest_test.go`, `.env.example` | — |
 | 4 | Forward migration `00004_ingest.sql`: `ingest_offset` (guarded singleton, seeded) and `ingest_dead_update`. **The two new tables break `internal/store`'s exact base-table assertion**, which enumerates the whole set and compares with `slices.Equal` [measured febae63:internal/store/migrate_test.go:41-47 · `sed -n '41,47p' internal/store/migrate_test.go` → `want := []string{` … `"account", "account_balance", "account_definition",` … `"scope", "scope_definition",` … `}`]; that set is extended with both new names in this subtask, and the new tables' constraints get their cases in `schema_test.go`, so Group A leaves `internal/store` green on its own rather than relying on its consumer in Group B | `internal/store/migrations/00004_ingest.sql`, `internal/store/migrate_test.go`, `internal/store/schema_test.go` | — |
 | 5 | `store.Queryer` and `store.PlayerExists` — the read-only owner lookup, with its tests; **and the delete-and-re-point of the package's shipped test-local near-duplicate** per D11: `queryRower` is removed and `balanceOf` takes `store.Queryer`, so one method set has one name in this package | `internal/store/owner.go`, `internal/store/owner_test.go`, `internal/store/post_test.go` | — |
-| 6 | `internal/ingest` core types: package comment, `Kind` with D4's table and its date/chat extractors, `IDSpace` and the unexported `operation_id` builder, `Handler`/`Update`, `Route`/`Router`/`NewRouter`/`Kinds`, the package's sentinels. **The `Handler` doc comment carries two obligations, not one**: propagate the handed `ctx` to every call on `tx` (D7's risk row), and issue no outbound Bot API call whose permission rests on a row this transaction has not committed (D18) | `internal/ingest/doc.go`, `internal/ingest/kind.go`, `internal/ingest/operation.go`, `internal/ingest/router.go`, `internal/ingest/errors.go`, plus their `_test.go` files | — |
+| 6 | `internal/ingest` core types: package comment, `Kind` with D4's table and its date/chat extractors, `IDSpace` and the unexported `operation_id` builder, `Handler`/`Update`, `Route`/`Router`/`NewRouter`/`Kinds`, the package's sentinels. **The `Handler` doc comment carries more than the ctx-propagation obligation**: propagate the handed `ctx` to every call on `tx` (D7's risk row); use that handed `ctx` and never the one riding inside the update, which for an update off this poll path is a `context.Background()` (D9, spec *Technical constraints* item 5); and issue no outbound Bot API call whose permission rests on a row this transaction has not committed (D18). `Update` holds the raw `telego.Update` in a named field, never embedded (D9) | `internal/ingest/doc.go`, `internal/ingest/kind.go`, `internal/ingest/operation.go`, `internal/ingest/router.go`, `internal/ingest/errors.go`, plus their `_test.go` files | — |
 | 7 | Offset and give-up storage: read/guarded-advance statements, `DeadUpdate`, `DeadUpdates` over a caller-owned `pgx.Tx` with a deterministic order | `internal/ingest/offset.go`, `internal/ingest/dead.go`, plus their `_test.go` files | 4, 6 |
 | 8 | The observation seam: `Outcome`, `Observation`, `LoopObservation`, `Observer`, and the nil-checked report helpers | `internal/ingest/observe.go`, `internal/ingest/observe_test.go` | 6 |
 | 9 | The loop: `Options`/`New`/`OptionError`, the requested-kinds set with D3's sentinel, `PollOnce`, `Run` with D19's poll-error policy (observe through `LoopObservation.Err` and continue at the poll interval; return non-nil only on cancellation, as `ctx.Err()`), per-attempt transaction, `recover`, sentinel classification, bounded retry, settlement and offset advance (writing `update_id + 1` per D14), give-up row. **The Files column names this row's home, not a one-file mandate**: the responsibilities listed here are a plausible run at the soft file-size bands [measured df9b1a2:AGENTS.md:128 · `grep -n 'File size' AGENTS.md` → `- **File size:** soft 500/800; hard 1000, and 1500 for \`_test.go\` — both gated; exemptions and the don't-over-split counter-rule are in \`code-style.md\`.`], so split along the seams this row already names — the poll cycle, the per-update attempt loop, the settlement — deliberately at authoring time rather than reactively at the gate, after reading `code-style.md`'s don't-over-split counter-rule | `internal/ingest/loop.go` (splitting as above), `internal/ingest/loop_test.go`, `internal/ingest/retry_test.go` | 1, 3, 6, 7, 8 |
 | 10 | The gate: `PlayerLookup`, the pool-backed implementation, `Gate`, `NewGate`, the positive-only cache | `internal/ingest/gate.go`, `internal/ingest/gate_test.go` | 5, 6 |
-| 11 | Guard tests: no `panic(`/`log.Fatal`/`os.Exit` in the package's non-test source, no metrics-library import, the `telego.Update` field-vs-kind-table drift check, the package's `TestMain` over `testdb.Main`, and the structural source walks § Test Design specifies — AC2's ctx-first walk, AC8's no-transaction-handed-out walk, and AC38's no-second-Bot-API-path walk | `internal/ingest/guards_test.go`, `internal/ingest/main_test.go` | 6, 9, 10 |
-| 12 | Propagation: the layout paragraph and the code inventory in `ai-docs/context.md`; the allowlist and sanitisation bullets in `ai-docs/domain-invariants.md` — the player carve-out, the cache-invalidation obligation, D18's no-outbound-call-on-an-uncommitted-row obligation, and the three concrete §12.5 targets this task creates per D14 (reset `ingest_offset`, which is what the existing «reset the updates offset» clause now names; rewrite `ingest_dead_update`'s chat id; blank its `last_error` free text); the new Key-Decision entries; the `INDEX.md` row. **`ai-docs/context-status.md` is deliberately absent from this row, and its absence is a decision, not an omission**: spec *Technical constraints* item 8 names it among the propagation class, but it is `/task` Step 9.5's append-only per-task log [measured df9b1a2:ai-docs/context-status.md:3 · `sed -n '3p' ai-docs/context-status.md` → `The detailed, append-only implementation log: one entry per completed task … Written by /task Step 9.5, read on demand when touching the area an entry covers.`], so it is a history surface the workflow appends to after implementation — the same standing `AGENTS.md` § Propagation Rule step 4 gives `ai-docs/learnings.md` and `ai-docs/plans/done/**`, which it says to leave untouched. Rewriting past entries in it here would be the propagation error, not the fix | `ai-docs/context.md`, `ai-docs/domain-invariants.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–11 |
+| 11 | Guard tests: no `panic(`/`log.Fatal`/`os.Exit` in the package's non-test source, no metrics-library import, the `telego.Update` field-vs-kind-table drift check, the package's `TestMain` over `testdb.Main`, and the structural source walks § Test Design specifies — AC2's ctx-first walk with D9's riding-context clauses, AC8's no-transaction-handed-out walk, and AC38's no-second-Bot-API-path walk | `internal/ingest/guards_test.go`, `internal/ingest/main_test.go` | 6, 9, 10 |
+| 12 | Propagation: the layout paragraph and the code inventory in `ai-docs/context.md`; the allowlist and sanitisation bullets in `ai-docs/domain-invariants.md` — the player carve-out, the cache-invalidation obligation, D18's no-outbound-call-on-an-uncommitted-row obligation, and the concrete §12.5 targets this task creates per D14 (reset `ingest_offset`, which is what the existing «reset the updates offset» clause now names; rewrite `ingest_dead_update`'s chat id; blank its `last_error` free text); the new Key-Decision entries; the `INDEX.md` row. **`ai-docs/context-status.md` is written for this task, and not by this subtask** — spec *Technical constraints* item 8 names it among the propagation class, and it receives its entry the way it receives every entry: appended by `/task` Step 9.5 after implementation, since it is that step's own append-only per-task log [measured 07e5177:ai-docs/context-status.md:3 · `sed -n '3p' ai-docs/context-status.md` → `The detailed, append-only implementation log: one entry per completed task … Written by /task Step 9.5, read on demand when touching the area an entry covers.`]. This row therefore leaves that append to Step 9.5 rather than duplicating it here, and touches none of the file's past entries — the same standing `AGENTS.md` § Propagation Rule step 4 gives `ai-docs/learnings.md` and `ai-docs/plans/done/**`, which it says to leave untouched. AC32's class is satisfied by that division of labour, not by an exclusion from the class | `ai-docs/context.md`, `ai-docs/domain-invariants.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–11 |
 
 ## Handoff plan
 
@@ -656,22 +752,29 @@ default maximum of `4` design-defined groups, so no user approval for an overflo
     - **The call-site gate of D2, as a deliverable and not as a check** — the literal one-based ramp
       in `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go`, landed and
       green **before** the re-point. Stated explicitly because the byte-identical-assertion gate,
-      taken alone, does **not** discriminate the omitted one-based→zero-based translation: the
-      shipped expected values are computed through the very function the call site uses, so the
-      natural mechanical re-point keeps every suite green while doubling every persisted retry
-      delay. The prompt says that, in those words, so the implementor cannot read the
-      byte-identical rule as the whole gate.
-    - **The mutation probe, with its refusal condition.** With the literal ramp in place, the wrong
-      translation applied over a `cp` backup of `settle.go` must turn
-      `go test ./internal/scheduler/ -run 'TestFailurePolicy|TestDeadline'` **RED**; restore from the
-      backup, never with `git checkout -- <file>`. If the probe comes back green, the implementor
+      taken alone, does **not** discriminate the omitted one-based→zero-based translation **at
+      `settle.go`**. The prompt carries D2's measured account of why, in those words: an
+      un-translated re-point reds `cadence_test.go`'s one-based `TestBackoff_exactTable`, so the
+      implementor is forced to translate the argument *there*; and once that is done the shipped
+      scheduler suite returns the same green whether or not the same translation reaches
+      `settle.go` — measured both ways, because the assertions over a persisted `run_at` derive
+      their expected value from the very function the call site calls. Neither the byte-identical
+      rule nor a green `cadence_test.go` may be read as the whole gate.
+    - **The mutation probe, with its refusal condition.** With the literal ramp in place and the
+      re-point not yet applied, the wrong delay written over a `cp` backup of `settle.go` as
+      `backoff(k+1, …)` — the omitted translation's arithmetic in the shipped ramp's own units, and
+      the form that compiles while `func backoff` still stands — must turn
+      `go test ./internal/scheduler/ -run
+      'TestFailurePolicy_oneShotAttemptsGrowAndGiveUp|TestDeadline_successiveBreaches_growingDelay'`
+      **RED**; restore from the backup, never with `git checkout -- <file>`. If the probe comes
+      back green, the implementor
       **stops and returns to the orchestrator** rather than proceeding — a gate that cannot go red
       is not evidence about the adoption (`AGENTS.md` § Patterns 2).
     - **`go test ./internal/tg/ ./internal/scheduler/` is green before the group returns**, run as
       its own step rather than folded into a final `make verify`. The point is *where* a changed
       pre-existing expected value surfaces — inside the group, with the adoption diff still in hand
       and the implementor able to escalate it as the scope-boundary item D2 says it is, rather than
-      at `make verify` after five more subtasks have landed on top of it. `internal/store`'s suite
+      at `make verify` after the rest of the group has landed on top of it. `internal/store`'s suite
       gets the same treatment for subtask 5's `queryRower` re-point (`go test ./internal/store/`),
       for the same reason at a smaller scale.
 - **Handoff after Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
@@ -700,9 +803,11 @@ default maximum of `4` design-defined groups, so no user approval for an overflo
   Mitigation, in two parts, because the first part alone is refuted by measurement. **(1)** After a
   delete-and-re-point those test files do **not** compile unchanged, so "they pass unchanged" is a
   mitigation that cannot hold; what holds is that **every *pre-existing* assertion and expected value
-  in them stays byte-identical and only the call expression is re-pointed**, so a changed
-  pre-existing expected value is the signal that the adoption was not behaviour-preserving and is a
-  scope-boundary item for the orchestrator, not something the implementor absorbs. **(2)** That gate
+  in them stays byte-identical, while the call expression is re-pointed and its argument may carry
+  the one-based→zero-based translation** — an argument may carry the translation, an expected value
+  may not move — so a changed pre-existing expected value is the signal that the adoption was not
+  behaviour-preserving and is a scope-boundary item for the orchestrator, not something the
+  implementor absorbs. **(2)** That gate
   does **not** discriminate the one defect class it most needs to — the omitted one-based→zero-based
   translation at `internal/scheduler`'s persisted-`run_at` sites — because the shipped assertions
   over a persisted retry `run_at` compute their expected value through the same function the call
@@ -710,12 +815,24 @@ default maximum of `4` design-defined groups, so no user approval for an overflo
   internal/scheduler/deadline_test.go:252 · `rg -n --pcre2 '(?<![A-Za-z_.])backoff\s*\('
   internal/scheduler/*_test.go` → `want := backoff(attempt, cfg.RetryBaseDelay, cfg.RetryMaxDelay)`
   at each; every other test hit pins the function itself in `cadence_test.go`, or is comment and
-  failure-message prose]`, so a re-point that omits the translation *consistently* leaves every
-  assertion byte-identical and `make verify` green while doubling every persisted retry delay. D2
+  failure-message prose]`. Measured, not reasoned: an un-translated re-point **is** caught, and only
+  at `cadence_test.go`'s one-based `TestBackoff_exactTable` `[measured 07e5177 · a scratch copy of
+  this tree with `Exponential` added and every call re-pointed with its argument untouched ·
+  `go test ./internal/scheduler/` → `--- FAIL: TestBackoff_exactTable`, `backoff(1, 1s, 30s) = 2s,
+  want 1s` … `backoff(5, 1s, 30s) = 30s, want 16s`, the persisted-`run_at` tests green]`; translating
+  the argument there — the minimal fix for the only reported failure — and leaving `settle.go` and
+  both `want :=` lines zero-based is **green** `[measured 07e5177 · the same scratch tree, that
+  translation applied at `cadence_test.go` only · `go test ./internal/scheduler/` → `ok
+  github.com/maratik123/lab-game/internal/scheduler`]`, and so is the correct translation
+  `[measured 07e5177 · the same scratch tree with `Exponential(k-1, …)` at both `settle.go` sites and
+  `Exponential(attempt-1, …)` at both `want :=` lines · `go test ./internal/scheduler/` → `ok
+  github.com/maratik123/lab-game/internal/scheduler`]`. The suite's verdict is invariant to the
+  call-site translation while every persisted retry delay doubles under one of them. D2
   therefore adds a **call-site** gate ahead of the adoption: a literal one-based ramp in
   `failure_test.go` and `deadline_test.go`, green against the shipped ramp first, then proven to go
-  RED under the wrong translation before the re-point lands — `[derived → subtask 2's literal-ramp
-  gate and its mutation probe]`. The tests being preserved are the ones already shipped
+  RED under the wrong delay (`backoff(k+1, …)`) before the re-point lands —
+  `[derived → subtask 2's literal-ramp gate and its mutation probe]`. The tests being preserved are
+  the ones already shipped
   `[measured 1fce8b5:internal/scheduler/cadence_test.go:8,33; internal/tg/retry_test.go:127,682 ·
   `grep -n 'func Test.*[Bb]ackoff' internal/scheduler/cadence_test.go internal/tg/retry_test.go` →
   `TestRetry_JitterOptionThreadedThroughToBackoff`, `TestBackoffDelay_JitterBoundsExactly`,
@@ -864,10 +981,19 @@ row 2 are edited)
 - The first half of the gate, stated as what a delete-and-re-point can achieve: in
   `internal/tg/retry_test.go`, `internal/scheduler/cadence_test.go`,
   `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go`, **every
-  *pre-existing* assertion and expected value is byte-identical to the shipped one and only the call
-  expression is re-pointed**; the suites are then green. "Passing unchanged" is *not* the gate and
+  *pre-existing* assertion and expected value is byte-identical to the shipped one; the call
+  expression is re-pointed and its argument may carry the one-based→zero-based translation**; the
+  suites are then green. "Passing unchanged" is *not* the gate and
   must not be recorded as one — after the local ramps are deleted those files do not compile until
   their call expressions move, so a test that has not been edited has not passed `[derived → AC30]`.
+- **`cadence_test.go`'s ramp tests, and what becomes of them.**
+  `TestBackoff_exactTable` and `TestBackoff_strictlyGrowingUntilCeiling` are re-pointed at
+  `backoff.Exponential` with the translation in their *arguments*; their one-based `cases` table,
+  every expected duration and every asserted bound are untouched, and after the adoption they pin
+  `internal/scheduler`'s one-based `failures → delay` mapping with no database. Leaving the argument
+  un-translated is not an option the byte-identical rule permits — it reds the table, which D2
+  measures — and re-indexing the table instead of the argument is a scope-boundary item to surface
+  `[derived → AC30 and D2's per-file disposition]`.
 - **The second half — a new assertion, and the one that can go red.** New test text in
   `internal/scheduler/failure_test.go` and `internal/scheduler/deadline_test.go`: the persisted
   `run_at` bracket is computed from a **literal one-based ramp table** indexed by the loop's
@@ -875,14 +1001,18 @@ row 2 are edited)
   expression. It lands and is green **against the shipped one-based ramp** before the re-point, and
   it is the assertion an omitted one-based→zero-based translation reds. **It substitutes for the
   `backoff(attempt, …)`-derived expected value at those brackets, and that is the sole carve-out from
-  the bullet above** — not a real exception, because the literal durations it writes are the ones the
-  shipped ramp already computes, which is what its green run against the shipped ramp establishes
-  before the re-point; from that point on it is itself a pre-existing expected value the re-point
-  must leave byte-identical. Nowhere else in these files does new assertion text land
-  `[derived → AC30 and D2's call-site gate]`.
-- **The instrument is proven before it is trusted.** With the literal ramp in place, the wrong
-  translation is applied at both `settle.go` sites over a `cp` backup, and
-  `go test ./internal/scheduler/ -run 'TestFailurePolicy|TestDeadline'` must report **FAIL**; the
+  the expected-value half of the byte-identical rule above** — not a real exception, because the
+  literal durations it writes are the ones the shipped ramp already computes, which is what its green
+  run against the shipped ramp establishes before the re-point; from that point on it is itself a
+  pre-existing expected value the re-point must leave byte-identical. Nowhere else in these files
+  does new assertion text land `[derived → AC30 and D2's call-site gate]`.
+- **The instrument is proven before it is trusted.** With the literal ramp in place and the re-point
+  not yet applied, the wrong delay is written at both `settle.go` sites over a `cp` backup as
+  `backoff(k+1, …)` — the omitted translation's arithmetic in the shipped ramp's own units, and the
+  form that compiles while `func backoff` still stands (D2) — and
+  `go test ./internal/scheduler/ -run
+  'TestFailurePolicy_oneShotAttemptsGrowAndGiveUp|TestDeadline_successiveBreaches_growingDelay'`
+  must report **FAIL**; the
   backup is then copied back (never `git checkout -- <file>`, which discards every other uncommitted
   edit to the file). A probe that passes means the gate does not discriminate and is a STOP for the
   orchestrator, not a result to reason past — `AGENTS.md` § Patterns 2 `[derived → D2's mutation
@@ -890,9 +1020,13 @@ row 2 are edited)
 - **What the `internal/backoff` table of subtask 1 does *not* cover, said plainly so no later reader
   re-derives the false version.** That table pins the shared function's own contract in zero-based
   units, independently of either adopter — and says nothing about *which argument a call site
-  passes*. A re-pointed call site that drops the translation therefore produces **no** disagreement
-  between the two suites: both stay green together. The call-site gate above is the only instrument
-  in this design that sees it `[derived → AC23, AC30]`.
+  passes*. Once `cadence_test.go`'s argument carries the translation, the shipped scheduler suite
+  returns the same green whether or not `settle.go`'s does `[measured 07e5177 · D2's scratch-tree
+  runs · `go test ./internal/scheduler/` → `ok  	github.com/maratik123/lab-game/internal/scheduler`
+  with the call-site translation present, and the same `ok` with it dropped]`; and subtask 1's own
+  table, which pins `Exponential` in zero-based units and never reaches `settle.go`, cannot separate
+  them either `[derived → subtask 1's table]`. The call-site gate above is the only instrument in
+  this design that does `[derived → AC23, AC30]`.
 
 **Subtask 3 — `config.Ingest`** (`internal/config/ingest_test.go`)
 - Entry points: `Load`, and the package's existing disjointness and required-variable suites.
@@ -1130,6 +1264,15 @@ row 2 are edited)
     method reds the suite until someone writes the reason down — which is strictly stronger than
     AC2's literal reading, since a method that *does* reach the database can only pass by someone
     entering a false justification into the diff a reviewer reads `[derived → AC2]`.
+  - **The riding context is part of the same walk, because a `context.Context` field is not the only
+    way to hold one.** A `telego.Update` embedded in an exported type of this package would satisfy
+    the no-`context.Context`-field clause and still promote `Context()` and `WithContext()` onto that
+    type, handing a handler the `context.Background()` D9 measures. The walk therefore also asserts
+    that no type declared in `internal/ingest` embeds `telego.Update` — the raw update is a named
+    field — and that the package's non-test source contains no selector named `Context` or
+    `WithContext`, under the same named-exemption escape as above, so a later legitimate use is
+    written down rather than silently allowed
+    `[derived → AC2, D9 and spec *Technical constraints* item 5]`.
 - Fixtures: the repository-root resolver `internal/tg/guards_test.go` already establishes for this
   shape; `testdb.Main` in `TestMain`.
 
