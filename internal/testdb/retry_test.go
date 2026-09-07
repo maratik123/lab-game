@@ -88,3 +88,28 @@ func TestRetryRun_terminatesTheContainerOfAFailedAttempt(t *testing.T) {
 		t.Error("the failed attempt's container was not terminated")
 	}
 }
+
+// TestRetryRun_refusesANonPositiveAttemptCount pins the refusal rather than
+// the fall-through it replaced: a loop that runs zero times returns a nil
+// container with a nil error, and Main dereferences what it gets back.
+func TestRetryRun_refusesANonPositiveAttemptCount(t *testing.T) {
+	t.Parallel()
+
+	for _, attempts := range []int{0, -1} {
+		calls := 0
+		got, err := retryRun(attempts, 0, func() (*postgres.PostgresContainer, error) {
+			calls++
+			return nil, nil
+		})
+
+		if err == nil {
+			t.Errorf("retryRun(%d, …) returned no error, want a refusal", attempts)
+		}
+		if got != nil {
+			t.Errorf("retryRun(%d, …) returned a container, want nil", attempts)
+		}
+		if calls != 0 {
+			t.Errorf("retryRun(%d, …) called run %d times, want 0", attempts, calls)
+		}
+	}
+}

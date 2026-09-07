@@ -61,12 +61,36 @@
 # settle (2), its failed ROLLBACK TO SAVEPOINT (1), settle.go's failed DELETE
 # (1), worker.go's executeOne error (2), and ingest/loop.go's post-poll
 # ctx.Done() (1). Since internal/testdb put the test cluster on a tmpfs and
-# stopped initdb syncing it, the scheduler five are not drawn at all any more
-# and the residual drift is 4 statements over three runs — 0.23 pp at 1755. The
-# floor those three runs share is 90.88%; the file was re-recorded there and
-# this hook then raised it to its own draw, as the raise rule always does.
-# Covering the scheduler five deterministically is its own piece of work; it is
-# not a tolerance question, and the tolerance stays where it is.
+# stopped initdb syncing it, five of those six scheduler blocks are not drawn at
+# all any more — 0-covered in every run measured since — and the sixth, the
+# failed ROLLBACK TO SAVEPOINT, still flips. Three runs at 1757 statements put
+# today's drift at SIX statements, 0.34 pp: that one, plus four in
+# internal/ingest (attempt.go's retry-exhausted branch, loop.go's post-poll
+# ctx.Done(), two in settle.go). The mark was re-recorded at the floor of the
+# measurement that preceded those runs, 90.88%, and this hook then raised it to
+# its own draw, as the raise rule always does. Covering the scheduler blocks
+# deterministically is its own piece of work; it is not a tolerance question,
+# and the tolerance stays where it is.
+#
+# THE MEASUREMENT BELOW KEEPS THE TEST CACHE — owner's decision, 2026-09-07,
+# taken with the freeze understood rather than around it. `-count=1` here would
+# make every measured commit re-run the whole suite; what makes that affordable
+# is also what makes it unnecessary. With the drifting set down from 14
+# statements to 6, a frozen lucky draw sits at most 0.34 pp above the floor,
+# while the tolerance is 0.60 — so the worst a replayed profile can do is spend
+# a little over half the headroom. The 91.46 incident needed a 0.63 pp gap
+# between the recorded mark and the floor, and only 14 drifting statements could
+# open one. Re-measure this figure whenever the drifting set is re-counted: it
+# is the whole argument for keeping the cache, and it is the number that says
+# when the argument has expired.
+#
+# What that decision is conditional on, and what to do when the condition
+# breaks: if a later series shows the drifting set growing back toward the
+# tolerance, the answer is `-count=1` on the command below — that is what makes
+# the number a draw of THIS tree — and not a wider tolerance, which would only
+# raise the ceiling on what a frozen draw can hide. A deliberate re-measurement
+# of the tolerance itself always passes `-count=1`, cache or no cache: a series
+# whose runs replay each other measures one run.
 #
 # What the tolerance costs is bounded the same way as before, one tolerance
 # below the all-time high, about 10.5 statements at 1755, ONCE.
@@ -82,16 +106,20 @@
 # them.
 #
 # The spread narrows on its own as the tree grows, because it is a COUNT of
-# statements over a growing denominator. The same five blocks are worth
-# 0.3762 pp at today's 1329 statements, 0.25 pp at 2000, and 0.167 pp at 3000.
-# The tolerance does not have to follow it down: a fixed value simply becomes
-# roomier, and what it can hide stays bounded at one tolerance below the
-# all-time high, once.
+# statements over a growing denominator. The 24-run series' five blocks were
+# worth 0.3762 pp against the 1329 statements of that day and are worth
+# 0.2867 pp against 1755; today's six drifting statements are worth 0.34 pp at
+# 1757, 0.30 pp at 2000 and 0.20 pp at 3000. The tolerance does not have to
+# follow it down: a fixed value simply becomes roomier, and what it can hide
+# stays bounded at one tolerance below the all-time high, once.
 #
 # Revisit this number only on a re-measurement — if a series of runs shows the
 # spread has GROWN past it, which would mean new flaky blocks arrived faster
-# than the denominator grew. Re-run the series before touching the constant;
-# do not adjust it from a single blocked commit.
+# than the denominator grew. Re-run the series with `go test -count=1` before
+# touching the constant, in BOTH environments, and do not adjust it from a
+# single blocked commit. Without `-count=1` the second run of a series replays
+# the first one's profile and the series measures nothing it did not already
+# know — that is how the withdrawn cross-environment term was arrived at.
 #
 # Usage:
 #   coverage-ratchet.sh            raise mode: check, and record a new high

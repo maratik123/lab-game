@@ -136,7 +136,14 @@ const (
 // and returns the first success or the last error. A failed attempt that
 // still produced a container is terminated before the next one: postgres.Run
 // reports both when the container was created but never became usable.
+//
+// It refuses a non-positive attempts rather than returning a nil container
+// with a nil error, which every caller would dereference.
 func retryRun(attempts int, delay time.Duration, run func() (*postgres.PostgresContainer, error)) (*postgres.PostgresContainer, error) {
+	if attempts < 1 {
+		return nil, fmt.Errorf("testdb: retryRun needs at least one attempt, got %d", attempts)
+	}
+
 	var err error
 	for attempt := range attempts {
 		var ctr *postgres.PostgresContainer
