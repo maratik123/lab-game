@@ -3,6 +3,8 @@ package config
 import (
 	"testing"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/backoff"
 )
 
 func TestLoadIngest_AllAbsentYieldsDefaults(t *testing.T) {
@@ -36,6 +38,21 @@ func TestLoadIngest_ExampleMatchesDefaults(t *testing.T) {
 	}
 }
 
+// TestLoadIngest_DefaultRetryFactorIsBackoffDefaultFactor pins the
+// default to the shared constant directly, not merely to
+// defaultIngest()'s own return — so the config default and the shared
+// boundary cannot drift apart (design D20).
+func TestLoadIngest_DefaultRetryFactorIsBackoffDefaultFactor(t *testing.T) {
+	t.Parallel()
+	i, err := loadIngest(mapLookup(map[string]string{}))
+	if err != nil {
+		t.Fatalf("loadIngest: unexpected error: %v", err)
+	}
+	if i.RetryFactor != backoff.DefaultFactor {
+		t.Errorf("RetryFactor = %v, want backoff.DefaultFactor (%v)", i.RetryFactor, backoff.DefaultFactor)
+	}
+}
+
 func TestLoadIngest_ValuesParsed(t *testing.T) {
 	t.Parallel()
 	env := map[string]string{
@@ -45,6 +62,7 @@ func TestLoadIngest_ValuesParsed(t *testing.T) {
 		envIngestRetryMaxAttempts: "3",
 		envIngestRetryBaseDelay:   "2s",
 		envIngestRetryMaxDelay:    "1m",
+		envIngestRetryFactor:      "1.5",
 	}
 	i, err := loadIngest(mapLookup(env))
 	if err != nil {
@@ -67,6 +85,9 @@ func TestLoadIngest_ValuesParsed(t *testing.T) {
 	}
 	if i.RetryMaxDelay != time.Minute {
 		t.Errorf("RetryMaxDelay = %v, want 1m", i.RetryMaxDelay)
+	}
+	if i.RetryFactor != 1.5 {
+		t.Errorf("RetryFactor = %v, want 1.5", i.RetryFactor)
 	}
 }
 
@@ -93,6 +114,15 @@ func TestLoadIngest_Malformed(t *testing.T) {
 		{"retry base delay zero", envIngestRetryBaseDelay, "0s"},
 		{"retry max delay not a duration", envIngestRetryMaxDelay, "later"},
 		{"retry max delay zero", envIngestRetryMaxDelay, "0s"},
+		{"retry factor exactly one", envIngestRetryFactor, "1"},
+		{"retry factor below one", envIngestRetryFactor, "0.5"},
+		{"retry factor zero", envIngestRetryFactor, "0"},
+		{"retry factor negative", envIngestRetryFactor, "-1"},
+		{"retry factor NaN", envIngestRetryFactor, "NaN"},
+		{"retry factor positive infinity", envIngestRetryFactor, "Inf"},
+		{"retry factor infinity spelling", envIngestRetryFactor, "infinity"},
+		{"retry factor not a number", envIngestRetryFactor, "many"},
+		{"retry factor empty", envIngestRetryFactor, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

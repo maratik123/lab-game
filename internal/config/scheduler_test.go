@@ -3,6 +3,8 @@ package config
 import (
 	"testing"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/backoff"
 )
 
 func TestLoadScheduler_AllAbsentYieldsDefaults(t *testing.T) {
@@ -14,6 +16,21 @@ func TestLoadScheduler_AllAbsentYieldsDefaults(t *testing.T) {
 	want := defaultScheduler()
 	if *s != want {
 		t.Errorf("loadScheduler(empty) = %+v, want defaults %+v", *s, want)
+	}
+}
+
+// TestLoadScheduler_DefaultRetryFactorIsBackoffDefaultFactor pins the
+// default to the shared constant directly, not merely to
+// defaultScheduler()'s own return — so the config default and the shared
+// boundary cannot drift apart (design D20).
+func TestLoadScheduler_DefaultRetryFactorIsBackoffDefaultFactor(t *testing.T) {
+	t.Parallel()
+	s, err := loadScheduler(mapLookup(map[string]string{}))
+	if err != nil {
+		t.Fatalf("loadScheduler: unexpected error: %v", err)
+	}
+	if s.RetryFactor != backoff.DefaultFactor {
+		t.Errorf("RetryFactor = %v, want backoff.DefaultFactor (%v)", s.RetryFactor, backoff.DefaultFactor)
 	}
 }
 
@@ -44,6 +61,7 @@ func TestLoadScheduler_ValuesParsed(t *testing.T) {
 		envSchedulerRetryMaxAttempt: "3",
 		envSchedulerRetryBaseDelay:  "2s",
 		envSchedulerRetryMaxDelay:   "1m",
+		envSchedulerRetryFactor:     "1.5",
 		envSchedulerTaskTimeout:     "15s",
 	}
 	s, err := loadScheduler(mapLookup(env))
@@ -64,6 +82,9 @@ func TestLoadScheduler_ValuesParsed(t *testing.T) {
 	}
 	if s.RetryMaxDelay != time.Minute {
 		t.Errorf("RetryMaxDelay = %v, want 1m", s.RetryMaxDelay)
+	}
+	if s.RetryFactor != 1.5 {
+		t.Errorf("RetryFactor = %v, want 1.5", s.RetryFactor)
 	}
 	if s.TaskTimeout != 15*time.Second {
 		t.Errorf("TaskTimeout = %v, want 15s", s.TaskTimeout)
@@ -89,6 +110,15 @@ func TestLoadScheduler_Malformed(t *testing.T) {
 		{"retry base delay zero", envSchedulerRetryBaseDelay, "0s"},
 		{"retry max delay not a duration", envSchedulerRetryMaxDelay, "later"},
 		{"retry max delay zero", envSchedulerRetryMaxDelay, "0s"},
+		{"retry factor exactly one", envSchedulerRetryFactor, "1"},
+		{"retry factor below one", envSchedulerRetryFactor, "0.5"},
+		{"retry factor zero", envSchedulerRetryFactor, "0"},
+		{"retry factor negative", envSchedulerRetryFactor, "-1"},
+		{"retry factor NaN", envSchedulerRetryFactor, "NaN"},
+		{"retry factor positive infinity", envSchedulerRetryFactor, "Inf"},
+		{"retry factor infinity spelling", envSchedulerRetryFactor, "infinity"},
+		{"retry factor not a number", envSchedulerRetryFactor, "many"},
+		{"retry factor empty", envSchedulerRetryFactor, ""},
 		{"task timeout not a duration", envSchedulerTaskTimeout, "eventually"},
 		{"task timeout zero", envSchedulerTaskTimeout, "0s"},
 		{"task timeout negative", envSchedulerTaskTimeout, "-1s"},

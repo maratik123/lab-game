@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/backoff"
 )
 
 // Environment variable names for internal/ingest's long-poll, batch and
@@ -17,9 +19,10 @@ const (
 	envIngestRetryMaxAttempts = "LAB_GAME_INGEST_RETRY_MAX_ATTEMPTS"
 	envIngestRetryBaseDelay   = "LAB_GAME_INGEST_RETRY_BASE_DELAY"
 	envIngestRetryMaxDelay    = "LAB_GAME_INGEST_RETRY_MAX_DELAY"
+	envIngestRetryFactor      = "LAB_GAME_INGEST_RETRY_FACTOR"
 )
 
-// ingestEnvKeys returns the six ingest tuning variables, in declaration
+// ingestEnvKeys returns the seven ingest tuning variables, in declaration
 // order (deterministic — AGENTS.md § Code Style). It is appended to
 // EnvKeys() only; envKeys() itself is untouched, mirroring
 // transportEnvKeys' and schedulerEnvKeys' rule (design D15).
@@ -31,6 +34,7 @@ func ingestEnvKeys() []string {
 		envIngestRetryMaxAttempts,
 		envIngestRetryBaseDelay,
 		envIngestRetryMaxDelay,
+		envIngestRetryFactor,
 	}
 }
 
@@ -64,16 +68,22 @@ type Ingest struct {
 	// through backoff.Exponential (LAB_GAME_INGEST_RETRY_BASE_DELAY,
 	// default 1s).
 	RetryBaseDelay time.Duration
-	// RetryMaxDelay caps the backoff scale's doubling
-	// (LAB_GAME_INGEST_RETRY_MAX_DELAY, default 8s).
+	// RetryMaxDelay caps the backoff scale's growth at the configured
+	// RetryFactor (LAB_GAME_INGEST_RETRY_MAX_DELAY, default 8s).
 	RetryMaxDelay time.Duration
+	// RetryFactor is the backoff scale's exponential growth factor
+	// (LAB_GAME_INGEST_RETRY_FACTOR, default backoff.DefaultFactor) —
+	// design D20. Must be finite and strictly greater than 1.
+	RetryFactor float64
 }
 
 // defaultIngest returns the compiled-in defaults every ingest key falls
 // back to when its environment variable is absent (design D15's table).
-// Under the default retry cap and ramp the worst-case head-of-line stall
-// a poisoned update imposes on the sequential loop is
-// 1s + 2s + 4s + 8s = 15s, the quarter-minute bound spec Scope 7 names.
+// Under the default retry cap and ramp, and under the default factor, the
+// worst-case head-of-line stall a poisoned update imposes on the
+// sequential loop is 1s + 2s + 4s + 8s = 15s, the quarter-minute bound
+// spec Scope 7 names — a configured RetryFactor changes this sum (design
+// D20).
 func defaultIngest() Ingest {
 	return Ingest{
 		PollInterval:     time.Second,
@@ -82,6 +92,7 @@ func defaultIngest() Ingest {
 		RetryMaxAttempts: 5,
 		RetryBaseDelay:   time.Second,
 		RetryMaxDelay:    8 * time.Second,
+		RetryFactor:      backoff.DefaultFactor,
 	}
 }
 
@@ -141,6 +152,12 @@ func loadIngest(lookup Lookup) (*Ingest, error) {
 		errs = append(errs, err)
 	} else if ok {
 		i.RetryMaxDelay = d
+	}
+
+	if f, ok, err := lookupFactor(lookup, envIngestRetryFactor); err != nil {
+		errs = append(errs, err)
+	} else if ok {
+		i.RetryFactor = f
 	}
 
 	if len(errs) > 0 {

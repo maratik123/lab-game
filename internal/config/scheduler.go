@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/backoff"
 )
 
 // Environment variable names for internal/scheduler's polling, claim-batch
@@ -17,10 +19,11 @@ const (
 	envSchedulerRetryMaxAttempt = "LAB_GAME_SCHEDULER_RETRY_MAX_ATTEMPTS"
 	envSchedulerRetryBaseDelay  = "LAB_GAME_SCHEDULER_RETRY_BASE_DELAY"
 	envSchedulerRetryMaxDelay   = "LAB_GAME_SCHEDULER_RETRY_MAX_DELAY"
+	envSchedulerRetryFactor     = "LAB_GAME_SCHEDULER_RETRY_FACTOR"
 	envSchedulerTaskTimeout     = "LAB_GAME_SCHEDULER_TASK_TIMEOUT"
 )
 
-// schedulerEnvKeys returns the six scheduler tuning variables, in
+// schedulerEnvKeys returns the seven scheduler tuning variables, in
 // declaration order (deterministic — AGENTS.md § Code Style). It is
 // appended to EnvKeys() only; envKeys() itself is untouched, mirroring
 // transportEnvKeys' rule (design D13).
@@ -31,6 +34,7 @@ func schedulerEnvKeys() []string {
 		envSchedulerRetryMaxAttempt,
 		envSchedulerRetryBaseDelay,
 		envSchedulerRetryMaxDelay,
+		envSchedulerRetryFactor,
 		envSchedulerTaskTimeout,
 	}
 }
@@ -56,10 +60,15 @@ type Scheduler struct {
 	// RetryBaseDelay is the backoff scale's base duration
 	// (LAB_GAME_SCHEDULER_RETRY_BASE_DELAY, default 1s).
 	RetryBaseDelay time.Duration
-	// RetryMaxDelay caps the backoff scale's doubling
-	// (LAB_GAME_SCHEDULER_RETRY_MAX_DELAY, default 5m). It also bounds how
-	// often an undeclared task type's row is retried (design D7).
+	// RetryMaxDelay caps the backoff scale's growth at the configured
+	// RetryFactor (LAB_GAME_SCHEDULER_RETRY_MAX_DELAY, default 5m). It also
+	// bounds how often an undeclared task type's row is retried (design
+	// D7).
 	RetryMaxDelay time.Duration
+	// RetryFactor is the backoff scale's exponential growth factor
+	// (LAB_GAME_SCHEDULER_RETRY_FACTOR, default backoff.DefaultFactor) —
+	// design D20. Must be finite and strictly greater than 1.
+	RetryFactor float64
 	// TaskTimeout bounds a single task's execution — the handler's context
 	// deadline and the transaction-local statement_timeout and
 	// idle_in_transaction_session_timeout (design D11)
@@ -77,6 +86,7 @@ func defaultScheduler() Scheduler {
 		RetryMaxAttempts: 5,
 		RetryBaseDelay:   time.Second,
 		RetryMaxDelay:    5 * time.Minute,
+		RetryFactor:      backoff.DefaultFactor,
 		TaskTimeout:      30 * time.Second,
 	}
 }
@@ -120,6 +130,12 @@ func loadScheduler(lookup Lookup) (*Scheduler, error) {
 		errs = append(errs, err)
 	} else if ok {
 		s.RetryMaxDelay = d
+	}
+
+	if f, ok, err := lookupFactor(lookup, envSchedulerRetryFactor); err != nil {
+		errs = append(errs, err)
+	} else if ok {
+		s.RetryFactor = f
 	}
 
 	if d, ok, err := lookupPositiveDuration(lookup, envSchedulerTaskTimeout); err != nil {

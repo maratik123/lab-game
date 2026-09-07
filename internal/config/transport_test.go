@@ -3,6 +3,8 @@ package config
 import (
 	"testing"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/backoff"
 )
 
 func TestLoadTransport_AllAbsentYieldsDefaults(t *testing.T) {
@@ -40,12 +42,28 @@ func TestLoadTransport_ExampleMatchesDefaults(t *testing.T) {
 	}
 }
 
+// TestLoadTransport_DefaultRetryFactorIsBackoffDefaultFactor pins the
+// default to the shared constant directly, not merely to
+// defaultTransport()'s own return — so the config default and the shared
+// boundary cannot drift apart (design D20).
+func TestLoadTransport_DefaultRetryFactorIsBackoffDefaultFactor(t *testing.T) {
+	t.Parallel()
+	tr, err := loadTransport(mapLookup(map[string]string{}))
+	if err != nil {
+		t.Fatalf("loadTransport: unexpected error: %v", err)
+	}
+	if tr.RetryFactor != backoff.DefaultFactor {
+		t.Errorf("RetryFactor = %v, want backoff.DefaultFactor (%v)", tr.RetryFactor, backoff.DefaultFactor)
+	}
+}
+
 func TestLoadTransport_RetryValuesParsed(t *testing.T) {
 	t.Parallel()
 	env := map[string]string{
 		envTGRetryMaxAttempts: "5",
 		envTGRetryBaseDelay:   "1s",
 		envTGRetryMaxDelay:    "1m",
+		envTGRetryFactor:      "1.5",
 		envTGAttemptTimeout:   "10s",
 	}
 	tr, err := loadTransport(mapLookup(env))
@@ -60,6 +78,9 @@ func TestLoadTransport_RetryValuesParsed(t *testing.T) {
 	}
 	if tr.RetryMaxDelay != time.Minute {
 		t.Errorf("RetryMaxDelay = %v, want 1m", tr.RetryMaxDelay)
+	}
+	if tr.RetryFactor != 1.5 {
+		t.Errorf("RetryFactor = %v, want 1.5", tr.RetryFactor)
 	}
 	if tr.AttemptTimeout != 10*time.Second {
 		t.Errorf("AttemptTimeout = %v, want 10s", tr.AttemptTimeout)
@@ -118,6 +139,15 @@ func TestLoadTransport_Malformed(t *testing.T) {
 		{"retry base delay zero", envTGRetryBaseDelay, "0s"},
 		{"retry base delay negative", envTGRetryBaseDelay, "-1s"},
 		{"retry max delay not a duration", envTGRetryMaxDelay, "later"},
+		{"retry factor exactly one", envTGRetryFactor, "1"},
+		{"retry factor below one", envTGRetryFactor, "0.5"},
+		{"retry factor zero", envTGRetryFactor, "0"},
+		{"retry factor negative", envTGRetryFactor, "-1"},
+		{"retry factor NaN", envTGRetryFactor, "NaN"},
+		{"retry factor positive infinity", envTGRetryFactor, "Inf"},
+		{"retry factor infinity spelling", envTGRetryFactor, "infinity"},
+		{"retry factor not a number", envTGRetryFactor, "many"},
+		{"retry factor empty", envTGRetryFactor, ""},
 		{"attempt timeout not a duration", envTGAttemptTimeout, "eventually"},
 		{"limit missing slash", envTGLimitMessageGlobal, "30"},
 		{"limit zero count", envTGLimitMessageGlobal, "0/1s"},

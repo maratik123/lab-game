@@ -8,8 +8,8 @@ _Updated: 2026-09-07
 **Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Amendment — Step 8 implementation, Group D subtask 13 of 15 complete
-**last_passed_gate:** go test ./internal/backoff/... green, golangci-lint run/fmt -d clean, go vet clean | 548a950
+**current_step:** Amendment — Step 8 implementation, Group D subtask 14 of 15 complete
+**last_passed_gate:** go test ./internal/config/... green, golangci-lint run/fmt -d clean, go vet clean, go build ./... clean
 **entry_args:** 22
 
 ## Next action
@@ -31,12 +31,13 @@ _Updated: 2026-09-07
 - [x] 11. Guard tests and the structural source walks (Group B)
 - [x] 12. Propagation: `context.md`, `domain-invariants.md` (Group C)
 - [x] 13. `internal/backoff`: `DefaultFactor` + `ValidFactor`, no signature change yet (Group D)
-- [ ] 14. The configuration surface: `RetryFactor` on `Transport`/`Scheduler`/`Ingest`, `lookupFactor`, `.env.example` lines (Group D)
+- [x] 14. The configuration surface: `RetryFactor` on `Transport`/`Scheduler`/`Ingest`, `lookupFactor`, `.env.example` lines (Group D)
 - [ ] 15. The factor parameter: `Exponential`/`EqualJitter` signature change, every call site, every constructor's factor refusal (Group D)
 - [ ] 16. Propagation of the amendment: `key-decisions.md`, `context.md`, `context-status.md` (Group E)
 
 ## Decisions log
 
+- **Subtask 14**: `RetryFactor float64` added to `config.Transport`, `config.Scheduler` and `config.Ingest`, each defaulting to `backoff.DefaultFactor` and declared last in its scope's retry family in the const block, the struct, `*EnvKeys()` and `.env.example` — `LAB_GAME_TG_RETRY_FACTOR` (after `…_RETRY_MAX_DELAY`, before `…_ATTEMPT_TIMEOUT`), `LAB_GAME_SCHEDULER_RETRY_FACTOR` (after `…_RETRY_MAX_DELAY`, before `…_TASK_TIMEOUT`), `LAB_GAME_INGEST_RETRY_FACTOR` (last field). `lookupFactor` (in `transport.go`, beside `lookupPositiveInt`/`lookupPositiveDuration`) parses via `strconv.ParseFloat` and refuses anything `backoff.ValidFactor` refuses with a `*KeyError` naming the key — covering an unparseable string, `NaN`, an infinity (either spelling), exactly `1`, below `1`, `0`, a negative, and an empty value. The three `RetryMaxDelay` doc comments that said the ramp "doubles" were reworded to say it "grows … at the configured RetryFactor", since that claim is false at a non-default factor; `defaultIngest`'s worst-case-stall comment gained an "under the default factor" qualifier. Each scope's `_test.go` gained: a value-parsed row (`1.5`), nine malformed rows (exactly 1, below 1, 0, negative, NaN, +Inf, "infinity" spelling, non-numeric, empty), and a dedicated test asserting the loaded default equals `backoff.DefaultFactor` directly (not merely structural equality with `defaultX()`, which would be circular). `TestLoad_RetryFactorIsolatedPerScope` (`config_test.go`) sets only `LAB_GAME_TG_RETRY_FACTOR` and asserts `Scheduler.RetryFactor`/`Ingest.RetryFactor` stay at `backoff.DefaultFactor` — AC41's isolation clause. `ai-docs/key-decisions.md` KD-27's "thirteen"/"six"/"six" counts are left stale here deliberately: subtask 16 (Group E) owns that propagation, per the design's division of labour (row 16). `go test ./internal/config/...` green, `golangci-lint run`/`fmt -d` clean (no sibling reformatted), `go vet` clean, whole-module `go build ./...` clean.
 - **Subtask 13**: `internal/backoff` gains `DefaultFactor` (`= 2`, untyped constant) and `ValidFactor(factor float64) bool` (finite and strictly greater than 1), plus a package-comment sentence naming the boundary. No signature change to `Exponential`/`EqualJitter` at this step — the module stays green. `TestDefaultFactor_isExactlyTwo` pins the constant; `TestValidFactor_exactTable` covers the default, `1.3`, the smallest float64 strictly above 1, a large finite factor (all true), and exactly 1, just below 1, 0, a negative, `NaN`, `+Inf`, `-Inf` (all false). `go test ./internal/backoff/...` green, `golangci-lint run`/`fmt -d` clean, `go vet` clean, whole-module `go build ./...` clean.
 - **Step 7**: design-review reached GO on round 5; the owner raised the round cap to 5 (was 3) after round 3, and every round found new material rather than re-opening an earlier one.
 - **Step 12**: PR #66 opened. The spec and design moved to `ai-docs/plans/done/`, `INDEX.md`'s row went to ✅ implemented, 14 rows were appended to `_inbox.jsonl` (5 out-of-scope, 4 deferred, 5 open questions), and the task-run record verified — trailing byte `0a`, `instruction_corpus_lines` 9886. The commit message's test counts were written before being measured and were corrected by amend: 70 tests in the two new packages, 337 across the module.
