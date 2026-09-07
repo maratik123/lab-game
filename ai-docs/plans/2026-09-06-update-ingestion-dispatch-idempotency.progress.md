@@ -123,6 +123,18 @@ Taken at `ce6a11d11721d7e6026aca9ac346c9b45391ed04`, with `make verify` green en
 | R1-A7 | round 1 | — | accepted@1 — NOT a defect: `parent_skill` is correctly ABSENT — the canonical template makes it optional and says to omit it when the current skill IS the parent flow, which `/task` is here | `sed -n '24,26p' ai-docs/templates/progress-format.md` |
 | R1-A8 | round 1 | — | accepted@1 — examined, below floor: an infrastructure failure (`pool.Begin`/`Commit`) consumes a retry attempt and could in principle reach `settleGivenUp`, advancing past an unhandled update. The give-up transaction fails on the same broken pool, so the loss window is only where the pool recovers between the last attempt and the give-up, and the update is recorded in `ingest_dead_update` rather than lost silently | read `internal/ingest/attempt.go:52-58` with `internal/ingest/settle.go:52-58` |
 | R1-A9 | round 1 | — | accepted@1 — NOT a defect: `tx.Commit` failing at `attempt.go:68` without an explicit rollback leaks no connection — pgx's `dbTx.Commit` closes the connection itself when the tx status is not idle | `go doc github.com/jackc/pgx/v5.Tx` plus the `dbTx.Commit` body in the module cache |
+| R2-1 | round 2 | major | accepted@2 — NOT a defect of this tree: the RED is the apparatus. Both the reviewer's 3-of-6 and the orchestrator's independent 3-of-6 were measured through `LAB_GAME_TEST_DSN` against ONE hand-started Postgres shared by every package — a workaround introduced during a RAID scrub, not how the suite runs. With the scrub finished and testcontainers giving each package its own server, `go test -race -count=1 ./...` was GREEN 6 of 6. `.github/workflows/ci.yml:93-104` runs `make test` / `make test-race` on `ubuntu-latest` with no `services:` block and no DSN, so CI is the per-package configuration, and AC30 is measured in the configuration it is written for. The load-sensitivity is real and recorded as a trap in `context-status.md`: the scheduler suite assumes exclusive database access, and four different tests fail under contention (`reconcile_test.go:365`, `worker_test.go:194`, `deadline_test.go:168`, `observe_test.go:121`). It is a pre-existing property of files this diff does not touch and deserves its own issue, not a fix here | `LAB_GAME_TEST_DSN=… make verify` must exit 0 — measured RED in 3 of 6 full-module `-race` runs on this tree (`TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot`, `TestRunOnce_twoWorkersConcurrent_exactlyOnceUnderRace`) |
+| R2-2 | round 2 | minor | fixed@755efc1 | `grep -n 'reportAttempt(u, attempt, OutcomeFailed' internal/ingest/attempt.go` → 71, 76, 89; lines 71/76 sit inside the `case handlerErr == nil:` branch, which `observe.go:22-25` says OutcomeFailed cannot describe |
+| R2-3 | round 2 | minor | fixed@755efc1 | re-run R1-2's mutation (delete `runAttempts`' `case <-ctx.Done()`); `retry_test.go:424`'s failure line must name a duration where it says "one backoff delay", not a wall-clock timestamp |
+| R2-4 | round 2 | minor | fixed@755efc1 | `git diff --stat a09d26f..HEAD -- ai-docs/learnings.md` — must be non-empty while the Decisions log records a `code-writer` delegate writing to `ai-docs/plans/*.design.md` (`.claude/skills/task/SKILL.md:123` AXIOM) |
+| R2-A1 | round 2 | — | accepted@2 — NOT a defect, LOCATOR DRIFT re-resolved: R1-5's two named coverage blocks moved with its own fix's line shifts — `attempt.go:64.73`→`69.73,73.4` and `attempt.go:68.40`→`74.40,78.4`, both count 1. The R1-5 row's command is re-resolved here rather than treated as failing | `go test -coverprofile=tmp/c.out ./internal/ingest/ && grep -E 'attempt.go:(69\.73,73\.4\|74\.40,78\.4)' tmp/c.out` |
+| R2-A2 | round 2 | — | accepted@2 — NOT a defect, and it confirms R1-A9 against the path a test now actually reaches: pgx v5.10.0's `dbTx.Commit` closes the connection itself when `TxStatus() != 'I'` on error, so `TestLoop_commitFailureReportsFailed`'s three failed commits leak no pooled connection | `sed -n '180,203p' $(go env GOMODCACHE)/github.com/jackc/pgx/v5@v5.10.0/tx.go` |
+| R2-A3 | round 2 | — | accepted@2 — NOT a defect: R1-11's `unrepresentable` survives at `…design.md:752` and `…spec.md:307`, but both state the Bot API / deployment constraint (one poller per token) rather than a shipped-code property. `key-decisions.md` KD-28 was the live claim about this package's API and it was corrected | `grep -rni 'unrepresentable' --include=*.md .` |
+| R2-A4 | round 2 | — | accepted@2 — NOT a defect: the new 250 ms cancellation bound at `retry_test.go:423` is not flaky — 8 `-count` runs of that test under `-race` and 3 whole-package `-race` runs green, against a mutant that returns 1.73 s | `go test -race -count=8 -run TestRun_cancellationLeavesTheUpdateUnsettled ./internal/ingest/` |
+| R2-A5 | round 2 | — | accepted@2 — below severity floor: of R1-5's three new report sites, `attempt.go:89` (the duplicate branch's `advanceOffsetFresh` failure) is the one with no test; the block shows count 0 | `go test -coverprofile=tmp/c.out ./internal/ingest/ && grep 'attempt.go:88.54' tmp/c.out` |
+| R2-A6 | round 2 | — | accepted@2 — below severity floor: `Observation.Err` (observe.go:93-98) is nil for OutcomeFailed / OutcomePanic / OutcomeGivenUp although an error exists in each; the doc comment says so explicitly, so the field is narrow rather than wrong | `grep -n 'Err:' internal/ingest/settle.go internal/ingest/attempt.go` |
+| R2-A7 | round 2 | — | accepted@2 — below severity floor: the AC Status table's header pin `ce6a11d` predates every round-1 fix commit, so the table describes an earlier tree than the one it sits above | `sed -n '68p' ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.progress.md` |
+| R2-A8 | round 2 | — | accepted@2 — NOT a defect: the whole round-1 fix batch discriminates. Each of R1-1, R1-2, R1-3, R1-4 and R1-5 was re-mutated on this tree over a `cp` backup and each went RED, and R1-6/R1-7/R1-11/R1-12/R1-13 verify by their own greps | the five mutation probes plus the four greps recorded in the Round 2 section |
 
 ## Files touched
 
@@ -171,3 +183,70 @@ Five mutation probes were run over `cp` backups, each restored with the tree ver
 **Below the severity floor — 7 items, recorded in the register as `accepted@1`, not raised as rows:** `internal/ingest/guards_test.go` (the shared corpus asserts no cardinality; `ctxFirstExemptions` is keyed by bare name and never checked for staleness), `internal/ingest/gate.go` (the fail-closed `default:` branch is uncovered), `internal/ingest/observe.go` (`String()`'s doc promises `"OutcomeUnknown(<n>)"`, the code returns `"OutcomeUnknown"`), `internal/ingest/dead_test.go` (the `created_at, id` tie-break is untested — the fixture inserts in three separate transactions, so `ORDER BY id` alone would pass), `internal/ingest/router.go` (`sort.Slice` where `slices.Sort` reads better), `ai-docs/key-decisions.md` (KD-31 lists `internal/backoff` as a call site of itself).
 
 **No Design or Spec Amendment trigger.** Every finding's resolution is a code or `ai-docs/**` edit; none requires editing `*.spec.md` or `*.design.md`. D12, AC17, AC18, AC25 and AC36 already say what findings 1–5 ask for — the implementation and its tests fall short of the documents, not the other way round.
+
+## Self-Review (Round 2)
+
+**Verdict:** REJECT
+
+**What was checked.** The whole diff `a09d26f..HEAD` (52 files, +5138/-102), with the round-2 scope
+the Review register sets: every `fixed@<sha>` row re-verified by its own command against the diff
+since that sha, every `accepted@1` row left alone unless something changed, and the new material
+(`8744db8..HEAD` — 14 files) read in full.
+
+Gates re-run by me against the shipped tree, never taken from this file: `go vet ./...` (clean),
+`golangci-lint run` (0 issues), `golangci-lint fmt -d` (0 lines), `go mod tidy` + `git diff --exit-code
+go.mod go.sum` (clean), `make file-limits` (green), `make cover-ratchet` (90.53% against 90.57%,
+tolerance 0.50 pp), `.claude/skills/ai-audit/scripts/check-review-register.sh` on this file (green),
+`go test -count=1 ./...` (green), and `make verify` — **RED**, which is finding 1.
+
+Re-run AC-verification checks, all PASS except AC30: AC3 (no `http.Client{` / `telego.NewBot` /
+`telegoapi` in non-test `internal/ingest`), AC7 (`grep -c 'goose Down' 00004_ingest.sql` → 0; the
+three shipped migrations untouched), AC11 (no `panic(` / `log.Fatal*` / `log.Panic*` / `os.Exit` in
+any non-test file the diff adds, so `ai-docs/panic-index.md` correctly gains no row), AC20/AC21
+(empty `git diff --stat` over the event dictionary and the five posting-path files), AC13/AC27
+(all nine `OptionError.Field` values now appear in `TestNew_optionValidation -v`), AC31.
+
+**Every round-1 fix was re-mutated on this tree, not read.** Five probes over `cp` backups, each
+restored with `git diff --name-only` confirming the file clean afterwards (never `git checkout --`):
+R1-1 (`lagFor` → `return 0, true`) reds `TestLoop_happyPath` and `TestLoop_unrouted`; R1-2 (delete
+`runAttempts`' `case <-ctx.Done()`) reds `TestRun_cancellationLeavesTheUpdateUnsettled` at 1.73 s
+against the new 250 ms bound; R1-3 (hardcode `Kind: "mutant_kind"`, drop the `ChatID` derivation)
+reds both new give-up assertions by name; R1-4 (`store.PlayerExists` → `false, nil`) reds
+`TestPlayerExists_txAndPoolAgree` on the new `!gotTx || !gotPool` clause; R1-5 (revert the two new
+`reportAttempt` calls in the `handlerErr == nil` branch) reds both new tests with
+`OutcomeFailed observations = 0, want 3`. R1-8's corrected branch attribution was re-derived against
+an instrumented verbatim copy of `Exponential`: `Exponential(6, 500ms, 30s) = 30s via POST-LOOP
+clamp`, `Exponential(10, …) = 30s via IN-LOOP early return` — the comments now match. R1-6, R1-7,
+R1-11, R1-12 and R1-13 verify by their own greps. R1-10's block `loop.go:210.16,216.3` and
+`router.go:53.17,55.4` both now show count 1.
+
+**Verified sound, so a later round need not re-derive it.** The new `TestLoop_commitFailureReportsFailed`
+finally exercises the `tx.Commit` failure path, and it leaks no pooled connection: pgx v5.10.0's
+`dbTx.Commit` (`tx.go:190-197`) closes the connection itself when `TxStatus() != 'I'`. The 250 ms
+cancellation bound is not flaky (8 `-count` runs of that test under `-race`, plus 3 whole-package
+`-race` runs, all green, against a 1.73 s mutant). The `unrepresentable` wording that survives at
+`…design.md:752` and `…spec.md:307` is the Bot API / deployment constraint, not a claim about this
+package's API, so R1-11's correction to KD-28 was the whole obligation and no Design Amendment is
+owed. The `ai-docs/harness-gaps.md` entry's central claim is true: the review-register `PreToolUse`
+hook selects its inputs with `git diff --cached --name-only`, so `git add … && git commit` in one
+Bash call presents an empty index.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | internal/scheduler/reconcile_test.go:365; internal/scheduler/worker_test.go:194 | major | **AC30 does not hold on the shipped tree: `make verify` is RED, at a measured 3-in-6.** `LAB_GAME_TEST_DSN=… make verify` failed on its `go test -race ./...` step with `--- FAIL: TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot/Run_reconciles_before_first_cycle` → `reconcile_test.go:365: row count after Run = 0, want 1 (seeded before the first cycle)`. Four further `go test -race -count=1 ./...` runs put run 1 RED with a different test — `worker_test.go:194: handler ran 21 times across two workers, want exactly 20` — and run 4 RED with the reconcile one again: **3 of 6 full-module race runs failed**. Both tests are pre-existing and in files this diff does not touch, and neither is covered by an open issue (#59, #62 and #63 are the closed scheduler-flake issues and name different tests). What this diff contributes is load: `internal/ingest` is a new DB-heavy package with many `t.Parallel()` tests that now runs concurrently with `internal/scheduler` against the one test Postgres. At `a09d26f` in a clean worktree the same command was green 3 for 3 before the 4th run wedged on a `DROP SCHEMA … CASCADE` blocked by a still-running task handler, so the base series is suggestive, not complete. The AC Status table records AC30 PASS and AC31 PASS; AC31's ratchet needs a green suite to be measurable at all. Note the routing: excepting AC30 rather than stabilising the two tests would be a **Spec Amendment trigger** (`ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md`, AC30) and needs the recipe at `.claude/skills/task/SKILL.md` Step 11, not a code fix | ⚠️ Objected: measured refutation — see register R2-1 |
+| 2 | internal/ingest/observe.go:22-25 | minor | **`OutcomeFailed`'s doc comment is false at three of its call sites, all added by this diff's own R1-5 fix.** It reads "OutcomeFailed means one attempt's Handler returned a non-nil, non-duplicate error", but `attempt.go:71` and `attempt.go:76` report it from inside `case handlerErr == nil:` (a failing `advanceOffset`, a failing `tx.Commit`) and `attempt.go:89` reports it from the duplicate branch, where the handler returned `ErrAlreadyPosted`. §13.2's health surface separates handler errors from infrastructure ones; as shipped, a database that fails to commit is counted as a handler error. Fix: widen the doc to "one attempt failed — the Handler returned a non-duplicate error, or the attempt's own transaction could not be advanced or committed", or introduce a distinct outcome | ✅ Fixed |
+| 3 | internal/ingest/retry_test.go:424 | minor | **The new cancellation-latency assertion prints a wall-clock timestamp where its own text promises a delay.** The format string says `want well under one backoff delay (%v)` and the argument is `cancelAt`, a `time.Time`. Observed on the R1-2 mutation run: `Run() returned 1.725742986s after cancellation, want well under one backoff delay (2026-09-07 11:54:08.774989673 +0300 MSK m=+1.344000315)`. The reader is given the moment of cancellation instead of the 300 ms bound they need to size the overrun — the same diagnosability class issue #63 and commits `ffec013`/`95aba2c` just closed in `internal/scheduler`. Fix: print `250*time.Millisecond` (or `cfg.RetryBaseDelay`), not `cancelAt` | ✅ Fixed |
+| 4 | ai-docs/learnings.md | minor | **A recorded instruction violation owes a learnings entry that this diff does not carry.** The Decisions log at line 41 records that the Step-11 fix delegate "touched `ai-docs/plans/*.design.md`" — a `code-writer` writing a file `.claude/skills/task/SKILL.md:123`'s AXIOM makes subagent-owned ("`*.spec.md` and `*.design.md` writes are subagent-owned"). `AGENTS.md` § *Learning Log* admits no "already handled" disposition, and § *Workflow* requires the entry be visible in the PR diff; `git diff --stat a09d26f..HEAD -- ai-docs/learnings.md` is empty. The reverted hunk is the correct handling of the edit; the missing entry is a separate obligation | ✅ Fixed |
+
+**Below the severity floor — 4 items, recorded in the register as `accepted@2`, not raised as rows:**
+`internal/ingest/attempt.go:89` (the one of R1-5's three new report sites with no test — block
+`88.54,91.4` shows count 0), `internal/ingest/observe.go:93-98` (`Observation.Err` is nil for every
+outcome that actually carries an error, which the doc states but the field name invites the reader to
+misread), this file's line 68 (the AC Status header still pinned at `ce6a11d`, which predates every
+round-1 fix commit), and `internal/ingest/retry_test.go:44-49` (`txClosingHandler` reaches the
+`advanceOffset`-failure branch by violating the Handler contract it is handed — a legitimate fixture,
+but the branch's production trigger is a database error, which nothing exercises).
+
+**One Spec Amendment route is named inside finding 1 and must not be taken silently.** Every other
+finding's resolution is a code, test or `ai-docs/**` edit; none requires editing `*.spec.md` or
+`*.design.md`.
