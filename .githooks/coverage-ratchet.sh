@@ -36,16 +36,31 @@
 # The spread is the binding constraint on the tolerance, and it binds whatever
 # the raise rule is: a lucky run RECORDS its value, and every ordinary run
 # afterwards reads as a fall of up to the spread. So TOLERANCE_PP must exceed
-# 0.3762, or the ratchet blocks forever with no code change involved. 0.50 is
-# that with headroom for a tail 24 runs has not seen — the 4-statement jump was
+# 0.3762, or the ratchet blocks forever with no code change involved. 0.50 was
+# that with headroom for a tail 24 runs had not seen — the 4-statement jump was
 # observed once.
 #
-# WHAT 0.50 COSTS, bounded: the recorded value never decreases, so the total
-# coverage that can be lost silently is one tolerance below the all-time high —
-# about 6.6 statements — ONCE, not per commit.
+# RAISED TO 0.60 on 2026-09-07, and the reason is a term the series above could
+# not see: it was measured on ONE machine, and the ratchet is checked on two.
+# On PR #66, run 34144605615, CI measured 90.88% where this repository's
+# development machine measured 91.28% twice in a row at the same commit — a gap
+# of 0.40 pp, about 7 statements at today's 1744. The five blocks below are
+# worth 0.2867 pp at that denominator, so the cross-environment term is the
+# LARGER of the two and is not drift between runs at all: it is the same suite
+# taking different branches under a different container runtime and a slower
+# runner. A mark recorded by a local pre-commit therefore leaves CI only
+# (tolerance - gap) of headroom, and at 0.50 that was 0.10 pp — two statements.
+# 0.60 restores a usable margin without touching what the ratchet guards.
 #
-# 0.50 IS THE STANDING VALUE — there is no plan to tighten it, and chasing the
-# five blocks is explicitly not one. Mocking a server-side clock through the
+# What that costs is bounded the same way as before, one tolerance below the
+# all-time high, now about 10.5 statements at 1744, ONCE.
+#
+# WHAT THE TOLERANCE COSTS, bounded: the recorded value never decreases, so the
+# total coverage that can be lost silently is one tolerance below the all-time
+# high — ONCE, not per commit.
+#
+# THE TOLERANCE IS A STANDING VALUE — there is no plan to tighten it, and
+# chasing the five blocks is explicitly not one. Mocking a server-side clock through the
 # database is not a cheap change, and buying tenths of a percentage point with
 # it would be the ratchet setting the project's priorities instead of guarding
 # them.
@@ -53,9 +68,10 @@
 # The spread narrows on its own as the tree grows, because it is a COUNT of
 # statements over a growing denominator. The same five blocks are worth
 # 0.3762 pp at today's 1329 statements, 0.25 pp at 2000, and 0.167 pp at 3000.
-# The tolerance does not have to follow it down: a fixed 0.50 simply becomes
+# The tolerance does not have to follow it down: a fixed value simply becomes
 # roomier, and what it can hide stays bounded at one tolerance below the
-# all-time high, once.
+# all-time high, once. The cross-environment term added above narrows the same
+# way, for the same reason.
 #
 # Revisit this number only on a re-measurement — if a series of runs shows the
 # spread has GROWN past it, which would mean new flaky blocks arrived faster
@@ -72,7 +88,7 @@
 
 set -uo pipefail
 
-TOLERANCE_PP=0.50
+TOLERANCE_PP=0.60
 RATCHET_FILE=ai-docs/coverage-ratchet.txt
 PROFILE=tmp/coverage.out
 
