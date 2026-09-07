@@ -55,22 +55,29 @@
 # (1595 of 1744 — 11 of the 14 timing-dependent statements), frozen by the
 # cache and re-recorded on later commits because the ratchet only ever raises.
 #
-# WHAT THOSE 14 STATEMENTS ARE, and where they went. Every one is an error path
-# reachable only when a deadline or a cancellation lands inside a database
-# round-trip: scheduler/execute.go's failed COMMIT (7 statements) and failed
-# settle (2), its failed ROLLBACK TO SAVEPOINT (1), settle.go's failed DELETE
-# (1), worker.go's executeOne error (2), and ingest/loop.go's post-poll
-# ctx.Done() (1). Since internal/testdb put the test cluster on a tmpfs and
-# stopped initdb syncing it, five of those six scheduler blocks are not drawn at
-# all any more — 0-covered in every run measured since — and the sixth, the
-# failed ROLLBACK TO SAVEPOINT, still flips. Three runs at 1757 statements put
-# today's drift at SIX statements, 0.34 pp: that one, plus four in
-# internal/ingest (attempt.go's retry-exhausted branch, loop.go's post-poll
-# ctx.Done(), two in settle.go). The mark was re-recorded at the floor of the
-# measurement that preceded those runs, 90.88%, and this hook then raised it to
-# its own draw, as the raise rule always does. Covering the scheduler blocks
-# deterministically is its own piece of work; it is not a tolerance question,
-# and the tolerance stays where it is.
+# WHAT THOSE 14 STATEMENTS ARE, and where they went. Six blocks, every one an
+# error path reachable only when a deadline or a cancellation lands inside a
+# database round-trip — five in the scheduler, one in ingest:
+#
+#   internal/scheduler/execute.go:190.39,201.3   failed COMMIT            7
+#   internal/scheduler/execute.go:185.87,188.3   failed settle            2
+#   internal/scheduler/execute.go:241.73,243.3   failed ROLLBACK TO SP    1
+#   internal/scheduler/settle.go:203.101,205.4   failed DELETE            1
+#   internal/scheduler/worker.go:120.57,123.4    executeOne error         2
+#   internal/ingest/loop.go:191.21,192.20        post-poll ctx.Done()     1
+#
+# Since internal/testdb put the test cluster on a tmpfs and stopped initdb
+# syncing it, four of the five scheduler blocks are not drawn at all any more —
+# 12 statements, 0-covered in every run measured since. The fifth, the failed
+# ROLLBACK TO SAVEPOINT, still flips, and so does the ingest block. Three runs
+# at 1757 statements put today's drift at SIX statements over five blocks,
+# 0.34 pp: those two, plus four more in internal/ingest — attempt.go:88.54,91.4
+# (2, the retry-exhausted branch) and settle.go:16.16,18.3 and 23.39,25.3 (1
+# each). The mark was re-recorded at the floor of the measurement that preceded
+# those runs, 90.88%, and this hook then raised it to its own draw, as the raise
+# rule always does. Covering the scheduler blocks deterministically is its own
+# piece of work; it is not a tolerance question, and the tolerance stays where
+# it is.
 #
 # THE MEASUREMENT BELOW KEEPS THE TEST CACHE — owner's decision, 2026-09-07,
 # taken with the freeze understood rather than around it. `-count=1` here would
@@ -93,7 +100,7 @@
 # whose runs replay each other measures one run.
 #
 # What the tolerance costs is bounded the same way as before, one tolerance
-# below the all-time high, about 10.5 statements at 1755, ONCE.
+# below the all-time high, about 10.5 statements at 1757, ONCE.
 #
 # WHAT THE TOLERANCE COSTS, bounded: the recorded value never decreases, so the
 # total coverage that can be lost silently is one tolerance below the all-time
@@ -108,7 +115,7 @@
 # The spread narrows on its own as the tree grows, because it is a COUNT of
 # statements over a growing denominator. The 24-run series' five blocks were
 # worth 0.3762 pp against the 1329 statements of that day and are worth
-# 0.2867 pp against 1755; today's six drifting statements are worth 0.34 pp at
+# 0.2846 pp against 1757; today's six drifting statements are worth 0.34 pp at
 # 1757, 0.30 pp at 2000 and 0.20 pp at 3000. The tolerance does not have to
 # follow it down: a fixed value simply becomes roomier, and what it can hide
 # stays bounded at one tolerance below the all-time high, once.
