@@ -8,22 +8,17 @@ _Updated: 2026-09-07
 **Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Amendment — Groups D and E complete; every subtask 1-16 done
-**last_passed_gate:** make verify + make cover-ratchet (91.46% against 91.46%) + check-citations.sh + the relative-link check | 2026-09-07 | 0d898c2 + the subtask-16 working tree
+**current_step:** Amendment — Step 9 Verify (ALL PASS); self-review next
+**last_passed_gate:** go test -count=1 ./... + golangci-lint run + go vet | 2026-09-07T16:07:56Z | eec3612fc1c2d3193be6ed064c110a49ff338323
 **entry_args:** 22
 
 ## Next action
 
-**Do this immediately:** nothing in the Subtasks list remains — subtask 16 was the terminal row of
-the terminal group. The branch is ready for `/task` Step 9.5-onward housekeeping and the self-review
-that gates the push (`AGENTS.md` § Workflow AXIOM: every code-producing commit on a branch with an
-open PR passes self-review before it is pushed; PR #66 is open, so this is not the Step-8 carve-out).
+**Do this immediately:** spawn `self-review` on the amendment with the closed-list prompt and the range `668339d..HEAD` — 668339d is the commit PR #66 was opened at, so the range is the amendment's own diff rather than the whole task's.
 
-**Read before the self-review:** subtask 16's Decisions-log entry below records a **Group D gap it
-closed** — D20's closing checklist named three groups of stale doubling/loop prose and subtask 15
-repaired only the first. The other two are now repaired in `internal/backoff/backoff_test.go` and
-`internal/tg/retry_test.go`, comment and `t.Errorf` prose only, no assertion or expected value moved.
-That is a deviation from row 16's stated three-file Files column and wants the orchestrator's eye.
+**Environment:** leave `LAB_GAME_TEST_DSN` UNSET; testcontainers per package, as CI runs.
+
+**A deviation self-review should judge rather than re-derive.** Group E's subtask 16 edited `internal/backoff/backoff_test.go` and `internal/tg/retry_test.go` — comment and `t.Errorf` prose only, 65 lines, no assertion and no expected value moved (measured). Those two files are in **row 15's** Files column, not row 16's, and D20's closing checklist is cited by § Risks as row 15's instrument, so Group D under-delivered its own row and Group E completed it. Not a scope expansion; it is a group-boundary breach in the other direction — a docs group (`inherit`, `general-purpose`) touched `*_test.go`, which breaks Group E's change-type homogeneity. The delegate flagged it rather than absorbing it and logged the miss itself.
 
 ## Subtasks
 
@@ -439,6 +434,7 @@ when it decided that kind carries no date, so the narrow rule is a decision, not
 
 - Step 1: round opened; one unresolved review thread, no issue-style comments, one COMMENTED review with an empty body.
 - Step 2: classification **paused** — the thread mixes a code change with a design question, which is a documented pause trigger. Blast radius measured before asking rather than estimated: production call sites in `internal/backoff/backoff.go`, `internal/scheduler/settle.go` (two), `internal/tg/caller.go`, `internal/ingest/attempt.go`; five test files pin ramp values (`backoff_test.go`, `retry_test.go`, `cadence_test.go`, `failure_test.go`, `deadline_test.go`); three doc surfaces assert the doubling (`key-decisions.md` KD-31, the design doc, `context-status.md`).
+- Amendment (Group E): completed part of row 15 that Group D missed — the falsified loop-narrating prose in `internal/backoff/backoff_test.go` and `internal/tg/retry_test.go`, both already in row 15's Files. Comment and format-string text only; the orchestrator measured the diff and confirmed no assertion or expected value moved. Accepted rather than restructured: the design was correct and unchanged, so a Design Amendment would have restated it; recorded here for self-review to judge.
 - Amendment (Group D): the orchestrator re-ran the defect the amendment exists to catch — `cfg.RetryFactor` replaced by `backoff.DefaultFactor` at ONE of the two `settle.go` call sites (the drain settlement, line 143) over a `cp` backup. `TestDeadline_nonDefaultFactorReachesTheCallSite` went RED naming the factor-3 expectation. Before the amendment that same mis-thread shipped with the whole suite green, because both literal ramps run at the default.
 - Amendment: design-review reached GO at round 12 after four writer rounds (6, 7, 9, 11) and four review rounds (6, 8, 10, 12). Two owner decisions shaped it: the default stays 2 (so behaviour holds and no pinned ramp value moves), and a configured factor must be strictly greater than 1. A spec amendment ran mid-cycle, adding AC39-AC43 and correcting AC27.
 - Amendment: the scenario unit for the non-default-factor gate is the **production call site**, not the adopter — `internal/scheduler` has two, in `deferredFailedStatement` and `settleFailed`, each writing a persisted `run_at`. One-per-adopter would have left the drain path ungated with the whole suite green.
