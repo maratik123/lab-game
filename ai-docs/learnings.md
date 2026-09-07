@@ -317,3 +317,10 @@ wrong-surface text by message twelve.
 **at:** a66eb31
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-07 — documentation — profile coordinates written into a durable file instead of symbol names
+**What happened:** The coverage-ratchet comment block records which statements drift between runs. I wrote them as profile coordinates — `internal/scheduler/execute.go:190.39,201.3` and five more — into a file whose whole job is to be read at some later commit. The same block already held the counter-example: the five coordinates from the 24-run series on `8fae04a` have all moved since, and `self-review` round 2 misidentified a block by matching line numbers across two lists taken at different commits. The owner named the tool the workspace already mandates for exactly this: `.claude/rules/ast-index.md` ("ALWAYS use ast-index FIRST"), whose `symbol` / `outline` commands answer in names that survive an edit above them.
+**Rule:** A reference that is written down to be read later names a **symbol** — package plus function, or a type — never a line or a profile coordinate. Resolve it with `ast-index symbol "<name>"` before writing it, and where a coordinate genuinely must appear (a historical measurement), label it with the commit it was taken at. The ast-index rule is not only about searching: it is about how a location is spelled.
+**at:** 508ebdb
+**Kind:** correction
+**Escalated?** no
