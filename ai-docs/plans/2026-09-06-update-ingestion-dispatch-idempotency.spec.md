@@ -2,11 +2,20 @@
 
 **Source:** issue #22
 **Date:** 2026-09-06
+**Amended:** 2026-09-07 (design-review round 8)
 **Tracked in:** #22
 
 > **Complete.** Every question this spec opened is answered. The allowlist policy was re-opened by
 > the owner and re-answered at round 3. The earlier "every private chat is allowed" reading is
 > superseded: where it appears below it is named as superseded and as refused, never applied.
+
+> **Amended after design-review round 8.** The design makes the exponential retry ramp's growth
+> factor a configured value with its compiled-in default unchanged. That ships three environment
+> keys and a new start-up refusal that no acceptance criterion covered, and it leaves AC27's
+> enumeration of the ingest tuning keys incomplete. The amendment is exactly: **Scope 13**, two
+> **Key decisions** rows, **Technical constraints** item 10, the factor added to **AC27**'s
+> enumeration, and **AC39-AC43**. Nothing else in this spec is re-opened, and no earlier decision
+> changes.
 
 This is the bot's front door: the long poll against the configured Bot API base URL, the router
 from an update to a handler, the idempotency of a repeated update, and the allowlist that keeps
@@ -221,6 +230,36 @@ server whose handler is an arbitrary `func(http.ResponseWriter, *http.Request)`,
     its handler is fixed** — the row diagnoses, it does not recover. The chat id column is nullable:
     not every update kind addresses a chat.
 
+13. **The retry ramp's growth factor is configuration, not a literal** (round-8 amendment; the
+    owner's decision, recorded here and not re-opened). The exponential ramp behind Scope 7's
+    growing delay multiplies by a factor compiled into Go source, and `AGENTS.md` § Code Style puts
+    a literal with semantic meaning in configuration rather than in a `.go` file. The factor becomes
+    a named constant and an optional-with-default environment key — **one key per adopter**, because
+    the three ramps in this tree measure three different things and a single shared key would
+    re-tune all three at once: `LAB_GAME_TG_RETRY_FACTOR` for the outbound transport's wait between
+    attempts of one Bot API call, `LAB_GAME_SCHEDULER_RETRY_FACTOR` for the scheduler's task-retry
+    cadence, and `LAB_GAME_INGEST_RETRY_FACTOR` for this loop's between-attempt delay.
+
+    **The compiled-in default does not move, so no shipped delay moves.** It stays the factor the
+    ramp already multiplies by, which is what keeps Scope 7's head-of-line stall arithmetic and
+    every pinned delay in the tree true when no variable is set.
+
+    **A configured factor must be finite and strictly greater than `1`.** A value below `1`, exactly
+    `1`, a non-finite value, and a string that is no number are each a configuration error refused
+    when the service starts, naming the variable that carried it. A gentler ramp — the `1.3` that
+    prompted this amendment — is therefore an operator's choice through configuration, never a code
+    change.
+
+    Two things follow, and both are recorded rather than left to be discovered. This is the one part
+    of the task that reaches past `internal/ingest`: the transport's and the scheduler's ramps take
+    their own keys because the ramp itself is shared, and neither default moves, so neither scope's
+    behaviour changes. And each of the three `LAB_GAME_*` retry families gains one key, so any
+    key-count claim naming one of those families — or the module's total — goes stale, the counts
+    this spec's earlier sections pin at their commits included: those describe the tree as it stood
+    before this amendment and are not restated. Each such claim is a member of the propagation class
+    *Technical constraints* item 8 already opens, and AC32 is what covers it; this amendment adds no
+    second enumeration.
+
 ## Out of scope
 
 - **Any specific handler.** The mechanics own them: chat location and deep-link onboarding (#30),
@@ -273,6 +312,8 @@ server whose handler is an arbitrary `func(http.ResponseWriter, *http.Request)`,
 | May the lookup's result be cached? | **A positive result, yes, for the process's lifetime; a negative result, not in a way that outlives a player's Start.** Onboarding creates the player row *after* the bot has had reason to look the id up, so an unbounded negative cache would refuse the very first DM until a restart. |
 | Is `ALLOWED_CHAT_IDS` ever absent, making the gate a no-op? | **No.** It is required and non-empty in every environment including production; unset or empty is a start-up error naming the variable [source: 0376234:ai-docs/plans/done/2026-09-04-config-layer-balance-files.spec.md:121 · `sed -n '121p' ai-docs/plans/done/2026-09-04-config-layer-balance-files.spec.md`]. There is no disabled state to specify. |
 | What a give-up record consists of | **A row without the payload** (owner, round 3): identity, update kind, chat id, attempts, last error — `scheduler.DeadTask`'s shape. Enumerable and diagnosable; one real chat id for §12.5 to sanitise; the update body is not persisted, so a give-up is not replayable. |
+| The retry ramp's growth factor (round-8 amendment) | **A configured value with an unchanged compiled-in default, one key per adopter** (owner). The ramp multiplies by a literal `2` in Go source today [source: 0eca609:internal/backoff/backoff.go:55 · `grep -n "d \*= 2" internal/backoff/backoff.go`], which `AGENTS.md` § Code Style makes a configuration value rather than a source literal. It becomes a named constant whose value stays `2` — so behaviour at the default is unchanged and no pinned delay anywhere in the tree moves — plus `LAB_GAME_TG_RETRY_FACTOR`, `LAB_GAME_SCHEDULER_RETRY_FACTOR` and `LAB_GAME_INGEST_RETRY_FACTOR`, one per scope. One shared key was refused: the three ramps are already tuned apart, and the gentler factor the owner asked for is the transport's, so a shared key would silently re-tune the scheduler's persisted retry cadence and this loop's stall budget with it. |
+| Which factor values are legal | **Finite and strictly greater than `1`** (owner). A value at or below `1`, `1` itself included, a non-finite value, and a string that is no number are each refused at service start-up, naming the variable, in the `*KeyError` shape `internal/config` already uses for a malformed tuning value [source: 0eca609:internal/config/errors.go:32,56 · `grep -n KeyError internal/config/errors.go`]. There is no permissive mode and no load-time clamp: an illegal configured factor never reaches a ramp. Why the rule needs two clauses rather than one is *Technical constraints* item 10. |
 
 ## Technical constraints
 
@@ -347,6 +388,16 @@ server whose handler is an arbitrary `func(http.ResponseWriter, *http.Request)`,
    be in `AllowedChatIDs`, which is `[]int64`, and it cannot equal an `owner.telegram_id`, which is
    `bigint`.
 
+10. **A float that parses is not thereby a legal factor — which is why the refusal has two clauses.**
+    `strconv.ParseFloat` returns a nil error for `"NaN"`, `"Inf"`, `"+inf"` and `"infinity"`, and
+    `+Inf` compares strictly greater than `1` while `NaN` compares greater than nothing at all
+    [measured 0eca609 · a probe module under `tmp/` · `go run .` → `ParseFloat("NaN") = NaN
+    err=<nil>  isNaN=true isInf=false  >1=false`, `ParseFloat("Inf") = +Inf err=<nil>  isNaN=false
+    isInf=true  >1=true`, `ParseFloat("+inf") = +Inf err=<nil>  isNaN=false isInf=true  >1=true`].
+    A reader that only checks "it parses" therefore admits `NaN`; a reader that only checks
+    "greater than `1`" admits `+Inf`. AC42 and AC43 are two criteria for that reason, not one
+    restated twice.
+
 ## Acceptance Criteria
 
 | # | Criterion |
@@ -377,7 +428,7 @@ server whose handler is an arbitrary `func(http.ResponseWriter, *http.Request)`,
 | AC24 | After a failed attempt the database holds nothing that attempt wrote; after the attempt cap is exhausted the loop advances past the update and continues polling. |
 | AC25 | The offset never advances past an update that is not settled, where settled means handled, refused as a duplicate, unrouted, or given up on. Cancelling the loop's context mid-retry leaves the update unsettled and the offset behind it. |
 | AC26 | A long poll in flight when the loop's context is cancelled returns promptly and the loop stops without leaking a goroutine. |
-| AC27 | The attempt cap, the delay bounds, the poll interval, the long-poll timeout and the batch limit are each readable from an environment variable with a compiled-in default, and an invalid value is rejected at start-up naming the variable. |
+| AC27 | The attempt cap, the delay bounds, the ramp's growth factor, the poll interval, the long-poll timeout and the batch limit are each readable from an environment variable with a compiled-in default, and an invalid value is rejected at start-up naming the variable. |
 | AC28 | The gate allows a `ChatKnown` destination whose id is in `AllowedChatIDs`; allows one outside the list when an `owner` row exists with `kind = 'player'` and that `telegram_id`; and refuses every other `ChatKnown` destination, including a `chat_id` token that parses as no integer. |
 | AC29 | Every behaviour AC1-AC28 names is reachable without a live Telegram server and without a hand-provisioned database: the package's Bot API dependency is satisfiable by `internal/tgtest` and its storage dependency by `internal/testdb`, with no production path requiring either to be replaced by a mock of this package's own making. |
 | AC30 | `make verify` passes in full — every gate that target chains, none excepted. |
@@ -389,6 +440,11 @@ server whose handler is an arbitrary `func(http.ResponseWriter, *http.Request)`,
 | AC36 | A given-up update leaves exactly one row carrying its identity, its update kind, the destination chat id where the update had one, the attempt count and the last error; no raw update payload is persisted anywhere by this package. |
 | AC37 | The package exposes a read over give-up rows taking a caller-owned transaction and a limit, returning them in a deterministic order. |
 | AC38 | No production code path outside `internal/tg` can issue an outbound Bot API call that skips the gate: the gate is installed at client construction and the client is the only route to the generated method surface. |
+| AC39 | The exponential retry ramp's growth factor is read from an environment variable in each of the three scopes that runs such a ramp: `LAB_GAME_TG_RETRY_FACTOR`, `LAB_GAME_SCHEDULER_RETRY_FACTOR` and `LAB_GAME_INGEST_RETRY_FACTOR`. Each key is optional, each has a compiled-in default, each is enumerated by `config.EnvKeys()`, and each carries a line in `.env.example` beside its scope's other retry keys. |
+| AC40 | With none of the three variables set, every retry delay every adopter produces, at every attempt, equals the delay that adopter produced before this change. The default is one named constant rather than a value repeated per scope, and no ramp's growth factor is a literal at its point of use. |
+| AC41 | A factor configured to a legal value other than the default changes the delays produced by that scope's own production retry path, and leaves the other two scopes' delays unchanged. No production path uses the compiled-in default in place of its scope's configured value. |
+| AC42 | A configured factor that is not strictly greater than `1` — a value below `1` and exactly `1` alike — fails start-up with a configuration error naming the variable that carried it, in the same error shape `internal/config` produces for every other malformed tuning value. |
+| AC43 | A configured factor that parses to a value which is not finite, one that parses to not-a-number, and a string that does not parse as a number at all are each refused at start-up in that same shape, naming the variable. No value refused by AC42 or by this criterion reaches a ramp. |
 
 ## Open questions
 

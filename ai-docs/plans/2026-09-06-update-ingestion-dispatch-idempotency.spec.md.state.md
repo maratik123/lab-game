@@ -59,9 +59,9 @@ gh_issue:
   comments: []
   linked_issues: ["#19", "#21", "#30", "#37", "#42", "#47"]
   linked_prs: []
-round_cap: 4
+round_cap: 5
 questions_per_round_cap: 3
-round: 3
+round: 4
 agent_id: a1ae9486e8e4caa8e
 prior_qa:
   - round: 1
@@ -79,4 +79,13 @@ prior_qa:
   - round: 2
     question: "When the retry cap is exhausted and the update is dropped, what survives?"
     answer: "Row, no payload - identity, kind, chat id, attempts and last error, the shape scheduler.DeadTask already has (internal/scheduler/task.go:79). Enumerable and diagnosable; one chat id for §12.5 sanitisation to rewrite; the message content is not persisted."
+  - round: 4
+    question: "PR #66 review — the exponent base is a hard-coded literal 2; make it configurable with default 1.3?"
+    answer: "Narrowed by the owner: make it configurable and lift the literal into a named default constant, but KEEP the default at 2 so behaviour is preserved and no pinned ramp value moves. 1.3 becomes an operator config choice later."
+  - round: 4
+    question: "Is an exponent base at or below 1 legal?"
+    answer: "No. Validated at service start-up when set through config; the owner first said 'less than 1 is not allowed', then tightened it to 'we validate on > 1', so exactly 1 is refused alongside every smaller value."
+  - round: 4
+    question: "Where does the configurable value live — one shared key or one per adopter?"
+    answer: "One per adopter (design D20's call, not re-opened): LAB_GAME_TG_RETRY_FACTOR, LAB_GAME_SCHEDULER_RETRY_FACTOR, LAB_GAME_INGEST_RETRY_FACTOR. A shared key would silently move the scheduler's persisted retry cadence when tuning the transport."
 ```
