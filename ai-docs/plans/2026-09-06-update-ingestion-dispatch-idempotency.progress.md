@@ -90,19 +90,19 @@ Taken at `ce6a11d11721d7e6026aca9ac346c9b45391ed04`, with `make verify` green en
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
-| R1-1 | round 1 | major | open | `python3 -c "…"` replacing `lagFor`'s body with `return 0, true`, then `go test -count=1 ./internal/ingest/` — must go RED |
-| R1-2 | round 1 | major | open | delete `runAttempts`' `case <-ctx.Done()` (attempt.go:30-32), then `go test -count=1 ./internal/ingest/` — must go RED |
-| R1-3 | round 1 | major | open | hardcode `Kind: "mutant_kind"` and drop the `ChatID` assignment in `settle.go:64-74`, then `go test -count=1 ./internal/ingest/` — must go RED |
-| R1-4 | round 1 | major | open | make `store.PlayerExists` return `false, nil` unconditionally, then `go test -count=1 ./internal/store/ -run TestPlayerExists_txAndPoolAgree` — must go RED |
-| R1-5 | round 1 | major | open | `go test -coverprofile=tmp/c.out ./internal/ingest/ && grep -E 'attempt.go:(64\.73|68\.40)' tmp/c.out` — both blocks must show a non-zero count |
+| R1-1 | round 1 | major | fixed@d083e83 | `python3 -c "…"` replacing `lagFor`'s body with `return 0, true`, then `go test -count=1 ./internal/ingest/` — must go RED |
+| R1-2 | round 1 | major | fixed@d083e83 | delete `runAttempts`' `case <-ctx.Done()` (attempt.go:30-32), then `go test -count=1 ./internal/ingest/` — must go RED |
+| R1-3 | round 1 | major | fixed@d083e83 | hardcode `Kind: "mutant_kind"` and drop the `ChatID` assignment in `settle.go:64-74`, then `go test -count=1 ./internal/ingest/` — must go RED |
+| R1-4 | round 1 | major | fixed@d083e83 | make `store.PlayerExists` return `false, nil` unconditionally, then `go test -count=1 ./internal/store/ -run TestPlayerExists_txAndPoolAgree` — must go RED |
+| R1-5 | round 1 | major | fixed@d083e83 | `go test -coverprofile=tmp/c.out ./internal/ingest/ && grep -E 'attempt.go:(64\.73|68\.40)' tmp/c.out` — both blocks must show a non-zero count |
 | R1-6 | round 1 | major | fixed@f201750 | `grep -rn 'NewGate\|NewPoolGate' --include=*.go . \| grep -v _test.go` — the claim at `domain-invariants.md:114` holds only when a production call site appears |
 | R1-7 | round 1 | minor | fixed@f201750 | `grep -c '^## 2[0-9]' docs/DESIGN.md` → `0`; no `§22` citation may remain in `internal/ingest/doc.go` or `00004_ingest.sql` |
-| R1-8 | round 1 | minor | open | probe over a verbatim copy of `Exponential`: `Exponential(6, 500ms, 30s)` returns via the POST-LOOP clamp, `Exponential(10, …)` via the in-loop return — `retry_test.go:715-717` must not say otherwise |
-| R1-9 | round 1 | minor | open | read `attempt.go:53` against `observe.go:79-81`: `start` must not be taken before `pool.Begin` if `Duration` documents the handler call |
-| R1-10 | round 1 | minor | open | `go test -coverprofile=tmp/c.out ./internal/ingest/ && grep 'loop.go:210' tmp/c.out` — must show a non-zero count |
+| R1-8 | round 1 | minor | fixed@d083e83 | probe over a verbatim copy of `Exponential`: `Exponential(6, 500ms, 30s)` returns via the POST-LOOP clamp, `Exponential(10, …)` via the in-loop return — `retry_test.go:715-717` must not say otherwise |
+| R1-9 | round 1 | minor | fixed@d083e83 | read `attempt.go:53` against `observe.go:79-81`: `start` must not be taken before `pool.Begin` if `Duration` documents the handler call |
+| R1-10 | round 1 | minor | fixed@d083e83 | `go test -coverprofile=tmp/c.out ./internal/ingest/ && grep 'loop.go:210' tmp/c.out` — must show a non-zero count |
 | R1-11 | round 1 | minor | fixed@f201750 | `grep -rn 'sync.Once\|atomic\.\|running bool' internal/ingest/*.go \| grep -v _test` — `key-decisions.md:77`'s "unrepresentable" holds only when this is non-empty |
-| R1-12 | round 1 | minor | open | `grep -n 'Limit' internal/ingest/loop_test.go` — a `req.Limit` assertion must exist |
-| R1-13 | round 1 | minor | open | `go test ./internal/ingest/ -run TestNew_optionValidation -v` — all nine `OptionError.Field` values must appear |
+| R1-12 | round 1 | minor | fixed@d083e83 | `grep -n 'Limit' internal/ingest/loop_test.go` — a `req.Limit` assertion must exist |
+| R1-13 | round 1 | minor | fixed@d083e83 | `go test ./internal/ingest/ -run TestNew_optionValidation -v` — all nine `OptionError.Field` values must appear |
 | R1-14 | round 1 | nit | accepted@1 — below severity floor; the corpus is one filter condition wide and a wrong directory still `t.Fatal`s at `guards_test.go:39` | `grep -n 'len(paths)' internal/ingest/guards_test.go` |
 | R1-15 | round 1 | nit | accepted@1 — below severity floor | `grep -n 'ctxFirstExemptions' internal/ingest/guards_test.go` |
 | R1-16 | round 1 | nit | accepted@1 — below severity floor; design D2 itself writes the list with a `(definition)` qualifier | `grep -n 'call sites are now' ai-docs/key-decisions.md` |
