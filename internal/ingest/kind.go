@@ -83,6 +83,68 @@ func chatMemberChatID(c *telego.ChatMemberUpdated) (int64, bool) {
 	return c.Chat.ID, true
 }
 
+// businessConnectionDate extracts telego.BusinessConnection's own Date
+// field — KindBusinessConnection's payload declares a Date but no Chat
+// (design D4/D13).
+func businessConnectionDate(b *telego.BusinessConnection) (time.Time, bool) {
+	return time.Unix(b.Date, 0).UTC(), true
+}
+
+// businessMessagesDeletedChatID extracts telego.BusinessMessagesDeleted's
+// own Chat.ID field — KindDeletedBusinessMessages's payload declares a
+// Chat but no Date (design D4/D13).
+func businessMessagesDeletedChatID(b *telego.BusinessMessagesDeleted) (int64, bool) {
+	return b.Chat.ID, true
+}
+
+// messageReactionDate and messageReactionChatID extract
+// telego.MessageReactionUpdated's own Date and Chat.ID fields —
+// KindMessageReaction's payload declares both (design D4/D13).
+func messageReactionDate(m *telego.MessageReactionUpdated) (time.Time, bool) {
+	return time.Unix(m.Date, 0).UTC(), true
+}
+
+func messageReactionChatID(m *telego.MessageReactionUpdated) (int64, bool) {
+	return m.Chat.ID, true
+}
+
+// messageReactionCountDate and messageReactionCountChatID extract
+// telego.MessageReactionCountUpdated's own Date and Chat.ID fields —
+// KindMessageReactionCount's payload declares both (design D4/D13).
+func messageReactionCountDate(m *telego.MessageReactionCountUpdated) (time.Time, bool) {
+	return time.Unix(m.Date, 0).UTC(), true
+}
+
+func messageReactionCountChatID(m *telego.MessageReactionCountUpdated) (int64, bool) {
+	return m.Chat.ID, true
+}
+
+// chatJoinRequestDate and chatJoinRequestChatID extract
+// telego.ChatJoinRequest's own Date and Chat.ID fields —
+// KindChatJoinRequest's payload declares both (design D4/D13).
+func chatJoinRequestDate(c *telego.ChatJoinRequest) (time.Time, bool) {
+	return time.Unix(c.Date, 0).UTC(), true
+}
+
+func chatJoinRequestChatID(c *telego.ChatJoinRequest) (int64, bool) {
+	return c.Chat.ID, true
+}
+
+// chatBoostUpdatedChatID extracts telego.ChatBoostUpdated's own Chat.ID
+// field — KindChatBoost's payload declares a Chat but no Date (design
+// D4/D13).
+func chatBoostUpdatedChatID(c *telego.ChatBoostUpdated) (int64, bool) {
+	return c.Chat.ID, true
+}
+
+// chatBoostRemovedChatID extracts telego.ChatBoostRemoved's own Chat.ID
+// field — KindRemovedChatBoost's payload declares a Chat but no Date
+// (RemoveDate is a distinct field, not the update's own Date — design
+// D4/D13).
+func chatBoostRemovedChatID(c *telego.ChatBoostRemoved) (int64, bool) {
+	return c.Chat.ID, true
+}
+
 // kindTable is the one explicit table D4 requires: production code, not
 // reflection. Every entry's present probe checks exactly the payload
 // field the row's json tag names.
@@ -114,6 +176,7 @@ var kindTable = []kindRow{
 	{
 		kind:    KindBusinessConnection,
 		present: func(u *telego.Update) bool { return u.BusinessConnection != nil },
+		date:    func(u *telego.Update) (time.Time, bool) { return businessConnectionDate(u.BusinessConnection) },
 	},
 	{
 		kind:    KindBusinessMessage,
@@ -130,6 +193,7 @@ var kindTable = []kindRow{
 	{
 		kind:    KindDeletedBusinessMessages,
 		present: func(u *telego.Update) bool { return u.DeletedBusinessMessages != nil },
+		chatID:  func(u *telego.Update) (int64, bool) { return businessMessagesDeletedChatID(u.DeletedBusinessMessages) },
 	},
 	{
 		kind:    KindGuestMessage,
@@ -140,10 +204,14 @@ var kindTable = []kindRow{
 	{
 		kind:    KindMessageReaction,
 		present: func(u *telego.Update) bool { return u.MessageReaction != nil },
+		date:    func(u *telego.Update) (time.Time, bool) { return messageReactionDate(u.MessageReaction) },
+		chatID:  func(u *telego.Update) (int64, bool) { return messageReactionChatID(u.MessageReaction) },
 	},
 	{
 		kind:    KindMessageReactionCount,
 		present: func(u *telego.Update) bool { return u.MessageReactionCount != nil },
+		date:    func(u *telego.Update) (time.Time, bool) { return messageReactionCountDate(u.MessageReactionCount) },
+		chatID:  func(u *telego.Update) (int64, bool) { return messageReactionCountChatID(u.MessageReactionCount) },
 	},
 	{
 		kind:    KindInlineQuery,
@@ -194,14 +262,18 @@ var kindTable = []kindRow{
 	{
 		kind:    KindChatJoinRequest,
 		present: func(u *telego.Update) bool { return u.ChatJoinRequest != nil },
+		date:    func(u *telego.Update) (time.Time, bool) { return chatJoinRequestDate(u.ChatJoinRequest) },
+		chatID:  func(u *telego.Update) (int64, bool) { return chatJoinRequestChatID(u.ChatJoinRequest) },
 	},
 	{
 		kind:    KindChatBoost,
 		present: func(u *telego.Update) bool { return u.ChatBoost != nil },
+		chatID:  func(u *telego.Update) (int64, bool) { return chatBoostUpdatedChatID(u.ChatBoost) },
 	},
 	{
 		kind:    KindRemovedChatBoost,
 		present: func(u *telego.Update) bool { return u.RemovedChatBoost != nil },
+		chatID:  func(u *telego.Update) (int64, bool) { return chatBoostRemovedChatID(u.RemovedChatBoost) },
 	},
 	{
 		kind:    KindManagedBot,

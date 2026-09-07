@@ -114,12 +114,28 @@ var telegoUpdateKindExemptions = map[string]bool{
 	"update_id": true,
 }
 
+// payloadDeclaresField reports whether payload (a *telego.X struct type,
+// already unwrapped from the pointer) declares an exported field named
+// fieldName. It does not check the field's own type — callers pass the
+// exact name/kind combination D4's rule cares about (a Date int64 field,
+// or a non-pointer Chat field), and a same-named field of a different
+// type would itself be a signal worth a loud test failure, not a silent
+// skip.
+func payloadDeclaresField(payload reflect.Type, fieldName string) bool {
+	_, ok := payload.FieldByName(fieldName)
+	return ok
+}
+
 // TestGuard_TelegoUpdateFieldsMatchKindTable is design D4's drift check:
 // every exported pointer field of telego.Update has its json tag either
-// as a kindTable row or in the named exemption set above, and every
-// kindTable row's token is a tag some field declares. A telego bump that
-// adds an update type reds this test until kind.go's table (or this
-// exemption set) learns it.
+// as a kindTable row or in the named exemption set above, every
+// kindTable row's token is a tag some field declares, and — the R3-2
+// extension — each row's date/chatID extractor presence matches whether
+// its own payload TYPE declares a Date int64 field / a non-pointer Chat
+// field (design D4: "a kind whose payload declares neither carries
+// nil"). A telego bump that adds an update type, or a kindTable row
+// whose extractors lag its payload's own fields, reds this test until
+// kind.go's table learns it.
 func TestGuard_TelegoUpdateFieldsMatchKindTable(t *testing.T) {
 	t.Parallel()
 
@@ -145,6 +161,37 @@ func TestGuard_TelegoUpdateFieldsMatchKindTable(t *testing.T) {
 		seenTags[tagName] = true
 		if !knownKind(Kind(tagName)) {
 			t.Errorf("telego.Update.%s (json tag %q) has no kindTable row — a Bot API update type kind.go has not learned (design D4)", f.Name, tagName)
+			continue
+		}
+
+		row, ok := rowForKind(Kind(tagName))
+		if !ok {
+			// Unreachable: knownKind(Kind(tagName)) above already
+			// confirmed rowForKind succeeds for this tag.
+			continue
+		}
+		payload := f.Type.Elem()
+
+		wantDate := payloadDeclaresField(payload, "Date")
+		if dateField, ok := payload.FieldByName("Date"); ok && dateField.Type.Kind() != reflect.Int64 {
+			wantDate = false
+		}
+		if wantDate && row.date == nil {
+			t.Errorf("kindTable row %q: payload %s declares a Date field but the row's date extractor is nil (design D4)", tagName, payload)
+		}
+		if !wantDate && row.date != nil {
+			t.Errorf("kindTable row %q: payload %s declares no Date field but the row supplies a date extractor (design D4)", tagName, payload)
+		}
+
+		wantChat := false
+		if chatField, ok := payload.FieldByName("Chat"); ok && chatField.Type.Kind() != reflect.Pointer {
+			wantChat = true
+		}
+		if wantChat && row.chatID == nil {
+			t.Errorf("kindTable row %q: payload %s declares a non-pointer Chat field but the row's chatID extractor is nil (design D4)", tagName, payload)
+		}
+		if !wantChat && row.chatID != nil {
+			t.Errorf("kindTable row %q: payload %s declares no non-pointer Chat field but the row supplies a chatID extractor (design D4)", tagName, payload)
 		}
 	}
 
