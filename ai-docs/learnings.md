@@ -296,3 +296,45 @@ wrong-surface text by message twelve.
 **at:** 0d898c2
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-07 — process — a measurement that was a cache replay became the argument for two instruction-file edits
+**What happened:** The coverage ratchet's tolerance was widened to 0.60 pp (`bf2812e`) and `AGENTS.md` § *Build & Test* was rewritten around a "cross-environment" term, both argued from one observation: "the development machine measured 91.28% twice in a row" where CI read 90.88%. `go test` caches a package's result together with its coverage profile, and the ratchet's command passes no `-count=1`, so those two local readings were one draw replayed. Reproduced deliberately: a cached run returned 91.28% to the statement immediately after a `-count=1` run drew 91.28%, with five of the nine packages reported `(cached)` — `internal/scheduler`, where the drifting blocks live, among them. Four independent `-count=1` draws at that commit spanned 90.83–91.28 against CI's 90.83–91.06: overlapping distributions, no environment term at all. The recorded mark was simply the luckiest draw, and the ratchet's raise rule carried it forward until it blocked CI on `main`.
+**Rule:** Before a measurement becomes an argument — and especially before it edits an instruction file — confirm the command actually re-ran rather than replayed. Two identical readings in a row are a replay signature, not corroboration: bypass the cache (`-count=1`, a cleared cache, a changed input) and vary the instrument before trusting what it says. This is `AGENTS.md` § *Patterns* 2 applied to a number: an unvaried instrument is a claim about the instrument.
+**at:** 08f136d
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-07 — tooling — a `.go` restore copy written into `tmp/` became a package of this module
+**What happened:** While benchmarking two container configurations I saved a restore point as `tmp/dbperf/testdb.new.go`. `tmp/` is inside the module, so the copy formed a package and the next `make verify` reported `? github.com/maratik123/lab-game/tmp/dbperf [no test files]` in the test output. `AGENTS.md` § *Build & Test* names this exact hazard in the sentence that authorises `tmp/` at all — "a stray `.go` file there breaks `go build ./...`, which is the cheap direction" — so the rule was read and then walked into anyway.
+**Rule:** A restore point for a `.go` file never keeps the `.go` suffix: use `tmp/<name>.go.bak`, or `git show HEAD:<path>` and skip the copy entirely. Nothing written under `tmp/` may end in `.go`.
+**at:** 08f136d
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-07 — process — a rule quoted as `AGENTS.md` turned out to be a `Makefile` comment
+**What happened:** The entry above attributed to `AGENTS.md` § *Build & Test* the sentence "a stray `.go` file there breaks `go build ./...`, which is the cheap direction", and called it the sentence that authorises `tmp/` at all. `grep -rn "cheap direction"` returns one source line: `Makefile:25`. `AGENTS.md` authorises `tmp/` at line 67 and says nothing there about `.go` files. The consequence claim was inflated the same way: the copy did not break `go build ./...` — `go test ./...` merely listed `? github.com/maratik123/lab-game/tmp/dbperf [no test files]`. Raised as R2-1 by `self-review` round 2, inside the very branch whose subject is an unchecked claim becoming an argument. The wrong entry stays where it is: Boundary rule 1 admits no edit, and an unpushed commit is not a licence to rewrite one.
+**Rule:** Resolve a citation before writing it down, including — especially — one you are certain of, and cite what `grep` returned, `file:line`. Then state the consequence you actually observed, not the one the rule warns about; the two differ, and only the first is evidence.
+**at:** a66eb31
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-07 — documentation — profile coordinates written into a durable file instead of symbol names
+**What happened:** The coverage-ratchet comment block records which statements drift between runs. I wrote them as profile coordinates — `internal/scheduler/execute.go:190.39,201.3` and five more — into a file whose whole job is to be read at some later commit. The same block already held the counter-example: the five coordinates from the 24-run series on `8fae04a` have all moved since, and `self-review` round 2 misidentified a block by matching line numbers across two lists taken at different commits. The owner named the tool the workspace already mandates for exactly this: `.claude/rules/ast-index.md` ("ALWAYS use ast-index FIRST"), whose `symbol` / `outline` commands answer in names that survive an edit above them.
+**Rule:** A reference that is written down to be read later names a **symbol** — package plus function, or a type — never a line or a profile coordinate. Resolve it with `ast-index symbol "<name>"` before writing it, and where a coordinate genuinely must appear (a historical measurement), label it with the commit it was taken at. The ast-index rule is not only about searching: it is about how a location is spelled.
+**at:** 508ebdb
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-08 — process — unrunnable shell commands written as acceptance criteria in a GitHub issue
+**What happened:** Issue #68's `## Acceptance` section was four shell commands (`grep -nE … returns only the survivor set`, `git diff -U0 shows no changed statement`, and two more). None had been run and none could be: they describe the tree that will exist after the sweep. The owner's objection carries the part I had not weighed — an issue body is read by a later session as the owner's own requirements, so an unrun command of mine acquires an authority nobody granted it. Same shape as the misattributed citation earlier the same day: a claim wearing someone else's voice.
+**Rule:** An acceptance criterion states a **condition over the tree** and nothing else; how it is checked is decided by whoever does the work, against the tree that exists then. Verification commands belong to a design's `## Test Design` and to the progress record — surfaces where a tree exists and a reviewer re-runs them — never to a spec's AC and never to an issue. Where a number is genuinely useful in an issue, label it with the commit it was measured at, so a reader can tell a measurement from a requirement.
+**at:** accc794
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-08 — process — filed a harness gap on a premise I had not read, shifting my own violation onto the instruction files
+**What happened:** After writing shell commands as issue #68's acceptance criteria, I recorded a `harness-gaps.md` entry whose central claim was that "nothing states the boundary" between a condition and a verification command, and that the habit therefore generalises from `self-review`'s design-side requirement. The owner told me to go and read the harness. `.claude/agents/spec-writer.md` Rule 9/PROC-3 states it in bold — *"An AC is DECLARATIVE, and the command that checks it belongs to the verifier … it **never contains a shell command** … If a criterion cannot be stated without a pipeline, it is not yet a criterion"* — and names the command's proper home, the progress file's `verifying command` column; the template row at `spec-writer.md:85` says the same in one line. So the rule existed, it was explicit, and my entry described a harness that does not exist. Second unverified premise of the same day: the earlier one attributed a `Makefile` sentence to `AGENTS.md`.
+**Rule:** Before writing that the harness lacks a rule, `grep` the harness for that rule — the claim "no rule covers this" is a negative, and `.claude/rules/ast-index.md` already says a negative needs a raw read, not a hunch. And weigh the direction: an entry that moves my violation onto the instruction files is the one to distrust first, because it is the one that costs me nothing. Diagnose the harness only for what survives after the rule is found and read.
+**at:** 8a5224f
+**Kind:** correction
+**Escalated?** no

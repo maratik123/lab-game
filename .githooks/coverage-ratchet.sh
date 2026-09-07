@@ -16,67 +16,32 @@
 # in most awks, and a ratchet should not depend on which awk is installed.
 # Float arithmetic throughout; the tolerance absorbs the epsilon.
 #
-# THE TOLERANCE, AND THE MEASUREMENT UNDER IT. 24 runs of the suite on 8fae04a,
-# 1329 statements throughout:
+# THE TOLERANCE is not zero because the suite's coverage drifts between runs on
+# its own: a few error paths in internal/scheduler and internal/ingest are
+# reached only when a deadline or a cancellation lands inside a database
+# round-trip. Today that is 6 statements, 0.34 pp of 1757.
 #
-#   covered  percent   rounded  runs
-#     1189   89.4658%   89.47    20   (83%)
-#     1190   89.5410%   89.54     2   ( 8%)
-#     1191   89.6163%   89.62     1   ( 4%)
-#     1194   89.8420%   89.84     1   ( 4%)
+# To re-derive the drifting set instead of trusting this sentence:
+#   for i in 1 2 3; do
+#     go test -count=1 -covermode=atomic -coverprofile="tmp/c$i.out" ./...
+#   done
+#   # blocks with a non-zero count in some profiles and zero in others = the set
 #
-# Observed spread 0.3762 pp; one statement is worth 0.0752 pp. Five blocks flip
-# between runs, all of them timing-dependent, all in one package:
-#   internal/scheduler/execute.go:167.87,170.3
-#   internal/scheduler/execute.go:223.73,225.3
-#   internal/scheduler/settle.go:202.101,204.4
-#   internal/scheduler/worker.go:116.57,119.4
-#   internal/scheduler/worker.go:150.21,151.20
+# Change TOLERANCE_PP only from such a series, and only if it shows the drift has
+# GROWN past the constant — never from a single blocked commit. `-count=1` is not
+# optional there: without it the second run of a series replays the first from
+# the test cache, and the series measures one run. Re-measure in BOTH a local and
+# a CI environment. Why the number is 0.60 and what a mark recorded from a cached
+# draw once cost: `git log -p` on this file, 2026-09-07.
 #
-# The spread is the binding constraint on the tolerance, and it binds whatever
-# the raise rule is: a lucky run RECORDS its value, and every ordinary run
-# afterwards reads as a fall of up to the spread. So TOLERANCE_PP must exceed
-# 0.3762, or the ratchet blocks forever with no code change involved. 0.50 was
-# that with headroom for a tail 24 runs had not seen — the 4-statement jump was
-# observed once.
-#
-# RAISED TO 0.60 on 2026-09-07, and the reason is a term the series above could
-# not see: it was measured on ONE machine, and the ratchet is checked on two.
-# On PR #66, run 34144605615, CI measured 90.88% where this repository's
-# development machine measured 91.28% twice in a row at the same commit — a gap
-# of 0.40 pp, about 7 statements at today's 1744. The five blocks below are
-# worth 0.2867 pp at that denominator, so the cross-environment term is the
-# LARGER of the two and is not drift between runs at all: it is the same suite
-# taking different branches under a different container runtime and a slower
-# runner. A mark recorded by a local pre-commit therefore leaves CI only
-# (tolerance - gap) of headroom, and at 0.50 that was 0.10 pp — two statements.
-# 0.60 restores a usable margin without touching what the ratchet guards.
-#
-# What that costs is bounded the same way as before, one tolerance below the
-# all-time high, now about 10.5 statements at 1744, ONCE.
+# THE MEASUREMENT BELOW KEEPS THE TEST CACHE — owner's decision, 2026-09-07. A
+# replayed draw sits at most one drift above the floor, which the tolerance
+# covers with room. If the drift ever grows toward the tolerance, the answer is
+# `-count=1` on that command, not a wider tolerance.
 #
 # WHAT THE TOLERANCE COSTS, bounded: the recorded value never decreases, so the
-# total coverage that can be lost silently is one tolerance below the all-time
-# high — ONCE, not per commit.
-#
-# THE TOLERANCE IS A STANDING VALUE — there is no plan to tighten it, and
-# chasing the five blocks is explicitly not one. Mocking a server-side clock through the
-# database is not a cheap change, and buying tenths of a percentage point with
-# it would be the ratchet setting the project's priorities instead of guarding
-# them.
-#
-# The spread narrows on its own as the tree grows, because it is a COUNT of
-# statements over a growing denominator. The same five blocks are worth
-# 0.3762 pp at today's 1329 statements, 0.25 pp at 2000, and 0.167 pp at 3000.
-# The tolerance does not have to follow it down: a fixed value simply becomes
-# roomier, and what it can hide stays bounded at one tolerance below the
-# all-time high, once. The cross-environment term added above narrows the same
-# way, for the same reason.
-#
-# Revisit this number only on a re-measurement — if a series of runs shows the
-# spread has GROWN past it, which would mean new flaky blocks arrived faster
-# than the denominator grew. Re-run the series before touching the constant;
-# do not adjust it from a single blocked commit.
+# total that can be lost silently is one tolerance below the all-time high —
+# ONCE, not per commit.
 #
 # Usage:
 #   coverage-ratchet.sh            raise mode: check, and record a new high
