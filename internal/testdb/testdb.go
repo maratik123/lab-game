@@ -8,6 +8,7 @@ package testdb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync/atomic"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
@@ -29,6 +31,25 @@ const Image = "docker.io/library/postgres:18"
 // mechanism for CI or a developer with a server already running — it must
 // never be pointed at a local development instance in any committed file.
 const dsnEnv = "LAB_GAME_TEST_DSN"
+
+// The cluster lives in RAM and is never synced: a test database that
+// survives a crash buys nothing, and both costs are startup costs.
+// initdb's final sync of the fresh cluster is 6 of the 8 seconds a
+// container needs before it accepts connections on this project's
+// development machine, and the tmpfs keeps every later write off the
+// container storage driver. Durability of the data itself is already
+// gone: the postgres module runs the server with fsync=off.
+const (
+	// tmpfsDir is the in-RAM mount PGDATA is created under. PGDATA is a
+	// subdirectory rather than the mount point itself so that the image's
+	// entrypoint creates it with the 0700 ownership initdb demands.
+	tmpfsDir = "/var/lib/postgresql/tmpfs"
+	// tmpfsPGDATA overrides the image's on-disk PGDATA.
+	tmpfsPGDATA = tmpfsDir + "/data"
+	// tmpfsOptions caps the mount. Measured: a full run of every
+	// database-backed package against one server leaves a 193 MB cluster.
+	tmpfsOptions = "rw,size=512m"
+)
 
 const (
 	dbName = "labgame_test"
@@ -59,12 +80,19 @@ func Main(m *testing.M) int {
 		return m.Run()
 	}
 
-	pgContainer, err := postgres.Run(ctx, Image,
-		postgres.WithDatabase(dbName),
-		postgres.WithUsername(dbUser),
-		postgres.WithPassword(dbPass),
-		postgres.BasicWaitStrategies(),
-	)
+	pgContainer, err := retryRun(startAttempts, startRetryDelay, func() (*postgres.PostgresContainer, error) {
+		return postgres.Run(ctx, Image,
+			postgres.WithDatabase(dbName),
+			postgres.WithUsername(dbUser),
+			postgres.WithPassword(dbPass),
+			postgres.BasicWaitStrategies(),
+			testcontainers.WithTmpfs(map[string]string{tmpfsDir: tmpfsOptions}),
+			testcontainers.WithEnv(map[string]string{
+				"PGDATA":               tmpfsPGDATA,
+				"POSTGRES_INITDB_ARGS": "--no-sync",
+			}),
+		)
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "testdb: starting %s: %v\n", Image, err)
 		return 1
@@ -82,6 +110,48 @@ func Main(m *testing.M) int {
 	code := m.Run()
 	terminate(ctx)
 	return code
+}
+
+// startAttempts and startRetryDelay bound the retry around the container
+// start. testcontainers shares ONE Ryuk reaper between the test binaries
+// `go test ./...` runs in parallel, and a binary that finds that container
+// in the window between "created" and "running" fails its whole package
+// with `wait for reaper …: unexpected container status "created"` —
+// measured at one run in six on this project's development machine, on the
+// container settings above and on the ones that preceded them alike. A
+// retry turns the race into a delay: by the next attempt the process that
+// created the reaper has started it.
+//
+// The retry is deliberately not conditioned on the error text. A container
+// that failed to start is transient by nature, upstream wraps that message
+// through three layers, and the price of retrying an error that is NOT
+// transient — no container runtime reachable at all — is under a second
+// before the same non-zero exit Main already returns.
+const (
+	startAttempts   = 3
+	startRetryDelay = 400 * time.Millisecond
+)
+
+// retryRun calls run up to attempts times, waiting delay between attempts,
+// and returns the first success or the last error. A failed attempt that
+// still produced a container is terminated before the next one: postgres.Run
+// reports both when the container was created but never became usable.
+func retryRun(attempts int, delay time.Duration, run func() (*postgres.PostgresContainer, error)) (*postgres.PostgresContainer, error) {
+	var err error
+	for attempt := range attempts {
+		var ctr *postgres.PostgresContainer
+		ctr, err = run()
+		if err == nil {
+			return ctr, nil
+		}
+		// TerminateContainer is nil-safe, and a failed attempt may still
+		// hand back a container that was created but never became usable.
+		err = errors.Join(err, testcontainers.TerminateContainer(ctr))
+		if attempt < attempts-1 {
+			time.Sleep(delay)
+		}
+	}
+	return nil, err
 }
 
 const (

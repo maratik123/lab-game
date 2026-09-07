@@ -88,17 +88,19 @@ go run ./cmd/bot                                        # run the bot (exits non
 > reads.
 >
 > The tolerance is **0.60 pp** and the measurement behind it is at the top of the script: a 24-run
-> series naming the five timing-dependent statements that make the suite's coverage drift between
-> runs, plus a **cross-environment** term the series could not see, because it was taken on one
-> machine while the ratchet is checked on two. Measured on PR #66: CI read 90.88% where the
-> development machine read 91.28% twice at the same commit — a wider gap than the same-machine
-> drift, and not drift at all but the same suite taking different branches under a different
-> container runtime. A mark recorded by a local pre-commit therefore leaves CI only
-> `tolerance − gap` of headroom. It is a standing value, not a step towards a tighter one: both
-> terms are fixed counts of statements over a growing denominator, so both narrow on their own as
-> the tree grows, and buying tenths of a point by mocking a server-side clock is not a trade this
-> project is making. Change the number only after re-measuring — in **both** environments, since one
-> of the two terms is invisible from either alone.
+> series naming the timing-dependent statements that make the suite's coverage drift between runs.
+> The **cross-environment** term this paragraph once carried was withdrawn on 2026-09-07 after
+> re-measurement: `go test` caches a package's result together with its coverage profile and the
+> ratchet's command does not pass `-count=1`, so the "91.28% twice at the same commit" that looked
+> like two local measurements was one measurement replayed from the cache. Independent `-count=1`
+> runs at that commit drew 90.83 / 90.94 / 91.11 / 91.28 against CI's 90.83 / 90.88 / 90.94 / 91.06
+> — overlapping distributions. **A locally recorded mark is therefore a claim about one draw, not
+> about the tree**: the mark that blocked CI on PR #66 was the luckiest of them, frozen by the
+> cache and carried forward because the ratchet only ever raises. It is a standing value, not a
+> step towards a tighter one: the drift is a fixed count of statements over a growing denominator,
+> so it narrows on its own as the tree grows, and buying tenths of a point by mocking a
+> server-side clock is not a trade this project is making. Change the number only after
+> re-measuring with `-count=1`, in **both** environments.
 
 **CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
 

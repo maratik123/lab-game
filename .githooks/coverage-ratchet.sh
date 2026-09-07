@@ -40,20 +40,36 @@
 # that with headroom for a tail 24 runs had not seen — the 4-statement jump was
 # observed once.
 #
-# RAISED TO 0.60 on 2026-09-07, and the reason is a term the series above could
-# not see: it was measured on ONE machine, and the ratchet is checked on two.
-# On PR #66, run 34144605615, CI measured 90.88% where this repository's
-# development machine measured 91.28% twice in a row at the same commit — a gap
-# of 0.40 pp, about 7 statements at today's 1744. The five blocks below are
-# worth 0.2867 pp at that denominator, so the cross-environment term is the
-# LARGER of the two and is not drift between runs at all: it is the same suite
-# taking different branches under a different container runtime and a slower
-# runner. A mark recorded by a local pre-commit therefore leaves CI only
-# (tolerance - gap) of headroom, and at 0.50 that was 0.10 pp — two statements.
-# 0.60 restores a usable margin without touching what the ratchet guards.
+# RAISED TO 0.60 on 2026-09-07 to absorb what looked like a cross-environment
+# gap, and RE-MEASURED the same day: the gap was not the environment. `go test`
+# caches a package's result together with its coverage profile, and the command
+# below does not pass -count=1, so a second run at an unchanged commit replays
+# the first one's profile instead of drawing again. The "91.28% twice in a row"
+# this paragraph once read as two measurements was one measurement replayed —
+# reproduced deliberately: a cached run returned 91.28% to the statement right
+# after a -count=1 run drew 91.28%, with five of the nine packages served from
+# the cache, internal/scheduler among them. Four independent -count=1 runs at
+# that commit drew 90.83 / 90.94 / 91.11 / 91.28 while CI drew 90.83 / 90.88 /
+# 90.94 / 91.06: overlapping distributions, not a systematic difference between
+# the two machines. The recorded 91.46% was the luckiest draw of them all
+# (1595 of 1744 — 11 of the 14 timing-dependent statements), frozen by the
+# cache and re-recorded on later commits because the ratchet only ever raises.
 #
-# What that costs is bounded the same way as before, one tolerance below the
-# all-time high, now about 10.5 statements at 1744, ONCE.
+# WHAT THOSE 14 STATEMENTS ARE, and where they went. Every one is an error path
+# reachable only when a deadline or a cancellation lands inside a database
+# round-trip: scheduler/execute.go's failed COMMIT (7 statements) and failed
+# settle (2), its failed ROLLBACK TO SAVEPOINT (1), settle.go's failed DELETE
+# (1), worker.go's executeOne error (2), and ingest/loop.go's post-poll
+# ctx.Done() (1). Since internal/testdb put the test cluster on a tmpfs and
+# stopped initdb syncing it, the scheduler five are not drawn at all any more
+# and the residual drift is 4 statements over three runs — 0.23 pp at 1755. The
+# floor those three runs share is 90.88%; the file was re-recorded there and
+# this hook then raised it to its own draw, as the raise rule always does.
+# Covering the scheduler five deterministically is its own piece of work; it is
+# not a tolerance question, and the tolerance stays where it is.
+#
+# What the tolerance costs is bounded the same way as before, one tolerance
+# below the all-time high, about 10.5 statements at 1755, ONCE.
 #
 # WHAT THE TOLERANCE COSTS, bounded: the recorded value never decreases, so the
 # total coverage that can be lost silently is one tolerance below the all-time
@@ -70,8 +86,7 @@
 # 0.3762 pp at today's 1329 statements, 0.25 pp at 2000, and 0.167 pp at 3000.
 # The tolerance does not have to follow it down: a fixed value simply becomes
 # roomier, and what it can hide stays bounded at one tolerance below the
-# all-time high, once. The cross-environment term added above narrows the same
-# way, for the same reason.
+# all-time high, once.
 #
 # Revisit this number only on a re-measurement — if a series of runs shows the
 # spread has GROWN past it, which would mean new flaky blocks arrived faster
