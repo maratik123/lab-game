@@ -296,3 +296,17 @@ wrong-surface text by message twelve.
 **at:** 0d898c2
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-07 — process — a measurement that was a cache replay became the argument for two instruction-file edits
+**What happened:** The coverage ratchet's tolerance was widened to 0.60 pp (`bf2812e`) and `AGENTS.md` § *Build & Test* was rewritten around a "cross-environment" term, both argued from one observation: "the development machine measured 91.28% twice in a row" where CI read 90.88%. `go test` caches a package's result together with its coverage profile, and the ratchet's command passes no `-count=1`, so those two local readings were one draw replayed. Reproduced deliberately: a cached run returned 91.28% to the statement immediately after a `-count=1` run drew 91.28%, with five of the nine packages reported `(cached)` — `internal/scheduler`, where the drifting blocks live, among them. Four independent `-count=1` draws at that commit spanned 90.83–91.28 against CI's 90.83–91.06: overlapping distributions, no environment term at all. The recorded mark was simply the luckiest draw, and the ratchet's raise rule carried it forward until it blocked CI on `main`.
+**Rule:** Before a measurement becomes an argument — and especially before it edits an instruction file — confirm the command actually re-ran rather than replayed. Two identical readings in a row are a replay signature, not corroboration: bypass the cache (`-count=1`, a cleared cache, a changed input) and vary the instrument before trusting what it says. This is `AGENTS.md` § *Patterns* 2 applied to a number: an unvaried instrument is a claim about the instrument.
+**at:** 08f136d
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-07 — tooling — a `.go` restore copy written into `tmp/` became a package of this module
+**What happened:** While benchmarking two container configurations I saved a restore point as `tmp/dbperf/testdb.new.go`. `tmp/` is inside the module, so the copy formed a package and the next `make verify` reported `? github.com/maratik123/lab-game/tmp/dbperf [no test files]` in the test output. `AGENTS.md` § *Build & Test* names this exact hazard in the sentence that authorises `tmp/` at all — "a stray `.go` file there breaks `go build ./...`, which is the cheap direction" — so the rule was read and then walked into anyway.
+**Rule:** A restore point for a `.go` file never keeps the `.go` suffix: use `tmp/<name>.go.bak`, or `git show HEAD:<path>` and skip the copy entirely. Nothing written under `tmp/` may end in `.go`.
+**at:** 08f136d
+**Kind:** correction
+**Escalated?** no
