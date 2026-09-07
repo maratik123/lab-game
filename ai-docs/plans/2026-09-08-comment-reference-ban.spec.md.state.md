@@ -84,7 +84,7 @@ gh_issue:
 round_cap: 4
 questions_per_round_cap: 3
 round: 1
-agent_id: null
+agent_id: a9c88cf858e49f630
 prior_qa:
   - round: 0
     question: "Ссылки на символы в комментарии (`// see raid.Session`, `// реализует Poster`) — под запрет или разрешены? Формулировка называет строки, md-файлы и AC, про символы молчит."
