@@ -8,15 +8,17 @@ _Updated: 2026-09-07
 **Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Step 11 — review fixes in progress (Round 1)
-**last_passed_gate:** make verify | 2026-09-07T00:24:28Z | ce6a11d11721d7e6026aca9ac346c9b45391ed04
+**current_step:** Step 11 — review fixes complete (Round 1)
+**last_passed_gate:** go test -race -count=1 ./internal/ingest/ ./internal/store/ | 2026-09-07T08:51:22Z | 4bd2e427d9e97ea9ac120d77f7214584aa64ecf2
 **entry_args:** 22
 
 ## Next action
 
-**Do this immediately:** Step 10 — spawn `self-review` with the closed-list prompt (invocation line, `Spec:`, `Design:`, `Progress:`, and the commit range `a09d26f..HEAD`).
+**Do this immediately:** Step 10 round 2 — spawn `self-review` COLD (the diff carries new material, not only fixes to its own findings) with the closed-list prompt and the range `a09d26f..HEAD`.
 
-**Environment blocker, live:** a RAID6 scrub on `md127` is running (`/proc/mdstat`, ~357 min remaining as of 2026-09-07T00:20Z). It saturates disk I/O, so `initdb` inside a testcontainer needs ~90s while testcontainers allows 60 — every database-backed package then fails with `"database system is ready to accept connections" matched 0 times`. That is the apparatus, not the tree. The Step-9 gate list ran green through the documented escape hatch: a hand-started Postgres plus `LAB_GAME_TEST_DSN=postgres://labgame:labgame@127.0.0.1:55432/labgame_test?sslmode=disable` (container `labgame-step9`). A delegate that runs the suite without that variable will report a false red, and the owner has accepted that risk for the Step-10 round.
+**Environment:** the RAID scrub has finished, but the hand-started Postgres is still the fastest path — `export LAB_GAME_TEST_DSN='postgres://labgame:labgame@127.0.0.1:55432/labgame_test?sslmode=disable'` (container `labgame-step9`). Remove that container before Step 12 closes.
+
+**Round-1 disposition:** all 13 open rows fixed. R1-6, R1-7 and R1-11 were doc claims the orchestrator fixed directly; the rest were authored by a `code-writer` Mode-B delegate and each was proven by re-running its own mutation until the suite went RED. The orchestrator independently re-ran R1-2's mutation (delete `runAttempts`' `case <-ctx.Done()`) and confirmed RED — `Run()` returned after 1.73s against the new latency bound.
 
 ## Subtasks
 
@@ -36,6 +38,8 @@ _Updated: 2026-09-07
 ## Decisions log
 
 - **Step 7**: design-review reached GO on round 5; the owner raised the round cap to 5 (was 3) after round 3, and every round found new material rather than re-opening an earlier one.
+- **Step 11 (round 1)**: the delegate's fix batch touched `ai-docs/plans/*.design.md` (a D12 wording clarification), which is a Design-Amendment trigger rather than a code fix. The hunk was reverted instead: the code now does what D12 already said ("the call's duration"), so no amendment is owed and no design-review round was spent. The under-specification D12 carries for `OutcomeUnrouted`/`OutcomeGivenUp` — what `Duration` covers when no handler call runs — is left recorded here rather than edited in.
+- **Step 11 (round 1)**: the review-register `PreToolUse` gate was found never to have fired in this run — it selects its inputs with `git diff --cached`, and `PreToolUse` runs before the Bash command, so `git add … && git commit` in one call presents an empty index. Proven in both directions and filed in `ai-docs/harness-gaps.md`. Every commit from here stages in a separate call.
 - **Step 9.5**: `ai-docs/context-status.md` gained this task's entry with the literal `#TBD-at-Step-12` locator; `ai-docs/context.md` was already brought current by subtask 12, so no further edit there. The owner chose to run Step 10 during the RAID scrub rather than wait or throttle it.
 - **Step 9**: the whole gate list ran green, but only through `LAB_GAME_TEST_DSN` against a hand-started Postgres — a RAID6 scrub makes container `initdb` exceed testcontainers' 60s wait, so a bare `go test ./...` reports four false FAILs. No panic-index row was added (the package has none), and no event-dictionary or posting-signature entry was needed because this task moves no balance.
 - **Step 8 group A**: the orchestrator re-ran the subtask-2 mutation probe itself after the re-point (`Exponential(k-1)` → `Exponential(k)` at `settle.go:143,243` over a cp backup): RED at both sites with the predicted 200ms discrepancy, restored from backup, tree clean. The literal-ramp gate discriminates.
