@@ -26,7 +26,10 @@
 #     1194   89.8420%   89.84     1   ( 4%)
 #
 # Observed spread 0.3762 pp; one statement is worth 0.0752 pp. Five blocks flip
-# between runs, all of them timing-dependent, all in one package:
+# between runs, all of them timing-dependent, all in one package. Their profile
+# coordinates AS OF 8fae04a, kept for that day's record only — every one of them
+# has since moved, which is why the enumeration further down names functions
+# instead:
 #   internal/scheduler/execute.go:167.87,170.3
 #   internal/scheduler/execute.go:223.73,225.3
 #   internal/scheduler/settle.go:202.101,204.4
@@ -57,27 +60,33 @@
 #
 # WHAT THOSE 14 STATEMENTS ARE, and where they went. Six blocks, every one an
 # error path reachable only when a deadline or a cancellation lands inside a
-# database round-trip — five in the scheduler, one in ingest:
+# database round-trip — five in the scheduler, one in ingest. Named by function,
+# never by profile coordinate: a coordinate is invalidated by any edit above it
+# in its own file, and the 8fae04a list above is what that looks like a fortnight
+# later.
 #
-#   internal/scheduler/execute.go:190.39,201.3   failed COMMIT            7
-#   internal/scheduler/execute.go:185.87,188.3   failed settle            2
-#   internal/scheduler/execute.go:241.73,243.3   failed ROLLBACK TO SP    1
-#   internal/scheduler/settle.go:203.101,205.4   failed DELETE            1
-#   internal/scheduler/worker.go:120.57,123.4    executeOne error         2
-#   internal/ingest/loop.go:191.21,192.20        post-poll ctx.Done()     1
+#   scheduler  settleAndAfter           failed COMMIT (defers settlement)   7
+#   scheduler  settleAndAfter           failed settleOutcome                2
+#   scheduler  runHandlerWithSavepoint  failed ROLLBACK TO SAVEPOINT        1
+#   scheduler  settleDoneOrNoop         failed DELETE                       1
+#   scheduler  (*Worker).RunOnce        executeOne returned an error        2
+#   ingest     (*Loop).Run              post-poll ctx.Done()                1
+#
+# To resolve any row to today's lines: `ast-index symbol "<name>"`, or read the
+# per-function totals with `go tool cover -func=tmp/coverage.out`.
 #
 # Since internal/testdb put the test cluster on a tmpfs and stopped initdb
 # syncing it, four of the five scheduler blocks are not drawn at all any more —
 # 12 statements, 0-covered in every run measured since. The fifth, the failed
 # ROLLBACK TO SAVEPOINT, still flips, and so does the ingest block. Three runs
 # at 1757 statements put today's drift at SIX statements over five blocks,
-# 0.34 pp: those two, plus four more in internal/ingest — attempt.go:88.54,91.4
-# (2, the retry-exhausted branch) and settle.go:16.16,18.3 and 23.39,25.3 (1
-# each). The mark was re-recorded at the floor of the measurement that preceded
-# those runs, 90.88%, and this hook then raised it to its own draw, as the raise
-# rule always does. Covering the scheduler blocks deterministically is its own
-# piece of work; it is not a tolerance question, and the tolerance stays where
-# it is.
+# 0.34 pp: those two, plus four more in internal/ingest — two in attemptOnce
+# (the duplicate path's failed offset advance) and one each in
+# advanceOffsetFresh's failed Begin and failed Commit. The mark was re-recorded
+# at the floor of the measurement that preceded those runs, 90.88%, and this
+# hook then raised it to its own draw, as the raise rule always does. Covering
+# the scheduler blocks deterministically is its own piece of work; it is not a
+# tolerance question, and the tolerance stays where it is.
 #
 # THE MEASUREMENT BELOW KEEPS THE TEST CACHE — owner's decision, 2026-09-07,
 # taken with the freeze understood rather than around it. `-count=1` here would
