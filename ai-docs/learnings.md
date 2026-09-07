@@ -324,3 +324,10 @@ wrong-surface text by message twelve.
 **at:** 508ebdb
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-08 — process — unrunnable shell commands written as acceptance criteria in a GitHub issue
+**What happened:** Issue #68's `## Acceptance` section was four shell commands (`grep -nE … returns only the survivor set`, `git diff -U0 shows no changed statement`, and two more). None had been run and none could be: they describe the tree that will exist after the sweep. The owner's objection carries the part I had not weighed — an issue body is read by a later session as the owner's own requirements, so an unrun command of mine acquires an authority nobody granted it. Same shape as the misattributed citation earlier the same day: a claim wearing someone else's voice.
+**Rule:** An acceptance criterion states a **condition over the tree** and nothing else; how it is checked is decided by whoever does the work, against the tree that exists then. Verification commands belong to a design's `## Test Design` and to the progress record — surfaces where a tree exists and a reviewer re-runs them — never to a spec's AC and never to an issue. Where a number is genuinely useful in an issue, label it with the commit it was measured at, so a reader can tell a measurement from a requirement.
+**at:** accc794
+**Kind:** correction
+**Escalated?** no
