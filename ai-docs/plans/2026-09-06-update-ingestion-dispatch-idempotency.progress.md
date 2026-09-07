@@ -8,19 +8,15 @@ _Updated: 2026-09-07
 **Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Step 8 — Group B complete (subtasks 7-11), gates re-verified by the orchestrator; Group C pending
-**last_passed_gate:** go test -count=1 ./... + golangci-lint run | 2026-09-07T00:01:26Z | cc76da868dd3462d189d3e183d85cd7dacb36260
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** make verify | 2026-09-07T00:24:28Z | ce6a11d11721d7e6026aca9ac346c9b45391ed04
 **entry_args:** 22
 
 ## Next action
 
-**Do this immediately:** do subtask 12, the propagation sweep. It is the whole of Group C and it is terminal.
+**Do this immediately:** Step 9.5 — append this task's entry to `ai-docs/context-status.md` with the literal `#TBD-at-Step-12` PR locator, then Step 10 (self-review).
 
-**Design:** `ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.design.md` — read § Decomposition row 12 in full; it names each edit and its reason. Four files: `ai-docs/context.md` (the layout paragraph and the code inventory), `ai-docs/domain-invariants.md` (the allowlist and sanitisation bullets — the player carve-out, the cache-invalidation obligation, D18's no-outbound-call-on-an-uncommitted-row obligation, and the three concrete §12.5 targets this task creates: reset `ingest_offset`, rewrite `ingest_dead_update`'s chat id, blank its `last_error`), `ai-docs/key-decisions.md` (the new entries), `ai-docs/plans/INDEX.md` (the row).
-
-**Do NOT touch `ai-docs/context-status.md`.** It is in the propagation class and it does receive an entry for this task — appended by `/task` Step 9.5, which is a later step and not this subtask. Row 12 says so explicitly, and past entries there are never rewritten.
-
-**A diff that REMOVES a name has a wider doc surface than one that adds** (`AGENTS.md` § Propagation Rule step 4): this task deleted `queryRower` from `internal/store` and both local backoff ramps from `internal/tg` and `internal/scheduler`. For every removed name, `grep -rni '<name>' ` the docs you touch before closing the edit — adding what is now true does not discharge deleting what is now false.
+**Environment blocker, live:** a RAID6 scrub on `md127` is running (`/proc/mdstat`, ~357 min remaining as of 2026-09-07T00:20Z). It saturates disk I/O, so `initdb` inside a testcontainer needs ~90s while testcontainers allows 60 — every database-backed package then fails with `"database system is ready to accept connections" matched 0 times`. That is the apparatus, not the tree. The whole Step-9 gate list was run green through the documented escape hatch instead: a hand-started Postgres plus `LAB_GAME_TEST_DSN=postgres://labgame:labgame@127.0.0.1:55432/labgame_test?sslmode=disable` (container `labgame-step9`). Any delegate that runs the suite without that variable will report a false red.
 
 ## Subtasks
 
@@ -35,11 +31,12 @@ _Updated: 2026-09-07
 - [x] 9. The loop: `Options`/`New`, requested kinds, `PollOnce`, `Run` with D19's poll-error policy (Group B)
 - [x] 10. The gate: `PlayerLookup`, pool-backed lookup, `Gate`/`NewGate`, the positive-only cache (Group B)
 - [x] 11. Guard tests and the structural source walks (Group B)
-- [ ] 12. Propagation: `context.md`, `domain-invariants.md` (Group C)
+- [x] 12. Propagation: `context.md`, `domain-invariants.md` (Group C)
 
 ## Decisions log
 
 - **Step 7**: design-review reached GO on round 5; the owner raised the round cap to 5 (was 3) after round 3, and every round found new material rather than re-opening an earlier one.
+- **Step 9**: the whole gate list ran green, but only through `LAB_GAME_TEST_DSN` against a hand-started Postgres — a RAID6 scrub makes container `initdb` exceed testcontainers' 60s wait, so a bare `go test ./...` reports four false FAILs. No panic-index row was added (the package has none), and no event-dictionary or posting-signature entry was needed because this task moves no balance.
 - **Step 8 group A**: the orchestrator re-ran the subtask-2 mutation probe itself after the re-point (`Exponential(k-1)` → `Exponential(k)` at `settle.go:143,243` over a cp backup): RED at both sites with the predicted 200ms discrepancy, restored from backup, tree clean. The literal-ramp gate discriminates.
 - **Step 7**: the four round-5 GO notes were folded into the design before Step 8, per Step 8's first-action rule; none was spec-amending, so no Spec Amendment recipe ran.
 - **Subtask 1**: `internal/backoff.Exponential`/`EqualJitter` implemented per D2's full contract (in-domain, base>ceiling, and the out-of-domain rows). `go test ./internal/backoff/...` green, `golangci-lint run`/`fmt -d` clean, `go vet` clean.
@@ -63,9 +60,30 @@ _Updated: 2026-09-07
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1–AC38 | NOT_TESTED |
+Taken at `ce6a11d11721d7e6026aca9ac346c9b45391ed04`, with `make verify` green end to end. Every row was checked with the orchestrator's own command rather than with the AC's stated scope alone.
+
+| AC | Status | Verification |
+|----|--------|--------------|
+| AC1-AC2 | PASS | `TestGuard_CtxFirstAndNoRidingContext`; `revive` `exported` / `package-comments` under `golangci-lint run` |
+| AC3 | PASS | grep for `http.Client{` and `telego.NewBot` over non-test `internal/ingest` finds nothing; `TestGuard_NoOwnBotAPIPath` |
+| AC4-AC5 | PASS | `TestPollOnce_requestShape` |
+| AC6-AC7 | PASS | `ingest_offset` created in `00004_ingest.sql`; the file carries no `goose Down` section; `TestReadOffset_freshSchemaReadsSeededZero` |
+| AC8 | PASS | `TestGuard_NoTransactionEscapesTheHandlerContract` |
+| AC9-AC10 | PASS | `TestLoop_unrouted`, `TestLoop_panicIsRecoveredAndRetried` |
+| AC11 | PASS | grep for `panic(`, `log.Fatal`, `os.Exit` over non-test `internal/ingest` and `internal/backoff` finds nothing; `ai-docs/panic-index.md` gains no row |
+| AC12-AC14 | PASS | `TestLoop_duplicate`, `TestOperationID_grammar`, `TestOperationID_differentSpacesSameRawID` |
+| AC15-AC16 | PASS | `TestGate_chatNoneAllowed`, `TestGate_chatUnknownRefused`, `TestGate_integrationRefusedCallNeverReachesTheServer` |
+| AC17-AC19 | PASS | `TestObservation_lagAbsentIsDistinguishableFromZeroLag`, the four `TestObserve*` nil-observer rows, `TestGuard_NoMetricsLibraryImport` |
+| AC20-AC21 | PASS | the diff against the base names none of `00003_event_log.sql`, `store/event.go`, `store/post.go`, `store/basis.go`, `store/errors.go` |
+| AC22-AC26 | PASS | `TestLoop_failureAndRetryGivesUp`, `TestRun_cancellationLeavesTheUpdateUnsettled`, `TestPollOnce_cancellationDuringLongPollReturnsPromptly`, `TestRun_pollFailureDoesNotStopTheLoop` |
+| AC27 | PASS | the six `LAB_GAME_INGEST_*` keys agree between `internal/config/ingest.go` and `.env.example`; `TestNew_optionValidation` |
+| AC28, AC33-AC35 | PASS | `TestGate_playerOwnerAllowsAChatOutsideTheAllowlist`, `TestGate_noOwnerRefused`, `TestGate_nonIntegerTokenRefused`, `TestGate_lookupErrorRefuses`, `TestGate_refusedThenAllowedWithNoRestart`, `TestGate_uncommittedOwnerRowIsInvisible` |
+| AC29 | PASS | the suite runs on `internal/tgtest` and `internal/testdb` with no mock of the package's own making |
+| AC30 | PASS | `make verify` exits zero |
+| AC31 | PASS | `coverage-ratchet.sh --check`: 90.27% holds against 90.57%, tolerance 0.50 pp |
+| AC32 | PASS | removed-name sweep re-run by the orchestrator: `queryRower` and `backoffDelay` have no live-doc reference; KD-31's mention is deliberate past tense |
+| AC36-AC37 | PASS | `ingest_dead_update` declares no payload column; `TestDeadUpdates_deterministicOrderAndLimit`, `TestDeadUpdates_neitherCommitsNorRollsBackTheCallersTx` |
+| AC38 | PASS | `TestGuard_NoOwnBotAPIPath` plus `internal/tg/guards_test.go`'s `TestGuard_RefusingGateBlocksTheAccessor` |
 
 ## Review register
 
