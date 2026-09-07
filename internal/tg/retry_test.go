@@ -766,9 +766,10 @@ func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 	// Transport.RetryMaxDelay < Transport.RetryBaseDelay
 	// (client.go:116-117), so base > maxDelay cannot occur through the
 	// public Client constructor; backoff.EqualJitter is still called
-	// directly by every other case in this test, and its own defensive
-	// clamp at attempt=0 needs its own row for that block to be exercised
-	// at all.
+	// directly by every other case in this test. This row does not exist
+	// for coverage — deleting it leaves the clamp's block at a non-zero
+	// count, measured — it exists to pin the VALUE the clamp returns when
+	// base alone already exceeds maxDelay, which no other case asserts.
 	if got := backoff.EqualJitter(0, 40*time.Second, shippedMax, 2, func() float64 { return 0 }); got != shippedMax/2 {
 		t.Errorf("backoff.EqualJitter(base>maxDelay, attempt=0, jitter=0) = %v, want %v (clamped: base alone already exceeds maxDelay)", got, shippedMax/2)
 	}

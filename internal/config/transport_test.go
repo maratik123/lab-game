@@ -160,7 +160,7 @@ func TestLoadTransport_Malformed(t *testing.T) {
 		// Every remaining key gets its own malformed case (missing slash is
 		// enough to drive lookupRate's error branch and, via assertKeyError,
 		// confirm the *KeyError names THAT key specifically) — AC22's
-		// malformed clause must be unverified for none of the 13 keys, not
+		// malformed clause must be unverified for none of the keys, not
 		// just the one (envTGLimitMessageGlobal) the rows above already
 		// drive. envTGLimitMessageChatRate/ChatCap additionally exercise
 		// loadClass's second and third branches, which no case above
