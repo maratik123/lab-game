@@ -338,3 +338,10 @@ wrong-surface text by message twelve.
 **at:** 8a5224f
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-08 — process — verified what the citations said and never asked whether the citation FORM was legal
+**What happened:** The owner asked for a full verification of the round-1 spec against his requirements. I ran it: traced all eighteen requirements, re-measured every one of the delegate's counts, re-ran its symlink measurement end to end, and opened all four quoted lines of `ai-docs/doc-convention.md` and `ai-docs/go-api-naming.md` to confirm the quotes were verbatim. They were. What I never asked was whether a bare `file:line` may appear in a durable artefact at all — five of them sit in the spec's `## Source conflicts` section. The owner caught it on sight. Two aggravations: the rule is recorded in this very file ("a reference that is written down to be read later names a **symbol** … where a coordinate genuinely must appear, label it with the commit it was taken at"), and I had re-read and edited that exact convention into memory earlier in the same session, adding a carve-out to it, roughly an hour before reading past its violation.
+**Rule:** Verifying a citation has two halves and the second is the one that gets skipped: does the source say what is claimed, **and** is the reference spelled in the form this project allows. Confirming the content of a quote lends the coordinate a borrowed credibility it never earned — the quote being right is exactly what stops you looking at the pointer. On any durable artefact, grep the draft for `[A-Za-z0-9_/.-]+\.[a-z]+:[0-9]+` and require each hit to carry its commit or to be replaced by a symbol, before reporting the artefact verified.
+**at:** f5b236a
+**Kind:** correction
+**Escalated?** no
