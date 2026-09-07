@@ -19,10 +19,14 @@ const (
 	// OutcomeUnrouted means the update's derived Kind has no registered
 	// Handler: no attempt ran, and the offset still advanced.
 	OutcomeUnrouted
-	// OutcomeFailed means one attempt's Handler returned a non-nil,
-	// non-duplicate error. The attempt's writes were rolled back and the
-	// update is retried, unless this was the final attempt — see
-	// OutcomeGivenUp.
+	// OutcomeFailed means one attempt did not succeed. Either the
+	// Handler returned a non-nil, non-duplicate error, or the Handler
+	// succeeded and the attempt's own transaction work did not — the
+	// guarded offset advance, or the COMMIT. Both are reported here
+	// because both leave the update unsettled and consume an attempt;
+	// distinguishing them is the observer's business, not the loop's.
+	// The attempt's writes were rolled back and the update is retried,
+	// unless this was the final attempt — see OutcomeGivenUp.
 	OutcomeFailed
 	// OutcomePanic means one attempt's Handler panicked. recover caught
 	// it, the attempt's writes were rolled back, and — like OutcomeFailed

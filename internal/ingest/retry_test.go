@@ -421,7 +421,7 @@ func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 	// the already-cancelled ctx, but the loop would still wait out every
 	// intervening full backoff delay — several seconds, not milliseconds).
 	if sinceCancel := time.Since(cancelAt); sinceCancel > 250*time.Millisecond {
-		t.Errorf("Run() returned %v after cancellation, want well under one backoff delay (%v) — the mid-wait select must react to ctx.Done() directly", sinceCancel, cancelAt)
+		t.Errorf("Run() returned %v after cancellation, want at most %v — the mid-wait select must react to ctx.Done() directly rather than waiting out the %v backoff delay", sinceCancel, 250*time.Millisecond, cfg.RetryBaseDelay)
 	}
 
 	tx, err := pool.Begin(context.Background())
