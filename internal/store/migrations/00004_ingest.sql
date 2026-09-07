@@ -1,6 +1,6 @@
 -- +goose Up
 -- ingest_offset is the guarded singleton the update-ingestion loop reads
--- and advances (docs/DESIGN.md §22, design D14). next_update_id holds the
+-- and advances (issue #22, design D14). next_update_id holds the
 -- offset to TRANSMIT on the next getUpdates call, not the last update_id
 -- seen — the name says which: settling update_id = n writes n + 1, and
 -- the loop transmits the stored value verbatim as GetUpdatesParams.Offset,

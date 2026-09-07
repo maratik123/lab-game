@@ -1,5 +1,5 @@
 // Package ingest implements lab-game's whole update-ingestion front door
-// (issue #22, docs/DESIGN.md §22): the long-poll loop, the kind-based
+// (issue #22): the long-poll loop, the kind-based
 // router, the per-update transaction with its bounded retry, the
 // persisted offset, the give-up record, the observation seam and the
 // tg.Gate implementation the chat allowlist rides on. Its structural
