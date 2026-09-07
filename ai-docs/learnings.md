@@ -310,3 +310,10 @@ wrong-surface text by message twelve.
 **at:** 08f136d
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-07 — process — a rule quoted as `AGENTS.md` turned out to be a `Makefile` comment
+**What happened:** The entry above attributed to `AGENTS.md` § *Build & Test* the sentence "a stray `.go` file there breaks `go build ./...`, which is the cheap direction", and called it the sentence that authorises `tmp/` at all. `grep -rn "cheap direction"` returns one source line: `Makefile:25`. `AGENTS.md` authorises `tmp/` at line 67 and says nothing there about `.go` files. The consequence claim was inflated the same way: the copy did not break `go build ./...` — `go test ./...` merely listed `? github.com/maratik123/lab-game/tmp/dbperf [no test files]`. Raised as R2-1 by `self-review` round 2, inside the very branch whose subject is an unchecked claim becoming an argument. The wrong entry stays where it is: Boundary rule 1 admits no edit, and an unpushed commit is not a licence to rewrite one.
+**Rule:** Resolve a citation before writing it down, including — especially — one you are certain of, and cite what `grep` returned, `file:line`. Then state the consequence you actually observed, not the one the rule warns about; the two differ, and only the first is evidence.
+**at:** a66eb31
+**Kind:** correction
+**Escalated?** no
