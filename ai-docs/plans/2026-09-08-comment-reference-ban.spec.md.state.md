@@ -104,4 +104,7 @@ prior_qa:
   - round: 0
     question: "Куда девается факт, живший в удаляемой ссылке? Например `config/balance.yaml` без `docs/DESIGN.md §…` теряет обоснование каждого числа. Переносим в дизайн / `ai-docs/**`, или просто теряем?"
     answer: "просто теряем, не жалко"
+  - round: 0
+    question: "(unprompted constraint from the product owner, delivered mid-round-1; relayed verbatim to the spec-writer in the same turn)"
+    answer: "Еще предложение: .env.example - чистить аналогично правилам. Документацию в balance.yaml сделать самодостаточной и такой же полной, как в почищенном .env.example (это правило пропагируется на всю директорию config и все вложенные в нее директории)"
 ```
