@@ -159,7 +159,7 @@ Taken at `ce6a11d11721d7e6026aca9ac346c9b45391ed04`, with `make verify` green en
 | R4-A4 | round 4 | — | accepted@4 — NOT a defect, and the round-3 instrument is proven in BOTH directions so no later round need re-derive it: five mutations over a `cp` backup, each RED, each naming the row. (a) strip `KindMessage`'s `date:`/`chatID:` → guard reds twice by name; (b) drop the NEW `chat_boost` `chatID:` → guard reds, and `TestDerive_perRow` reds too; (c) `chatBoostUpdatedChatID` → `return 0, true` → `TestDerive_perRow` reds on the VALUE (`ChatID() = 0, want -1001234567890`); (d) `businessConnectionDate` → epoch → reds on the VALUE; (e) a SPURIOUS `date:` on `poll_answer` → guard reds on the false-positive side. An independent reflection probe of my own (not the shipped guard) over all 26 payload types reports ZERO mismatches against `kindTable`, and all 10 new extractors are at 100.0% statement coverage | the five `cp`-backup mutations plus `go tool cover -func` over `tmp/ing.out` |
 | R4-A5 | round 4 | — | accepted@4 — apparatus, NOT this tree, recorded so no later round loses a probe to it: `make cover-ratchet` reads **RED** (measured 88.28% against recorded 90.70%) whenever any stray `.go` file sits under `tmp/`. `.githooks/coverage-ratchet.sh:122` measures with `go test ./...`, which does NOT prune `tmp/` the way `make file-limits` does, so a scratch probe enters the module as a 0%-covered package and drags the total down ~2.4 pp. With `tmp/` clear the gate is GREEN at 90.64%. The script is outside this diff's window | `make cover-ratchet` with and without a `.go` file under `tmp/` — 88.28% vs 90.64% |
 | R5-1 | round 5 | major | fixed@fdf61e9 | `grep -cE '^\s+envTG[A-Za-z]+\s+= "LAB_GAME_TG_' internal/config/transport.go` → `14` and `sed -n '/^func transportEnvKeys/,/^}/p' internal/config/transport.go \| grep -c envTG` → `14`, while `sed -n '163p' internal/config/transport_test.go` still reads `none of the 13 keys`. The fix is done when the numeral is **struck**, not raised |
-| R5-2 | round 5 | minor | open 🔁 **R1-8 re-opened** (same file, same comment block, and the clause is quoted verbatim in round 1's finding 8 text) | delete the `attempt=0` row over a `cp` backup, then `go test -count=1 -run TestBackoffDelay_JitterBoundsExactly -coverpkg=./internal/backoff -coverprofile=tmp/c.out ./internal/tg/ && grep 'backoff.go:96.44,98.3' tmp/c.out` — measured count **1**, so the comment's "for that block to be exercised at all" is false |
+| R5-2 | round 5 | minor | fixed@fdf61e9 (re-opened from R1-8 at round 5; the false coverage-necessity clause was **struck** and the row re-purposed to pin the clamp's VALUE — re-measured at round 6, count still **1** with the row deleted, so the replacement text is true) | delete the `attempt=0` row over a `cp` backup, then `go test -count=1 -run TestBackoffDelay_JitterBoundsExactly -coverpkg=./internal/backoff -coverprofile=tmp/c.out ./internal/tg/ && grep 'backoff.go:96.44,98.3' tmp/c.out` — measured count **1**, so the comment's "for that block to be exercised at all" is false |
 | R5-A1 | round 5 | — | accepted@5 — NOT a defect, and no later round need re-derive it: **AC41's call-site gate discriminates at all FOUR production call sites**, not three. Four `cp`-backup mutations, each replacing that site's `cfg.RetryFactor` with `backoff.DefaultFactor`, each RED, each naming its own test and no other: `caller.go:138`→`TestRetry_NonDefaultFactorReachesTheCallSite`; `settle.go:143`→`TestDeadline_nonDefaultFactorReachesTheCallSite`; `settle.go:243`→`TestFailurePolicy_nonDefaultFactorReachesTheCallSite`; `attempt.go:35`→`TestLoop_nonDefaultFactorReachesTheCallSite`. Each file restored from its backup and `git diff --name-only` confirmed clean | the four `cp`-backup mutations recorded in the Round 5 section |
 | R5-A2 | round 5 | — | accepted@5 — NOT a defect: **AC40's behaviour preservation re-derived against the DELETED integer form**, not against the shipped tables. A probe outside the repo carrying a verbatim copy of `668339d:internal/backoff/backoff.go`'s `Exponential` beside HEAD's: 14 bases (`1ns`…`5m`) × 11 ceilings (`1ns`…`24h`) × attempts `-1000..1000` = **308154 rows, 0 mismatches** at factor 2. The stronger-not-weaker claim confirmed too: at `base=1ns, ceiling=MaxInt64` the old form returns `-2562047h47m16.854775808s` at attempt 63 and `0s` at 64/65/100, where the new form returns the ceiling | `git show 668339d:internal/backoff/backoff.go` beside HEAD's, both in one probe module; `go run .` → `AC40 grid: rows=308154 mismatches=0` |
 | R5-A3 | round 5 | — | accepted@5 — NOT a defect: `.env.example`'s factor values are gated, not decorative. `LAB_GAME_TG_RETRY_FACTOR=2`→`3` over a `cp` backup reds `TestLoadTransport_ExampleMatchesDefaults`; restored clean | `sed -i 's/^LAB_GAME_TG_RETRY_FACTOR=2$/LAB_GAME_TG_RETRY_FACTOR=3/' .env.example && go test -count=1 ./internal/config/` → RED |
@@ -170,6 +170,16 @@ Taken at `ce6a11d11721d7e6026aca9ac346c9b45391ed04`, with `make verify` green en
 | R5-A8 | round 5 | — | accepted@5 — below severity floor: `internal/scheduler/failure_test.go:203` names its watched site as "settle.go's deferredFailedStatement/settleFailed path", but the R5-A1 mutation series shows it watches **only** `settleFailed` (mutating `settle.go:143` leaves it green; only `TestDeadline_…` reds). D20's one-scenario-per-call-site mapping is correct in the code and imprecise in this one comment | `sed -n '202,207p' internal/scheduler/failure_test.go` against R5-A1's per-site mutation results |
 | R5-A9 | round 5 | — | accepted@5 — below severity floor, three items: `internal/ingest/retry_test.go:304` builds `rec := &recordingObserver{}` and passes it as `Observer` without ever reading it (the R1-2 shape; harmless here because the assertion is the elapsed bound, not an observation); `internal/ingest/loop.go:117` and `internal/scheduler/worker.go:89` give the factor refusal an inline `Reason` string where the neighbouring rejections use `reasonMustBePositive` (single-use, so a constant would be over-engineering — asymmetric, not wrong); `internal/tg/retry_test.go:768`'s `client.go:116-117` Go-source line citation is a locator that already drifted once inside this PR (`115-116`→`116-117`) and was correctly re-resolved | `grep -n 'rec' internal/ingest/retry_test.go`; `grep -n 'reasonMustBePositive' internal/ingest/loop.go`; `sed -n '116,118p' internal/tg/client.go` |
 | R5-A10 | round 5 | — | accepted@5 — below severity floor: `internal/tg/retry_test.go` is 775 lines and `internal/scheduler/deadline_test.go` 755, both past `code-style.md`'s 500 soft band and inside the 800 plan-the-split band. Each is one cohesive suite for one file, so the don't-over-split counter-rule applies and no split is suggested; `make file-limits` is green against both hard bands | `wc -l internal/tg/retry_test.go internal/scheduler/deadline_test.go`; `make file-limits` |
+| R6-A1 | round 6 | — | accepted@6 — NOT a defect, and R5-2's fix is verified by the measurement its own replacement text claims: with the `attempt=0` row deleted over a `cp` backup, the clamp block `backoff.go:96.44,98.3` shows count **1**, reached by the `attempt=6` and `attempt=10` rows above it. The false half of R1-8 is gone and the surviving text is true; tree restored, `git diff --name-only` empty | `cp internal/tg/retry_test.go tmp/sr6-retry.bak; sed -i '773,775d' internal/tg/retry_test.go; go test -count=1 -run TestBackoffDelay_JitterBoundsExactly -coverpkg=./internal/backoff -coverprofile=tmp/sr6-clamp.out ./internal/tg/; grep 'backoff.go:96.44,98.3' tmp/sr6-clamp.out` → `1 1` |
+| R6-A2 | round 6 | — | accepted@6 — NOT a defect: R5-1's fix is complete and in the direction the finding required — the numeral is **struck** (`none of the keys`), never raised. The three `*EnvKeys()` tallies the diff DID have to move are each correct on the shipped tree, measured rather than derived by arithmetic on the old figure: fourteen / seven / seven. A sweep of every numeral-or-number-word-before-a-plural-noun comment across all 24 changed `.go` files finds exactly one surviving false tally, and it is R5-A7's pre-existing one (R6-A6) | `sed -n '/^func transportEnvKeys/,/^}/p' internal/config/transport.go \| grep -c envTG` → `14`; same shape for `schedulerEnvKeys`/`ingestEnvKeys` → `7`/`7`; `for f in $(git diff --name-only 668339d..HEAD -- '*.go'); do grep -nE '^\s*//.*\b(one\|two\|…\|fourteen\|[0-9]+)\s+[a-z]+s\b' $f; done` |
+| R6-A3 | round 6 | — | accepted@6 — NOT a defect, verified by measurement so no later round need re-derive it: `Exponential`'s two surviving contract clauses hold at the EDGES of the domain `ValidFactor` admits, not merely at the defaults. A probe carrying a verbatim copy of HEAD's `Exponential`: 9 factors — including `math.Nextafter(1, 2)`, the smallest legal factor, where a 1-ulp `math.Pow` error is the only thing that could invert the ramp — × 9 bases (`1ns`…`1h`) × attempts `0..5000` → **0 decreases**; and a ceiling grid including `MaxInt64`, `2^53+1` and `2^53+3` (the shape where `float64(ceiling)` rounds UP, the only way a returned value could exceed the ceiling) → **0 over-ceiling** | the probe module under the session scratchpad; `go run .` → `total decreases: 0` / `total over-ceiling: 0` |
+| R6-A4 | round 6 | — | accepted@6 — NOT a defect, deliberate and documented: `backoff.go:96`'s `math.IsNaN(d)` is unreachable on every shipped path — after the normalisation at `backoff.go:92` the factor is `1`, a finite value `> 1`, or `+Inf`, and `base > 0` is already guaranteed at `backoff.go:86`, so `d ∈ (0, +Inf]` and never NaN. D20 asks for both clauses to be written out explicitly precisely so a later boolean simplification cannot drop the guard, and the package comment states the NaN row as a contract row rather than as a reachable case | read `internal/backoff/backoff.go:86-98`; no factor `ValidFactor` admits, nor any it normalises, can make the product NaN |
+| R6-A5 | round 6 | — | accepted@6 — NOT a defect, and explicitly carved out by the amendment itself rather than by my judgement: the spec at `…spec.md:146` still reads "the six `LAB_GAME_SCHEDULER_*` keys already shipped", but it carries a sha-pinned `[source: 118e012:internal/config/scheduler.go:15-20]` citation, and the amendment note the same file adds at `…spec.md:256-260` puts the whole class out of scope in its own words — "the counts this spec's earlier sections pin at their commits included: those describe the tree as it stood before this amendment and are not restated". The register's own R1-A5 row ("`.env.example`'s six new lines") is the same shape, its verifying command pinned to `a09d26f..HEAD` | `sed -n '146,149p' …spec.md` against `sed -n '256,260p' …spec.md` |
+| R6-A6 | round 6 | — | accepted@6 — R5-A7 re-confirmed on this tree, NOT a defect of this diff: `internal/config/transport.go:13`'s "Unlike envKeys' six variables" is false (`envKeys()` returns **four**) and is pre-existing — `internal/config/env.go` appears nowhere in this diff, and `transport.go`'s first hunk covers new lines 5-12, so :13 sits outside every hunk of the file | `git diff --name-only 668339d..HEAD -- internal/config/env.go` → empty; `sed -n '/^func envKeys/,/^}/p' internal/config/env.go` → four names |
+| R6-A7 | round 6 | — | accepted@6 — apparatus, NOT this tree, recorded so a later round does not spend a finding on it and the orchestrator can route it: `check-review-register.sh` detects an open register row only when the status cell is **exactly** `open` (`s ~ /^open$/`), so R5-2's cell — `open 🔁 **R1-8 re-opened** (…)` — would not have been caught even had round 5's table marked the row `✅ Fixed`. The script is outside this diff's window | `sed -n '/^        s = regstatus\[found\]/,+3p' .claude/skills/ai-audit/scripts/check-review-register.sh` |
+| R6-A8 | round 6 | — | accepted@6 — NOT a defect: AC41's call-site gate re-confirmed independently at one of the four sites rather than taken from R5-A1's record. `internal/tg/caller.go:138`'s `c.client.transport.RetryFactor` → `backoff.DefaultFactor` over a `cp` backup reds exactly `TestRetry_NonDefaultFactorReachesTheCallSite` and no other test in the package; restored, `git diff --name-only` empty | `cp internal/tg/caller.go tmp/sr6-caller.bak; sed -i '138s/c\.client\.transport\.RetryFactor/backoff.DefaultFactor/' internal/tg/caller.go; go test -count=1 ./internal/tg/` → `--- FAIL: TestRetry_NonDefaultFactorReachesTheCallSite` |
+| R6-A9 | round 6 | — | accepted@6 — below severity floor: `internal/tg/retry_test.go:769` now opens a comment line with "New rejects" immediately after the previous sentence's full stop, so it reads as a fragment until the reader recognises `New` as the constructor's name. The words are pre-existing — `668339d` carried them mid-paragraph — and only the amendment's rewrap exposed the shape | `git show 668339d:internal/tg/retry_test.go \| sed -n '720,724p'` against `sed -n '766,772p' internal/tg/retry_test.go` |
+| R6-A10 | round 6 | — | accepted@6 — examined, unchanged from R3-A6 and not independently verifiable from the artefacts in scope: the amendment's design-review GO (round 12) is recorded in the Decisions log as a sentence, not as an `## Issues` / `## Recommendations` table, so the GO-with-notes round-trip check rests on that record rather than on the notes. Every D20 clause I could check against the shipped tree holds, and `check-citations.sh` PASSes on both documents | `bash .claude/skills/ai-audit/scripts/check-citations.sh <spec> <design>` → `PASS` |
 
 ## Files touched
 
@@ -542,3 +552,104 @@ prose falls short of the documents, not the other way round. The one candidate f
 recorded rather than taken: `internal/scheduler`'s `TestBackoff_strictlyGrowingUntilCeiling` is named
 for a property D20's contract table declines to promise, and the design routes that rename to the
 owner as a scope-boundary item, never a silent edit inside this task.
+
+## Self-Review (Round 6)
+
+**Verdict:** APPROVE
+
+**What was checked.** The amendment's own diff `668339d..HEAD` (35 files, +2641/-130 — 22 commits,
+Groups D and E, the design/spec amendment round, and round 5's two fixes) against the spec's amended
+**AC27** and **AC39-AC43**, plus AC11/AC30/AC31/AC32, and design **D2** and **D20**. The spawn prompt
+carried only the five permitted lines — no `PROMPT-CONTAMINATION` finding. Round scope set by the
+Review register as instruction 7a requires: every `fixed@<sha>` row re-examined only over the diff
+since its sha (for R5-1 and R5-2 that is `fdf61e9..HEAD`, one docs-only commit), every `accepted@N`
+row left alone unless something measurably changed against it — none did.
+
+**Gates re-run by me against the shipped tree, never taken from this file,** with `LAB_GAME_TEST_DSN`
+UNSET so testcontainers gives each package its own server, and with `-count=1` so no result is a
+cached one: `make verify` (**exit 0** end to end — fmt-check, build, vet, lint, file-limits, test,
+test-race, tidy-check, actionlint, shellcheck); `go test -count=1 ./...` (**green, 9/9 packages,
+nothing cached**); `go test -race -count=1 ./...` (**green, 9/9** — the amendment adds tests to the
+scheduler, ingest and tg packages, so the race gate is load-bearing); `make cover-ratchet`
+(**91.28% holds against 91.46%**, tolerance 0.50 pp);
+`.claude/skills/ai-audit/scripts/check-review-register.sh` on this file (**exit 0**);
+`check-citations.sh` on the spec and design (**PASS**).
+
+**AC-verification checks re-run against the SHIPPED artefact, not against a drafting-time record.**
+**AC39** — the three keys are present in `.env.example` at lines 56 / 106 / 140, each beside its own
+scope's retry family and in its scope's const-block order (TG between `…_RETRY_MAX_DELAY` and
+`…_ATTEMPT_TIMEOUT`; scheduler between `…_RETRY_MAX_DELAY` and `…_TASK_TIMEOUT`; ingest last), each
+enumerated by its `*EnvKeys()` and so by `config.EnvKeys()`, each optional (`lookupFactor` returns
+`(0, false, nil)` when absent) with the default `backoff.DefaultFactor`. **PASS.**
+**AC40** — `grep -rn 'backoff\.Exponential\|backoff\.EqualJitter' --include='*.go' internal/ cmd/ |
+grep -v _test.go` returns exactly the four production call sites (`scheduler/settle.go:143,243`,
+`ingest/attempt.go:35`, `tg/caller.go:138`), every one passing its own `cfg`/`transport` field; the
+only three `backoff.DefaultFactor` uses outside `internal/backoff` are the three config defaults, so
+no ramp's growth factor is a literal at its point of use. **PASS.**
+**AC41** — re-confirmed by my own mutation at one of the four sites rather than read off R5-A1:
+`caller.go:138`'s `c.client.transport.RetryFactor` → `backoff.DefaultFactor` reds exactly
+`TestRetry_NonDefaultFactorReachesTheCallSite` and nothing else; restored, tree clean (R6-A8). The
+isolation half is `TestLoad_RetryFactorIsolatedPerScope`. **PASS.**
+**AC42/AC43** — nine malformed rows per scope (exactly 1, below 1, 0, negative, `NaN`, `Inf`,
+`infinity`, non-numeric, empty), each through `assertKeyError` so the `*KeyError` must name THAT key;
+`lookupFactor` mirrors `lookupPositiveInt`/`lookupPositiveDuration` byte-for-byte in shape, including
+the `strings.TrimSpace`; and each of `tg.New`, `scheduler.New` and `ingest.New` carries its refusal
+**last** in its existing chain, with a row that names the EARLIER invalid field. **PASS.**
+**AC11 + the panicking-call audit** — the grep over all **10** changed non-test `.go` files returns
+empty, so `ai-docs/panic-index.md` correctly gains no row. **PASS.** **AC30/AC31** — above. Secret
+scan over the whole diff: the only hit is R1-A5's own register text describing the check. No
+`TODO`/`FIXME` and no `docs/DESIGN.md:<line>` citation in any changed file. **AC32 — the round-5
+failure is repaired in the direction the finding required, and the sweep for the rest of its class is
+clean (R6-A2).**
+
+**Round 5's two findings, both closed.** Finding 1 (R5-1): `transport_test.go:163` now reads "none of
+the **keys**" — the numeral is struck, not raised, which is the repair `context.md` and
+`context-status.md` already took in this same diff; and the three tallies the diff genuinely had to
+move (`transportEnvKeys` / `schedulerEnvKeys` / `ingestEnvKeys`) measure **fourteen / seven / seven**
+on the shipped tree. Finding 2 (R5-2, R1-8 re-opened): the false clause — "needs its own row for that
+block to be exercised at all" — is gone, and its replacement makes a checkable claim, which I
+checked: deleting the `attempt=0` row leaves `backoff.go:96.44,98.3` at count **1** (R6-A1). The
+register row moves to `fixed@fdf61e9`.
+
+**Verified sound by measurement, so no later round need re-derive any of it.** (1) `Exponential`'s
+two surviving contract clauses hold at the EDGES of the domain `ValidFactor` admits, not merely at
+the defaults: a verbatim copy of HEAD's function over 9 factors — including `math.Nextafter(1, 2)`,
+the smallest legal one, where a 1-ulp `math.Pow` error is the only thing that could invert the ramp —
+× 9 bases × attempts `0..5000` reports **0 decreases**, and a ceiling grid including `MaxInt64`,
+`2^53+1` and `2^53+3` (the shape where `float64(ceiling)` rounds UP, the only way a returned value
+could land above the ceiling) reports **0 over-ceiling** — R6-A3. This is the same defect shape D20
+exists to fix in KD-31's old no-wrap clause, so it was checked rather than assumed. (2) `backoff.go`'s
+`math.IsNaN(d)` guard is unreachable and deliberately so, per D20's write-both-forms-out rule —
+R6-A4. (3) The AC41 gate discriminates, re-measured at one site — R6-A8. (4) The stale-count class
+R5-1 belongs to is swept clean across all 24 changed `.go` files, with the two survivors both
+sha-pinned or pre-existing — R6-A2, R6-A5, R6-A6. (5) The four `learnings.md` entries this run added
+each landed in a commit of their own (or, for `eec3612`, alongside `context*.md` / `key-decisions.md`
+only), so Boundary rule 2 holds: no `AGENTS.md`, `CLAUDE.md`, `.claude/**`, `code-style.md` or
+`doc-convention.md` edit shares a turn with a learnings write, and every entry reads
+`Escalated? no`.
+
+**Below the severity floor — 6 items, recorded in the register as `accepted@6`, not raised as rows:**
+`backoff.go:96`'s unreachable `math.IsNaN(d)` (R6-A4); the spec's sha-pinned "six
+`LAB_GAME_SCHEDULER_*` keys" at `…spec.md:146` and the register's own R1-A5 wording, both carved out
+by the amendment note at `…spec.md:256-260` (R6-A5); `internal/config/transport.go:13`'s "Unlike
+envKeys' six variables", pre-existing and outside every hunk (R6-A6);
+`check-review-register.sh`'s exact-match open detection, which is apparatus outside this diff's
+window (R6-A7); `internal/tg/retry_test.go:769`'s "New rejects" line-opening fragment (R6-A9); and
+the design-review GO being recorded as a sentence rather than a notes table (R6-A10). None of these
+is the difference between verdicts.
+
+**No Design or Spec Amendment trigger.** Nothing in this round proposes an edit to `*.spec.md` or
+`*.design.md`. The one standing candidate is unchanged from round 5 and stays routed to the owner
+rather than taken silently: `internal/scheduler`'s `TestBackoff_strictlyGrowingUntilCeiling` is named
+for a property D20's contract table declines to promise (its own assertion is `cur < prev`, i.e.
+non-decrease, and was already so at `668339d`), so the rename is a scope-boundary item.
+
+**What remains for the orchestrator, not for a fix round:** the *Next action* list — INDEX row back to
+`✅ implemented`, spec and design back to `done/`, the two state files retired, push, and the reply on
+PR #66's review thread. Round 5's table row 2 still reads `⬜ Open 🔁 Re-opened` because instruction 8
+never edits an earlier round's section; the register is the durable state and it now reads
+`fixed@fdf61e9`.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| — | — | — | No `blocker` or `major` finding. Round 5's two findings are fixed and verified by their own commands; six below-floor items are recorded in the register as `accepted@6`. | — |
