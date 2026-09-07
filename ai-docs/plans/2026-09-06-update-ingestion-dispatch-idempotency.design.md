@@ -1003,6 +1003,23 @@ reachable. The alternative — `internal/config` owning the boundary — was rej
 domain rule of a function in a package that never calls it, leaving a future adopter reading
 `internal/backoff`'s own doc comment with no way to check the rule it states.
 
+**Which sites AC40's "no ramp's growth factor is a literal at its point of use" clause binds —
+settled here, so a Step-9 AC sweep does not have to adjudicate it against row 15's opposite
+instruction for test calls.** The clause governs the ramp's *points of use*: the **production call
+sites**, each passing its own adopter's `cfg.RetryFactor` — never a literal, and never
+`DefaultFactor` — and the **three per-scope config defaults**, each falling back to
+`backoff.DefaultFactor` rather than to a re-typed `2`, which subtask 14 asserts directly by comparing
+each scope's default against the constant rather than against a value typed again
+`[derived → AC40's named-constant clause and subtask 14's default rows]`. A **direct test call** to
+`Exponential` or `EqualJitter` is not a point of use in that sense: it is a pinned expectation about
+the function's own arithmetic, and row 15 has it pass a literal `2` on purpose. A table pinned to
+`DefaultFactor` would follow the default wherever a later change moved it, and AC40's
+behaviour-preservation clause — the delay every adopter produces with none of the three variables set
+— is exactly the claim that would then stop being checked, silently
+`[derived → AC40's behaviour-preservation clause and subtask 15's behaviour-preservation rows]`.
+The two halves of AC40 therefore agree rather than compete: production and configuration carry the
+named constant, the pinned tables carry the literal, and neither is the other's site.
+
 **The contract rows, decided here so no implementor guesses.** Over every attempt (negative ones
 clamped to the zeroth) the package answers:
 
@@ -1236,7 +1253,19 @@ the IN-LOOP early return (line 52-54)`, and `(post-loop clamp: base alone alread
 maxDelay)`]. The same file's `// formula predicts (base/2, doubling)` is the counter-example the rule
 above sorts the other way: it describes what that test's own default-factor rows compute, so it stays
 [measured ef69c56:internal/tg/retry_test.go:126 · `sed -n '126p' internal/tg/retry_test.go` →
-`// formula predicts (base/2, doubling), the shape the design's own Test`]. `make verify` sees none
+`// formula predicts (base/2, doubling), the shape the design's own Test`]. **One further site sorts
+the same way, and is named here precisely because the sweep above cannot reach it:** the
+`d_i = min(base*2^i, maxDelay)` line inside that file's jitter test is a doubling-shaped claim
+carrying none of the tokens that sweep greps for, so an implementor who re-derives the checklist
+instead of reading it will meet the line without the rule beside it. Under the rule it **stays**: it
+states what that test's own default-factor rows compute, which is still exactly what they compute
+[measured 4903550:internal/tg/retry_test.go:150-153 · `sed -n '150,153p' internal/tg/retry_test.go` →
+`// D6: delay_i = d_i/2 + u*d_i/2, d_i = min(base*2^i, maxDelay).` / `// With jitter fixed at 0,
+delay_i = d_i/2 exactly: 50ms, 100ms,` / `// 200ms for i = 0, 1, 2.` / `want := []time.Duration{50 *
+time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond}` — the rows it narrates, at the
+default factor; and `grep -n 'doubling\|base<<\|in-loop\|post-loop\|POST-LOOP\|IN-LOOP\|line 5'
+internal/tg/retry_test.go` → `150` not among its hits]. It is a *stays* entry, not an omission.
+`make verify` sees none
 of this — a stale comment compiles, and a stale `t.Errorf` string never prints on a green run — so,
 exactly as with subtask 16, the check is a reader's, and the
 recurrence this guards against is on record: self-review R1-8 already cost a round for false
@@ -1277,7 +1306,7 @@ exponential backoff without fixing a factor for it
 | 12 | Propagation: the layout paragraph and the code inventory in `ai-docs/context.md`; the allowlist and sanitisation bullets in `ai-docs/domain-invariants.md` — the player carve-out, the cache-invalidation obligation, D18's no-outbound-call-on-an-uncommitted-row obligation, and the concrete §12.5 targets this task creates per D14 (reset `ingest_offset`, which is what the existing «reset the updates offset» clause now names; rewrite `ingest_dead_update`'s chat id; blank its `last_error` free text); the new Key-Decision entries; the `INDEX.md` row. **`ai-docs/context-status.md` is written for this task, and not by this subtask** — spec *Technical constraints* item 8 names it among the propagation class, and it receives its entry the way it receives every entry: appended by `/task` Step 9.5 after implementation, since it is that step's own append-only per-task log [measured 07e5177:ai-docs/context-status.md:3 · `sed -n '3p' ai-docs/context-status.md` → `The detailed, append-only implementation log: one entry per completed task … Written by /task Step 9.5, read on demand when touching the area an entry covers.`]. This row therefore leaves that append to Step 9.5 rather than duplicating it here, and touches none of the file's past entries. **The reason is timing, not a standing exemption**, and the distinction matters because row 16 later depends on it: `AGENTS.md` § Propagation Rule step 4 names `ai-docs/learnings.md` and `ai-docs/plans/done/**` as the history surfaces it leaves untouched and does **not** name this file [measured c222623:AGENTS.md:246 · `sed -n '246p' AGENTS.md` → `… Completeness test: every LIVE doc must agree; history surfaces (\`ai-docs/learnings.md\`, \`ai-docs/plans/done/**\`) are left untouched.`], so no rule exempts `context-status.md` from a propagation sweep. What is true at *this* row's moment is narrower: the entry does not exist yet, because Step 9.5 has not run. Once it does exist it is an ordinary live claim like every other, which is precisely why row 16 owns a clause of it. AC32's class is satisfied by that division of labour, not by an exclusion from the class | `ai-docs/context.md`, `ai-docs/domain-invariants.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–11 |
 | 13 | **The two shared names, with no signature change yet**, so the module stays green at this step: `internal/backoff` exports `DefaultFactor` — the named constant D20 lifts the hard-coded `2` into, documented as the value that reproduces the shipped ramp exactly — and `ValidFactor`, the single definition of the legal-factor boundary (finite and strictly greater than `1`) that row 14's reader and row 15's constructors all call instead of each restating it (D20's `≥ 3`-site argument). The package comment gains the boundary sentence, and each new exported name carries the doc comment starting with its own name that `revive`'s `exported` rule requires [measured fc5e6dd:.golangci.yml:45-48 · `sed -n '45,48p' .golangci.yml` → `revive:` / `rules:` / `- name: exported` / `- name: package-comments`]; the tests pin `DefaultFactor`'s value and `ValidFactor`'s answers, the `NaN`, `±Inf` and exactly-`1` rows included | `internal/backoff/backoff.go`, `internal/backoff/backoff_test.go` | — |
 | 14 | The configuration surface (D20): `LAB_GAME_TG_RETRY_FACTOR`, `LAB_GAME_SCHEDULER_RETRY_FACTOR` and `LAB_GAME_INGEST_RETRY_FACTOR`, each declared last in its scope's retry family and appended to that scope's `*EnvKeys()` in declaration order — which is what puts each key in the aggregate `config.EnvKeys()` AC39 names, since that function is the concatenation of the three per-scope lists [measured ef69c56:internal/config/env.go:53-58 · `sed -n '53,58p' internal/config/env.go` → `func EnvKeys() []string {` / `keys := append(envKeys(), envBalancePath, envWorldPath)` / `keys = append(keys, transportEnvKeys()...)` / `keys = append(keys, schedulerEnvKeys()...)` / `return append(keys, ingestEnvKeys()...)`]; a `RetryFactor float64` field on `config.Transport`, `config.Scheduler` and `config.Ingest`, each defaulting to `backoff.DefaultFactor` — which gives `internal/config` its first import of another package in this module, in the one direction that cannot cycle (D20); a `lookupFactor` helper beside `lookupPositiveInt` and `lookupPositiveDuration`, same `(value, present, error)` shape and same unconditional query, refusing anything `ValidFactor` refuses with a `*KeyError` naming the key; one `.env.example` line per key, placed beside its own scope's other retry keys as AC39 requires and carrying its default as the value, because the disjointness test asserts set equality between that file, `EnvKeys()` and the keys the loader actually consulted; and the count-bearing `*EnvKeys()` doc comments in the files this row already edits. `defaultIngest`'s worst-case-stall arithmetic gains its "under the default factor" qualifier, because that sum is now conditional on a configured value. **Three live `RetryMaxDelay` doc comments in the same three files say the ramp *doubles*, which is false at any non-default factor**, and this row rewrites each to name the configured factor instead [measured 515f03d:internal/config/transport.go:105, internal/config/scheduler.go:59 and internal/config/ingest.go:67 · `grep -rn 'doubling' internal/config/*.go` → `RetryMaxDelay caps the backoff scale's doubling` at each] | `internal/config/transport.go`, `internal/config/scheduler.go`, `internal/config/ingest.go`, their `_test.go` files, `.env.example` | 13 |
-| 15 | **The signature change and every call site in one step, because Go admits no intermediate state that compiles** — and because a second, factor-taking entry point beside the current one is exactly the two-APIs-side-by-side row `AGENTS.md` § API Stability deletes (D20). `Exponential` and `EqualJitter` gain `factor float64` after `ceiling` (`jitter` stays last) and are re-expressed over `math.Pow`, with the clamp as the last step before the float→`time.Duration` conversion and the `NaN` case guarded by an explicit `math.IsNaN` test; the package comment states D20's contract table in full. Each adopter's constructor gains its factor check **last in its existing chain**, so every shipped invalid-config row still fails naming its own field; each production call site — `internal/tg/caller.go`'s retry wait, `internal/scheduler/settle.go`'s two persisted-`run_at` computations, `internal/ingest/attempt.go`'s between-attempt delay — passes **its own `cfg.RetryFactor`**, never `backoff.DefaultFactor`; each package's test config builder and each invalid-config table row gains a legal factor; and each *direct* test call passes a literal `2` rather than `DefaultFactor`, so a later default move cannot silently carry a pinned table with it. Every pre-existing assertion and expected value stays byte-identical — inside a call expression the argument list is the only thing that moves — and D2's three-class rule governs the rest of the diff unchanged: **call expressions** re-point and gain the argument; **comment prose** and **`t.Errorf` format strings** are neither assertions nor expected values, so where one describes the ramp's *contract* or the deleted *loop's structure* it is re-worded to stay true, while one describing what a specific default-factor row computes stays as it is. D20's closing checklist names the sites of that second class in `internal/backoff` and `internal/tg`; it names them as a checklist, and the decision rule beside it is what settles a site the list does not carry. The literal one-based ramps in `failure_test.go` and `deadline_test.go` are untouched, still literal, still at the default. `internal/backoff`'s table gains D20's factor rows, and each **production call site** gains D20's non-default-factor scenario as a **new** test function beside the shipped ones, never as an edit to one — which for `internal/scheduler` is **two** scenarios rather than one, because `settle.go` computes a persisted `run_at` in two separate production functions, each reading `cfg` for itself (D20). **A constructor's factor check reds every *inline* config literal too, not only the test config builders**, so this row's Files carry `internal/ingest/gate_test.go`, whose `tg.New` call builds its `config.Transport` as a literal in place rather than through a builder [measured 515f03d:internal/ingest/gate_test.go:227-238 · `sed -n '227,238p' internal/ingest/gate_test.go` → `client, err := tg.New(tg.Options{` … `Transport: config.Transport{` / `RetryMaxAttempts: 1,` / `RetryBaseDelay:   time.Millisecond,` / `RetryMaxDelay:    time.Millisecond,` / `AttemptTimeout:   5 * time.Second,`]. As in row 2, **the listed sites are a floor enumerated by `rg`, not a closed set**: `make verify` is re-run after they clear, and a newly revealed site is surfaced to the orchestrator, not absorbed | `internal/backoff/backoff.go`, `internal/backoff/backoff_test.go`, `internal/tg/client.go`, `internal/tg/caller.go`, `internal/tg/client_test.go`, `internal/tg/retry_test.go`, `internal/scheduler/worker.go`, `internal/scheduler/settle.go`, `internal/scheduler/worker_test.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go`, `internal/scheduler/deadline_test.go`, `internal/ingest/loop.go`, `internal/ingest/attempt.go`, `internal/ingest/loop_test.go`, `internal/ingest/retry_test.go`, `internal/ingest/gate_test.go` | 13, 14 |
+| 15 | **The signature change and every call site in one step, because Go admits no intermediate state that compiles** — and because a second, factor-taking entry point beside the current one is exactly the two-APIs-side-by-side row `AGENTS.md` § API Stability deletes (D20). `Exponential` and `EqualJitter` gain `factor float64` after `ceiling` (`jitter` stays last) and are re-expressed over `math.Pow`, with the clamp as the last step before the float→`time.Duration` conversion and the `NaN` case guarded by an explicit `math.IsNaN` test; the package comment states D20's contract table in full. Each adopter's constructor gains its factor check **last in its existing chain**, so every shipped invalid-config row still fails naming its own field; each production call site — `internal/tg/caller.go`'s retry wait, `internal/scheduler/settle.go`'s two persisted-`run_at` computations, `internal/ingest/attempt.go`'s between-attempt delay — passes **its own `cfg.RetryFactor`**, never `backoff.DefaultFactor`; each package's test config builder and each invalid-config table row gains a legal factor; and each *direct* test call passes a literal `2` rather than `DefaultFactor`, so a later default move cannot silently carry a pinned table with it — AC40's *no literal at its point of use* clause binds the production call sites and the three per-scope config defaults, not a direct test call, and D20 settles that split so a Step-9 sweep does not have to; and each constructor's new refusal gains its own rows, at the values § Test Design subtask 15 names. Every pre-existing assertion and expected value stays byte-identical — inside a call expression the argument list is the only thing that moves — and D2's three-class rule governs the rest of the diff unchanged: **call expressions** re-point and gain the argument; **comment prose** and **`t.Errorf` format strings** are neither assertions nor expected values, so where one describes the ramp's *contract* or the deleted *loop's structure* it is re-worded to stay true, while one describing what a specific default-factor row computes stays as it is. D20's closing checklist names the sites of that second class in `internal/backoff` and `internal/tg`; it names them as a checklist, and the decision rule beside it is what settles a site the list does not carry. The literal one-based ramps in `failure_test.go` and `deadline_test.go` are untouched, still literal, still at the default. `internal/backoff`'s table gains D20's factor rows, and each **production call site** gains D20's non-default-factor scenario as a **new** test function beside the shipped ones, never as an edit to one — which for `internal/scheduler` is **two** scenarios rather than one, because `settle.go` computes a persisted `run_at` in two separate production functions, each reading `cfg` for itself (D20). **A constructor's factor check reds every *inline* config literal too, not only the test config builders**, so this row's Files carry `internal/ingest/gate_test.go`, whose `tg.New` call builds its `config.Transport` as a literal in place rather than through a builder [measured 515f03d:internal/ingest/gate_test.go:227-238 · `sed -n '227,238p' internal/ingest/gate_test.go` → `client, err := tg.New(tg.Options{` … `Transport: config.Transport{` / `RetryMaxAttempts: 1,` / `RetryBaseDelay:   time.Millisecond,` / `RetryMaxDelay:    time.Millisecond,` / `AttemptTimeout:   5 * time.Second,`]. As in row 2, **the listed sites are a floor enumerated by `rg`, not a closed set**: `make verify` is re-run after they clear, and a newly revealed site is surfaced to the orchestrator, not absorbed | `internal/backoff/backoff.go`, `internal/backoff/backoff_test.go`, `internal/tg/client.go`, `internal/tg/caller.go`, `internal/tg/client_test.go`, `internal/tg/retry_test.go`, `internal/scheduler/worker.go`, `internal/scheduler/settle.go`, `internal/scheduler/worker_test.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go`, `internal/scheduler/deadline_test.go`, `internal/ingest/loop.go`, `internal/ingest/attempt.go`, `internal/ingest/loop_test.go`, `internal/ingest/retry_test.go`, `internal/ingest/gate_test.go` | 13, 14 |
 | 16 | Propagation of the amendment: KD-31's amendment clause, KD-27's per-scope key enumeration, and `ai-docs/context.md`'s layout and inventory sentences — D20's closing checklist names each claim that goes stale and, for each, whether the repair is to update it or to strike it. **`ai-docs/context-status.md` is this row's too, for one clause of one sentence.** The entry `/task` Step 9.5 already appended for *this* task — its heading names this PR and this task's own date — asserts a tally for the `LAB_GAME_INGEST_*` key family in its *What landed* bullet, and row 14 makes that assertion false inside the very PR the entry describes [measured c222623:ai-docs/context-status.md:147 · `grep -n 'the six \`LAB_GAME_INGEST_\*\` tuning keys' ai-docs/context-status.md` → one hit, inside `## Update ingestion — long polling, dispatch, operation idempotency, the chat allowlist (PR #66, 2026-09-07)`]. Step 9.5 has already run for this task and only ever *appends*, so no later step of the plan reaches that clause — this row does. The repair is to **strike the quantifier**, leaving the key family named and uncounted, never to write the amendment's new number: `/task`'s Step 9.5 forbids a count in this file outright [measured c222623:.claude/skills/task/SKILL.md:178 · `grep -n 'No counts here' .claude/skills/task/SKILL.md` → **No counts here — name the things, do not tally them.** … `none of it goes into \`context-status.md\` or \`context.md\``], and `ai-docs/context.md`'s inventory sentence takes the identical treatment for the same reason (D20's closing checklist). Nothing else in the file moves: every other entry, and every other clause of this one, is left exactly as Step 9.5 wrote it | `ai-docs/key-decisions.md`, `ai-docs/context.md`, `ai-docs/context-status.md` | 13–15 |
 
 ## Handoff plan
@@ -1378,7 +1407,14 @@ handoff.
     re-point rather than after it. **(3) The clamp is the last step before the conversion.** No
     `time.Duration` conversion of a value that has not been proven strictly below the ceiling, `NaN`
     guarded explicitly; a `base << attempt`, a loop, or a clamp after the multiplication is a
-    regression, not a translation (D20). **(4)** `go test ./internal/backoff/ ./internal/config/
+    regression, not a translation (D20). **(4) Each constructor's factor check is `ValidFactor`, and
+    it is the chain's last link.** A predicate written as `<= 0` beside the duration checks around it
+    refuses nothing this amendment refuses, and a check hoisted up the chain re-points a shipped
+    error message — neither shows on a green suite, because every shipped invalid-config row carries
+    a legal factor by this row's own instruction. The rows § Test Design subtask 15 names — at
+    exactly `1`, at `+Inf`, at `NaN`, and one with an earlier field invalid *beside* the factor —
+    are the instrument for both, and they land with the check rather than after it.
+    **(5)** `go test ./internal/backoff/ ./internal/config/
     ./internal/tg/ ./internal/scheduler/ ./internal/ingest/` is green before the group returns, run
     as its own step rather than folded into a final `make verify`, so a moved expected value surfaces
     while the adoption diff is still in hand.
@@ -1622,8 +1658,22 @@ handoff.
   config.Ingest{PollInterval: …, LongPollTimeout: …, BatchLimit: 1, RetryMaxAttempts: 1, RetryMaxDelay:
   …}}, "Config.RetryBaseDelay"}`]`, so with the factor checked first every one of them would fail
   naming the factor instead. Mitigation: D20 puts each constructor's factor check **last** in its
-  existing chain and subtask 15 gives every baseline literal a legal factor — `[derived → subtask
-  15]`.
+  existing chain and subtask 15 gives every baseline literal a legal factor; and because a legal
+  baseline is precisely what stops those rows from noticing the check's *position*, subtask 15 adds
+  one case per constructor that makes an **earlier** field invalid together with the factor and
+  asserts the earlier field's name — the only row that reds a check hoisted up the chain —
+  `[derived → subtask 15's constructor-refusal rows]`.
+- **The constructor's factor predicate is itself an instrument that can ship unable to go red.** The
+  check is new in all three constructors, the shipped invalid-config rows around it carry a legal
+  factor by row 15's own instruction, and in `internal/scheduler` there is not even a refusal table
+  to extend — nothing under its `_test.go` files names its `OptionError`
+  `[measured 4903550 · `rg -n --type go -e 'OptionError' internal/scheduler --glob '*_test.go'` → no
+  match (exit 1)]` — so a predicate written as `<= 0`
+  beside the duration checks refuses none of `1`, `+Inf` or `NaN` and the whole suite stays green,
+  which is the same class this amendment's call-site gate exists for, one constructor to the side.
+  Mitigation: subtask 15 gives each constructor rows at those three values, each asserting the
+  option error names the factor field, and names for each the wrong predicate it reds —
+  `[derived → subtask 15's constructor-refusal rows, AC42 and AC43]`.
 - **`strconv.ParseFloat` accepts `"NaN"`, `"Inf"`, `"+inf"` and `"infinity"`**, so a reader that only
   checked "parses" would admit `NaN` into the ramp and one that only checked "greater than 1" would
   admit `+Inf` `[measured fc5e6dd · the same probe · `go run .` → `ParseFloat("NaN") = NaN,
@@ -2042,7 +2092,8 @@ row 2 are edited)
 - Fixtures: the existing recording `Lookup` stubs.
 
 **Subtask 15 — the factor parameter, and the gate that it reaches the call sites**
-- Entry points: `backoff.Exponential`, `backoff.EqualJitter`, and each adopter's own production path.
+- Entry points: `backoff.Exponential`, `backoff.EqualJitter`, each adopter's own production path, and
+  each adopter's constructor — `tg.New`, `internal/scheduler`'s `New`, `ingest.New`.
 - **`internal/backoff`, behaviour preservation — and the base bound every row of this class sits
   under.** Every shipped row re-run with a literal `2` in the
   new argument and its expected value byte-identical — a literal, not `DefaultFactor`, so that a
@@ -2095,6 +2146,68 @@ row 2 are edited)
   its shipped bounds cases at a literal `2`, unchanged, and gains one non-integer-factor case
   asserting the `[d/2, d)` bracket against `Exponential`'s own return, which needs no tolerance
   because it is an inequality `[derived → D20's epsilon bound]`.
+- **The constructors' factor refusal — a row per wrong-predicate shape, because a wrong predicate
+  there ships green.** Row 15 gives `tg.New`, `internal/scheduler`'s `New` and `ingest.New` a factor
+  check, and nothing else in the amendment reaches it: the shipped invalid-config rows this row
+  touches only *gain* a legal factor, so a check written as `<= 0` — the shape sitting immediately
+  above it in all three chains — would refuse nothing and leave every one of those rows still green
+  `[derived → row 15's instruction that each invalid-config table row gains a legal factor]`. Each
+  constructor therefore takes its own rows at **exactly `1`**, at **`+Inf`** and at **`NaN`**, every
+  other field legal, asserting the refusal is that package's own option-error type and names the
+  factor field with that package's own qualification — `Transport.RetryFactor` in `internal/tg`, the
+  unqualified `RetryFactor` in `internal/scheduler`, `Config.RetryFactor` in `internal/ingest`,
+  which is how each chain already names the retry field beside it — and `<= 0` is literally the test
+  those neighbours run
+  `[measured 4903550:internal/tg/client.go:109-110, internal/scheduler/worker.go:78,83 and
+  internal/ingest/loop.go:95,99 · `grep -n 'RetryBaseDelay"\|RetryBaseDelay <= 0\|f.value <= 0'
+  internal/tg/client.go internal/scheduler/worker.go internal/ingest/loop.go` →
+  `if opts.Transport.RetryBaseDelay <= 0 {` with
+  `optionErrorf("Transport.RetryBaseDelay", "must be positive, got %s", …)` beneath it;
+  `{"RetryBaseDelay", opts.Config.RetryBaseDelay},` with `if f.value <= 0 {`; and
+  `{"Config.RetryBaseDelay", opts.Config.RetryBaseDelay},` with `if f.value <= 0 {`]`, matched the
+  way each package's shipped rows match theirs. The values are one instrument rather than a value repeated three times, and
+  each is named for the wrong predicate it reds: **exactly `1`** reds a check that tests only
+  finiteness; **`+Inf`** reds a check that tests only `> 1` — the very shape D20 names at the config
+  reader; **`NaN`** reds a check that enumerates the infinities and forgets the NaN; and all three
+  together red the `<= 0` shape borrowed from the duration checks beside them, against which each of
+  the three compares false, so a single row of the three would leave one of those shapes standing
+  `[measured 4903550 · a stdlib-only probe under the session scratchpad · `go run probe.go` →
+  `1<=0=false +Inf<=0=false NaN<=0=false`, `1>1=false +Inf>1=true NaN>1=false`,
+  `IsInf(NaN,0)=false IsNaN(+Inf)=false`]`, and AC42's and AC43's two clauses are each pinned by the
+  row that discriminates it `[derived → AC42 and AC43]`.
+- **The row that makes "last in its existing chain" a test rather than a claim.** Beside those, one
+  case per constructor sets an **invalid factor together with** a field the chain checks earlier —
+  a non-positive retry base delay — and asserts the error names that **earlier** field. It is the
+  only row that can red a factor check inserted anywhere but last: every other row answers the same
+  at either position, since the shipped invalid rows now carry a legal factor and the factor rows
+  carry legal everything else. Without it, row 15's "every shipped invalid-config row still fails
+  naming its own field" is an unexercised promise, and the amendment could reorder a shipped error
+  message with the suite green `[derived → row 15's last-in-the-chain instruction]`.
+- **Where each of those rows lives — a shipped table in `internal/tg` and `internal/ingest`, a new
+  function in `internal/scheduler`.** `internal/tg` takes
+  them as new rows of the shipped `TestNew_ValidatesEachField`, whose `mutate func(*Options)` plus
+  `wantField` shape absorbs a factor mutation without a new function
+  `[measured 4903550:internal/tg/client_test.go:170-206 · `sed -n '170,206p'
+  internal/tg/client_test.go` → `cases := []struct {` / `mutate    func(*Options)` /
+  `wantField string` … `if optErr.Field != tc.wantField {`]`. `internal/ingest` takes them as new
+  rows of `TestNew_optionValidation`, each carrying a whole `Options` value whose `config.Ingest` is
+  legal but for the factor
+  `[measured 4903550:internal/ingest/loop_test.go:457-509 · `sed -n '457,509p'
+  internal/ingest/loop_test.go` → `cases := []struct {` / `opts  Options` / `field string` … `if
+  !errors.As(err, &optErr) || optErr.Field != tc.field {`]`. `internal/scheduler` takes a **new**
+  test function in `worker_test.go`, because there is no refusal table there to join: nothing under
+  that package's `_test.go` files names its `OptionError` at all
+  `[measured 4903550 · `rg -n --type go -e 'OptionError' internal/scheduler --glob '*_test.go'` → no
+  match (exit 1)]`. That case needs no migrated schema of its own: `New` only nil-checks the pool and
+  never dials it, and `NewRegistry` is variadic, so a non-nil `*pgxpool.Pool` value and an empty
+  registry reach the chain's tail
+  `[measured 4903550:internal/scheduler/worker.go:64-66 and internal/scheduler/registry.go:46 ·
+  `sed -n '64,66p' internal/scheduler/worker.go; sed -n '46p' internal/scheduler/registry.go` →
+  `func New(opts Options) (*Worker, error) {` / `if opts.Pool == nil {` /
+  `return nil, &OptionError{Field: "Pool", Reason: "must not be nil"}` and
+  `func NewRegistry(decls ...Declaration) (*Registry, error) {`]`. These rows are also what keeps the
+  amendment's new refusal branches from arriving uncovered, which is where an unexercised branch
+  meets the ratchet `[derived → AC31]`.
 - **The non-default-factor scenarios — one per production call site, and the only instrument that
   sees a call site passing the default.** In `internal/tg`, a case shaped like the shipped
   `TestRetry_JitterOptionThreadedThroughToBackoff` — a `synctest` bubble, a jitter stub returning `0`,
@@ -2123,7 +2236,9 @@ row 2 are edited)
   package's paths touch a real database and cannot run inside a bubble. Each of these reds if its call
   site passes `backoff.DefaultFactor`; no shipped test does `[derived → AC41]`.
 - Fixtures: the existing test config builders, each carrying a legal factor; the existing jitter
-  stubs and fake Bot API server; no new fixture kind.
+  stubs and fake Bot API server; for the scheduler's constructor case, a non-nil `*pgxpool.Pool`
+  value with no schema behind it and an empty `Registry`, which is what lets that case sit beside
+  `testConfig()` in `worker_test.go` rather than in the database-backed set; no new fixture kind.
 
 **Subtask 16 — propagation** (no new test; CI's harness job is the only automated check that touches
 it)
