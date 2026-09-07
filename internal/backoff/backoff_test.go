@@ -87,11 +87,14 @@ func TestExponential_strictlyPositiveAndNonDecreasing(t *testing.T) {
 }
 
 // TestExponential_overflowCasesNeverWrap is the table D2's contract
-// exists for: attempts far past any a naive base<<attempt survives (64,
-// where a nanosecond base has already consumed int64's range; 1000,
-// where no shift is even defined), asserted on the VALUE -- exactly the
-// ceiling and strictly positive -- since a wrapped time.Duration is a
-// silent negative, not a crash (AC23).
+// exists for: attempts far past any a naive base<<attempt survives at
+// the default factor (64, where a nanosecond base has already consumed
+// int64's range; 1000, where no shift is even defined), asserted on the
+// VALUE -- exactly the ceiling and strictly positive -- since a wrapped
+// time.Duration is a silent negative, not a crash (AC23). The shipped
+// ramp is neither a shift nor a loop (design D20): the product is
+// float64 arithmetic and the clamp sits before the time.Duration
+// conversion, so nothing out of range is ever converted.
 func TestExponential_overflowCasesNeverWrap(t *testing.T) {
 	t.Parallel()
 
@@ -122,7 +125,7 @@ func TestExponential_overflowCasesNeverWrap(t *testing.T) {
 
 // TestExponential_outOfDomainRows pins the decided answers outside the
 // domain either shipped adopter can reach: base <= 0 returns base
-// unchanged (no doubling, no lower clamp), and a positive base with a
+// unchanged (no growth, no lower clamp), and a positive base with a
 // non-positive ceiling returns the ceiling unchanged (design D2, AC23).
 func TestExponential_outOfDomainRows(t *testing.T) {
 	t.Parallel()
@@ -140,7 +143,7 @@ func TestExponential_outOfDomainRows(t *testing.T) {
 		base := -5 * time.Second
 		for _, attempt := range []int{0, 1, 1000} {
 			if got := Exponential(attempt, base, 30*time.Second, 2); got != base {
-				t.Errorf("Exponential(%d, %v, ...) = %v, want %v unchanged (no doubling, no lower clamp)", attempt, base, got, base)
+				t.Errorf("Exponential(%d, %v, ...) = %v, want %v unchanged (no growth, no lower clamp)", attempt, base, got, base)
 			}
 		}
 	})

@@ -732,40 +732,44 @@ func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 		t.Errorf("backoff.EqualJitter(attempt=0, jitter=1) = %v, want %v (half plus the full other half)", got, base)
 	}
 
-	// Self-review round 5 finding 1: neither of backoff.EqualJitter's two
-	// RetryMaxDelay enforcement branches (the in-loop early break and
-	// the post-loop clamp) had ever been exercised — deleting both left
-	// the suite green. These two rows measure the capped region at the
-	// shipped defaults (RetryBaseDelay 500ms, RetryMaxDelay 30s) that
-	// design D10's rationale states in words: "30s caps the scale so a
-	// higher configured attempt count cannot grow the wait without
-	// bound." Verified against the shipped tree (GREEN) and against a
-	// scratch deletion of both branches (RED: "got 16s want 15s" at
-	// attempt=6, "got 8m32s want 30s" at attempt=10) before being added
-	// here.
+	// Self-review round 5 finding 1: backoff.EqualJitter's RetryMaxDelay
+	// enforcement had never been exercised at all — deleting it left the
+	// suite green. (The finding was written against the doubling loop's
+	// two enforcement branches, an in-loop early break and a post-loop
+	// clamp; design D20 replaced that loop with math.Pow and a single
+	// clamp before the time.Duration conversion, so both rows below now
+	// return through the same one.) These two rows measure the capped
+	// region at the shipped defaults (RetryBaseDelay 500ms, RetryMaxDelay
+	// 30s) that design D10's rationale states in words: "30s caps the
+	// scale so a higher configured attempt count cannot grow the wait
+	// without bound." Verified against the shipped tree (GREEN) and
+	// against a scratch deletion of the enforcement (RED: "got 16s want
+	// 15s" at attempt=6, "got 8m32s want 30s" at attempt=10) before being
+	// added here.
 	const shippedBase = 500 * time.Millisecond
 	const shippedMax = 30 * time.Second
 	if got := backoff.EqualJitter(6, shippedBase, shippedMax, 2, func() float64 { return 0 }); got != 15*time.Second {
-		t.Errorf("backoff.EqualJitter(attempt=6, jitter=0) = %v, want %v (post-loop clamp: 500ms*2^6=32s > max, d exits the loop at 32s and is clamped after, half=15s)", got, 15*time.Second)
+		t.Errorf("backoff.EqualJitter(attempt=6, jitter=0) = %v, want %v (clamped: 500ms*2^6=32s >= max, so the ceiling is returned unconverted, half=15s)", got, 15*time.Second)
 	}
 	if got := backoff.EqualJitter(10, shippedBase, shippedMax, 2, func() float64 { return 1 }); got != shippedMax {
-		t.Errorf("backoff.EqualJitter(attempt=10, jitter=1) = %v, want %v (in-loop early break: d reaches >= maxDelay inside the loop and returns immediately)", got, shippedMax)
+		t.Errorf("backoff.EqualJitter(attempt=10, jitter=1) = %v, want %v (clamped: 500ms*2^10=512s >= max, so the ceiling is returned unconverted)", got, shippedMax)
 	}
 
-	// Instrumented against a verbatim copy of Exponential (Self-review
-	// round 1 finding R1-8): attempt=6 returns via the POST-LOOP clamp
-	// (line 57-59) — the loop runs its full 6 iterations, doubling d to
-	// 32s, then exits and the post-loop `if d > ceiling` catches it.
-	// attempt=10 returns via the IN-LOOP early return (line 52-54) — by
-	// iteration 7, d has already reached 32s >= ceiling, so the loop's
-	// own check fires before the post-loop clamp is ever reached. New rejects
+	// Self-review round 1 finding R1-8 instrumented the two rows above
+	// against a verbatim copy of Exponential, to attribute each to one of
+	// the doubling loop's two exit branches. Design D20 deleted that loop
+	// — the ramp is float64(base)*math.Pow(factor, attempt) with one
+	// clamp before the time.Duration conversion — so the two rows no
+	// longer discriminate two branches; they pin that single clamp at two
+	// magnitudes, just past the ceiling (32s) and far past it (512s).
+	// New rejects
 	// Transport.RetryMaxDelay < Transport.RetryBaseDelay
-	// (client.go:115-116), so base > maxDelay cannot occur through the
+	// (client.go:116-117), so base > maxDelay cannot occur through the
 	// public Client constructor; backoff.EqualJitter is still called
 	// directly by every other case in this test, and its own defensive
 	// clamp at attempt=0 needs its own row for that block to be exercised
 	// at all.
 	if got := backoff.EqualJitter(0, 40*time.Second, shippedMax, 2, func() float64 { return 0 }); got != shippedMax/2 {
-		t.Errorf("backoff.EqualJitter(base>maxDelay, attempt=0, jitter=0) = %v, want %v (post-loop clamp: base alone already exceeds maxDelay)", got, shippedMax/2)
+		t.Errorf("backoff.EqualJitter(base>maxDelay, attempt=0, jitter=0) = %v, want %v (clamped: base alone already exceeds maxDelay)", got, shippedMax/2)
 	}
 }

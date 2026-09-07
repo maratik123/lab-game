@@ -289,3 +289,10 @@ wrong-surface text by message twelve.
 **at:** 1040034
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-07 — process — a named checklist was treated as done because the part of it inside the production file was done
+**What happened:** Group D's subtask 15 recorded its doc-comment sweep as "the package/function comments in `internal/backoff` restated for D20's full contract". D20's closing checklist names three groups of stale prose, not one: `Exponential`'s own exported doc comment (done), `internal/backoff/backoff_test.go`'s `base<<attempt` comment and its two "no doubling, no lower clamp" texts (not done), and `internal/tg/retry_test.go`'s `t.Errorf` texts narrating the deleted loop's exit branches together with the R1-8 comment block attributing each row to a line range of that loop (not done). Subtask 16's propagation sweep found all seven still shipped, asserting a loop the same PR replaced with `math.Pow` — "the loop runs its full 6 iterations", "in-loop early break", "(line 57-59)", "(line 52-54)" — plus a `client.go:115-116` citation the same group's edits had shifted to `116-117`. Nothing could catch it: a stale comment compiles and a stale `t.Errorf` string never prints on a green run, which is why D20 wrote the sites down instead of leaving them to a gate. The one group that was done lives in a production source; both groups that were missed live in test files.
+**Rule:** When a design hands you an enumerated list of sites, the list is the unit of completion — walk it item by item and record each as done or deliberately-not, never a category summary ("the comments in package X") that a reader cannot check against the enumeration. Two multipliers, both present here: the checklist's items span **test** files as well as production ones, so a sweep restricted to non-test sources reports a false clean; and the checklist's own sites are quoted with `file:line` locators that the same group's edits move, so re-resolve each before believing either the locator or the "not found".
+**at:** 0d898c2
+**Kind:** correction
+**Escalated?** no
