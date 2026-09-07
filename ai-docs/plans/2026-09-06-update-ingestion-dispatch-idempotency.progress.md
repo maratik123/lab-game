@@ -8,15 +8,19 @@ _Updated: 2026-09-07
 **Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Step 8 — Group B complete (subtasks 7-11); Group C (subtask 12, propagation) pending
-**last_passed_gate:** go test -race ./internal/ingest/... | 2026-09-07 | 91d991e (subtask 11's commit)
+**current_step:** Step 8 — Group B complete (subtasks 7-11), gates re-verified by the orchestrator; Group C pending
+**last_passed_gate:** go test -count=1 ./... + golangci-lint run | 2026-09-07T00:01:26Z | cc76da868dd3462d189d3e183d85cd7dacb36260
 **entry_args:** 22
 
 ## Next action
 
-**Do this immediately:** start Group C at subtask 12 (propagation: `context.md`, `domain-invariants.md`, `key-decisions.md`, `INDEX.md`) — per the design's Handoff plan, spawn `/context-reset` first.
+**Do this immediately:** do subtask 12, the propagation sweep. It is the whole of Group C and it is terminal.
 
-**Design:** `ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.design.md` — Group B is subtasks 7-11, all `internal/ingest`. Subtask 7 carries the package's `TestMain` over `testdb.Main`, because `testdb.Schema` fatals any test that calls it before `Main` has provisioned a database; 9 and 10 depend on that landing first. Subtask 9 implements D19's poll-error policy (observe through `LoopObservation.Err` and continue at the poll interval; `Run` returns non-nil only on cancellation) and D3's `allowed_updates` sentinel; subtask 10 implements D10's positive-only, mutex-guarded cache and D18's refusal of a destination visible only inside an uncommitted transaction — that scenario is a PAIR (refused while uncommitted, allowed after commit, the commit the only variable), not a single case.
+**Design:** `ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.design.md` — read § Decomposition row 12 in full; it names each edit and its reason. Four files: `ai-docs/context.md` (the layout paragraph and the code inventory), `ai-docs/domain-invariants.md` (the allowlist and sanitisation bullets — the player carve-out, the cache-invalidation obligation, D18's no-outbound-call-on-an-uncommitted-row obligation, and the three concrete §12.5 targets this task creates: reset `ingest_offset`, rewrite `ingest_dead_update`'s chat id, blank its `last_error`), `ai-docs/key-decisions.md` (the new entries), `ai-docs/plans/INDEX.md` (the row).
+
+**Do NOT touch `ai-docs/context-status.md`.** It is in the propagation class and it does receive an entry for this task — appended by `/task` Step 9.5, which is a later step and not this subtask. Row 12 says so explicitly, and past entries there are never rewritten.
+
+**A diff that REMOVES a name has a wider doc surface than one that adds** (`AGENTS.md` § Propagation Rule step 4): this task deleted `queryRower` from `internal/store` and both local backoff ramps from `internal/tg` and `internal/scheduler`. For every removed name, `grep -rni '<name>' ` the docs you touch before closing the edit — adding what is now true does not discharge deleting what is now false.
 
 ## Subtasks
 
