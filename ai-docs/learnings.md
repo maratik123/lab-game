@@ -282,3 +282,10 @@ wrong-surface text by message twelve.
 **at:** 4ddff17
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-07 — documentation — wrote a count into context-status.md, and the same PR falsified it
+**What happened:** At `/task` Step 9.5 I wrote this task's `ai-docs/context-status.md` entry, and its "What landed" paragraph reads "`config.Ingest` and the **six** `LAB_GAME_INGEST_*` tuning keys". `.claude/skills/task/SKILL.md:178` forbids exactly that, in those words: *"No counts here — name the things, do not tally them. A test count, a file count, a package tally, an 'N sites' figure: none of it goes into `context-status.md` or `context.md`."* The rule's stated reason is that a stored count "guarantees a falsehood at the next commit". It did not take a next commit: the retry-factor amendment on the same PR adds a seventh ingest key, so the number was false before the PR merged. `ai-docs/context.md:43` carries the same shape twice from the Group-C propagation subtask. design-review round 10 found it as a `major`, and correctly refused the tempting fix — writing "seven" re-commits the falsehood at the next key; the fix is to delete the tally. I had read that rule when writing the entry and complied with it elsewhere in the same paragraph, naming tables and gates without counting them.
+**Rule:** A tally is not a fact about the work, it is a fact about one commit, and prose that names things survives edits that prose counting them does not. The tell is grammatical, not semantic: a **numeral or a number-word immediately before a plural noun** — "six keys", "three sites", "two adapters", "N tests" — in any durable surface. When one appears under my hand, delete the number and keep the noun; the reader who needs the count has one command for it. Compliance elsewhere in the same paragraph is not evidence of compliance — the sentence I got wrong sat between two I got right, which is how it read as finished.
+**at:** 1040034
+**Kind:** correction
+**Escalated?** no
