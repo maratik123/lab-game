@@ -331,3 +331,10 @@ wrong-surface text by message twelve.
 **at:** accc794
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-08 — process — filed a harness gap on a premise I had not read, shifting my own violation onto the instruction files
+**What happened:** After writing shell commands as issue #68's acceptance criteria, I recorded a `harness-gaps.md` entry whose central claim was that "nothing states the boundary" between a condition and a verification command, and that the habit therefore generalises from `self-review`'s design-side requirement. The owner told me to go and read the harness. `.claude/agents/spec-writer.md` Rule 9/PROC-3 states it in bold — *"An AC is DECLARATIVE, and the command that checks it belongs to the verifier … it **never contains a shell command** … If a criterion cannot be stated without a pipeline, it is not yet a criterion"* — and names the command's proper home, the progress file's `verifying command` column; the template row at `spec-writer.md:85` says the same in one line. So the rule existed, it was explicit, and my entry described a harness that does not exist. Second unverified premise of the same day: the earlier one attributed a `Makefile` sentence to `AGENTS.md`.
+**Rule:** Before writing that the harness lacks a rule, `grep` the harness for that rule — the claim "no rule covers this" is a negative, and `.claude/rules/ast-index.md` already says a negative needs a raw read, not a hunch. And weigh the direction: an entry that moves my violation onto the instruction files is the one to distrust first, because it is the one that costs me nothing. Diagnose the harness only for what survives after the rule is found and read.
+**at:** 8a5224f
+**Kind:** correction
+**Escalated?** no
