@@ -30,26 +30,3 @@ func Every(period time.Duration) Cadence {
 		return prev.Add(time.Duration(k * int64(period)))
 	}
 }
-
-// backoff returns the delay before a one-shot or recurrent task's next
-// attempt after failures consecutive failures: base*2^(failures-1),
-// capped at ceiling. Pure, strictly positive for failures >= 1, and
-// strictly growing until it reaches ceiling — never jittered, because
-// SKIP LOCKED already de-collides workers and a deterministic delay is
-// exactly assertable (design D8).
-func backoff(failures int, base, ceiling time.Duration) time.Duration {
-	if failures < 1 {
-		failures = 1
-	}
-	d := base
-	for range failures - 1 {
-		if d >= ceiling {
-			return ceiling
-		}
-		d *= 2
-	}
-	if d > ceiling {
-		return ceiling
-	}
-	return d
-}

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/maratik123/lab-game/internal/testdb"
 )
 
 // balanceInvariantViolations counts accounts whose account_balance
@@ -203,5 +205,141 @@ func TestCreateOwner_rejection_table(t *testing.T) {
 				t.Fatalf("owner count changed from %d to %d — a statement was issued", before, after)
 			}
 		})
+	}
+}
+
+// TestPlayerExists_kindPairIsThePredicate is design D10/D11's core
+// property: the (kind, telegram_id) PAIR is what PlayerExists checks, not
+// the telegram_id column alone — a chat sharing the same telegram_id as a
+// player must report false.
+func TestPlayerExists_kindPairIsThePredicate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer rollback(t, ctx, tx)
+
+	const telegramID = int64(777)
+	if _, err := tx.Exec(ctx, `INSERT INTO owner (kind, telegram_id) VALUES ('chat', $1)`, telegramID); err != nil {
+		t.Fatalf("insert chat owner: %v", err)
+	}
+
+	got, err := PlayerExists(ctx, tx, telegramID)
+	if err != nil {
+		t.Fatalf("PlayerExists: %v", err)
+	}
+	if got {
+		t.Fatalf("PlayerExists(%d) = true for a chat owner sharing the id, want false", telegramID)
+	}
+
+	if _, err := tx.Exec(ctx, `INSERT INTO owner (kind, telegram_id) VALUES ('player', $1)`, telegramID); err != nil {
+		t.Fatalf("insert player owner: %v", err)
+	}
+
+	got, err = PlayerExists(ctx, tx, telegramID)
+	if err != nil {
+		t.Fatalf("PlayerExists: %v", err)
+	}
+	if !got {
+		t.Fatalf("PlayerExists(%d) = false after a player owner was created, want true", telegramID)
+	}
+}
+
+// TestPlayerExists_noOwnerReportsFalse pins the third row of D10/D11's
+// table: an id with no owner row at all reports false, not an error.
+func TestPlayerExists_noOwnerReportsFalse(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+
+	got, err := PlayerExists(ctx, pool, 999999)
+	if err != nil {
+		t.Fatalf("PlayerExists: %v", err)
+	}
+	if got {
+		t.Fatalf("PlayerExists(999999) = true for an id with no owner row, want false")
+	}
+}
+
+// TestPlayerExists_closedPoolSurfacesError asserts a closed pool's error
+// is returned rather than papered over as a false (design D11).
+func TestPlayerExists_closedPoolSurfacesError(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cfg := testdb.Schema(t)
+	pool, err := NewPool(ctx, cfg)
+	if err != nil {
+		t.Fatalf("new pool: %v", err)
+	}
+	pool.Close()
+
+	if _, err := PlayerExists(ctx, pool, 1); err == nil {
+		t.Fatal("PlayerExists over a closed pool: want an error, got nil")
+	}
+}
+
+// TestPlayerExists_txAndPoolAgree asserts the same call behaves
+// identically through a pgx.Tx and through a *pgxpool.Pool (design D11,
+// AC29).
+func TestPlayerExists_txAndPoolAgree(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+	const telegramID = int64(555)
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO owner (kind, telegram_id) VALUES ('player', $1)`, telegramID); err != nil {
+		t.Fatalf("insert player owner: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	viaTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin (read): %v", err)
+	}
+	defer rollback(t, ctx, viaTx)
+
+	gotTx, err := PlayerExists(ctx, viaTx, telegramID)
+	if err != nil {
+		t.Fatalf("PlayerExists(tx): %v", err)
+	}
+	gotPool, err := PlayerExists(ctx, pool, telegramID)
+	if err != nil {
+		t.Fatalf("PlayerExists(pool): %v", err)
+	}
+	if gotTx != gotPool {
+		t.Fatalf("PlayerExists via tx = %v, via pool = %v, want them to agree", gotTx, gotPool)
+	}
+	// Both must actually report the row exists — `gotTx != gotPool` alone
+	// passes for `false != false` just as readily as for the intended
+	// `true == true`, so a PlayerExists that always returns false would
+	// pass the equality check above unnoticed.
+	if !gotTx || !gotPool {
+		t.Fatalf("PlayerExists via tx = %v, via pool = %v, want both true (telegram_id=%d was inserted)", gotTx, gotPool, telegramID)
+	}
+
+	const missingTelegramID = int64(556)
+	gotTxMissing, err := PlayerExists(ctx, viaTx, missingTelegramID)
+	if err != nil {
+		t.Fatalf("PlayerExists(tx, missing): %v", err)
+	}
+	gotPoolMissing, err := PlayerExists(ctx, pool, missingTelegramID)
+	if err != nil {
+		t.Fatalf("PlayerExists(pool, missing): %v", err)
+	}
+	if gotTxMissing || gotPoolMissing {
+		t.Fatalf("PlayerExists via tx = %v, via pool = %v, want both false (telegram_id=%d was never inserted)", gotTxMissing, gotPoolMissing, missingTelegramID)
 	}
 }

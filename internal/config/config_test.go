@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/maratik123/lab-game/internal/backoff"
 )
 
 // validConfigEnv returns a fresh, fully valid environment: validEnv()'s
@@ -78,6 +80,33 @@ func TestLoad_WorldAndBalanceBothFail(t *testing.T) {
 	}
 	if !containsKeyError(err, "raid.stamina.cap") {
 		t.Errorf("Load: error does not name raid.stamina.cap: %v", err)
+	}
+}
+
+// TestLoad_RetryFactorIsolatedPerScope is design D20's isolation clause
+// (AC41): setting one scope's LAB_GAME_*_RETRY_FACTOR changes only that
+// scope's RetryFactor — the other two scopes' RetryFactor stay at
+// backoff.DefaultFactor.
+func TestLoad_RetryFactorIsolatedPerScope(t *testing.T) {
+	t.Parallel()
+
+	env := validConfigEnv(t)
+	env[envTGRetryFactor] = "1.5"
+
+	cfg, err := Load(mapLookup(env))
+	if err != nil {
+		t.Fatalf("Load: unexpected error: %v", err)
+	}
+	if cfg.Transport.RetryFactor != 1.5 {
+		t.Errorf("Transport.RetryFactor = %v, want 1.5", cfg.Transport.RetryFactor)
+	}
+	if cfg.Scheduler.RetryFactor != backoff.DefaultFactor {
+		t.Errorf("Scheduler.RetryFactor = %v, want backoff.DefaultFactor (%v) — unaffected by LAB_GAME_TG_RETRY_FACTOR",
+			cfg.Scheduler.RetryFactor, backoff.DefaultFactor)
+	}
+	if cfg.Ingest.RetryFactor != backoff.DefaultFactor {
+		t.Errorf("Ingest.RetryFactor = %v, want backoff.DefaultFactor (%v) — unaffected by LAB_GAME_TG_RETRY_FACTOR",
+			cfg.Ingest.RetryFactor, backoff.DefaultFactor)
 	}
 }
 

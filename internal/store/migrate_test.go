@@ -41,6 +41,7 @@ func TestMigrate_shape_and_seeds(t *testing.T) {
 	want := []string{
 		"account", "account_balance", "account_definition",
 		"deferred_task", "event", "event_type_definition", "goose_db_version",
+		"ingest_dead_update", "ingest_offset",
 		"journal_entry", "manual_correction",
 		"owner", "player_operation", "posting", "recurrent_task", "scheduled_task",
 		"scope", "scope_definition",
@@ -136,8 +137,8 @@ func TestMigrate_noop_reapply(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM goose_db_version`).Scan(&count); err != nil {
 		t.Fatalf("count goose_db_version: %v", err)
 	}
-	if count != 4 {
-		t.Fatalf("goose_db_version rows = %d, want 4", count)
+	if count != 5 {
+		t.Fatalf("goose_db_version rows = %d, want 5", count)
 	}
 }
 

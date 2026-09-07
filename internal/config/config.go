@@ -68,6 +68,9 @@ type Config struct {
 	// tuning (LAB_GAME_SCHEDULER_*), each field optional-with-default
 	// (design D13).
 	Scheduler Scheduler
+	// Ingest holds internal/ingest's long-poll, batch and retry tuning
+	// (LAB_GAME_INGEST_*), each field optional-with-default (design D15).
+	Ingest Ingest
 }
 
 // Load reads and validates lab-game's whole configuration through lookup —
@@ -107,6 +110,23 @@ func Load(lookup Lookup) (*Config, error) {
 		errs = append(errs, err)
 	}
 
+	ingest, err := loadIngest(lookup)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	// D16's pair of cross-checks needs both Ingest and Transport, so it
+	// runs here, once each has loaded successfully on its own — a
+	// malformed LongPollTimeout or a malformed AttemptTimeout is already
+	// reported above, and this check would otherwise report a second,
+	// confusing error about a value that never validated in the first
+	// place.
+	if ingest != nil && transport != nil {
+		if err := checkIngestLongPollTimeout(*ingest, *transport); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
 	worldPath, err := resolveWorldPath(lookup)
 	if err != nil {
 		errs = append(errs, err)
@@ -134,6 +154,7 @@ func Load(lookup Lookup) (*Config, error) {
 		Balance:        *balance,
 		Transport:      *transport,
 		Scheduler:      *scheduler,
+		Ingest:         *ingest,
 	}, nil
 }
 

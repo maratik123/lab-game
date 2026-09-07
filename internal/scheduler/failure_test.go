@@ -151,7 +151,25 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 			// [before+backoff, after+backoff] -- an exact bracket, not merely
 			// a "grew" check, and independent of how long RunOnce itself
 			// takes to execute.
-			want := backoff(attempt, cfg.RetryBaseDelay, cfg.RetryMaxDelay)
+			//
+			// The bracket's delay is a LITERAL one-based ramp, not a call to
+			// backoff or to internal/backoff.Exponential (design D2, subtask
+			// 2's call-site gate): 200ms then 400ms is exactly what the
+			// shipped one-based backoff(attempt, 200ms, 1s) computes at
+			// attempts 1 and 2 -- verified green against the still-shipped
+			// backoff before backoff.go's ramp was ever re-pointed. Pinning
+			// it as a literal here is what lets this assertion catch an
+			// omitted one-based-to-zero-based translation at settle.go's own
+			// call site: cadence_test.go's table alone cannot, because it
+			// pins the shared function, not the argument settle.go passes it.
+			literalOneBasedRamp := map[int]time.Duration{
+				1: 200 * time.Millisecond,
+				2: 400 * time.Millisecond,
+			}
+			want, ok := literalOneBasedRamp[attempt]
+			if !ok {
+				t.Fatalf("attempt %d: no literal ramp entry (want one for every attempt < RetryMaxAttempts)", attempt)
+			}
 			lo, hi := before.Add(want), after.Add(want)
 			if runAt.Before(lo) || runAt.After(hi) {
 				t.Fatalf("attempt %d: run_at = %v, want within [%v, %v] (before=%v after=%v backoff=%v)", attempt, runAt, lo, hi, before, after, want)
@@ -178,6 +196,57 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 	state, failures, _, _, found := schedulerTaskRow(t, pool, id)
 	if !found || state != "dead" || failures != cfg.RetryMaxAttempts {
 		t.Fatalf("row after a further cycle = state:%v failures:%d (found=%v), want it untouched at dead/%d", state, failures, found, cfg.RetryMaxAttempts)
+	}
+}
+
+// TestFailurePolicy_nonDefaultFactorReachesTheCallSite is design D20's
+// non-default-factor scenario for the inline one-shot settlement
+// (settle.go's deferredFailedStatement/settleFailed path): the only
+// instrument that discriminates a call site passing the configured
+// cfg.RetryFactor from one passing backoff.DefaultFactor, because the
+// literal one-based ramp above stays at the default and cannot see it.
+func TestFailurePolicy_nonDefaultFactorReachesTheCallSite(t *testing.T) {
+	t.Parallel()
+
+	pool := newScheduler(t)
+	ctx := context.Background()
+	cfg := backoffProbeConfig()
+	cfg.RetryFactor = 3
+	reg, err := NewRegistry(Declaration{Type: "test.oneshot.factor", Handler: &slowFirstAttemptHandler{firstDelay: 400 * time.Millisecond, err: errBoom}})
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	id := dueNow(t, pool, reg, Request{Type: "test.oneshot.factor"})
+
+	w, err := New(Options{Pool: pool, Registry: reg, Config: cfg})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// factor=3: k-1=0 at attempt 1 (factor^0 == 1, always base — this is
+	// what the default-factor test above already pins) and k-1=1 at
+	// attempt 2, where the factor actually shows up: base*3 = 600ms, not
+	// the default's 400ms.
+	literalRampAtFactorThree := map[int]time.Duration{
+		1: 200 * time.Millisecond,
+		2: 600 * time.Millisecond,
+	}
+	for attempt := 1; attempt < cfg.RetryMaxAttempts; attempt++ {
+		before := forceDueAndCapture(t, pool, id)
+		if err := w.RunOnce(ctx); err != nil {
+			t.Fatalf("RunOnce attempt %d: %v", attempt, err)
+		}
+		after := captureNow(t, pool)
+
+		_, _, _, runAt, found := schedulerTaskRow(t, pool, id)
+		if !found {
+			t.Fatalf("attempt %d: row not found", attempt)
+		}
+		want := literalRampAtFactorThree[attempt]
+		lo, hi := before.Add(want), after.Add(want)
+		if runAt.Before(lo) || runAt.After(hi) {
+			t.Fatalf("attempt %d: run_at = %v, want within [%v, %v] (before=%v after=%v factor-3 backoff=%v)", attempt, runAt, lo, hi, before, after, want)
+		}
 	}
 }
 

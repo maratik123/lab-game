@@ -21,28 +21,6 @@ func defaultJitter() float64 {
 	return rand.Float64()
 }
 
-// backoffDelay computes design D6's equal-jitter delay for zero-based
-// attempt index i: delay_i = d_i/2 + u*d_i/2, where d_i = min(base*2^i,
-// maxDelay) and u = jitter() in [0,1). AC5's monotonicity is a structural
-// property of this formula, not of the draw: delay_i >= d_i/2 > 0
-// whenever base > 0 (validated by New), and while d_{i+1} = 2*d_i <=
-// maxDelay, delay_{i+1} >= d_{i+1}/2 = d_i >= delay_i.
-func backoffDelay(base, maxDelay time.Duration, attempt int, jitter func() float64) time.Duration {
-	d := base
-	for k := 0; k < attempt; k++ {
-		if d > maxDelay/2 {
-			d = maxDelay
-			break
-		}
-		d *= 2
-	}
-	if d > maxDelay {
-		d = maxDelay
-	}
-	half := d / 2
-	return half + time.Duration(float64(half)*jitter())
-}
-
 // outcome classifies one attempt per design D5's table: whether it may be
 // retried, whether it is ambiguous (the request may have reached
 // Telegram, but the outcome is unknown), and the retry_after wait when the

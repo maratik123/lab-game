@@ -271,4 +271,53 @@ func TestSchema_constraints(t *testing.T) {
 		_, err = tx.Exec(ctx, `INSERT INTO player_operation (id, source, operation_id) VALUES (999, 'telegram', 'x4')`)
 		sqlstate(t, err, "428C9", "")
 	})
+
+	// design D14: ingest_offset is a guarded singleton, seeded by the
+	// migration itself — a second row is refused by the CHECK (id = 1)
+	// working alongside the primary key, not merely by the primary key
+	// alone (a second id could otherwise coexist).
+	t.Run("ingest_offset_second_row_refused", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		_, err = tx.Exec(ctx, `INSERT INTO ingest_offset (id, next_update_id) VALUES (2, 0)`)
+		sqlstate(t, err, "23514", "ingest_offset_singleton")
+	})
+
+	t.Run("ingest_offset_seeded_exactly_once", func(t *testing.T) {
+		t.Parallel()
+
+		var count int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM ingest_offset`).Scan(&count); err != nil {
+			t.Fatalf("count ingest_offset: %v", err)
+		}
+		if count != 1 {
+			t.Fatalf("ingest_offset rows = %d, want exactly 1 (the seeded singleton)", count)
+		}
+		var nextUpdateID int64
+		if err := pool.QueryRow(ctx, `SELECT next_update_id FROM ingest_offset WHERE id = 1`).Scan(&nextUpdateID); err != nil {
+			t.Fatalf("read seeded next_update_id: %v", err)
+		}
+		if nextUpdateID != 0 {
+			t.Fatalf("seeded next_update_id = %d, want 0", nextUpdateID)
+		}
+	})
+
+	// design D14: a give-up row with an empty kind is refused.
+	t.Run("ingest_dead_update_empty_kind_refused", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		_, err = tx.Exec(ctx,
+			`INSERT INTO ingest_dead_update (update_id, kind, consecutive_failures, last_error) VALUES (1, '', 1, 'boom')`)
+		sqlstate(t, err, "23514", "ingest_dead_update_kind_nonempty")
+	})
 }

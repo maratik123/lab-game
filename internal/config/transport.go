@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/backoff"
 )
 
 // Environment variable names for the Bot API transport's retry and
@@ -18,6 +20,7 @@ const (
 	envTGRetryMaxAttempts = "LAB_GAME_TG_RETRY_MAX_ATTEMPTS"
 	envTGRetryBaseDelay   = "LAB_GAME_TG_RETRY_BASE_DELAY"
 	envTGRetryMaxDelay    = "LAB_GAME_TG_RETRY_MAX_DELAY"
+	envTGRetryFactor      = "LAB_GAME_TG_RETRY_FACTOR"
 	envTGAttemptTimeout   = "LAB_GAME_TG_ATTEMPT_TIMEOUT"
 
 	envTGLimitMessageGlobal   = "LAB_GAME_TG_LIMIT_MESSAGE_GLOBAL"
@@ -37,7 +40,7 @@ const (
 // unbounded — Rate's zero value (design D10).
 const rateOff = "off"
 
-// transportEnvKeys returns the thirteen transport tuning variables, in
+// transportEnvKeys returns the fourteen transport tuning variables, in
 // declaration order (deterministic — AGENTS.md § Code Style). It is
 // appended to EnvKeys() only; envKeys() itself is untouched, because
 // env_test.go's TestLoadEnv_RequiredVariableUnset/Empty iterate envKeys()
@@ -47,6 +50,7 @@ func transportEnvKeys() []string {
 		envTGRetryMaxAttempts,
 		envTGRetryBaseDelay,
 		envTGRetryMaxDelay,
+		envTGRetryFactor,
 		envTGAttemptTimeout,
 		envTGLimitMessageGlobal,
 		envTGLimitMessageChatRate,
@@ -102,9 +106,14 @@ type Transport struct {
 	// RetryBaseDelay is the backoff scale's base duration
 	// (LAB_GAME_TG_RETRY_BASE_DELAY, default 500ms) — design D6's d_0.
 	RetryBaseDelay time.Duration
-	// RetryMaxDelay caps the backoff scale's doubling
-	// (LAB_GAME_TG_RETRY_MAX_DELAY, default 30s) — design D6's max.
+	// RetryMaxDelay caps the backoff scale's growth at the configured
+	// RetryFactor (LAB_GAME_TG_RETRY_MAX_DELAY, default 30s) — design D6's
+	// max.
 	RetryMaxDelay time.Duration
+	// RetryFactor is the backoff scale's exponential growth factor
+	// (LAB_GAME_TG_RETRY_FACTOR, default backoff.DefaultFactor) — design
+	// D20. Must be finite and strictly greater than 1.
+	RetryFactor float64
 	// AttemptTimeout bounds a single HTTP attempt
 	// (LAB_GAME_TG_ATTEMPT_TIMEOUT, default 30s); the caller's own context
 	// remains the bound on the whole call (design D10).
@@ -125,6 +134,7 @@ func defaultTransport() Transport {
 		RetryMaxAttempts: 3,
 		RetryBaseDelay:   500 * time.Millisecond,
 		RetryMaxDelay:    30 * time.Second,
+		RetryFactor:      backoff.DefaultFactor,
 		AttemptTimeout:   30 * time.Second,
 		Limits: TransportLimits{
 			Message: ClassLimits{
@@ -165,6 +175,12 @@ func loadTransport(lookup Lookup) (*Transport, error) {
 		errs = append(errs, err)
 	} else if ok {
 		t.RetryMaxDelay = d
+	}
+
+	if f, ok, err := lookupFactor(lookup, envTGRetryFactor); err != nil {
+		errs = append(errs, err)
+	} else if ok {
+		t.RetryFactor = f
 	}
 
 	if d, ok, err := lookupPositiveDuration(lookup, envTGAttemptTimeout); err != nil {
@@ -230,6 +246,24 @@ func lookupPositiveDuration(lookup Lookup, key string) (time.Duration, bool, err
 		return 0, false, keyErrorf(key, ErrInvalidValue, "must be a positive duration, got %q", val)
 	}
 	return d, true, nil
+}
+
+// lookupFactor queries key through lookup, returning (0, false, nil) when
+// absent, the parsed value and true when present and a legal exponential
+// growth factor per backoff.ValidFactor (finite and strictly greater than
+// 1), or a *KeyError when present and not — including when val does not
+// parse as a number at all, or parses to NaN or an infinity (design D20,
+// AC42, AC43).
+func lookupFactor(lookup Lookup, key string) (float64, bool, error) {
+	val, ok := lookup(key)
+	if !ok {
+		return 0, false, nil
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(val), 64)
+	if err != nil || !backoff.ValidFactor(f) {
+		return 0, false, keyErrorf(key, ErrInvalidValue, "must be finite and strictly greater than 1, got %q", val)
+	}
+	return f, true, nil
 }
 
 // lookupRate queries key through lookup, returning (Rate{}, false, nil)

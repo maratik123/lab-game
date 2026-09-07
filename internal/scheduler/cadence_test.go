@@ -3,8 +3,18 @@ package scheduler
 import (
 	"testing"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/backoff"
 )
 
+// TestBackoff_exactTable pins internal/scheduler's one-based
+// failures -> delay mapping with no database, even though the arithmetic
+// itself moved to internal/backoff (design D2). The cases table, and
+// every expected duration, are byte-identical to the shipped ramp's own
+// table — only the call expression re-points, with the
+// one-based-failures-to-zero-based-attempt translation written into the
+// ARGUMENT (tc.failures-1), exactly as settle.go's own call sites
+// translate consecutive_failures.
 func TestBackoff_exactTable(t *testing.T) {
 	t.Parallel()
 
@@ -23,34 +33,38 @@ func TestBackoff_exactTable(t *testing.T) {
 		{7, 30 * time.Second},
 	}
 	for _, tc := range cases {
-		got := backoff(tc.failures, base, ceiling)
+		got := backoff.Exponential(tc.failures-1, base, ceiling, 2)
 		if got != tc.want {
-			t.Errorf("backoff(%d, %v, %v) = %v, want %v", tc.failures, base, ceiling, got, tc.want)
+			t.Errorf("backoff.Exponential(%d, %v, %v) = %v, want %v", tc.failures-1, base, ceiling, got, tc.want)
 		}
 	}
 }
 
+// TestBackoff_strictlyGrowingUntilCeiling is the monotonicity counterpart
+// of TestBackoff_exactTable, re-pointed the same way: the one-based
+// failures loop variable f is translated to a zero-based attempt at the
+// call expression only, and every asserted bound is untouched.
 func TestBackoff_strictlyGrowingUntilCeiling(t *testing.T) {
 	t.Parallel()
 
 	base := 100 * time.Millisecond
 	ceiling := 2 * time.Second
-	prev := backoff(1, base, ceiling)
+	prev := backoff.Exponential(0, base, ceiling, 2)
 	if prev <= 0 {
-		t.Fatalf("backoff(1, ...) = %v, want strictly positive", prev)
+		t.Fatalf("backoff.Exponential(0, ...) = %v, want strictly positive", prev)
 	}
 	for f := 2; f <= 10; f++ {
-		cur := backoff(f, base, ceiling)
+		cur := backoff.Exponential(f-1, base, ceiling, 2)
 		if cur < prev {
-			t.Fatalf("backoff(%d) = %v is less than backoff(%d) = %v, want non-decreasing", f, cur, f-1, prev)
+			t.Fatalf("backoff.Exponential(%d) = %v is less than backoff.Exponential(%d) = %v, want non-decreasing", f-1, cur, f-2, prev)
 		}
 		if cur > ceiling {
-			t.Fatalf("backoff(%d) = %v exceeds the ceiling %v", f, cur, ceiling)
+			t.Fatalf("backoff.Exponential(%d) = %v exceeds the ceiling %v", f-1, cur, ceiling)
 		}
 		prev = cur
 	}
 	if prev != ceiling {
-		t.Fatalf("backoff(10) = %v, want it to have reached the ceiling %v", prev, ceiling)
+		t.Fatalf("backoff.Exponential(9) = %v, want it to have reached the ceiling %v", prev, ceiling)
 	}
 }
 

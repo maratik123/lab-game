@@ -69,12 +69,7 @@ func fund(t *testing.T, ctx context.Context, tx pgx.Tx, accountID AccountID, kin
 	}
 }
 
-// queryRower is satisfied by both pgx.Tx and *pgxpool.Pool.
-type queryRower interface {
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
-
-func balanceOf(t *testing.T, ctx context.Context, q queryRower, accountID AccountID) decimal.Decimal {
+func balanceOf(t *testing.T, ctx context.Context, q Queryer, accountID AccountID) decimal.Decimal {
 	t.Helper()
 	var b decimal.Decimal
 	if err := q.QueryRow(ctx, `SELECT balance FROM account_balance WHERE account_id = $1`, accountID).Scan(&b); err != nil {
