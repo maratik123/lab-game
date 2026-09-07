@@ -136,6 +136,14 @@ Taken at `ce6a11d11721d7e6026aca9ac346c9b45391ed04`, with `make verify` green en
 | R2-A6 | round 2 | — | accepted@2 — below severity floor: `Observation.Err` (observe.go:93-98) is nil for OutcomeFailed / OutcomePanic / OutcomeGivenUp although an error exists in each; the doc comment says so explicitly, so the field is narrow rather than wrong | `grep -n 'Err:' internal/ingest/settle.go internal/ingest/attempt.go` |
 | R2-A7 | round 2 | — | accepted@2 — below severity floor: the AC Status table's header pin `ce6a11d` predates every round-1 fix commit, so the table describes an earlier tree than the one it sits above | `sed -n '68p' ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.progress.md` |
 | R2-A8 | round 2 | — | accepted@2 — NOT a defect: the whole round-1 fix batch discriminates. Each of R1-1, R1-2, R1-3, R1-4 and R1-5 was re-mutated on this tree over a `cp` backup and each went RED, and R1-6/R1-7/R1-11/R1-12/R1-13 verify by their own greps | the five mutation probes plus the four greps recorded in the Round 2 section |
+| R3-1 | round 3 | major | open | a reflection probe over `telego.Update`'s payload types comparing each `kindTable` row's `date`/`chatID` nil-ness with whether that payload type declares a `Date int64` / non-pointer `Chat` field — must report ZERO mismatches; measured 7 (`business_connection`, `deleted_business_messages`, `message_reaction`, `message_reaction_count`, `chat_join_request`, `chat_boost`, `removed_chat_boost`). Second half: `grep -n '"message_reaction"' internal/ingest/kind_test.go` must not end `false, false`, and its fixture must carry a real `Date`/`Chat.ID` |
+| R3-2 | round 3 | major | open | delete the `date:` and `chatID:` lines of `kindTable`'s `KindMessage` row over a `cp` backup, then `go test ./internal/ingest/ -run TestGuard_TelegoUpdateFieldsMatchKindTable -count=1` — must go RED. Measured GREEN (`ok … 12.573s`) on this tree, while `TestDerive_perRow` reds |
+| R3-A1 | round 3 | — | accepted@3 — below severity floor, and NOT a re-open of R2-2 (its own command passes): the widened `OutcomeFailed` doc (`observe.go:22-29`) enumerates two cases — a non-duplicate handler error, or a succeeding handler whose transaction work failed. `attempt.go:89` is a third (handler returned `ErrAlreadyPosted`, then `advanceOffsetFresh` failed) that neither clause names, though the leading sentence "one attempt did not succeed" covers it | `grep -n 'reportAttempt(u, attempt, OutcomeFailed' internal/ingest/attempt.go` → 71, 76, 89 |
+| R3-A2 | round 3 | — | accepted@3 — NOT a defect, and R2-1's objection is independently confirmed: `go test -race -count=1 ./...` GREEN 4 of 4 under testcontainers with `LAB_GAME_TEST_DSN` unset, `make verify` exit 0, `make cover-ratchet` 90.53% against 90.57%. `.github/workflows/ci.yml` carries no `services:` block (grep exit 1) and its Test job runs `make test` / `make test-race` / `make cover-ratchet` on `ubuntu-latest` with no DSN, so AC30/AC31 are measured in the configuration they are written for | `for i in 1 2 3 4; do go test -race -count=1 ./... ; done` → 4/4 GREEN; `grep -n 'services:' .github/workflows/ci.yml` → exit 1 |
+| R3-A3 | round 3 | — | accepted@3 — NOT a defect: every text/AST guard in `guards_test.go` discriminates. A throwaway non-test probe file carrying a `panic(`, an `&http.Client{`, a `prometheus/client_golang` reference, an exported func returning `pgx.Tx`, an exported func with no leading ctx, and a `u.Context()` read redded exactly `TestGuard_NoPanicLogFatalOrOsExit`, `TestGuard_NoOwnBotAPIPath`, `TestGuard_NoMetricsLibraryImport`, `TestGuard_NoTransactionEscapesTheHandlerContract` and `TestGuard_CtxFirstAndNoRidingContext`, each by name and file. Only the kind-table drift guard failed to fire — that is R3-2 | the probe file plus `go test ./internal/ingest/ -run TestGuard -count=1` |
+| R3-A4 | round 3 | — | accepted@3 — NOT a defect, precision only: R2-1's register prose says the four contention-sensitive scheduler tests live "in files this diff does not touch", but `internal/scheduler/deadline_test.go` IS touched (17 insertions at :249-270, subtask 2's literal ramp). The named failing assertion at `deadline_test.go:168` is pre-existing and outside every hunk, so the objection's substance stands | `git diff --stat a09d26f..HEAD -- internal/scheduler/deadline_test.go` |
+| R3-A5 | round 3 | — | accepted@3 — below severity floor: `internal/ingest/loop_test.go` is 519 lines, crossing `code-style.md`'s 500 soft band. It is one cohesive suite for one file, so the don't-over-split counter-rule applies and no split is suggested; `make file-limits` is green against both hard bands | `wc -l internal/ingest/loop_test.go` |
+| R3-A6 | round 3 | — | accepted@3 — examined, not independently verifiable from the artefacts in scope: the design-review GO verdict is reproduced nowhere in the progress file, so the GO-with-notes round-trip check rests on the Decisions-log line "the four round-5 GO notes were folded into the design before Step 8 … none was spec-amending" rather than on the notes themselves | `grep -n 'round-5 GO notes' <this file>` |
 
 ## Files touched
 
@@ -251,3 +259,77 @@ but the branch's production trigger is a database error, which nothing exercises
 **One Spec Amendment route is named inside finding 1 and must not be taken silently.** Every other
 finding's resolution is a code, test or `ai-docs/**` edit; none requires editing `*.spec.md` or
 `*.design.md`.
+
+## Self-Review (Round 3)
+
+**Verdict:** REJECT
+
+**What was checked.** The whole diff `a09d26f..HEAD` (53 files, +5230/-102), scoped by the Review
+register as instruction 7a requires: every `fixed@<sha>` row re-verified by its own command, every
+`accepted@1`/`accepted@2` row left alone (nothing has changed against any of them), and the new
+material since round 2 (`ef9213a..HEAD` — `observe.go`'s widened `OutcomeFailed` doc,
+`retry_test.go`'s corrected failure message, the `learnings.md` entry, the `context-status.md` trap,
+the progress file) read in full. The spawn prompt carried only the five permitted lines — no
+contamination finding.
+
+Gates re-run by me against the shipped tree, never taken from this file, with `LAB_GAME_TEST_DSN`
+UNSET so testcontainers gives each package its own server: `make verify` — **exit 0**, every gate
+(fmt-check, build, vet, lint, file-limits, test, test-race, tidy-check, actionlint, shellcheck);
+`make cover-ratchet` — 90.53% against 90.57%, tolerance 0.50 pp; `.claude/skills/ai-audit/scripts/check-review-register.sh`
+on this file — exit 0.
+
+**AC-verification checks re-run against the SHIPPED artefact, all PASS.** AC3 (`grep -rnE
+'http\.Client\{|telego\.NewBot|telegoapi\.'` over non-test `internal/ingest` → empty); AC7
+(`grep -c 'goose Down' 00004_ingest.sql` → 0; `git diff --name-only a09d26f..HEAD --
+internal/store/migrations/` names only `00004_ingest.sql`); AC11 + the panicking-call audit
+(`grep -nE '(^|[^[:alnum:]_.])(panic\(|log\.(Fatal|Panic)[a-z]*\(|os\.Exit\()'` over all 21 changed
+non-test `.go` files → empty, so `ai-docs/panic-index.md` correctly gains no row); AC20/AC21 (empty
+`git diff --stat` over the event dictionary and the five posting-path files); AC27 (the six
+`LAB_GAME_INGEST_*` keys in `.env.example` match `defaultIngest()` name-for-name and value-for-value);
+AC30; AC31; AC32 (`backoffDelay` and `queryRower` have no live-doc reference outside KD-31's
+deliberate past tense). Secret scan over the whole diff: the only hit is R1-A5's own register text
+describing the check.
+
+**Round-2 dispositions re-verified.** R2-2 fixed (`observe.go:22-29` now admits the transaction-work
+failures reported at `attempt.go:71,76`); R2-3 fixed (`retry_test.go:424` now prints
+`want at most 250ms … rather than waiting out the %v backoff delay` with `cfg.RetryBaseDelay`, not a
+`time.Time`); R2-4 fixed (`git diff --stat a09d26f..HEAD -- ai-docs/learnings.md` → 7 insertions).
+**R2-1's objection is valid and I do not re-open it** (§ *Objection quality*): the reason is specific,
+technically accurate, owner-confirmed on the record, and every technical claim in it verified
+independently — `.github/workflows/ci.yml` carries no `services:` block and its Test job runs
+`make test` / `make test-race` / `make cover-ratchet` on `ubuntu-latest` with no DSN, and my own four
+full-module `go test -race -count=1 ./...` runs under testcontainers were GREEN 4 of 4.
+
+**Verified sound, so a later round need not re-derive it.** (1) Every text/AST guard in
+`guards_test.go` discriminates — a throwaway probe file redded `TestGuard_NoPanicLogFatalOrOsExit`,
+`TestGuard_NoOwnBotAPIPath`, `TestGuard_NoMetricsLibraryImport`,
+`TestGuard_NoTransactionEscapesTheHandlerContract` and `TestGuard_CtxFirstAndNoRidingContext`, each
+naming the offending file and construct; only the kind-table drift guard stayed green, which is
+finding 2. (2) R1-9's `Observation.Duration` fix is correct end to end: `handlerStart` is taken after
+`pool.Begin` and read immediately after `safeHandle`, and `observe.go:78-88`'s per-outcome account
+matches `settle.go`'s two other `start` sites exactly. (3) D2's adoption arithmetic re-derived
+independently: the old `d > max/2 → max` break and the new `d >= ceiling → ceiling` plus post-loop
+clamp saturate identically at every input, and `backoff(k) == Exponential(k-1)` including the
+`k <= 0` clamp; R1-8's corrected branch attribution matches my own trace (attempt=6 via the post-loop
+clamp, attempt=10 via the in-loop return). (4) Every `docs/DESIGN.md §` citation the diff adds
+resolves against a real heading (§1, §11, §12.3, §12.5, §13.2, §13.4, §14); the fabricated §22 is
+gone. (5) R1-6's fix holds — `domain-invariants.md:114` now reads "**Nothing installs it yet**".
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | internal/ingest/kind.go:130-213; internal/ingest/kind_test.go:36-59 | major | **AC18 and AC36 fail for seven update kinds: `kindTable` leaves `date`/`chatID` nil on rows whose payload type declares the field.** D4's rule is per PAYLOAD TYPE — "a kind whose payload declares **neither** carries nil" — but the shipped table supplies extractors for `*telego.Message` and `*telego.ChatMemberUpdated` only. Measured by reflecting over `telego.Update`'s payload types and comparing each with its row: `business_connection` (`BusinessConnection.Date int64`), `message_reaction` and `message_reaction_count` (`Date` **and** a non-pointer `Chat`), `chat_join_request` (`Date` **and** `Chat`), `deleted_business_messages`, `chat_boost`, `removed_chat_boost` (`Chat`). A probe building `&telego.Update{MessageReaction: &telego.MessageReactionUpdated{Chat: telego.Chat{ID: -1001234567890}, Date: 1700000000}}` gets `Date() = (0001-01-01T00:00:00Z, false)` and `ChatID() = (0, false)`. So **AC18's first half** — "lag is reported … for updates carrying their own date" — is unmet for four kinds whose date §13.2 makes the dashboard's star metric, and **AC36**'s "the destination chat id where the update had one" is unmet for six; `dead.go:91-93`'s own doc ("when its kind's payload declares one … Nil otherwise") states the intent the table does not implement. `kind_test.go` pins the defect as expected — the affected rows read `false, false` and their fixtures pass zero-valued structs — so the fix is both halves: add the extractors, and flip those columns with fixtures that carry a real `Date`/`Chat.ID`. **Not an Amendment trigger:** D4, AC18 and AC36 already say what the fix does; neither document names a restriction to two payload types (`grep -ni 'message_reaction\|chat_join_request' <spec> <design>` → nothing). Narrowing the ACs instead WOULD be a Spec Amendment and must go through `.claude/skills/task/SKILL.md` Step 11 | ⬜ Open |
+| 2 | internal/ingest/guards_test.go:117-156 | major | **D4's drift guard cannot see extractor drift — the class of hole finding 1 is, and the next `telego` bump will be.** `TestGuard_TelegoUpdateFieldsMatchKindTable` checks only that every exported pointer field of `telego.Update` has a `kindTable` ROW and that every row names a field; it never reads `row.date` or `row.chatID`. Proven by mutation over a `cp` backup: deleting the `date:` and `chatID:` lines from the `KindMessage` row — the package's single most-used kind — leaves the guard **GREEN** (`ok … 12.573s`, exit 0), while `TestDerive_perRow` reds only because its hand-written `wantDate/wantChat` columns happen to say `true, true` there. For the seven rows of finding 1 those columns say `false, false`, so nothing in the suite is watching at all. D4's own rejected-alternatives names this exact risk ("a silent hole the moment #37 or #42 registers a kind nobody added"); the guard written to close it is blind one level down. Fix: extend the reflection walk to assert each row's `date`/`chatID` nil-ness against whether its payload type declares a `Date int64` / non-pointer `Chat` field | ⬜ Open |
+
+**Below the severity floor — 6 items, recorded in the register as `accepted@3`, not raised as rows:**
+`internal/ingest/observe.go:22-29` (R2-2's widened doc enumerates two cases; `attempt.go:89` is a
+third the "Either … or …" does not name, though its leading sentence covers it — R2-2's own command
+passes, so this is not a re-open), the R2-1 register row's "files this diff does not touch" (it does
+touch `deadline_test.go`, though not the failing assertion at :168), `internal/ingest/loop_test.go`
+at 519 lines crossing the 500 soft band (cohesive; no split suggested), plus the three
+`accepted@3` "verified sound" rows R3-A2, R3-A3 and R3-A6.
+
+**No Design or Spec Amendment trigger.** Both findings' resolutions are code and test edits inside
+`internal/ingest`. D4, AC18 and AC36 already say what finding 1 asks for and D4's rejected-alternatives
+already says what finding 2 asks for — the implementation and its instruments fall short of the
+documents, not the other way round. Narrowing AC18/AC36/D4 to the two payload types the MVP routes
+would be the Amendment route and must not be taken silently.
