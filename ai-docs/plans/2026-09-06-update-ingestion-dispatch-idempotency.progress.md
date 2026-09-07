@@ -8,8 +8,8 @@ _Updated: 2026-09-07
 **Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Amendment — Step 8 implementation (Groups D and E)
-**last_passed_gate:** design-review GO (round 12) + notes folded in | 2026-09-07T15:29:16Z | 4ee9cf262103f54dc08bf37f33abb6d257b47313
+**current_step:** Amendment — Step 8 implementation, Group D subtask 13 of 15 complete
+**last_passed_gate:** go test ./internal/backoff/... green, golangci-lint run/fmt -d clean, go vet clean | 548a950
 **entry_args:** 22
 
 ## Next action
@@ -30,9 +30,14 @@ _Updated: 2026-09-07
 - [x] 10. The gate: `PlayerLookup`, pool-backed lookup, `Gate`/`NewGate`, the positive-only cache (Group B)
 - [x] 11. Guard tests and the structural source walks (Group B)
 - [x] 12. Propagation: `context.md`, `domain-invariants.md` (Group C)
+- [x] 13. `internal/backoff`: `DefaultFactor` + `ValidFactor`, no signature change yet (Group D)
+- [ ] 14. The configuration surface: `RetryFactor` on `Transport`/`Scheduler`/`Ingest`, `lookupFactor`, `.env.example` lines (Group D)
+- [ ] 15. The factor parameter: `Exponential`/`EqualJitter` signature change, every call site, every constructor's factor refusal (Group D)
+- [ ] 16. Propagation of the amendment: `key-decisions.md`, `context.md`, `context-status.md` (Group E)
 
 ## Decisions log
 
+- **Subtask 13**: `internal/backoff` gains `DefaultFactor` (`= 2`, untyped constant) and `ValidFactor(factor float64) bool` (finite and strictly greater than 1), plus a package-comment sentence naming the boundary. No signature change to `Exponential`/`EqualJitter` at this step — the module stays green. `TestDefaultFactor_isExactlyTwo` pins the constant; `TestValidFactor_exactTable` covers the default, `1.3`, the smallest float64 strictly above 1, a large finite factor (all true), and exactly 1, just below 1, 0, a negative, `NaN`, `+Inf`, `-Inf` (all false). `go test ./internal/backoff/...` green, `golangci-lint run`/`fmt -d` clean, `go vet` clean, whole-module `go build ./...` clean.
 - **Step 7**: design-review reached GO on round 5; the owner raised the round cap to 5 (was 3) after round 3, and every round found new material rather than re-opening an earlier one.
 - **Step 12**: PR #66 opened. The spec and design moved to `ai-docs/plans/done/`, `INDEX.md`'s row went to ✅ implemented, 14 rows were appended to `_inbox.jsonl` (5 out-of-scope, 4 deferred, 5 open questions), and the task-run record verified — trailing byte `0a`, `instruction_corpus_lines` 9886. The commit message's test counts were written before being measured and were corrected by amend: 70 tests in the two new packages, 337 across the module.
 - **Step 10**: APPROVE at round 4. The owner raised the cap twice, to 5 (was 3), once after design-review round 3 and once after self-review round 3; every round found new material and none re-opened an earlier register row, so the re-litigation tripwire never came near firing.
