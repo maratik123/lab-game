@@ -8,17 +8,13 @@ _Updated: 2026-09-07
 **Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Step 11 — review fixes complete (Round 3)
-**last_passed_gate:** go test -count=1 ./... + golangci-lint run | 2026-09-07T11:56:15Z | 4ea8f8e8a5659c4cd716226269910b45f8b4ca5b
+**current_step:** Step 10 — self-review APPROVE (Round 4)
+**last_passed_gate:** make verify | 2026-09-07T12:08:06Z | 8cde1555b98a1edb160ec32c0fe152913a059d20
 **entry_args:** 22
 
 ## Next action
 
-**Do this immediately:** Step 10 round 4 — spawn `self-review` with the closed-list prompt and the range `a09d26f..HEAD`. The owner raised the cap to 5 (was 3) after round 3.
-
-**Environment:** leave `LAB_GAME_TEST_DSN` UNSET. testcontainers gives each package its own Postgres, which is how CI runs; one shared server manufactures `internal/scheduler` failures unrelated to the diff.
-
-**Round-3 disposition:** R3-1 and R3-2 both fixed, in the order that makes the second provable — the guard was extended and watched RED against the shipped table (naming exactly the seven kinds), then the extractors were added and it went GREEN. The orchestrator independently re-ran the round-3 mutation against the fixed tree: deleting the `KindMessage` row's extractors now reds the guard with `payload telego.Message declares a Date field but the row's date extractor is nil`. The coverage ratchet rose to 90.70%.
+**Do this immediately:** Step 12 — finalise `INDEX.md`, move the spec and design to `done/`, propagate the inbox, append the task-run record, commit, push, retire the state files, open the PR, then fill the `#TBD-at-Step-12` locator in `ai-docs/context-status.md`.
 
 ## Subtasks
 
@@ -38,6 +34,7 @@ _Updated: 2026-09-07
 ## Decisions log
 
 - **Step 7**: design-review reached GO on round 5; the owner raised the round cap to 5 (was 3) after round 3, and every round found new material rather than re-opening an earlier one.
+- **Step 10**: APPROVE at round 4. The owner raised the cap twice, to 5 (was 3), once after design-review round 3 and once after self-review round 3; every round found new material and none re-opened an earlier register row, so the re-litigation tripwire never came near firing.
 - **Step 11 (round 3)**: `ChatBoostRemoved` declares `RemoveDate`, not `Date`, so it correctly takes a chatID extractor and no date extractor — a distinction the delegate found by re-deriving the payload list from the module cache rather than accepting the orchestrator's count. `allowed_updates` is computed from registered routes (`loop.go:115` over `Router.Kinds()`), never from `kindTable`'s extractor fields, so adding extractors changes nothing about which updates are requested.
 - **Step 11 (round 2)**: R2-1's `major` (AC30 red 3-of-6) was objected to rather than fixed, with the owner's explicit approval. Measured both ways: 3-of-6 red through one shared Postgres, 0-of-6 red under testcontainers' per-package servers, and `.github/workflows/ci.yml` carries no `services:` block, so CI is the per-package configuration. The four contention-sensitive scheduler tests are a pre-existing property of files this diff does not touch, recorded as a trap in `context-status.md`.
 - **Step 11 (round 1)**: the delegate's fix batch touched `ai-docs/plans/*.design.md` (a D12 wording clarification), which is a Design-Amendment trigger rather than a code fix. The hunk was reverted instead: the code now does what D12 already said ("the call's duration"), so no amendment is owed and no design-review round was spent. The under-specification D12 carries for `OutcomeUnrouted`/`OutcomeGivenUp` — what `Duration` covers when no handler call runs — is left recorded here rather than edited in.
@@ -145,6 +142,11 @@ Taken at `ce6a11d11721d7e6026aca9ac346c9b45391ed04`, with `make verify` green en
 | R3-A4 | round 3 | — | accepted@3 — NOT a defect, precision only: R2-1's register prose says the four contention-sensitive scheduler tests live "in files this diff does not touch", but `internal/scheduler/deadline_test.go` IS touched (17 insertions at :249-270, subtask 2's literal ramp). The named failing assertion at `deadline_test.go:168` is pre-existing and outside every hunk, so the objection's substance stands | `git diff --stat a09d26f..HEAD -- internal/scheduler/deadline_test.go` |
 | R3-A5 | round 3 | — | accepted@3 — below severity floor: `internal/ingest/loop_test.go` is 519 lines, crossing `code-style.md`'s 500 soft band. It is one cohesive suite for one file, so the don't-over-split counter-rule applies and no split is suggested; `make file-limits` is green against both hard bands | `wc -l internal/ingest/loop_test.go` |
 | R3-A6 | round 3 | — | accepted@3 — examined, not independently verifiable from the artefacts in scope: the design-review GO verdict is reproduced nowhere in the progress file, so the GO-with-notes round-trip check rests on the Decisions-log line "the four round-5 GO notes were folded into the design before Step 8 … none was spec-amending" rather than on the notes themselves | `grep -n 'round-5 GO notes' <this file>` |
+| R4-A1 | round 4 | minor | accepted@4 — below severity floor: `payloadDeclaresField`'s doc comment (`guards_test.go:117-124`) makes two claims the code does not honour — "callers pass the exact name/kind combination" (the signature takes a NAME only, and the Chat half never calls the helper at all) and "a same-named field of a different type would itself be a signal worth a loud test failure, not a silent skip" (the caller sets `wantDate = false` at `guards_test.go:179`, which is silent whenever the row's extractor is also nil). The substance is sound — every realistic drift direction still fires loudly, proven under R4-A4 — so this is a comment defect, not a hole | read `guards_test.go:117-124` against `guards_test.go:178-181`: a payload declaring a non-`int64` `Date` with a nil row extractor must produce a `t.Errorf` for the comment to be true; it produces none |
+| R4-A2 | round 4 | nit | accepted@4 — below severity floor: `wantDate` costs two `FieldByName("Date")` lookups in consecutive statements (the helper, then the type narrowing) while the Chat half inlines a single lookup — asymmetric, not wrong | `grep -n 'FieldByName' internal/ingest/guards_test.go` |
+| R4-A3 | round 4 | — | accepted@4 — NOT a defect, and deliberately NOT raised as an Amendment: AC36's "destination chat id where the update had one" is operationalised by D4 as "the payload declares a non-pointer `Chat` field", and three payload types carry a chat identity outside that shape, so still record a NULL `chat_id` — `BusinessConnection.UserChatID int64`, `PollAnswer.VoterChat *telego.Chat`, and `CallbackQuery.Message` (a `MaybeInaccessibleMessage`, reachable only through a type switch). D4's rule is field-shaped and D13 measured `CallbackQuery`'s field list explicitly, so widening it is a design change, not a defect fix | the reflection probe under R4-A4, `other=` column: `business_connection → UserChatID int64`, `poll_answer → VoterChat *telego.Chat`, `callback_query → ChatInstance string` |
+| R4-A4 | round 4 | — | accepted@4 — NOT a defect, and the round-3 instrument is proven in BOTH directions so no later round need re-derive it: five mutations over a `cp` backup, each RED, each naming the row. (a) strip `KindMessage`'s `date:`/`chatID:` → guard reds twice by name; (b) drop the NEW `chat_boost` `chatID:` → guard reds, and `TestDerive_perRow` reds too; (c) `chatBoostUpdatedChatID` → `return 0, true` → `TestDerive_perRow` reds on the VALUE (`ChatID() = 0, want -1001234567890`); (d) `businessConnectionDate` → epoch → reds on the VALUE; (e) a SPURIOUS `date:` on `poll_answer` → guard reds on the false-positive side. An independent reflection probe of my own (not the shipped guard) over all 26 payload types reports ZERO mismatches against `kindTable`, and all 10 new extractors are at 100.0% statement coverage | the five `cp`-backup mutations plus `go tool cover -func` over `tmp/ing.out` |
+| R4-A5 | round 4 | — | accepted@4 — apparatus, NOT this tree, recorded so no later round loses a probe to it: `make cover-ratchet` reads **RED** (measured 88.28% against recorded 90.70%) whenever any stray `.go` file sits under `tmp/`. `.githooks/coverage-ratchet.sh:122` measures with `go test ./...`, which does NOT prune `tmp/` the way `make file-limits` does, so a scratch probe enters the module as a 0%-covered package and drags the total down ~2.4 pp. With `tmp/` clear the gate is GREEN at 90.64%. The script is outside this diff's window | `make cover-ratchet` with and without a `.go` file under `tmp/` — 88.28% vs 90.64% |
 
 ## Files touched
 
@@ -334,3 +336,74 @@ at 519 lines crossing the 500 soft band (cohesive; no split suggested), plus the
 already says what finding 2 asks for — the implementation and its instruments fall short of the
 documents, not the other way round. Narrowing AC18/AC36/D4 to the two payload types the MVP routes
 would be the Amendment route and must not be taken silently.
+
+## Self-Review (Round 4)
+
+**Verdict:** APPROVE
+
+**What was checked.** The whole diff `a09d26f..HEAD` (53 files, +5442/-102), scoped by the Review
+register as instruction 7a requires: `R3-1` and `R3-2` (both `fixed@4ea8f8e`) re-verified by their
+own commands against the diff since that sha, every `accepted@1`/`accepted@2`/`accepted@3` row left
+alone because nothing has changed against any of them, and the new material since round 3
+(`ffc6262..HEAD` — `kind.go` +72, `guards_test.go` +55/-6, `kind_test.go` +21/-7,
+`coverage-ratchet.txt`, this file) read in full. The spawn prompt carried only the five permitted
+lines — no `PROMPT-CONTAMINATION` finding.
+
+Gates re-run by me against the shipped tree, never taken from this file, with `LAB_GAME_TEST_DSN`
+UNSET so testcontainers gives each package its own server: `make verify` — **exit 0** (fmt-check,
+build, vet, lint, file-limits, test, test-race, tidy-check, actionlint, shellcheck);
+`make cover-ratchet` — **90.64% holds against 90.70%**, tolerance 0.50 pp;
+`.claude/skills/ai-audit/scripts/check-review-register.sh` on this file — exit 0; `make file-limits`
+— exit 0 (`kind.go` 340, `guards_test.go` 424, `kind_test.go` 117 — all inside the 500 soft band).
+
+**AC-verification checks re-run against the SHIPPED artefact, all PASS.** AC3 (`grep -rnE
+'http\.Client\{|telego\.NewBot|telegoapi\.'` over non-test `internal/ingest` → exit 1, empty);
+AC7 (`grep -c 'goose Down' 00004_ingest.sql` → 0; `git diff --name-only a09d26f..HEAD --
+internal/store/migrations/` names only `00004_ingest.sql`); AC11 + the panicking-call audit
+(`grep -nE '(^|[^[:alnum:]_.])(panic\(|log\.(Fatal|Panic)[a-z]*\(|os\.Exit\()'` over all **21**
+changed non-test `.go` files → exit 1, empty, so `ai-docs/panic-index.md` correctly gains no row);
+AC18 and AC36 (the mutation series under R4-A4); AC20/AC21 (empty `git diff --stat` over the event
+dictionary and the five posting-path files); AC27 (the six `LAB_GAME_INGEST_*` keys present in
+`.env.example`); AC30 (`make verify` exit 0); AC31 (ratchet green); AC32 (`queryRower` /
+`backoffDelay` have no live-doc reference outside KD-31's deliberate past tense). Secret scan over
+the whole diff: no hit outside R1-A5's own register text describing the check. No `TODO`/`FIXME` and
+no `DESIGN.md:<line>` citation in the new material.
+
+**Round-3 dispositions re-verified by mutation, not by reading.** R3-2's fix discriminates: stripping
+`kindTable`'s `KindMessage` `date:`/`chatID:` lines over a `cp` backup reds
+`TestGuard_TelegoUpdateFieldsMatchKindTable` with `kindTable row "message": payload telego.Message
+declares a Date field but the row's date extractor is nil (design D4)` and its chat twin — exit 1,
+where round 3 measured GREEN. R3-1's fix is confirmed by an **independent** reflection probe of my
+own (`tmp/probe`, not the shipped guard, since a guard cannot be its own control): over all 26 of
+`telego.Update`'s exported pointer payload types it reports ZERO nil-ness mismatches against
+`kindTable`, and it independently confirms the Decisions-log distinction — `removed_chat_boost`
+declares `RemoveDate int64`, not `Date`, so its date extractor is correctly absent. All ten new
+extractors are at **100.0%** statement coverage, and `TestDerive_perRow` asserts the extracted
+VALUES, not merely the presence booleans (`kind_test.go:88,96`), which two value-mutations confirm.
+
+**Verified sound, so a later round need not re-derive it.** (1) The extended guard fires in **both**
+directions — a missing extractor where the payload declares the field, and a spurious extractor where
+it does not (five probes, R4-A4). (2) `ChatID` has exactly one production consumer,
+`settle.go:68`'s dead-update row; it feeds no outbound path, so the seven newly-derived chat ids
+change nothing about chat safety. (3) `allowed_updates` is computed from `Router.Kinds()`
+(`loop.go:116-118` — the Decisions log's `loop.go:115` is locator drift, re-resolved here, not a
+defect), so adding extractors changes nothing about which updates are requested. (4) `Date`/`ChatID`
+reach an extractor only after the row's `present` probe matched, so no new nil dereference is
+reachable. (5) R2-1's objection still holds and I do not re-open it (§ *Objection quality*): the
+reason is specific, technically accurate and owner-confirmed on the record, and my own `make verify`
+exit 0 under testcontainers reproduces the configuration it is measured in.
+
+**No open `blocker` or `major`. Below the severity floor — 2 items, recorded in the register as
+`accepted@4`, not raised as rows:** `internal/ingest/guards_test.go:117-124` (`payloadDeclaresField`'s
+doc comment claims a "loud test failure" where the caller does a silent `wantDate = false`, and
+claims callers pass a "name/kind combination" the signature has no parameter for — R4-A1) and
+`internal/ingest/guards_test.go:178-181` (two `FieldByName("Date")` lookups in consecutive
+statements, asymmetric with the Chat half's single inline lookup — R4-A2). Three further items were
+examined and ruled not-a-defect: R4-A3, R4-A4, R4-A5.
+
+**No Design or Spec Amendment trigger.** The round-3 fixes are code and test edits that bring the
+implementation up to what D4, AC18 and AC36 already said. The one candidate — widening AC36's
+"destination chat id" past D4's field-shaped rule to reach `BusinessConnection.UserChatID`,
+`PollAnswer.VoterChat` and `CallbackQuery.Message`'s chat (R4-A3) — is a **design change, not a
+defect fix**, and is recorded rather than taken: D13 measured `CallbackQuery`'s field list explicitly
+when it decided that kind carries no date, so the narrow rule is a decision, not an oversight.
