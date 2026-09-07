@@ -8,15 +8,15 @@ _Updated: 2026-09-07
 **Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** make verify | 2026-09-07T00:24:28Z | ce6a11d11721d7e6026aca9ac346c9b45391ed04
 **entry_args:** 22
 
 ## Next action
 
-**Do this immediately:** Step 9.5 — append this task's entry to `ai-docs/context-status.md` with the literal `#TBD-at-Step-12` PR locator, then Step 10 (self-review).
+**Do this immediately:** Step 10 — spawn `self-review` with the closed-list prompt (invocation line, `Spec:`, `Design:`, `Progress:`, and the commit range `a09d26f..HEAD`).
 
-**Environment blocker, live:** a RAID6 scrub on `md127` is running (`/proc/mdstat`, ~357 min remaining as of 2026-09-07T00:20Z). It saturates disk I/O, so `initdb` inside a testcontainer needs ~90s while testcontainers allows 60 — every database-backed package then fails with `"database system is ready to accept connections" matched 0 times`. That is the apparatus, not the tree. The whole Step-9 gate list was run green through the documented escape hatch instead: a hand-started Postgres plus `LAB_GAME_TEST_DSN=postgres://labgame:labgame@127.0.0.1:55432/labgame_test?sslmode=disable` (container `labgame-step9`). Any delegate that runs the suite without that variable will report a false red.
+**Environment blocker, live:** a RAID6 scrub on `md127` is running (`/proc/mdstat`, ~357 min remaining as of 2026-09-07T00:20Z). It saturates disk I/O, so `initdb` inside a testcontainer needs ~90s while testcontainers allows 60 — every database-backed package then fails with `"database system is ready to accept connections" matched 0 times`. That is the apparatus, not the tree. The Step-9 gate list ran green through the documented escape hatch: a hand-started Postgres plus `LAB_GAME_TEST_DSN=postgres://labgame:labgame@127.0.0.1:55432/labgame_test?sslmode=disable` (container `labgame-step9`). A delegate that runs the suite without that variable will report a false red, and the owner has accepted that risk for the Step-10 round.
 
 ## Subtasks
 
@@ -36,6 +36,7 @@ _Updated: 2026-09-07
 ## Decisions log
 
 - **Step 7**: design-review reached GO on round 5; the owner raised the round cap to 5 (was 3) after round 3, and every round found new material rather than re-opening an earlier one.
+- **Step 9.5**: `ai-docs/context-status.md` gained this task's entry with the literal `#TBD-at-Step-12` locator; `ai-docs/context.md` was already brought current by subtask 12, so no further edit there. The owner chose to run Step 10 during the RAID scrub rather than wait or throttle it.
 - **Step 9**: the whole gate list ran green, but only through `LAB_GAME_TEST_DSN` against a hand-started Postgres — a RAID6 scrub makes container `initdb` exceed testcontainers' 60s wait, so a bare `go test ./...` reports four false FAILs. No panic-index row was added (the package has none), and no event-dictionary or posting-signature entry was needed because this task moves no balance.
 - **Step 8 group A**: the orchestrator re-ran the subtask-2 mutation probe itself after the re-point (`Exponential(k-1)` → `Exponential(k)` at `settle.go:143,243` over a cp backup): RED at both sites with the predicted 200ms discrepancy, restored from backup, tree clean. The literal-ramp gate discriminates.
 - **Step 7**: the four round-5 GO notes were folded into the design before Step 8, per Step 8's first-action rule; none was spec-amending, so no Spec Amendment recipe ran.
