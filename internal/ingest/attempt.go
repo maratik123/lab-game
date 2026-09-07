@@ -50,25 +50,33 @@ func (l *Loop) runAttempts(ctx context.Context, h Handler, u Update) error {
 // with the handler's error otherwise, having already rolled the attempt
 // back and reported its Observation.
 func (l *Loop) attemptOnce(ctx context.Context, h Handler, u Update, attempt int) (settled bool, retryErr error) {
-	start := time.Now()
-
 	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("ingest: begin attempt: %w", err)
 	}
 
+	// duration measures h.Handle itself, per Observation.Duration's
+	// contract (design D12: "the call's duration") — not the surrounding
+	// transaction plumbing (advanceOffset, Commit, Rollback), so a slow
+	// database has no bearing on this number and a fast handler always
+	// reports as fast, whatever its transaction later does.
+	handlerStart := time.Now()
 	handlerErr, panicked := safeHandle(ctx, h, tx, u)
+	duration := time.Since(handlerStart)
 
 	switch {
 	case handlerErr == nil:
 		if err := advanceOffset(ctx, tx, int64(u.Raw.UpdateID)+1); err != nil {
 			_ = tx.Rollback(ctx)
+			l.reportAttempt(u, attempt, OutcomeFailed, duration)
 			return false, err
 		}
 		if err := tx.Commit(ctx); err != nil {
-			return false, fmt.Errorf("ingest: commit handled attempt: %w", err)
+			err = fmt.Errorf("ingest: commit handled attempt: %w", err)
+			l.reportAttempt(u, attempt, OutcomeFailed, duration)
+			return false, err
 		}
-		l.reportAttempt(u, attempt, OutcomeHandled, time.Since(start))
+		l.reportAttempt(u, attempt, OutcomeHandled, duration)
 		return true, nil
 
 	case errors.Is(handlerErr, store.ErrAlreadyPosted):
@@ -78,9 +86,10 @@ func (l *Loop) attemptOnce(ctx context.Context, h Handler, u Update, attempt int
 		// advance the offset in a transaction of its own.
 		_ = tx.Rollback(ctx)
 		if err := l.advanceOffsetFresh(ctx, u); err != nil {
+			l.reportAttempt(u, attempt, OutcomeFailed, duration)
 			return false, err
 		}
-		l.reportAttempt(u, attempt, OutcomeDuplicate, time.Since(start))
+		l.reportAttempt(u, attempt, OutcomeDuplicate, duration)
 		return true, nil
 
 	default:
@@ -89,7 +98,7 @@ func (l *Loop) attemptOnce(ctx context.Context, h Handler, u Update, attempt int
 		if panicked {
 			outcome = OutcomePanic
 		}
-		l.reportAttempt(u, attempt, outcome, time.Since(start))
+		l.reportAttempt(u, attempt, outcome, duration)
 		return false, handlerErr
 	}
 }

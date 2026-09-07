@@ -210,13 +210,14 @@ func (l *Loop) processUpdate(ctx context.Context, raw telego.Update) error {
 	if err != nil {
 		// A malformed update (an empty operation_id component) cannot be
 		// settled meaningfully; treat it as unrouted rather than
-		// stalling the whole batch on one bad payload.
-		return l.settleUnrouted(ctx, Update{Raw: raw})
+		// stalling the whole batch on one bad payload. err is carried
+		// into the observation rather than dropped (design D12).
+		return l.settleUnrouted(ctx, Update{Raw: raw}, err)
 	}
 
 	handler, ok := l.router.Lookup(u.Kind)
 	if !ok {
-		return l.settleUnrouted(ctx, u)
+		return l.settleUnrouted(ctx, u, nil)
 	}
 	return l.runAttempts(ctx, handler, u)
 }

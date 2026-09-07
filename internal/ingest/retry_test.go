@@ -40,6 +40,35 @@ func (panickingHandler) Handle(context.Context, pgx.Tx, Update) error {
 	panic("boom")
 }
 
+// txClosingHandler rolls its own attempt's transaction back and returns
+// nil — R1-5's fixture for attempt.go's handlerErr==nil/advanceOffset
+// failure branch: attemptOnce's subsequent advanceOffset call runs
+// against an already-closed tx and fails with pgx.ErrTxClosed.
+type txClosingHandler struct{}
+
+func (txClosingHandler) Handle(ctx context.Context, tx pgx.Tx, _ Update) error {
+	_ = tx.Rollback(ctx)
+	return nil
+}
+
+// deferredConstraintHandler returns nil having inserted two rows that
+// violate a UNIQUE ... DEFERRABLE INITIALLY DEFERRED constraint on a
+// temp table it creates itself — R1-5's fixture for attempt.go's
+// handlerErr==nil/Commit failure branch: the violation passes every
+// statement inside the transaction (the check is deferred) and is
+// caught only when tx.Commit runs the deferred check.
+type deferredConstraintHandler struct{}
+
+func (deferredConstraintHandler) Handle(ctx context.Context, tx pgx.Tx, _ Update) error {
+	if _, err := tx.Exec(ctx, `CREATE TEMP TABLE r15_commit_probe (x int, CONSTRAINT r15_commit_probe_x_key UNIQUE (x) DEFERRABLE INITIALLY DEFERRED) ON COMMIT DROP`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO r15_commit_probe (x) VALUES (1), (1)`); err != nil {
+		return err
+	}
+	return nil
+}
+
 func TestLoop_failureAndRetryGivesUp(t *testing.T) {
 	t.Parallel()
 	pool := newIngestPool(t)
@@ -88,6 +117,12 @@ func TestLoop_failureAndRetryGivesUp(t *testing.T) {
 	}
 	if dead[0].UpdateID != 20 || dead[0].ConsecutiveFailures != cfg.RetryMaxAttempts || dead[0].LastError != wantErr.Error() {
 		t.Errorf("dead row = %+v, want UpdateID=20 ConsecutiveFailures=%d LastError=%q", dead[0], cfg.RetryMaxAttempts, wantErr.Error())
+	}
+	if dead[0].Kind != KindMessage {
+		t.Errorf("dead[0].Kind = %v, want %v (derived, not hardcoded)", dead[0].Kind, KindMessage)
+	}
+	if dead[0].ChatID == nil || *dead[0].ChatID != 1 {
+		t.Errorf("dead[0].ChatID = %v, want a pointer to 1 (derived from the update's Chat)", dead[0].ChatID)
 	}
 
 	var failedCount, givenUpCount int
@@ -163,6 +198,93 @@ func TestLoop_panicIsRecoveredAndRetried(t *testing.T) {
 	}
 	if len(dead) != 1 || dead[0].UpdateID != 25 {
 		t.Fatalf("DeadUpdates = %+v, want exactly one row for update_id=25", dead)
+	}
+}
+
+// TestLoop_advanceOffsetFailureReportsFailed covers R1-5's first gap:
+// attemptOnce's handlerErr==nil branch must report OutcomeFailed when
+// advanceOffset itself fails, not silently count the attempt without an
+// observation.
+func TestLoop_advanceOffsetFailureReportsFailed(t *testing.T) {
+	t.Parallel()
+	pool := newIngestPool(t)
+	rec := &recordingObserver{}
+	srv := tgtest.New(t, nil)
+
+	raw := telego.Update{UpdateID: 60, Message: &telego.Message{Date: time.Now().Unix(), Chat: telego.Chat{ID: 1}}}
+	srv.SetHandler(tgtest.Success(updatesJSON(t, []telego.Update{raw})))
+
+	router, err := NewRouter(Route{Kind: KindMessage, Handler: txClosingHandler{}})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	l := newLoop(t, srv, pool, router, rec)
+
+	if err := l.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+
+	cfg := testIngestConfig()
+	var failedCount, givenUpCount int
+	for _, o := range rec.Updates() {
+		switch o.Outcome {
+		case OutcomeFailed:
+			failedCount++
+		case OutcomeGivenUp:
+			givenUpCount++
+		default:
+		}
+	}
+	if failedCount != cfg.RetryMaxAttempts {
+		t.Errorf("OutcomeFailed observations = %d, want %d (every attempt's advanceOffset failure must be reported)", failedCount, cfg.RetryMaxAttempts)
+	}
+	if givenUpCount != 1 {
+		t.Errorf("OutcomeGivenUp observations = %d, want 1", givenUpCount)
+	}
+}
+
+// TestLoop_commitFailureReportsFailed covers R1-5's second gap:
+// attemptOnce's handlerErr==nil branch must report OutcomeFailed when
+// tx.Commit itself fails (advanceOffset having already succeeded), not
+// silently count the attempt without an observation. deferredConstraintHandler
+// forces the failure to surface at Commit specifically, via a UNIQUE
+// ... DEFERRABLE INITIALLY DEFERRED violation whose check only runs at
+// commit time.
+func TestLoop_commitFailureReportsFailed(t *testing.T) {
+	t.Parallel()
+	pool := newIngestPool(t)
+	rec := &recordingObserver{}
+	srv := tgtest.New(t, nil)
+
+	raw := telego.Update{UpdateID: 61, Message: &telego.Message{Date: time.Now().Unix(), Chat: telego.Chat{ID: 1}}}
+	srv.SetHandler(tgtest.Success(updatesJSON(t, []telego.Update{raw})))
+
+	router, err := NewRouter(Route{Kind: KindMessage, Handler: deferredConstraintHandler{}})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	l := newLoop(t, srv, pool, router, rec)
+
+	if err := l.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+
+	cfg := testIngestConfig()
+	var failedCount, givenUpCount int
+	for _, o := range rec.Updates() {
+		switch o.Outcome {
+		case OutcomeFailed:
+			failedCount++
+		case OutcomeGivenUp:
+			givenUpCount++
+		default:
+		}
+	}
+	if failedCount != cfg.RetryMaxAttempts {
+		t.Errorf("OutcomeFailed observations = %d, want %d (every attempt's commit failure must be reported)", failedCount, cfg.RetryMaxAttempts)
+	}
+	if givenUpCount != 1 {
+		t.Errorf("OutcomeGivenUp observations = %d, want 1", givenUpCount)
 	}
 }
 
@@ -280,6 +402,7 @@ func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 	// Let the first attempt fail and enter its backoff wait, then cancel
 	// mid-wait (design D25).
 	time.Sleep(80 * time.Millisecond)
+	cancelAt := time.Now()
 	cancel()
 
 	select {
@@ -289,6 +412,16 @@ func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return promptly after cancellation")
+	}
+	// The backoff wait's own select must react to ctx.Done() immediately
+	// — not merely within the outer 2s test timeout, which the
+	// configured backoff (base 300ms, max 500ms, up to 5 attempts) would
+	// still clear even were that select's ctx.Done() case missing
+	// entirely (each remaining attempt's Begin would then fail fast on
+	// the already-cancelled ctx, but the loop would still wait out every
+	// intervening full backoff delay — several seconds, not milliseconds).
+	if sinceCancel := time.Since(cancelAt); sinceCancel > 250*time.Millisecond {
+		t.Errorf("Run() returned %v after cancellation, want well under one backoff delay (%v) — the mid-wait select must react to ctx.Done() directly", sinceCancel, cancelAt)
 	}
 
 	tx, err := pool.Begin(context.Background())
@@ -305,6 +438,16 @@ func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 	}
 	if got := countRows(t, pool, "player_operation"); got != 0 {
 		t.Errorf("player_operation rows = %d, want 0 (the last attempt's writes were rolled back)", got)
+	}
+
+	var failedBeforeCancel int
+	for _, o := range rec.Updates() {
+		if o.Outcome == OutcomeFailed {
+			failedBeforeCancel++
+		}
+	}
+	if failedBeforeCancel < 1 {
+		t.Errorf("OutcomeFailed observations before cancellation = %d, want at least 1 (distinguishes cancelled-mid-retry from cancelled-before-anything-happened)", failedBeforeCancel)
 	}
 }
 

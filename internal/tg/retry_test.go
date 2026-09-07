@@ -706,16 +706,19 @@ func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 	const shippedBase = 500 * time.Millisecond
 	const shippedMax = 30 * time.Second
 	if got := backoff.EqualJitter(6, shippedBase, shippedMax, func() float64 { return 0 }); got != 15*time.Second {
-		t.Errorf("backoff.EqualJitter(attempt=6, jitter=0) = %v, want %v (in-loop cap: 500ms*2^6=32s > max, break to maxDelay, half=15s)", got, 15*time.Second)
+		t.Errorf("backoff.EqualJitter(attempt=6, jitter=0) = %v, want %v (post-loop clamp: 500ms*2^6=32s > max, d exits the loop at 32s and is clamped after, half=15s)", got, 15*time.Second)
 	}
 	if got := backoff.EqualJitter(10, shippedBase, shippedMax, func() float64 { return 1 }); got != shippedMax {
-		t.Errorf("backoff.EqualJitter(attempt=10, jitter=1) = %v, want %v (in-loop cap, same branch as attempt=6)", got, shippedMax)
+		t.Errorf("backoff.EqualJitter(attempt=10, jitter=1) = %v, want %v (in-loop early break: d reaches >= maxDelay inside the loop and returns immediately)", got, shippedMax)
 	}
 
-	// The two rows above both hit the in-loop early-break branch
-	// (internal/backoff/backoff.go's Exponential) — once d exceeds the
-	// ceiling inside the loop it is pinned to the ceiling exactly, so the
-	// post-loop clamp never sees d > ceiling on that path. New rejects
+	// Instrumented against a verbatim copy of Exponential (Self-review
+	// round 1 finding R1-8): attempt=6 returns via the POST-LOOP clamp
+	// (line 57-59) — the loop runs its full 6 iterations, doubling d to
+	// 32s, then exits and the post-loop `if d > ceiling` catches it.
+	// attempt=10 returns via the IN-LOOP early return (line 52-54) — by
+	// iteration 7, d has already reached 32s >= ceiling, so the loop's
+	// own check fires before the post-loop clamp is ever reached. New rejects
 	// Transport.RetryMaxDelay < Transport.RetryBaseDelay
 	// (client.go:115-116), so base > maxDelay cannot occur through the
 	// public Client constructor; backoff.EqualJitter is still called

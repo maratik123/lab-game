@@ -71,8 +71,16 @@ type Observation struct {
 	Attempt int
 	// Outcome classifies this observation.
 	Outcome Outcome
-	// Duration is how long the handler call (or, for OutcomeUnrouted, the
-	// unrouted-settlement statement) took.
+	// Duration is how long this observation's own unit of work took
+	// (design D12): the h.Handle call itself for every attempt outcome
+	// (OutcomeHandled, OutcomeDuplicate, OutcomeFailed, OutcomePanic) —
+	// never the surrounding transaction plumbing (advanceOffset, Commit,
+	// Rollback), so a slow database has no bearing on this number. For
+	// OutcomeUnrouted, no handler ever runs, so Duration is the
+	// unrouted-settlement statement instead. For OutcomeGivenUp, no
+	// handler runs either — every failed attempt already reported its
+	// own Duration on its own Observation — so this is the give-up
+	// transaction alone (the dead-update write and the offset advance).
 	Duration time.Duration
 	// Lag is the update's own date subtracted from the observation
 	// instant — meaningful only when LagKnown is true (design D13): a
@@ -82,6 +90,12 @@ type Observation struct {
 	Lag time.Duration
 	// LagKnown reports whether Lag is meaningful.
 	LagKnown bool
+	// Err is the error NewUpdate returned while deriving this update,
+	// when Outcome is OutcomeUnrouted because the raw payload could not
+	// be parsed (a malformed operation_id component). Nil in every other
+	// case, including a genuinely-unrouted Kind with no registered
+	// Handler.
+	Err error
 }
 
 // LoopObservation is reported to an Observer once per poll cycle (design

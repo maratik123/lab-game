@@ -28,8 +28,11 @@ func (l *Loop) advanceOffsetFresh(ctx context.Context, u Update) error {
 
 // settleUnrouted settles u whose derived Kind has no registered Handler
 // (design D9, AC9): no attempt ran, and the offset still advances so an
-// unrouted kind never blocks the loop.
-func (l *Loop) settleUnrouted(ctx context.Context, u Update) error {
+// unrouted kind never blocks the loop. derivationErr carries NewUpdate's
+// error when u could not be fully derived (a malformed raw payload) —
+// nil for a genuinely-unrouted Kind — and is reported on the resulting
+// Observation rather than silently dropped.
+func (l *Loop) settleUnrouted(ctx context.Context, u Update, derivationErr error) error {
 	start := time.Now()
 	if err := l.advanceOffsetFresh(ctx, u); err != nil {
 		return err
@@ -41,6 +44,7 @@ func (l *Loop) settleUnrouted(ctx context.Context, u Update) error {
 		Duration: time.Since(start),
 		Lag:      lag,
 		LagKnown: lagKnown,
+		Err:      derivationErr,
 	})
 	return nil
 }

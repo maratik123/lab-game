@@ -322,4 +322,24 @@ func TestPlayerExists_txAndPoolAgree(t *testing.T) {
 	if gotTx != gotPool {
 		t.Fatalf("PlayerExists via tx = %v, via pool = %v, want them to agree", gotTx, gotPool)
 	}
+	// Both must actually report the row exists — `gotTx != gotPool` alone
+	// passes for `false != false` just as readily as for the intended
+	// `true == true`, so a PlayerExists that always returns false would
+	// pass the equality check above unnoticed.
+	if !gotTx || !gotPool {
+		t.Fatalf("PlayerExists via tx = %v, via pool = %v, want both true (telegram_id=%d was inserted)", gotTx, gotPool, telegramID)
+	}
+
+	const missingTelegramID = int64(556)
+	gotTxMissing, err := PlayerExists(ctx, viaTx, missingTelegramID)
+	if err != nil {
+		t.Fatalf("PlayerExists(tx, missing): %v", err)
+	}
+	gotPoolMissing, err := PlayerExists(ctx, pool, missingTelegramID)
+	if err != nil {
+		t.Fatalf("PlayerExists(pool, missing): %v", err)
+	}
+	if gotTxMissing || gotPoolMissing {
+		t.Fatalf("PlayerExists via tx = %v, via pool = %v, want both false (telegram_id=%d was never inserted)", gotTxMissing, gotPoolMissing, missingTelegramID)
+	}
 }

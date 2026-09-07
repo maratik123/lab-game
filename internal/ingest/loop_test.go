@@ -185,6 +185,9 @@ func TestPollOnce_requestShape(t *testing.T) {
 		if reqs[0].Timeout != int(testIngestConfig().LongPollTimeout/time.Second) {
 			t.Errorf("Timeout = %d, want %d", reqs[0].Timeout, int(testIngestConfig().LongPollTimeout/time.Second))
 		}
+		if reqs[0].Limit != testIngestConfig().BatchLimit {
+			t.Errorf("Limit = %d, want %d", reqs[0].Limit, testIngestConfig().BatchLimit)
+		}
 	})
 
 	t.Run("populated_router_transmits_every_registered_kind", func(t *testing.T) {
@@ -211,6 +214,9 @@ func TestPollOnce_requestShape(t *testing.T) {
 			reqs[0].AllowedUpdates[0] != want[0] || reqs[0].AllowedUpdates[1] != want[1] {
 			t.Fatalf("AllowedUpdates = %v, want %v", reqs[0].AllowedUpdates, want)
 		}
+		if reqs[0].Limit != testIngestConfig().BatchLimit {
+			t.Errorf("Limit = %d, want %d", reqs[0].Limit, testIngestConfig().BatchLimit)
+		}
 	})
 }
 
@@ -220,7 +226,8 @@ func TestLoop_happyPath(t *testing.T) {
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
-	raw := telego.Update{UpdateID: 5, Message: &telego.Message{Date: time.Now().Unix(), Chat: telego.Chat{ID: 1}}}
+	const backdate = 3 * time.Second
+	raw := telego.Update{UpdateID: 5, Message: &telego.Message{Date: time.Now().Add(-backdate).Unix(), Chat: telego.Chat{ID: 1}}}
 	srv.SetHandler(tgtest.Success(updatesJSON(t, []telego.Update{raw})))
 
 	router, err := NewRouter(Route{Kind: KindMessage, Handler: postingHandler{}})
@@ -249,6 +256,16 @@ func TestLoop_happyPath(t *testing.T) {
 	updates := rec.Updates()
 	if len(updates) != 1 || updates[0].Outcome != OutcomeHandled || updates[0].Kind != KindMessage {
 		t.Fatalf("Updates() = %+v, want exactly one OutcomeHandled/KindMessage observation", updates)
+	}
+	// AC18 (design D13): a KindMessage update carries its own date, so
+	// LagKnown must be true and Lag must reflect it — not a value read
+	// as a healthy zero. The message is backdated by 3s so a mutant
+	// lagFor that returns (0, true) unconditionally is caught.
+	if !updates[0].LagKnown {
+		t.Error("Updates()[0].LagKnown = false, want true (KindMessage carries a date)")
+	}
+	if updates[0].Lag < backdate/2 {
+		t.Errorf("Updates()[0].Lag = %v, want at least ~%v (the message was backdated by %v)", updates[0].Lag, backdate/2, backdate)
 	}
 }
 
@@ -322,6 +339,60 @@ func TestLoop_unrouted(t *testing.T) {
 	updates := rec.Updates()
 	if len(updates) != 1 || updates[0].Outcome != OutcomeUnrouted || updates[0].Kind != KindCallbackQuery {
 		t.Fatalf("Updates() = %+v, want exactly one OutcomeUnrouted/KindCallbackQuery observation", updates)
+	}
+	// AC18 (design D13): KindCallbackQuery declares no date, so LagKnown
+	// must be false — a mutant lagFor that returns (0, true) always
+	// would make this indistinguishable from a genuinely healthy zero
+	// lag.
+	if updates[0].LagKnown {
+		t.Errorf("Updates()[0].LagKnown = true, want false (KindCallbackQuery declares no date)")
+	}
+}
+
+// TestLoop_malformedUpdateReportsDerivationError covers R1-10: raw
+// carries an empty CallbackQuery.ID, which NewUpdate rejects with
+// ErrEmptyID (operation.go's operationID). processUpdate must not
+// discard that error — it settles the update as unrouted (still
+// advancing the offset, so one bad payload never stalls the batch) and
+// carries the error onto the resulting Observation.
+func TestLoop_malformedUpdateReportsDerivationError(t *testing.T) {
+	t.Parallel()
+	pool := newIngestPool(t)
+	rec := &recordingObserver{}
+	srv := tgtest.New(t, nil)
+
+	raw := telego.Update{UpdateID: 9, CallbackQuery: &telego.CallbackQuery{ID: ""}}
+	srv.SetHandler(tgtest.Success(updatesJSON(t, []telego.Update{raw})))
+
+	router, err := NewRouter(Route{Kind: KindMessage, Handler: postingHandler{}})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	l := newLoop(t, srv, pool, router, rec)
+
+	if err := l.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+
+	tx, err := pool.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	next, err := readOffset(context.Background(), tx)
+	if err != nil {
+		t.Fatalf("readOffset: %v", err)
+	}
+	if next != 10 {
+		t.Errorf("offset after settling the malformed update_id=9 = %d, want 10 (one bad payload never stalls the batch)", next)
+	}
+
+	updates := rec.Updates()
+	if len(updates) != 1 || updates[0].Outcome != OutcomeUnrouted {
+		t.Fatalf("Updates() = %+v, want exactly one OutcomeUnrouted observation", updates)
+	}
+	if !errors.Is(updates[0].Err, ErrEmptyID) {
+		t.Errorf("Updates()[0].Err = %v, want ErrEmptyID (NewUpdate's derivation error must not be discarded)", updates[0].Err)
 	}
 }
 
@@ -406,9 +477,21 @@ func TestNew_optionValidation(t *testing.T) {
 		{"zero_poll_interval", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
 			LongPollTimeout: time.Second, BatchLimit: 1, RetryMaxAttempts: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond,
 		}}, "Config.PollInterval"},
+		{"zero_long_poll_timeout", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
+			PollInterval: time.Millisecond, BatchLimit: 1, RetryMaxAttempts: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond,
+		}}, "Config.LongPollTimeout"},
+		{"zero_retry_base_delay", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
+			PollInterval: time.Millisecond, LongPollTimeout: time.Second, BatchLimit: 1, RetryMaxAttempts: 1, RetryMaxDelay: time.Millisecond,
+		}}, "Config.RetryBaseDelay"},
+		{"zero_retry_max_delay", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
+			PollInterval: time.Millisecond, LongPollTimeout: time.Second, BatchLimit: 1, RetryMaxAttempts: 1, RetryBaseDelay: time.Millisecond,
+		}}, "Config.RetryMaxDelay"},
 		{"zero_batch_limit", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
 			PollInterval: time.Millisecond, LongPollTimeout: time.Second, RetryMaxAttempts: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond,
 		}}, "Config.BatchLimit"},
+		{"zero_retry_max_attempts", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
+			PollInterval: time.Millisecond, LongPollTimeout: time.Second, BatchLimit: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond,
+		}}, "Config.RetryMaxAttempts"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
