@@ -135,7 +135,7 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 		if out.retryAfter > 0 {
 			wait = out.retryAfter
 		} else {
-			wait = backoff.EqualJitter(attempts-1, c.client.transport.RetryBaseDelay, c.client.transport.RetryMaxDelay, c.client.jitter)
+			wait = backoff.EqualJitter(attempts-1, c.client.transport.RetryBaseDelay, c.client.transport.RetryMaxDelay, c.client.transport.RetryFactor, c.client.jitter)
 		}
 		waitUntilTime := time.Now().Add(wait)
 

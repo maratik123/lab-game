@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 	"unsafe"
 
+	"github.com/maratik123/lab-game/internal/backoff"
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
@@ -144,6 +146,7 @@ func validTransport() config.Transport {
 		RetryMaxAttempts: 3,
 		RetryBaseDelay:   500 * time.Millisecond,
 		RetryMaxDelay:    30 * time.Second,
+		RetryFactor:      backoff.DefaultFactor,
 		AttemptTimeout:   30 * time.Second,
 	}
 }
@@ -183,6 +186,17 @@ func TestNew_ValidatesEachField(t *testing.T) {
 		{"zero retry max delay", func(o *Options) { o.Transport.RetryMaxDelay = 0 }, "Transport.RetryMaxDelay"},
 		{"retry max delay below base delay", func(o *Options) { o.Transport.RetryMaxDelay = o.Transport.RetryBaseDelay - time.Millisecond }, "Transport.RetryMaxDelay"},
 		{"zero attempt timeout", func(o *Options) { o.Transport.AttemptTimeout = 0 }, "Transport.AttemptTimeout"},
+		{"retry factor exactly one", func(o *Options) { o.Transport.RetryFactor = 1 }, "Transport.RetryFactor"},
+		{"retry factor positive infinity", func(o *Options) { o.Transport.RetryFactor = math.Inf(1) }, "Transport.RetryFactor"},
+		{"retry factor NaN", func(o *Options) { o.Transport.RetryFactor = math.NaN() }, "Transport.RetryFactor"},
+		{
+			"invalid retry factor beside an earlier-invalid field names the earlier field",
+			func(o *Options) {
+				o.Transport.RetryBaseDelay = 0
+				o.Transport.RetryFactor = 1
+			},
+			"Transport.RetryBaseDelay",
+		},
 		{"malformed token", func(o *Options) { o.Token = "not-a-token" }, "Token"},
 	}
 	for _, tc := range cases {

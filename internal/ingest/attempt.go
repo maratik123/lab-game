@@ -32,7 +32,7 @@ func (l *Loop) runAttempts(ctx context.Context, h Handler, u Update) error {
 			break
 		}
 
-		delay := backoff.Exponential(attempt, l.cfg.RetryBaseDelay, l.cfg.RetryMaxDelay)
+		delay := backoff.Exponential(attempt, l.cfg.RetryBaseDelay, l.cfg.RetryMaxDelay, l.cfg.RetryFactor)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

@@ -13,6 +13,7 @@ import (
 
 	"github.com/mymmrac/telego"
 
+	"github.com/maratik123/lab-game/internal/backoff"
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/store"
 	"github.com/maratik123/lab-game/internal/tg"
@@ -231,6 +232,7 @@ func TestGate_integrationRefusedCallNeverReachesTheServer(t *testing.T) {
 			RetryMaxAttempts: 1,
 			RetryBaseDelay:   time.Millisecond,
 			RetryMaxDelay:    time.Millisecond,
+			RetryFactor:      backoff.DefaultFactor,
 			AttemptTimeout:   5 * time.Second,
 		},
 		HTTPClient: srv.Client(),

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/maratik123/lab-game/internal/backoff"
 	"github.com/maratik123/lab-game/internal/config"
 )
 
@@ -83,6 +84,9 @@ func New(opts Options) (*Worker, error) {
 		if f.value <= 0 {
 			return nil, &OptionError{Field: f.name, Reason: reasonMustBePositive}
 		}
+	}
+	if !backoff.ValidFactor(opts.Config.RetryFactor) {
+		return nil, &OptionError{Field: "RetryFactor", Reason: "must be finite and strictly greater than 1"}
 	}
 	return &Worker{
 		pool:     opts.Pool,

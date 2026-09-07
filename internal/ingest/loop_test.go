@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"sync"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/mymmrac/telego"
 	"github.com/shopspring/decimal"
 
+	"github.com/maratik123/lab-game/internal/backoff"
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/store"
 	"github.com/maratik123/lab-game/internal/tg"
@@ -32,6 +34,7 @@ func testIngestConfig() config.Ingest {
 		RetryMaxAttempts: 3,
 		RetryBaseDelay:   5 * time.Millisecond,
 		RetryMaxDelay:    20 * time.Millisecond,
+		RetryFactor:      backoff.DefaultFactor,
 	}
 }
 
@@ -45,6 +48,7 @@ func newTestClient(t *testing.T, srv *tgtest.Server) *tg.Client {
 			RetryMaxAttempts: 1,
 			RetryBaseDelay:   time.Millisecond,
 			RetryMaxDelay:    time.Millisecond,
+			RetryFactor:      backoff.DefaultFactor,
 			AttemptTimeout:   5 * time.Second,
 		},
 		HTTPClient: srv.Client(),
@@ -492,6 +496,18 @@ func TestNew_optionValidation(t *testing.T) {
 		{"zero_retry_max_attempts", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
 			PollInterval: time.Millisecond, LongPollTimeout: time.Second, BatchLimit: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond,
 		}}, "Config.RetryMaxAttempts"},
+		{"retry_factor_exactly_one", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
+			PollInterval: time.Millisecond, LongPollTimeout: time.Second, BatchLimit: 1, RetryMaxAttempts: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond, RetryFactor: 1,
+		}}, "Config.RetryFactor"},
+		{"retry_factor_positive_infinity", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
+			PollInterval: time.Millisecond, LongPollTimeout: time.Second, BatchLimit: 1, RetryMaxAttempts: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond, RetryFactor: math.Inf(1),
+		}}, "Config.RetryFactor"},
+		{"retry_factor_nan", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
+			PollInterval: time.Millisecond, LongPollTimeout: time.Second, BatchLimit: 1, RetryMaxAttempts: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond, RetryFactor: math.NaN(),
+		}}, "Config.RetryFactor"},
+		{"invalid_retry_factor_beside_an_earlier_invalid_field", Options{Client: client, Pool: pool, Router: router, Config: config.Ingest{
+			PollInterval: 0, LongPollTimeout: time.Second, BatchLimit: 1, RetryMaxAttempts: 1, RetryBaseDelay: time.Millisecond, RetryMaxDelay: time.Millisecond, RetryFactor: 1,
+		}}, "Config.PollInterval"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

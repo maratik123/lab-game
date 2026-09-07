@@ -288,6 +288,61 @@ func TestLoop_commitFailureReportsFailed(t *testing.T) {
 	}
 }
 
+// TestLoop_nonDefaultFactorReachesTheCallSite is design D20's
+// non-default-factor scenario for internal/ingest's between-attempt
+// delay (attempt.go's runAttempts): a base and factor chosen so the
+// summed delay at the configured factor is far above the summed delay
+// backoff.DefaultFactor would produce, asserted as a LOWER bound on
+// elapsed wall time so the case cannot flake on a slow machine — this
+// package's paths touch a real database and cannot run inside a
+// synctest bubble. Reds if runAttempts passes backoff.DefaultFactor
+// instead of l.cfg.RetryFactor; no shipped test does.
+func TestLoop_nonDefaultFactorReachesTheCallSite(t *testing.T) {
+	t.Parallel()
+	pool := newIngestPool(t)
+	rec := &recordingObserver{}
+	srv := tgtest.New(t, nil)
+
+	raw := telego.Update{UpdateID: 40, Message: &telego.Message{Date: time.Now().Unix(), Chat: telego.Chat{ID: 1}}}
+	srv.SetHandler(tgtest.Success(updatesJSON(t, []telego.Update{raw})))
+
+	router, err := NewRouter(Route{Kind: KindMessage, Handler: writeAndFailHandler{err: errors.New("boom")}})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+
+	cfg := testIngestConfig()
+	cfg.RetryMaxAttempts = 4
+	cfg.RetryBaseDelay = 20 * time.Millisecond
+	cfg.RetryMaxDelay = 10 * time.Second
+	cfg.RetryFactor = 5
+
+	l, err := New(Options{
+		Client:   newTestClient(t, srv),
+		Pool:     pool,
+		Router:   router,
+		Config:   cfg,
+		Observer: rec,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Delays at factor 5, base 20ms: 20ms + 100ms + 500ms = 620ms. At
+	// backoff.DefaultFactor (2) they would sum to 20ms + 40ms + 80ms =
+	// 140ms — well below the floor asserted here.
+	start := time.Now()
+	if err := l.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	const minElapsed = 550 * time.Millisecond
+	if elapsed < minElapsed {
+		t.Errorf("elapsed = %v, want at least %v (the configured RetryFactor must reach the between-attempt delay)", elapsed, minElapsed)
+	}
+}
+
 func TestRun_pollFailureDoesNotStopTheLoop(t *testing.T) {
 	t.Parallel()
 	pool := newIngestPool(t)

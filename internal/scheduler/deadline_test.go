@@ -273,6 +273,83 @@ func TestDeadline_successiveBreaches_growingDelay(t *testing.T) {
 	}
 }
 
+// TestDeadline_nonDefaultFactorReachesTheCallSite is design D20's
+// non-default-factor scenario for the deferred-drain settlement
+// (settle.go's deferredFailedStatement path via drainPending): the only
+// instrument that discriminates a call site passing the configured
+// cfg.RetryFactor from one passing backoff.DefaultFactor — the literal
+// one-based ramp above stays at the default and cannot see it.
+func TestDeadline_nonDefaultFactorReachesTheCallSite(t *testing.T) {
+	t.Parallel()
+
+	pool := newScheduler(t)
+	ctx := context.Background()
+	cfg := shortDeadlineConfig()
+	cfg.RetryBaseDelay = 200 * time.Millisecond
+	cfg.RetryFactor = 3
+
+	// factor=3: k-1=0 at attempt 1 (always base, 200ms — already pinned by
+	// the default-factor test above) and k-1=1 at attempt 2, where
+	// base*3 = 600ms exceeds the 500ms ceiling and clamps to it — distinct
+	// from both the default factor's 400ms and an unclamped 600ms, so a
+	// call site passing the wrong factor OR skipping the clamp both red.
+	literalRampAtFactorThree := map[int]time.Duration{
+		1: 200 * time.Millisecond,
+		2: 500 * time.Millisecond,
+	}
+
+	for attempt := 1; attempt < cfg.RetryMaxAttempts; attempt++ {
+		h := newBlockingHandler()
+		reg, err := NewRegistry(Declaration{Type: "test.oneshot.factor", Handler: h})
+		if err != nil {
+			t.Fatalf("NewRegistry: %v", err)
+		}
+		w, err := New(Options{Pool: pool, Registry: reg, Config: cfg})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		var id TaskID
+		if attempt == 1 {
+			id = dueNow(t, pool, reg, Request{Type: "test.oneshot.factor", InstanceKey: "growing-delay-factor"})
+		} else {
+			var scanned int64
+			if err := pool.QueryRow(ctx, `SELECT id FROM scheduled_task WHERE type = 'test.oneshot.factor' AND instance_key = 'growing-delay-factor'`).Scan(&scanned); err != nil {
+				t.Fatalf("select row: %v", err)
+			}
+			id = TaskID(scanned)
+			if _, err := pool.Exec(ctx, `UPDATE scheduled_task SET run_at = now() WHERE id = $1`, int64(id)); err != nil {
+				t.Fatalf("force due: %v", err)
+			}
+		}
+
+		if err := w.RunOnce(ctx); err != nil {
+			t.Fatalf("RunOnce (breach %d): %v", attempt, err)
+		}
+		waitLockFree(t, pool, id, 2*cfg.TaskTimeout+2*time.Second)
+
+		var drainInstant time.Time
+		if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&drainInstant); err != nil {
+			t.Fatalf("read drain instant: %v", err)
+		}
+		if err := w.RunOnce(ctx); err != nil {
+			t.Fatalf("RunOnce (drain %d): %v", attempt, err)
+		}
+		after := captureNow(t, pool)
+		close(h.release)
+
+		_, _, _, runAt, found := schedulerTaskRow(t, pool, id)
+		if !found {
+			t.Fatalf("attempt %d: row not found", attempt)
+		}
+		want := literalRampAtFactorThree[attempt]
+		lo, hi := drainInstant.Add(want), after.Add(want)
+		if runAt.Before(lo) || runAt.After(hi) {
+			t.Fatalf("attempt %d: run_at = %v, want within [%v, %v] (drainInstant=%v after=%v factor-3 backoff=%v)", attempt, runAt, lo, hi, drainInstant, after, want)
+		}
+	}
+}
+
 // TestDeadline_recurrenceSettlesIntoFuture is the recurrent branch of the
 // round-7 correction: with a cadence measured in hundreds of
 // milliseconds (so the test need not sleep for long), a breaching

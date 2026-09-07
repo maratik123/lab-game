@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/maratik123/lab-game/internal/backoff"
 	"github.com/maratik123/lab-game/internal/config"
 )
 
@@ -26,7 +28,66 @@ func testConfig() config.Scheduler {
 		RetryMaxAttempts: 3,
 		RetryBaseDelay:   10 * time.Millisecond,
 		RetryMaxDelay:    time.Second,
+		RetryFactor:      backoff.DefaultFactor,
 		TaskTimeout:      time.Second,
+	}
+}
+
+// TestNew_RetryFactorRefusal is design D20's constructor factor check:
+// exactly 1, +Inf and NaN are each refused naming RetryFactor — the same
+// values that would pass a wrong predicate borrowed from the duration
+// checks beside it (<= 0) — and an invalid factor beside an
+// earlier-invalid field names the EARLIER field, which is the only row
+// that can red a factor check inserted anywhere but last in New's chain.
+// No migrated schema is needed: New only nil-checks the pool and never
+// dials it (design D20, Test Design subtask 15).
+func TestNew_RetryFactorRefusal(t *testing.T) {
+	t.Parallel()
+
+	pool, err := pgxpool.New(context.Background(), "postgres://user:pass@127.0.0.1:1/db")
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	reg, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+
+	cases := []struct {
+		name      string
+		mutate    func(*config.Scheduler)
+		wantField string
+	}{
+		{"exactly one", func(c *config.Scheduler) { c.RetryFactor = 1 }, "RetryFactor"},
+		{"positive infinity", func(c *config.Scheduler) { c.RetryFactor = math.Inf(1) }, "RetryFactor"},
+		{"NaN", func(c *config.Scheduler) { c.RetryFactor = math.NaN() }, "RetryFactor"},
+		{
+			"invalid retry factor beside an earlier-invalid field names the earlier field",
+			func(c *config.Scheduler) {
+				c.RetryBaseDelay = 0
+				c.RetryFactor = 1
+			},
+			"RetryBaseDelay",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := testConfig()
+			tc.mutate(&cfg)
+			_, err := New(Options{Pool: pool, Registry: reg, Config: cfg})
+			if err == nil {
+				t.Fatal("New: expected an error, got nil")
+			}
+			var optErr *OptionError
+			if !errors.As(err, &optErr) {
+				t.Fatalf("New: error %v is not an *OptionError", err)
+			}
+			if optErr.Field != tc.wantField {
+				t.Errorf("Field = %q, want %q", optErr.Field, tc.wantField)
+			}
+		})
 	}
 }
 

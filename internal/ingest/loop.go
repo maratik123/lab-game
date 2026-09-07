@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mymmrac/telego"
 
+	"github.com/maratik123/lab-game/internal/backoff"
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/tg"
 )
@@ -111,6 +112,9 @@ func New(opts Options) (*Loop, error) {
 		if f.value <= 0 {
 			return nil, &OptionError{Field: f.name, Reason: reasonMustBePositive}
 		}
+	}
+	if !backoff.ValidFactor(opts.Config.RetryFactor) {
+		return nil, &OptionError{Field: "Config.RetryFactor", Reason: "must be finite and strictly greater than 1"}
 	}
 
 	kinds := opts.Router.Kinds()

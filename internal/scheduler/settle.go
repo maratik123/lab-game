@@ -140,7 +140,7 @@ func deferredFailedStatement(p pendingSettlement, s time.Time, cfg config.Schedu
 				FROM candidate c WHERE t.id = c.id
 			`, []any{int64(p.id), p.runAt, k, p.reason}
 		}
-		runAt := s.Add(backoff.Exponential(k-1, cfg.RetryBaseDelay, cfg.RetryMaxDelay))
+		runAt := s.Add(backoff.Exponential(k-1, cfg.RetryBaseDelay, cfg.RetryMaxDelay, cfg.RetryFactor))
 		return drainOneCandidateSQL + `
 			UPDATE scheduled_task t SET consecutive_failures = $3, last_error = $4, run_at = $5
 			FROM candidate c WHERE t.id = c.id
@@ -240,7 +240,7 @@ func settleFailed(ctx context.Context, tx pgx.Tx, task Task, decl Declaration, h
 		if err != nil {
 			return err
 		}
-		runAt := s.Add(backoff.Exponential(k-1, cfg.RetryBaseDelay, cfg.RetryMaxDelay))
+		runAt := s.Add(backoff.Exponential(k-1, cfg.RetryBaseDelay, cfg.RetryMaxDelay, cfg.RetryFactor))
 		if _, err := tx.Exec(ctx,
 			`UPDATE scheduled_task SET consecutive_failures = $2, last_error = $3, run_at = $4 WHERE id = $1`,
 			int64(task.ID), k, lastError, runAt,

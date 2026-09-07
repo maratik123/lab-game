@@ -160,6 +160,46 @@ func TestRetry_JitterOptionThreadedThroughToBackoff(t *testing.T) {
 	})
 }
 
+// TestRetry_NonDefaultFactorReachesTheCallSite is design D20's
+// non-default-factor scenario: the only instrument that discriminates a
+// call site passing the configured Transport.RetryFactor from one
+// passing backoff.DefaultFactor, because every shipped test above runs
+// at the default (2) and would stay green either way.
+func TestRetry_NonDefaultFactorReachesTheCallSite(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		h := &countingHandler{next: tgtest.ServerError(http.StatusInternalServerError)}
+		srv := tgtest.New(t, h.handle)
+		tr := validTransport()
+		tr.RetryMaxAttempts = 4
+		tr.RetryBaseDelay = 100 * time.Millisecond
+		tr.RetryMaxDelay = 10 * time.Second
+		tr.RetryFactor = 1.5
+		c := newRetryTestClient(t, srv, func(o *Options) {
+			o.Transport = tr
+			o.Jitter = func() float64 { return 0 }
+		})
+
+		_, err := c.API().GetMe(context.Background())
+		if err == nil {
+			t.Fatal("GetMe: expected a give-up error")
+		}
+		times := h.timestamps()
+		if len(times) != 4 {
+			t.Fatalf("attempts = %d, want 4", len(times))
+		}
+		// D20: delay_i = d_i/2, d_i = min(base*factor^i, maxDelay), jitter
+		// fixed at 0. factor=1.5: 50ms, 75ms, 112.5ms for i = 0, 1, 2.
+		want := []time.Duration{50 * time.Millisecond, 75 * time.Millisecond, 112500 * time.Microsecond}
+		for i := 1; i < len(times); i++ {
+			got := times[i].Sub(times[i-1])
+			if got != want[i-1] {
+				t.Errorf("delay[%d] = %v, want exactly %v (factor 1.5 reaches the call site)", i, got, want[i-1])
+			}
+		}
+	})
+}
+
 func TestRetry_AmbiguousMakesExactlyOneAttempt(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -685,10 +725,10 @@ func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 	const base = 100 * time.Millisecond
 	const maxDelay = 10 * time.Second
 
-	if got := backoff.EqualJitter(0, base, maxDelay, func() float64 { return 0 }); got != base/2 {
+	if got := backoff.EqualJitter(0, base, maxDelay, 2, func() float64 { return 0 }); got != base/2 {
 		t.Errorf("backoff.EqualJitter(attempt=0, jitter=0) = %v, want %v (half, no jitter added)", got, base/2)
 	}
-	if got := backoff.EqualJitter(0, base, maxDelay, func() float64 { return 1 }); got != base {
+	if got := backoff.EqualJitter(0, base, maxDelay, 2, func() float64 { return 1 }); got != base {
 		t.Errorf("backoff.EqualJitter(attempt=0, jitter=1) = %v, want %v (half plus the full other half)", got, base)
 	}
 
@@ -705,10 +745,10 @@ func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 	// here.
 	const shippedBase = 500 * time.Millisecond
 	const shippedMax = 30 * time.Second
-	if got := backoff.EqualJitter(6, shippedBase, shippedMax, func() float64 { return 0 }); got != 15*time.Second {
+	if got := backoff.EqualJitter(6, shippedBase, shippedMax, 2, func() float64 { return 0 }); got != 15*time.Second {
 		t.Errorf("backoff.EqualJitter(attempt=6, jitter=0) = %v, want %v (post-loop clamp: 500ms*2^6=32s > max, d exits the loop at 32s and is clamped after, half=15s)", got, 15*time.Second)
 	}
-	if got := backoff.EqualJitter(10, shippedBase, shippedMax, func() float64 { return 1 }); got != shippedMax {
+	if got := backoff.EqualJitter(10, shippedBase, shippedMax, 2, func() float64 { return 1 }); got != shippedMax {
 		t.Errorf("backoff.EqualJitter(attempt=10, jitter=1) = %v, want %v (in-loop early break: d reaches >= maxDelay inside the loop and returns immediately)", got, shippedMax)
 	}
 
@@ -725,7 +765,7 @@ func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 	// directly by every other case in this test, and its own defensive
 	// clamp at attempt=0 needs its own row for that block to be exercised
 	// at all.
-	if got := backoff.EqualJitter(0, 40*time.Second, shippedMax, func() float64 { return 0 }); got != shippedMax/2 {
+	if got := backoff.EqualJitter(0, 40*time.Second, shippedMax, 2, func() float64 { return 0 }); got != shippedMax/2 {
 		t.Errorf("backoff.EqualJitter(base>maxDelay, attempt=0, jitter=0) = %v, want %v (post-loop clamp: base alone already exceeds maxDelay)", got, shippedMax/2)
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/mymmrac/telego"
 
+	"github.com/maratik123/lab-game/internal/backoff"
 	"github.com/maratik123/lab-game/internal/config"
 )
 
@@ -117,6 +118,9 @@ func New(opts Options) (*Client, error) {
 	}
 	if opts.Transport.AttemptTimeout <= 0 {
 		return nil, optionErrorf("Transport.AttemptTimeout", "must be positive, got %s", opts.Transport.AttemptTimeout)
+	}
+	if !backoff.ValidFactor(opts.Transport.RetryFactor) {
+		return nil, optionErrorf("Transport.RetryFactor", "must be finite and strictly greater than 1, got %v", opts.Transport.RetryFactor)
 	}
 
 	jitter := opts.Jitter

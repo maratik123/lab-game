@@ -1,39 +1,56 @@
-// Package backoff implements the exponential ramp `internal/tg` and
-// `internal/scheduler` each duplicated (design D2, issue #22): a delay
-// that doubles from a base, clamped at a ceiling, over a zero-based
-// attempt index. Both adopters keep their own retry loop and their own
-// jitter policy — this package owns only the arithmetic, never a
-// timer, a context, or a wait.
+// Package backoff implements the exponential ramp `internal/tg`,
+// `internal/scheduler` and `internal/ingest` each adopt (design D2, D20,
+// issue #22): a delay that grows geometrically from a base by a
+// configurable factor, clamped at a ceiling, over a zero-based attempt
+// index. Every adopter keeps its own retry loop and its own jitter
+// policy — this package owns only the arithmetic, never a timer, a
+// context, or a wait.
 //
 // Contract, over every attempt (including negative ones, clamped to
-// zero) and every base and ceiling — not only the positive ones the
-// adopters' own constructors enforce:
+// zero), every base and ceiling — not only the positive ones the
+// adopters' own constructors enforce — and every factor:
 //
-//   - base > 0 and ceiling > 0: the result is strictly positive, never
-//     exceeds ceiling, and never decreases as attempt grows. The ceiling
-//     is tested and clamped BEFORE the doubling that would overflow it,
-//     so no attempt, however large, can wrap time.Duration's underlying
-//     int64 into a negative value.
-//   - base > ceiling (still both positive): the result is ceiling,
-//     exactly, at every attempt — the post-loop clamp neither replaced
-//     ramp skips.
+//   - base > 0, ceiling > 0 and factor strictly greater than 1 (a legal
+//     factor per ValidFactor): the result is strictly positive, never
+//     exceeds ceiling, and never decreases as attempt grows — though it
+//     may hold STEADY across consecutive attempts rather than strictly
+//     increase, when base and factor are small enough that the
+//     time.Duration conversion truncates two consecutive attempts to the
+//     same nanosecond. No time.Duration conversion happens until the
+//     value has been proven strictly below ceiling: a finite value at or
+//     above the ceiling, +Inf, or NaN each return ceiling itself
+//     (already a time.Duration, returned unconverted), so no attempt,
+//     however large, can wrap time.Duration's underlying int64 into a
+//     negative value.
+//   - factor <= 1, or NaN: normalised to exactly 1 before use — the
+//     result is base at every attempt, clamped by the ceiling. This is
+//     "treated as 1, with no lower clamp", not "not growing" merely by
+//     coincidence.
+//   - factor == +Inf: base at the zeroth attempt (factor^0 == 1), and
+//     ceiling from the first attempt on.
+//   - base > ceiling (still both positive, any factor): the result is
+//     ceiling, exactly, at every attempt.
 //   - base <= 0: the result is base, unchanged, at every attempt — no
-//     doubling, no lower clamp. This is what both replaced ramps already
-//     answer at base == 0; it is deliberately not "the smallest positive
-//     delay", because neither replaced ramp raises a value, only caps
-//     one that has grown too large.
+//     growth, no lower clamp. This is what every replaced ramp already
+//     answered at base == 0; it is deliberately not "the smallest
+//     positive delay", because no replaced ramp raises a value, only
+//     caps one that has grown too large.
 //   - base > 0 and ceiling <= 0: the result is ceiling, unchanged, at
 //     every attempt.
 //
-// None of these out-of-domain rows is reachable through either shipped
-// adopter's own constructor, or through internal/ingest's or
-// internal/config's validation — they are decided here so an
-// implementor of a future adopter does not have to guess.
+// None of these out-of-domain rows is reachable through any shipped
+// adopter's own constructor, or through internal/config's validation —
+// they are decided here so an implementor of a future adopter does not
+// have to guess.
 //
-// The ramp's growth factor is becoming configurable (design D20): a
-// legal factor is finite and strictly greater than 1 — see ValidFactor —
-// and DefaultFactor is the value that reproduces the doubling ramp
-// documented above exactly.
+// A legal factor is finite and strictly greater than 1 — see
+// ValidFactor — and DefaultFactor is the value that reproduces the
+// doubling ramp every adopter shipped before the factor became
+// configurable, exactly, for a base below 2^53 nanoseconds (about 104
+// days); above that bound the float64 arithmetic this package now uses
+// and the formerly shipped integer doubling diverge by a few
+// nanoseconds at most, bounded and still clamped by the ceiling (design
+// D20).
 package backoff
 
 import (
@@ -59,10 +76,10 @@ func ValidFactor(factor float64) bool {
 }
 
 // Exponential returns the delay before an attempt-th (zero-based) retry:
-// min(base*2^attempt, ceiling), clamped before the doubling that would
-// overflow time.Duration's underlying int64. See the package comment for
-// the full contract, including every out-of-domain row.
-func Exponential(attempt int, base, ceiling time.Duration) time.Duration {
+// min(base*factor^attempt, ceiling), with no time.Duration conversion of
+// a value not yet proven strictly below ceiling. See the package comment
+// for the full contract, including every out-of-domain row and factor.
+func Exponential(attempt int, base, ceiling time.Duration, factor float64) time.Duration {
 	if attempt < 0 {
 		attempt = 0
 	}
@@ -72,17 +89,14 @@ func Exponential(attempt int, base, ceiling time.Duration) time.Duration {
 	if ceiling <= 0 {
 		return ceiling
 	}
-	d := base
-	for range attempt {
-		if d >= ceiling {
-			return ceiling
-		}
-		d *= 2
+	if math.IsNaN(factor) || factor <= 1 {
+		factor = 1
 	}
-	if d > ceiling {
+	d := float64(base) * math.Pow(factor, float64(attempt))
+	if math.IsNaN(d) || d >= float64(ceiling) {
 		return ceiling
 	}
-	return d
+	return time.Duration(d)
 }
 
 // EqualJitter returns Exponential's delay for attempt split into an
@@ -90,8 +104,8 @@ func Exponential(attempt int, base, ceiling time.Duration) time.Duration {
 // same half, scaled by jitter() in [0, 1). Bounded within
 // [Exponential(...)/2, Exponential(...)) for a jitter in [0, 1) — the
 // same formula internal/tg's retry loop used before this package existed.
-func EqualJitter(attempt int, base, ceiling time.Duration, jitter func() float64) time.Duration {
-	d := Exponential(attempt, base, ceiling)
+func EqualJitter(attempt int, base, ceiling time.Duration, factor float64, jitter func() float64) time.Duration {
+	d := Exponential(attempt, base, ceiling, factor)
 	half := d / 2
 	return half + time.Duration(float64(half)*jitter())
 }

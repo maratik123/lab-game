@@ -199,6 +199,57 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 	}
 }
 
+// TestFailurePolicy_nonDefaultFactorReachesTheCallSite is design D20's
+// non-default-factor scenario for the inline one-shot settlement
+// (settle.go's deferredFailedStatement/settleFailed path): the only
+// instrument that discriminates a call site passing the configured
+// cfg.RetryFactor from one passing backoff.DefaultFactor, because the
+// literal one-based ramp above stays at the default and cannot see it.
+func TestFailurePolicy_nonDefaultFactorReachesTheCallSite(t *testing.T) {
+	t.Parallel()
+
+	pool := newScheduler(t)
+	ctx := context.Background()
+	cfg := backoffProbeConfig()
+	cfg.RetryFactor = 3
+	reg, err := NewRegistry(Declaration{Type: "test.oneshot.factor", Handler: &slowFirstAttemptHandler{firstDelay: 400 * time.Millisecond, err: errBoom}})
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	id := dueNow(t, pool, reg, Request{Type: "test.oneshot.factor"})
+
+	w, err := New(Options{Pool: pool, Registry: reg, Config: cfg})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// factor=3: k-1=0 at attempt 1 (factor^0 == 1, always base — this is
+	// what the default-factor test above already pins) and k-1=1 at
+	// attempt 2, where the factor actually shows up: base*3 = 600ms, not
+	// the default's 400ms.
+	literalRampAtFactorThree := map[int]time.Duration{
+		1: 200 * time.Millisecond,
+		2: 600 * time.Millisecond,
+	}
+	for attempt := 1; attempt < cfg.RetryMaxAttempts; attempt++ {
+		before := forceDueAndCapture(t, pool, id)
+		if err := w.RunOnce(ctx); err != nil {
+			t.Fatalf("RunOnce attempt %d: %v", attempt, err)
+		}
+		after := captureNow(t, pool)
+
+		_, _, _, runAt, found := schedulerTaskRow(t, pool, id)
+		if !found {
+			t.Fatalf("attempt %d: row not found", attempt)
+		}
+		want := literalRampAtFactorThree[attempt]
+		lo, hi := before.Add(want), after.Add(want)
+		if runAt.Before(lo) || runAt.After(hi) {
+			t.Fatalf("attempt %d: run_at = %v, want within [%v, %v] (before=%v after=%v factor-3 backoff=%v)", attempt, runAt, lo, hi, before, after, want)
+		}
+	}
+}
+
 // forceDueAndCapture forces id due and returns the server's clock at that
 // moment, so callers can bracket a later run_at against it.
 //

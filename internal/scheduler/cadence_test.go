@@ -33,7 +33,7 @@ func TestBackoff_exactTable(t *testing.T) {
 		{7, 30 * time.Second},
 	}
 	for _, tc := range cases {
-		got := backoff.Exponential(tc.failures-1, base, ceiling)
+		got := backoff.Exponential(tc.failures-1, base, ceiling, 2)
 		if got != tc.want {
 			t.Errorf("backoff.Exponential(%d, %v, %v) = %v, want %v", tc.failures-1, base, ceiling, got, tc.want)
 		}
@@ -49,12 +49,12 @@ func TestBackoff_strictlyGrowingUntilCeiling(t *testing.T) {
 
 	base := 100 * time.Millisecond
 	ceiling := 2 * time.Second
-	prev := backoff.Exponential(0, base, ceiling)
+	prev := backoff.Exponential(0, base, ceiling, 2)
 	if prev <= 0 {
 		t.Fatalf("backoff.Exponential(0, ...) = %v, want strictly positive", prev)
 	}
 	for f := 2; f <= 10; f++ {
-		cur := backoff.Exponential(f-1, base, ceiling)
+		cur := backoff.Exponential(f-1, base, ceiling, 2)
 		if cur < prev {
 			t.Fatalf("backoff.Exponential(%d) = %v is less than backoff.Exponential(%d) = %v, want non-decreasing", f-1, cur, f-2, prev)
 		}
