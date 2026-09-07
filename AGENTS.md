@@ -87,20 +87,13 @@ go run ./cmd/bot                                        # run the bot (exits non
 > Lowering the file is deliberately easy and deliberately visible: it lands in the diff a reviewer
 > reads.
 >
-> The tolerance is **0.60 pp** and the measurement behind it is at the top of the script: a 24-run
-> series naming the timing-dependent statements that make the suite's coverage drift between runs.
-> The **cross-environment** term this paragraph once carried was withdrawn on 2026-09-07 after
-> re-measurement: `go test` caches a package's result together with its coverage profile and the
-> ratchet's command does not pass `-count=1`, so the "91.28% twice at the same commit" that looked
-> like two local measurements was one measurement replayed from the cache. Independent `-count=1`
-> runs at that commit drew 90.83 / 90.94 / 91.11 / 91.28 against CI's 90.83 / 90.88 / 90.94 / 91.06
-> — overlapping distributions. **A locally recorded mark is therefore a claim about one draw, not
-> about the tree**: the mark that blocked CI on PR #66 was the luckiest of them, frozen by the
-> cache and carried forward because the ratchet only ever raises. It is a standing value, not a
-> step towards a tighter one: the drift is a fixed count of statements over a growing denominator,
-> so it narrows on its own as the tree grows, and buying tenths of a point by mocking a
-> server-side clock is not a trade this project is making. Change the number only after
-> re-measuring with `-count=1`, in **both** environments.
+> The tolerance is **0.60 pp**, and it is not zero because a few timing-dependent error paths flip
+> between runs — 6 statements today. Two consequences worth carrying: **a recorded mark is one
+> draw, not a property of the tree** (the ratchet only ever raises, so it converges on the luckiest
+> run), and the measurement runs with the Go test cache on, so a re-run at an unchanged commit
+> replays the previous profile instead of drawing again. Re-measure with `-count=1`, in **both**
+> environments, before changing the number; the script's header carries the recipe and `git log -p`
+> on it carries why the number is what it is.
 
 **CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
 

@@ -16,126 +16,32 @@
 # in most awks, and a ratchet should not depend on which awk is installed.
 # Float arithmetic throughout; the tolerance absorbs the epsilon.
 #
-# THE TOLERANCE, AND THE MEASUREMENT UNDER IT. 24 runs of the suite on 8fae04a,
-# 1329 statements throughout:
+# THE TOLERANCE is not zero because the suite's coverage drifts between runs on
+# its own: a few error paths in internal/scheduler and internal/ingest are
+# reached only when a deadline or a cancellation lands inside a database
+# round-trip. Today that is 6 statements, 0.34 pp of 1757.
 #
-#   covered  percent   rounded  runs
-#     1189   89.4658%   89.47    20   (83%)
-#     1190   89.5410%   89.54     2   ( 8%)
-#     1191   89.6163%   89.62     1   ( 4%)
-#     1194   89.8420%   89.84     1   ( 4%)
+# To re-derive the drifting set instead of trusting this sentence:
+#   for i in 1 2 3; do
+#     go test -count=1 -covermode=atomic -coverprofile="tmp/c$i.out" ./...
+#   done
+#   # blocks with a non-zero count in some profiles and zero in others = the set
 #
-# Observed spread 0.3762 pp; one statement is worth 0.0752 pp. Five blocks flip
-# between runs, all of them timing-dependent, all in one package. Their profile
-# coordinates AS OF 8fae04a, kept for that day's record only — every one of them
-# has since moved, which is why the enumeration further down names functions
-# instead:
-#   internal/scheduler/execute.go:167.87,170.3
-#   internal/scheduler/execute.go:223.73,225.3
-#   internal/scheduler/settle.go:202.101,204.4
-#   internal/scheduler/worker.go:116.57,119.4
-#   internal/scheduler/worker.go:150.21,151.20
+# Change TOLERANCE_PP only from such a series, and only if it shows the drift has
+# GROWN past the constant — never from a single blocked commit. `-count=1` is not
+# optional there: without it the second run of a series replays the first from
+# the test cache, and the series measures one run. Re-measure in BOTH a local and
+# a CI environment. Why the number is 0.60 and what a mark recorded from a cached
+# draw once cost: `git log -p` on this file, 2026-09-07.
 #
-# The spread is the binding constraint on the tolerance, and it binds whatever
-# the raise rule is: a lucky run RECORDS its value, and every ordinary run
-# afterwards reads as a fall of up to the spread. So TOLERANCE_PP must exceed
-# 0.3762, or the ratchet blocks forever with no code change involved. 0.50 was
-# that with headroom for a tail 24 runs had not seen — the 4-statement jump was
-# observed once.
-#
-# RAISED TO 0.60 on 2026-09-07 to absorb what looked like a cross-environment
-# gap, and RE-MEASURED the same day: the gap was not the environment. `go test`
-# caches a package's result together with its coverage profile, and the command
-# below does not pass -count=1, so a second run at an unchanged commit replays
-# the first one's profile instead of drawing again. The "91.28% twice in a row"
-# this paragraph once read as two measurements was one measurement replayed —
-# reproduced deliberately: a cached run returned 91.28% to the statement right
-# after a -count=1 run drew 91.28%, with five of the nine packages served from
-# the cache, internal/scheduler among them. Four independent -count=1 runs at
-# that commit drew 90.83 / 90.94 / 91.11 / 91.28 while CI drew 90.83 / 90.88 /
-# 90.94 / 91.06: overlapping distributions, not a systematic difference between
-# the two machines. The recorded 91.46% was the luckiest draw of them all
-# (1595 of 1744 — 11 of the 14 timing-dependent statements), frozen by the
-# cache and re-recorded on later commits because the ratchet only ever raises.
-#
-# WHAT THOSE 14 STATEMENTS ARE, and where they went. Six blocks, every one an
-# error path reachable only when a deadline or a cancellation lands inside a
-# database round-trip — five in the scheduler, one in ingest. Named by function,
-# never by profile coordinate: a coordinate is invalidated by any edit above it
-# in its own file, and the 8fae04a list above is what that looks like a fortnight
-# later.
-#
-#   scheduler  settleAndAfter           failed COMMIT (defers settlement)   7
-#   scheduler  settleAndAfter           failed settleOutcome                2
-#   scheduler  runHandlerWithSavepoint  failed ROLLBACK TO SAVEPOINT        1
-#   scheduler  settleDoneOrNoop         failed DELETE                       1
-#   scheduler  (*Worker).RunOnce        executeOne returned an error        2
-#   ingest     (*Loop).Run              post-poll ctx.Done()                1
-#
-# To resolve any row to today's lines: `ast-index symbol "<name>"`, or read the
-# per-function totals with `go tool cover -func=tmp/coverage.out`.
-#
-# Since internal/testdb put the test cluster on a tmpfs and stopped initdb
-# syncing it, four of the five scheduler blocks are not drawn at all any more —
-# 12 statements, 0-covered in every run measured since. The fifth, the failed
-# ROLLBACK TO SAVEPOINT, still flips, and so does the ingest block. Three runs
-# at 1757 statements put today's drift at SIX statements over five blocks,
-# 0.34 pp: those two, plus four more in internal/ingest — two in attemptOnce
-# (the duplicate path's failed offset advance) and one each in
-# advanceOffsetFresh's failed Begin and failed Commit. The mark was re-recorded
-# at the floor of the measurement that preceded those runs, 90.88%, and this
-# hook then raised it to its own draw, as the raise rule always does. Covering
-# the scheduler blocks deterministically is its own piece of work; it is not a
-# tolerance question, and the tolerance stays where it is.
-#
-# THE MEASUREMENT BELOW KEEPS THE TEST CACHE — owner's decision, 2026-09-07,
-# taken with the freeze understood rather than around it. `-count=1` here would
-# make every measured commit re-run the whole suite; what makes that affordable
-# is also what makes it unnecessary. With the drifting set down from 14
-# statements to 6, a frozen lucky draw sits at most 0.34 pp above the floor,
-# while the tolerance is 0.60 — so the worst a replayed profile can do is spend
-# a little over half the headroom. The 91.46 incident needed a 0.63 pp gap
-# between the recorded mark and the floor, and only 14 drifting statements could
-# open one. Re-measure this figure whenever the drifting set is re-counted: it
-# is the whole argument for keeping the cache, and it is the number that says
-# when the argument has expired.
-#
-# What that decision is conditional on, and what to do when the condition
-# breaks: if a later series shows the drifting set growing back toward the
-# tolerance, the answer is `-count=1` on the command below — that is what makes
-# the number a draw of THIS tree — and not a wider tolerance, which would only
-# raise the ceiling on what a frozen draw can hide. A deliberate re-measurement
-# of the tolerance itself always passes `-count=1`, cache or no cache: a series
-# whose runs replay each other measures one run.
-#
-# What the tolerance costs is bounded the same way as before, one tolerance
-# below the all-time high, about 10.5 statements at 1757, ONCE.
+# THE MEASUREMENT BELOW KEEPS THE TEST CACHE — owner's decision, 2026-09-07. A
+# replayed draw sits at most one drift above the floor, which the tolerance
+# covers with room. If the drift ever grows toward the tolerance, the answer is
+# `-count=1` on that command, not a wider tolerance.
 #
 # WHAT THE TOLERANCE COSTS, bounded: the recorded value never decreases, so the
-# total coverage that can be lost silently is one tolerance below the all-time
-# high — ONCE, not per commit.
-#
-# THE TOLERANCE IS A STANDING VALUE — there is no plan to tighten it, and
-# chasing the five blocks is explicitly not one. Mocking a server-side clock through the
-# database is not a cheap change, and buying tenths of a percentage point with
-# it would be the ratchet setting the project's priorities instead of guarding
-# them.
-#
-# The spread narrows on its own as the tree grows, because it is a COUNT of
-# statements over a growing denominator. The 24-run series' five blocks were
-# worth 0.3762 pp against the 1329 statements of that day and are worth
-# 0.2846 pp against 1757; today's six drifting statements are worth 0.34 pp at
-# 1757, 0.30 pp at 2000 and 0.20 pp at 3000. The tolerance does not have to
-# follow it down: a fixed value simply becomes roomier, and what it can hide
-# stays bounded at one tolerance below the all-time high, once.
-#
-# Revisit this number only on a re-measurement — if a series of runs shows the
-# spread has GROWN past it, which would mean new flaky blocks arrived faster
-# than the denominator grew. Re-run the series with `go test -count=1` before
-# touching the constant, in BOTH environments, and do not adjust it from a
-# single blocked commit. Without `-count=1` the second run of a series replays
-# the first one's profile and the series measures nothing it did not already
-# know — that is how the withdrawn cross-environment term was arrived at.
+# total that can be lost silently is one tolerance below the all-time high —
+# ONCE, not per commit.
 #
 # Usage:
 #   coverage-ratchet.sh            raise mode: check, and record a new high
