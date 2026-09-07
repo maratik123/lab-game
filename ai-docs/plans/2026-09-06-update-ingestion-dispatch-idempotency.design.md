@@ -848,6 +848,13 @@ the doubling that would overflow it,` / `so no attempt, however large, can wrap 
 underlying` / `int64 into a negative value.`] — has to be re-anchored rather than dropped. It is
 re-anchored, not weakened:
 
+- the factor is **normalised before it is used**: anything not strictly greater than `1` — a value
+  below `1`, exactly `1`, or a `NaN` — becomes exactly `1`. That normalisation is what answers the
+  contract table's `factor <= 1, or NaN` row below, and it runs **after** the out-of-domain `base`
+  and `ceiling` returns and **before** the multiplication. The whole order, stated once so the two
+  clauses below cannot be read as deciding the same input twice: clamp a negative `attempt` to the
+  zeroth; return the out-of-domain `base` and `ceiling` rows unchanged; normalise the factor;
+  multiply; clamp; convert;
 - the delay is computed as `float64(base) * math.Pow(factor, float64(attempt))`, in float64, where
   overflow **saturates to `+Inf`** instead of wrapping;
 - **no `time.Duration` conversion happens until the value has been proven strictly below `ceiling`.**
@@ -867,6 +874,17 @@ on this toolchain, i.e. a negative delay, silently
 -2562047h47m16.854775808s`]. The guard above is exactly the guard for that, and it is written as an
 explicit `math.IsNaN` test rather than as a negated `<` comparison, so that no boolean-simplification
 rewrite — by a linter, or by a later reader tidying the expression — can silently drop the `NaN` case.
+
+With the normalisation step in front of it, a `NaN` *product* is unreachable rather than merely
+unlikely: `base` is positive by the guard above it, and a normalised factor is either finite and
+above `1` or exactly `1`, so the multiplication yields a finite value or `+Inf` and never a `NaN`
+[measured 515f03d · a probe module under `tmp/` carrying the float form and the normalisation order
+this section specifies · `go run .` → `NaN product after normalisation, over the swept grid:
+unreachable`]. The `math.IsNaN` test on the *product* is therefore the defensive second gate, not the
+clause that decides a `NaN` **factor** — the normalisation is, and it is what makes a `NaN` factor
+answer `base` rather than `ceiling`
+[measured 515f03d · the same probe · `go run .` → `NaN factor, base=1s ceiling=8s, attempts 0..3:
+[1s 1s 1s 1s]` and `NaN factor at MaxInt attempt: 1s`].
 
 **`math.Pow` rather than a loop, and the amendment is strictly stronger than what it replaces.** A
 loop that multiplies by a float factor `attempt` times keeps the shipped shape but loses its
@@ -943,7 +961,7 @@ clamped to the zeroth) the package answers:
 
 | input | answer |
 |---|---|
-| `base > 0`, `ceiling > 0`, `factor > 1` | strictly positive, never above `ceiling`, and **strictly increasing until the ceiling is reached**, exactly `ceiling` from there on — the growth clause the owner's `> 1` rule buys, replacing the merely non-decreasing one the doubling-only version could state |
+| `base > 0`, `ceiling > 0`, `factor > 1` | strictly positive, never above `ceiling`, and **never decreasing as `attempt` grows** — D2's clause, unchanged, and still the universal one. Growth is not promised at every step: the product is truncated to a whole nanosecond, so consecutive attempts return the **same** delay wherever one step of the ramp falls below that resolution, while a step of a nanosecond or more always advances the result. Once the product reaches `ceiling` the answer is exactly `ceiling` from there on |
 | `base > ceiling`, both positive | `ceiling`, exactly, at every attempt — unchanged from D2 |
 | `base <= 0` | `base`, unchanged, at every attempt — unchanged from D2 |
 | `base > 0`, `ceiling <= 0` | `ceiling`, unchanged, at every attempt — unchanged from D2 |
@@ -960,6 +978,39 @@ non-decrease and ceiling clauses were swept the same way across factors from `1`
 of attempts with no violation found [measured fc5e6dd · the same probe · `go run .` →
 `monotonicity/positivity/ceiling sweep done (violations printed above; none printed = none found)`
 over factors `1`, `1+2^-52`, `1.3`, `1.5`, `2`, `3`, `10`, `+Inf`].
+
+**Why that first row promises non-decrease and not strict increase — measured at the edges of the
+admitted input set, not at the defaults.** An earlier draft of this amendment wrote the row as
+*strictly increasing until the ceiling*, on the reasoning that the owner's `> 1` start-up rule buys
+growth the doubling-only version could not state. It does not, and the refutation is inside the
+inputs the readers admit rather than outside them. The float→`time.Duration` conversion truncates to
+a whole nanosecond, so a ramp whose step is smaller than that stands still: at `base = 500ms`,
+`ceiling = 30s` and a `factor` of the smallest float64 above `1` — the transport's own shipped
+defaults, and a factor `ValidFactor` accepts by definition — the ramp returns `500ms` unchanged from
+the zeroth attempt through a millionth, and at `base = 1ns` with `factor = 1.3` it returns
+`1ns, 1ns, 1ns, 2ns, 2ns, 3ns` before it starts moving every step
+[measured 515f03d · a probe module under `tmp/` carrying the float form and the normalisation order
+specified above · `go run .` → `base=500ms ceiling=30s factor=1+2^-52 attempts 0..9: [500ms 500ms
+500ms 500ms 500ms 500ms 500ms 500ms 500ms 500ms]`, `1000000->500ms`, and `base=1ns ceiling=30s
+factor=1.3 attempts 0..9: [1ns 1ns 1ns 2ns 2ns 3ns 4ns 6ns 8ns 10ns]`]. Both bases reach
+configuration: the duration readers refuse only a non-positive value
+[measured 515f03d:internal/config/transport.go:223-233 · `sed -n '223,233p'
+internal/config/transport.go` → `func lookupPositiveDuration(lookup Lookup, key string)
+(time.Duration, bool, error) {` … `if err != nil || d <= 0 {`], and `ValidFactor` refuses only a
+factor that is not finite and above `1`.
+
+What is true, and what this design states instead, is D2's clause plus one sufficient condition:
+the sequence never decreases, and where one step of the ramp is at least a nanosecond the next
+attempt's delay is strictly larger. Both were swept over bases from `1ns` to `1h`, ceilings from
+`1ns` to `math.MaxInt64`, factors from the smallest float64 above `1` through `math.MaxFloat64` and
+`+Inf`, and a run of attempts from the zeroth
+[measured 515f03d · the same probe · `go run .` → `non-decrease/positivity/ceiling sweep over the
+admitted domain: no violation found`, `float step >= 1ns => strict increase: no counterexample
+found`, and `float step < 1ns: rows that returned the SAME delay at the next attempt exist`]. The
+ceiling is not out of reach at that flattest edge either — it is simply reached at attempt indices no
+retry loop visits [measured 515f03d · the same probe · `go run .` → at `base=500ms ceiling=30s
+factor=1+2^-52`, `MaxInt attempt: 30s`]. Nothing downstream wanted the stronger reading: AC23 asks
+for a delay that does not shrink, which is exactly the clause kept.
 
 **The amendment has its own call-site invariance hole, and it gets its own gate.** KD-31's recorded
 lesson is that a shipped suite can be invariant to what a call site passes; this amendment reopens
@@ -1014,8 +1065,15 @@ statement [measured fc5e6dd:ai-docs/key-decisions.md:83 · `grep -n 'KD-31' ai-d
 the ceiling *before* the doubling`]. Row 16 amends it in place in the shape KD-12 already uses for a
 later concretisation — a marked amendment clause inside the entry, not a rewritten history — recording
 the configurable factor, its default, the new signatures, the clamp's move to the conversion boundary,
-the `> 1` start-up rule, and the strengthening measured above. **KD-27** enumerates each scope's
-optional-with-default key set by name and by count, so a new key per scope falsifies its enumerations
+the `> 1` start-up rule, and the one thing the amendment makes *more* true rather than merely
+different — the no-wrap guarantee now holds at a ceiling the shipped loop could not reach, where that
+loop returned a negative delay at one attempt and `0` past it (measured above). KD-31's **growth**
+wording is not strengthened and must not be rewritten as though it were: the amended entry says
+*never decreases*, the same clause the shipped package states, for the reason the contract table's
+first row now records.
+
+**KD-27** enumerates each scope's optional-with-default key set by name and by count, so a new key
+per scope falsifies its enumerations
 [measured fc5e6dd:ai-docs/key-decisions.md:73 · `grep -n 'KD-27' ai-docs/key-decisions.md` → the entry
 naming the `LAB_GAME_TG_*`, `LAB_GAME_SCHEDULER_*` and `LAB_GAME_INGEST_*` sets with a spelled-out
 count for each]; the same holds for `ai-docs/context.md`'s inventory sentence, which spells the
@@ -1027,6 +1085,15 @@ scheduler's and the ingestion loop's tuning-key counts
 internal/config/ingest.go:22 · `grep -n 'returns the .* tuning variables' internal/config/*.go` →
 `returns the six scheduler tuning variables`, `returns the thirteen transport tuning variables`,
 `returns the six ingest tuning variables`], which row 14 owns because they sit in the files it edits.
+Three claims of the same class sit in code rather than in the decision record, and belong on this
+checklist for the same reason: the `RetryMaxDelay` doc comment on `config.Transport`,
+`config.Scheduler` and `config.Ingest` each says the ceiling caps the backoff scale's *doubling*,
+which stops being true the moment a factor other than `2` is configurable
+[measured 515f03d:internal/config/transport.go:105, internal/config/scheduler.go:59 and
+internal/config/ingest.go:67 · `grep -rn 'doubling' internal/config/*.go` → `// RetryMaxDelay caps
+the backoff scale's doubling` at each]. Row 14 owns the edit, because those three files are already
+its own; the checklist names them so the propagation stays a checklist rather than a re-derivation.
+
 `docs/DESIGN.md` needs nothing, and is not this task's to edit in any case: its transport clause names
 exponential backoff without fixing a factor for it
 [measured fc5e6dd:docs/DESIGN.md:303 · `grep -n 'backoff' docs/DESIGN.md` → one hit, reading
@@ -1061,8 +1128,8 @@ exponential backoff without fixing a factor for it
 | 11 | Guard tests: no `panic(`/`log.Fatal`/`os.Exit` in the package's non-test source, no metrics-library import, the `telego.Update` field-vs-kind-table drift check, and the structural source walks § Test Design specifies — AC2's ctx-first walk with D9's riding-context clauses, AC8's no-transaction-handed-out walk, and AC38's no-second-Bot-API-path walk | `internal/ingest/guards_test.go` | 6, 9, 10 |
 | 12 | Propagation: the layout paragraph and the code inventory in `ai-docs/context.md`; the allowlist and sanitisation bullets in `ai-docs/domain-invariants.md` — the player carve-out, the cache-invalidation obligation, D18's no-outbound-call-on-an-uncommitted-row obligation, and the concrete §12.5 targets this task creates per D14 (reset `ingest_offset`, which is what the existing «reset the updates offset» clause now names; rewrite `ingest_dead_update`'s chat id; blank its `last_error` free text); the new Key-Decision entries; the `INDEX.md` row. **`ai-docs/context-status.md` is written for this task, and not by this subtask** — spec *Technical constraints* item 8 names it among the propagation class, and it receives its entry the way it receives every entry: appended by `/task` Step 9.5 after implementation, since it is that step's own append-only per-task log [measured 07e5177:ai-docs/context-status.md:3 · `sed -n '3p' ai-docs/context-status.md` → `The detailed, append-only implementation log: one entry per completed task … Written by /task Step 9.5, read on demand when touching the area an entry covers.`]. This row therefore leaves that append to Step 9.5 rather than duplicating it here, and touches none of the file's past entries — the same standing `AGENTS.md` § Propagation Rule step 4 gives `ai-docs/learnings.md` and `ai-docs/plans/done/**`, which it says to leave untouched. AC32's class is satisfied by that division of labour, not by an exclusion from the class | `ai-docs/context.md`, `ai-docs/domain-invariants.md`, `ai-docs/key-decisions.md`, `ai-docs/plans/INDEX.md` | 1–11 |
 | 13 | **The two shared names, with no signature change yet**, so the module stays green at this step: `internal/backoff` exports `DefaultFactor` — the named constant D20 lifts the hard-coded `2` into, documented as the value that reproduces the shipped ramp exactly — and `ValidFactor`, the single definition of the legal-factor boundary (finite and strictly greater than `1`) that row 14's reader and row 15's constructors all call instead of each restating it (D20's `≥ 3`-site argument). The package comment gains the boundary sentence, and each new exported name carries the doc comment starting with its own name that `revive`'s `exported` rule requires [measured fc5e6dd:.golangci.yml:45-48 · `sed -n '45,48p' .golangci.yml` → `revive:` / `rules:` / `- name: exported` / `- name: package-comments`]; the tests pin `DefaultFactor`'s value and `ValidFactor`'s answers, the `NaN`, `±Inf` and exactly-`1` rows included | `internal/backoff/backoff.go`, `internal/backoff/backoff_test.go` | — |
-| 14 | The configuration surface (D20): `LAB_GAME_TG_RETRY_FACTOR`, `LAB_GAME_SCHEDULER_RETRY_FACTOR` and `LAB_GAME_INGEST_RETRY_FACTOR`, each declared last in its scope's retry family and appended to that scope's `*EnvKeys()` in declaration order; a `RetryFactor float64` field on `config.Transport`, `config.Scheduler` and `config.Ingest`, each defaulting to `backoff.DefaultFactor` — which gives `internal/config` its first import of another package in this module, in the one direction that cannot cycle (D20); a `lookupFactor` helper beside `lookupPositiveInt` and `lookupPositiveDuration`, same `(value, present, error)` shape and same unconditional query, refusing anything `ValidFactor` refuses with a `*KeyError` naming the key; one `.env.example` line per key carrying its default as the value, because the disjointness test asserts set equality between that file, `EnvKeys()` and the keys the loader actually consulted; and the count-bearing `*EnvKeys()` doc comments in the files this row already edits. `defaultIngest`'s worst-case-stall arithmetic gains its "under the default factor" qualifier, because that sum is now conditional on a configured value | `internal/config/transport.go`, `internal/config/scheduler.go`, `internal/config/ingest.go`, their `_test.go` files, `.env.example` | 13 |
-| 15 | **The signature change and every call site in one step, because Go admits no intermediate state that compiles** — and because a second, factor-taking entry point beside the current one is exactly the two-APIs-side-by-side row `AGENTS.md` § API Stability deletes (D20). `Exponential` and `EqualJitter` gain `factor float64` after `ceiling` (`jitter` stays last) and are re-expressed over `math.Pow`, with the clamp as the last step before the float→`time.Duration` conversion and the `NaN` case guarded by an explicit `math.IsNaN` test; the package comment states D20's contract table in full. Each adopter's constructor gains its factor check **last in its existing chain**, so every shipped invalid-config row still fails naming its own field; each production call site — `internal/tg/caller.go`'s retry wait, `internal/scheduler/settle.go`'s two persisted-`run_at` computations, `internal/ingest/attempt.go`'s between-attempt delay — passes **its own `cfg.RetryFactor`**, never `backoff.DefaultFactor`; each package's test config builder and each invalid-config table row gains a legal factor; and each *direct* test call passes a literal `2` rather than `DefaultFactor`, so a later default move cannot silently carry a pinned table with it. Every pre-existing assertion and expected value stays byte-identical — the argument list is the only thing that moves — and the literal one-based ramps in `failure_test.go` and `deadline_test.go` are untouched, still literal, still at the default. `internal/backoff`'s table gains D20's factor rows, and each adopter gains D20's non-default-factor scenario as a **new** test function beside the shipped ones, never as an edit to one | `internal/backoff/backoff.go`, `internal/backoff/backoff_test.go`, `internal/tg/client.go`, `internal/tg/caller.go`, `internal/tg/client_test.go`, `internal/tg/retry_test.go`, `internal/scheduler/worker.go`, `internal/scheduler/settle.go`, `internal/scheduler/worker_test.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go`, `internal/ingest/loop.go`, `internal/ingest/attempt.go`, `internal/ingest/loop_test.go`, `internal/ingest/retry_test.go` | 13, 14 |
+| 14 | The configuration surface (D20): `LAB_GAME_TG_RETRY_FACTOR`, `LAB_GAME_SCHEDULER_RETRY_FACTOR` and `LAB_GAME_INGEST_RETRY_FACTOR`, each declared last in its scope's retry family and appended to that scope's `*EnvKeys()` in declaration order; a `RetryFactor float64` field on `config.Transport`, `config.Scheduler` and `config.Ingest`, each defaulting to `backoff.DefaultFactor` — which gives `internal/config` its first import of another package in this module, in the one direction that cannot cycle (D20); a `lookupFactor` helper beside `lookupPositiveInt` and `lookupPositiveDuration`, same `(value, present, error)` shape and same unconditional query, refusing anything `ValidFactor` refuses with a `*KeyError` naming the key; one `.env.example` line per key carrying its default as the value, because the disjointness test asserts set equality between that file, `EnvKeys()` and the keys the loader actually consulted; and the count-bearing `*EnvKeys()` doc comments in the files this row already edits. `defaultIngest`'s worst-case-stall arithmetic gains its "under the default factor" qualifier, because that sum is now conditional on a configured value. **Three live `RetryMaxDelay` doc comments in the same three files say the ramp *doubles*, which is false at any non-default factor**, and this row rewrites each to name the configured factor instead [measured 515f03d:internal/config/transport.go:105, internal/config/scheduler.go:59 and internal/config/ingest.go:67 · `grep -rn 'doubling' internal/config/*.go` → `RetryMaxDelay caps the backoff scale's doubling` at each] | `internal/config/transport.go`, `internal/config/scheduler.go`, `internal/config/ingest.go`, their `_test.go` files, `.env.example` | 13 |
+| 15 | **The signature change and every call site in one step, because Go admits no intermediate state that compiles** — and because a second, factor-taking entry point beside the current one is exactly the two-APIs-side-by-side row `AGENTS.md` § API Stability deletes (D20). `Exponential` and `EqualJitter` gain `factor float64` after `ceiling` (`jitter` stays last) and are re-expressed over `math.Pow`, with the clamp as the last step before the float→`time.Duration` conversion and the `NaN` case guarded by an explicit `math.IsNaN` test; the package comment states D20's contract table in full. Each adopter's constructor gains its factor check **last in its existing chain**, so every shipped invalid-config row still fails naming its own field; each production call site — `internal/tg/caller.go`'s retry wait, `internal/scheduler/settle.go`'s two persisted-`run_at` computations, `internal/ingest/attempt.go`'s between-attempt delay — passes **its own `cfg.RetryFactor`**, never `backoff.DefaultFactor`; each package's test config builder and each invalid-config table row gains a legal factor; and each *direct* test call passes a literal `2` rather than `DefaultFactor`, so a later default move cannot silently carry a pinned table with it. Every pre-existing assertion and expected value stays byte-identical — the argument list is the only thing that moves — and the literal one-based ramps in `failure_test.go` and `deadline_test.go` are untouched, still literal, still at the default. `internal/backoff`'s table gains D20's factor rows, and each adopter gains D20's non-default-factor scenario as a **new** test function beside the shipped ones, never as an edit to one. **A constructor's factor check reds every *inline* config literal too, not only the test config builders**, so this row's Files carry `internal/ingest/gate_test.go`, whose `tg.New` call builds its `config.Transport` as a literal in place rather than through a builder [measured 515f03d:internal/ingest/gate_test.go:227-238 · `sed -n '227,238p' internal/ingest/gate_test.go` → `client, err := tg.New(tg.Options{` … `Transport: config.Transport{` / `RetryMaxAttempts: 1,` / `RetryBaseDelay:   time.Millisecond,` / `RetryMaxDelay:    time.Millisecond,` / `AttemptTimeout:   5 * time.Second,`]. As in row 2, **the listed sites are a floor enumerated by `rg`, not a closed set**: `make verify` is re-run after they clear, and a newly revealed site is surfaced to the orchestrator, not absorbed | `internal/backoff/backoff.go`, `internal/backoff/backoff_test.go`, `internal/tg/client.go`, `internal/tg/caller.go`, `internal/tg/client_test.go`, `internal/tg/retry_test.go`, `internal/scheduler/worker.go`, `internal/scheduler/settle.go`, `internal/scheduler/worker_test.go`, `internal/scheduler/cadence_test.go`, `internal/scheduler/failure_test.go`, `internal/ingest/loop.go`, `internal/ingest/attempt.go`, `internal/ingest/loop_test.go`, `internal/ingest/retry_test.go`, `internal/ingest/gate_test.go` | 13, 14 |
 | 16 | Propagation of the amendment: KD-31's amendment clause, KD-27's per-scope key enumeration, and `ai-docs/context.md`'s layout and inventory sentences — D20's closing paragraph names each claim that goes stale and what it becomes. `ai-docs/context-status.md` is appended by `/task` Step 9.5 exactly as before, not by this row, and none of its past entries is touched | `ai-docs/key-decisions.md`, `ai-docs/context.md` | 13–15 |
 
 ## Handoff plan
@@ -1757,7 +1824,9 @@ row 2 are edited)
   would notice it moving; `ValidFactor` true for `2`, for `1.3`, for the smallest float64 strictly
   above `1` and for a large finite factor, and false for exactly `1`, for a value just below `1`, for
   `0`, for a negative, for `NaN`, for `+Inf` and for `-Inf`. Exact booleans and an exact constant —
-  no tolerance is involved anywhere in this row `[derived → D20's start-up rule]`.
+  no tolerance is involved anywhere in this row. **No monotonicity case belongs here**: the ramp's
+  arithmetic does not move until subtask 15, which is where the non-decrease case is re-run at a
+  factor that is not the default `[derived → D20's start-up rule]`.
 - Fixtures: none.
 
 **Subtask 14 — the configuration surface** (`internal/config/transport_test.go`,
@@ -1789,6 +1858,25 @@ row 2 are edited)
   "not growing"; and D2's existing out-of-domain rows re-asserted **at a non-default factor**, so the
   amendment's own claim that they keep their answers is checked rather than assumed. All exact
   `[derived → D20's contract table]`.
+- **`internal/backoff`, the growth clause — asserted as non-decrease, and deliberately not as strict
+  increase.** Subtask 1's monotonicity case is re-run at a factor that is not the default and at a
+  factor barely above `1`, asserting only that the delay never shrinks and never exceeds the ceiling.
+  A strict-increase assertion is **forbidden here**, and the reason is named so a later reader does
+  not "tighten" it: it would pass at every default this tree ships while encoding a claim D20's
+  contract table refutes at config-reachable inputs — a small base with a near-`1` factor stands
+  still for many attempts because the conversion truncates to a nanosecond. Beside it, one case that
+  pins the truncation edge itself: at a base and factor whose step is below a nanosecond, two
+  consecutive attempts return the **same** delay, asserted as equality — the row that would red if an
+  implementor rounded instead of truncating, or added a lower clamp this package does not have
+  `[derived → D20's contract table's first row]`. `internal/scheduler`'s shipped
+  `TestBackoff_strictlyGrowingUntilCeiling` keeps its name and every assertion in it under row 15's
+  byte-identical rule: its name overpromises, but what it actually asserts is already non-decrease at
+  the default factor, where every step of the ramp is at least the base and so never below the
+  nanosecond the conversion truncates to
+  `[measured 515f03d:internal/scheduler/cadence_test.go:47-63 · `sed -n '47,63p'
+  internal/scheduler/cadence_test.go` → `if cur < prev {` … `want non-decreasing`]`. Renaming it is
+  neither required by this amendment nor forbidden by it, and is a scope-boundary item to surface
+  rather than a silent edit.
 - **`internal/backoff`, overflow:** at a non-integer factor, rows at attempts far past any a
   doubling survives — including one at `math.MaxInt` — asserting **exactly** `ceiling` and strict
   positivity, never "it did not panic", because a wrapped `time.Duration` is a silent negative rather
@@ -1871,6 +1959,7 @@ Two questions the amendment raises and does **not** decide:
   `grep -n 'AC23' ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md` → `| AC23 |
   A handler error that is not a duplicate is retried, each attempt in a transaction of its own, with
   a strictly positive delay between attempts that does not shrink, up to a configured attempt cap. |`]`,
-  and the amendment only strengthens it (strictly increasing until the ceiling). So nothing in the AC
+  and the amendment neither strengthens nor weakens it — the ramp still never shrinks, and D20's
+  contract table declines the strict-increase reading AC23 never asked for. So nothing in the AC
   list is falsified and this design does not edit the spec; whether to add an AC naming the
   configurable factor and its start-up refusal is the orchestrator's call.
