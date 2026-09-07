@@ -1,6 +1,7 @@
 package backoff
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -153,6 +154,49 @@ func TestExponential_outOfDomainRows(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestDefaultFactor_isExactlyTwo pins DefaultFactor's value: every
+// behaviour-preserving claim in design D20's amendment rests on it, and
+// nothing else in this suite would notice it moving (design D20).
+func TestDefaultFactor_isExactlyTwo(t *testing.T) {
+	t.Parallel()
+
+	if DefaultFactor != 2 {
+		t.Errorf("DefaultFactor = %v, want exactly 2", DefaultFactor)
+	}
+}
+
+// TestValidFactor_exactTable pins ValidFactor's boundary: finite and
+// strictly greater than 1 (design D20, AC42, AC43).
+func TestValidFactor_exactTable(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		factor float64
+		want   bool
+	}{
+		{"default factor", 2, true},
+		{"non-integer factor", 1.3, true},
+		{"smallest float64 strictly above 1", math.Nextafter(1, 2), true},
+		{"large finite factor", 1e300, true},
+		{"exactly one", 1, false},
+		{"just below one", math.Nextafter(1, 0), false},
+		{"zero", 0, false},
+		{"negative", -1, false},
+		{"NaN", math.NaN(), false},
+		{"positive infinity", math.Inf(1), false},
+		{"negative infinity", math.Inf(-1), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ValidFactor(tc.factor); got != tc.want {
+				t.Errorf("ValidFactor(%v) = %v, want %v", tc.factor, got, tc.want)
+			}
+		})
+	}
 }
 
 // stubJitter builds a jitter func() float64 stub returning a fixed value.

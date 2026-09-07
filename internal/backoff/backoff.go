@@ -29,9 +29,34 @@
 // adopter's own constructor, or through internal/ingest's or
 // internal/config's validation — they are decided here so an
 // implementor of a future adopter does not have to guess.
+//
+// The ramp's growth factor is becoming configurable (design D20): a
+// legal factor is finite and strictly greater than 1 — see ValidFactor —
+// and DefaultFactor is the value that reproduces the doubling ramp
+// documented above exactly.
 package backoff
 
-import "time"
+import (
+	"math"
+	"time"
+)
+
+// DefaultFactor is the exponential ramp's compiled-in growth factor: the
+// value Exponential and EqualJitter used before the growth factor became
+// configurable (design D20). It reproduces the shipped doubling ramp
+// exactly, and every adopter's config default is this constant rather
+// than a re-typed literal, so the default and the shared boundary cannot
+// drift apart.
+const DefaultFactor = 2
+
+// ValidFactor reports whether factor is a legal exponential growth
+// factor: finite and strictly greater than 1. This is the single
+// definition of that boundary — every adopter's constructor and
+// internal/config's reader call it rather than each restating the
+// boundary themselves (design D20).
+func ValidFactor(factor float64) bool {
+	return !math.IsNaN(factor) && !math.IsInf(factor, 0) && factor > 1
+}
 
 // Exponential returns the delay before an attempt-th (zero-based) retry:
 // min(base*2^attempt, ceiling), clamped before the doubling that would
