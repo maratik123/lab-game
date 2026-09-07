@@ -8,13 +8,19 @@ _Updated: 2026-09-07
 **Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Amendment — Step 8 implementation, Group D complete (subtasks 13-15) — handoff to Group E (subtask 16) is next
-**last_passed_gate:** go test ./... green (whole module, incl. -race on the five touched packages), golangci-lint run/fmt -d clean, go vet clean, go build ./... clean, go mod tidy clean, make file-limits clean
+**current_step:** Amendment — Group D complete, Group E pending
+**last_passed_gate:** go test -count=1 ./... + golangci-lint run | 2026-09-07T15:55:14Z | 29f4c1dd5bafaa636dcfa05157dcd8926b65de0c
 **entry_args:** 22
 
 ## Next action
 
-**Do this immediately:** Step 12 — finalise `INDEX.md`, move the spec and design to `done/`, propagate the inbox, append the task-run record, commit, push, retire the state files, open the PR, then fill the `#TBD-at-Step-12` locator in `ai-docs/context-status.md`.
+**Do this immediately:** do subtask 16, the amendment's propagation sweep. It is the whole of Group E and it is terminal.
+
+**Design:** `ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.design.md` — read § Decomposition row 16 and D20's closing checklist in full. Three files, and the two treatments are deliberately different: `ai-docs/key-decisions.md` **updates** its enumeration (KD-31's ramp description and signatures, KD-27's per-scope key counts) because a decision record sits outside the no-tally rule; `ai-docs/context.md` and `ai-docs/context-status.md` **strike** their tallies rather than raising them (`.claude/skills/task/SKILL.md:178` — "name the things, do not tally them"). Writing "seven" in the latter two re-commits the falsehood at the next key.
+
+**The specific sentence in `context-status.md`** is line 147's *What landed* bullet in this PR's own entry, reading "the six `LAB_GAME_INGEST_*` tuning keys". `context.md:43` carries the same shape twice, for `LAB_GAME_SCHEDULER_*` and `LAB_GAME_INGEST_*`.
+
+**A diff that REMOVES a name has a wider doc surface than one that adds** (`AGENTS.md` § Propagation Rule step 4): this amendment deletes no exported name, but it does falsify every live claim that the ramp doubles. Sweep for that class, not only for the sites the design lists.
 
 ## Subtasks
 
@@ -428,6 +434,7 @@ when it decided that kind carries no date, so the narrow rule is a decision, not
 
 - Step 1: round opened; one unresolved review thread, no issue-style comments, one COMMENTED review with an empty body.
 - Step 2: classification **paused** — the thread mixes a code change with a design question, which is a documented pause trigger. Blast radius measured before asking rather than estimated: production call sites in `internal/backoff/backoff.go`, `internal/scheduler/settle.go` (two), `internal/tg/caller.go`, `internal/ingest/attempt.go`; five test files pin ramp values (`backoff_test.go`, `retry_test.go`, `cadence_test.go`, `failure_test.go`, `deadline_test.go`); three doc surfaces assert the doubling (`key-decisions.md` KD-31, the design doc, `context-status.md`).
+- Amendment (Group D): the orchestrator re-ran the defect the amendment exists to catch — `cfg.RetryFactor` replaced by `backoff.DefaultFactor` at ONE of the two `settle.go` call sites (the drain settlement, line 143) over a `cp` backup. `TestDeadline_nonDefaultFactorReachesTheCallSite` went RED naming the factor-3 expectation. Before the amendment that same mis-thread shipped with the whole suite green, because both literal ramps run at the default.
 - Amendment: design-review reached GO at round 12 after four writer rounds (6, 7, 9, 11) and four review rounds (6, 8, 10, 12). Two owner decisions shaped it: the default stays 2 (so behaviour holds and no pinned ramp value moves), and a configured factor must be strictly greater than 1. A spec amendment ran mid-cycle, adding AC39-AC43 and correcting AC27.
 - Amendment: the scenario unit for the non-default-factor gate is the **production call site**, not the adopter — `internal/scheduler` has two, in `deferredFailedStatement` and `settleFailed`, each writing a persisted `run_at`. One-per-adopter would have left the drain path ungated with the whole suite green.
 - Amendment: the owner approved **five** design-defined groups over the default maximum of four (handoff-grouping (h) makes an overflow the owner's call, never the design's). The arithmetic overflow is across the task's whole life; the amendment's own live count is two — one code group, one docs group — and the three earlier groups are finished and will not run again.
