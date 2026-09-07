@@ -8,8 +8,8 @@ _Updated: 2026-09-07
 **Last build:** PASS
 **Issue:** #22
 **Spec:** ai-docs/plans/2026-09-06-update-ingestion-dispatch-idempotency.spec.md
-**current_step:** Amendment — Step 7 design-review (round 6)
-**last_passed_gate:** make verify | 2026-09-07T12:08:06Z | 8cde1555b98a1edb160ec32c0fe152913a059d20
+**current_step:** Amendment — Step 8 implementation (Groups D and E)
+**last_passed_gate:** design-review GO (round 12) + notes folded in | 2026-09-07T15:29:16Z | 4ee9cf262103f54dc08bf37f33abb6d257b47313
 **entry_args:** 22
 
 ## Next action
@@ -421,6 +421,8 @@ when it decided that kind carries no date, so the narrow rule is a decision, not
 
 - Step 1: round opened; one unresolved review thread, no issue-style comments, one COMMENTED review with an empty body.
 - Step 2: classification **paused** — the thread mixes a code change with a design question, which is a documented pause trigger. Blast radius measured before asking rather than estimated: production call sites in `internal/backoff/backoff.go`, `internal/scheduler/settle.go` (two), `internal/tg/caller.go`, `internal/ingest/attempt.go`; five test files pin ramp values (`backoff_test.go`, `retry_test.go`, `cadence_test.go`, `failure_test.go`, `deadline_test.go`); three doc surfaces assert the doubling (`key-decisions.md` KD-31, the design doc, `context-status.md`).
+- Amendment: design-review reached GO at round 12 after four writer rounds (6, 7, 9, 11) and four review rounds (6, 8, 10, 12). Two owner decisions shaped it: the default stays 2 (so behaviour holds and no pinned ramp value moves), and a configured factor must be strictly greater than 1. A spec amendment ran mid-cycle, adding AC39-AC43 and correcting AC27.
+- Amendment: the scenario unit for the non-default-factor gate is the **production call site**, not the adopter — `internal/scheduler` has two, in `deferredFailedStatement` and `settleFailed`, each writing a persisted `run_at`. One-per-adopter would have left the drain path ungated with the whole suite green.
 - Amendment: the owner approved **five** design-defined groups over the default maximum of four (handoff-grouping (h) makes an overflow the owner's call, never the design's). The arithmetic overflow is across the task's whole life; the amendment's own live count is two — one code group, one docs group — and the three earlier groups are finished and will not run again.
 - Amendment: `design-writer` refuted a premise the orchestrator put in its prompt without running it — `math.Pow(1.3, 1000)` is finite (`8.78e+113`), not `+Inf`; the int64 wrap comes from the **conversion**. Confirmed on the orchestrator's own probe, which also showed the **shipped** integer ramp returning `-2562047h47m16s` at attempt 63 and `0s` beyond when the ceiling is out of reach — a direct contradiction of the package comment's no-wrap clause, shipped past five design-review and four self-review rounds because every probe used a reachable ceiling. The amendment fixes it in passing. Logged at `4ddff17`.
 - Step 3 (owner's routing): the owner **narrowed the request** rather than accepting or refusing it — the exponent base becomes a named default constant and a configurable value, but **the default stays 2**. Behaviour is therefore preserved, D2's behaviour-preserving property survives, and every pinned ramp value in the five test files stays valid; 1.3 becomes an operator config choice later. The round still routes through a design amendment, because KD-31 and D2 assert the doubling as a property rather than as a default. Reopened on this branch via the state-file round trip rather than as a fresh `/task` branch, per the owner's answer.
