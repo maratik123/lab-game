@@ -5,11 +5,11 @@ _Updated: 2026-09-08 09:41_
 
 **Branch:** chore/2026-09-08-comment-reference-ban
 **base_commit:** f1bc60fdc29f78133452a41ff7a8b1d0f070e577
-**Last build:** not run
+**Last build:** PASS
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group A subtask 10 of 10 complete — GROUP A DONE
-**last_passed_gate:** golangci-lint run; make shellcheck; actionlint; go test ./...; coverage ratchet holds
+**current_step:** Step 8 — Group A complete (subtasks 1-10), verified by the orchestrator; Group B next
+**last_passed_gate:** golangci-lint run | 2026-09-08T10:54:43Z | fc38ee4
 **entry_args:** 68
 
 ## Next action
@@ -74,6 +74,8 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 10 — the group's own completion condition**: since no permanent regression suite exists yet for the dispatcher (that lands in Group B's subtask 13), the design requires the dispatcher be exercised directly in a scratch repository and the probe recorded here. Built five scratch repos (`git init`, `core.hooksPath .githooks`, a real `git commit`) and drove each of D16's cases through a real commit: (1) nothing gated staged → `pre-commit: no staged path of the comment-reference gated set; gate skipped`, commit succeeds, falls through to the ratchet; (2) a staged `.go` file carrying `AC6` in a comment → the gate's own finding line printed, commit refused (exit 1); (3) a staged clean gated `.go` file → no gate output, falls through to a normal ratchet run, commit succeeds; (4) `go.mod` removed from the scratch worktree → `pre-commit: no go.mod at the worktree root; comment-reference gate skipped` printed correctly (the ratchet's own subsequent failure in that same broken worktree is expected collateral of removing `go.mod`, not a dispatcher defect); (5) `PATH` narrowed to a minimal binary set excluding `go` → `pre-commit: go not on PATH; comment-reference gate skipped` printed, and the ratchet's own identical skip fired right after it, commit succeeds. All five match the design's named behaviour exactly. Also re-ran the existing `ai-docs/scripts/test-precommit-dispatch.sh` suite unchanged against the new symlink shape — still green, confirming its `[ -x .githooks/pre-commit ]` and `grep -q 'git rev-parse --show-toplevel' .githooks/pre-commit` assertions survive a symlink target exactly as the design predicted.
 - **Subtask 10**: `make comment-refs` (the new target) was run once by hand against the whole tracked tree to confirm it invokes correctly — it exits non-zero today (found ~170 report lines, all in not-yet-swept harness scripts under `ai-docs/scripts/` and `.claude/skills/`), which is expected and does not block anything: the target is deliberately NOT added to `verify`'s prerequisite list yet, per the design's two-landing split — that wiring is subtask 15, after Group B's harness sweep.
 
+- **Step 8 Group A**: the orchestrator re-ran build, vet, test, lint and the new gate against the returned tree rather than accepting the group's summary. All green; `make comment-refs` reports only harness `*.sh` findings, which subtask 12 owns, and `SKIP .githooks/pre-commit` confirms the GO-note-1 symlink branch works.
+
 ## Key discoveries (don't re-investigate)
 
 - `go.yaml.in/yaml/v3` never reports a comment's own line — it reports the attached node's line, and it attaches across a blank line contrary to its own field doc. D1a's nearest-match reconciliation, with `UNRECONCILED ⇒ exit 2`, is the answer; an offset rule is measurably wrong on `config/balance.yaml`.
@@ -81,6 +83,8 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `pg_query_go/v6` can answer the SQL comment-span question but costs cgo; it is the named escape hatch, not a rejected-on-capability alternative.
 - Adding `mvdan.cc/sh/v3` grows `go.sum` by its own test-dep checksums and normalises the `go` directive `1.26` → `1.26.0`, because that dependency's own `go.mod` declares `1.26.0`.
 - No script in this corpus resolves its own location — every one that resolves anything resolves the repo root via `git rev-parse --show-toplevel`. That is why `--help` is copied per script rather than sourced from a library.
+
+- The gate's report names the matched fragment, not the whole reference: `scripts/test-*.sh` is reported as `repo-path: .sh`, because the `*` ends the path match. The file, line and class are all correct, so AC4 holds; the fragment is a readability question for self-review, not a classification defect.
 
 ## AC Status
 
