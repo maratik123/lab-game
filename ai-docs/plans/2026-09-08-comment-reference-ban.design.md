@@ -2,14 +2,29 @@
 
 **Issue:** #68
 **Date:** 2026-09-08
+**Revision:** round 2 — reconciled against the spec as amended at `/task` Step 7: KD-9's
+narrowing to this module's own packages, AC15's carve-out written into the criterion, and the new
+Scope item 11 / KD-18 / AC24 on CI's shellcheck coverage.
 
 ## Approach
 
 The spec asks for work that only looks like one task: a **rule**, a **machine gate** for the
 mechanically-decidable half of it, a **sweep** of every comment in the gated set, and the
 **propagation** of the rule text into every instruction file whose claim the sweep falsifies. The
-design keeps them separable, and orders them so that the gate exists before the sweep it
-scopes, and is wired into the runners only after the code-side sweep has made the tree green.
+design keeps them separable and orders them so that the gate exists before the sweep it scopes.
+
+**The ordering, and it is this round's main correction.** The gate is built first; the code-side
+sweep follows; the **pre-commit dispatcher** may land with it, because it judges only the *staged*
+paths of one commit; and the **runner wiring** — `verify`'s prerequisite and the CI job, which judge
+the whole tree — lands **last, after the harness shell sweep as well**. Every tracked `*.sh` carries
+a comment line of a banned class today: the complement of the matching set is empty
+[measured `4772d33` ·
+`comm -23 <(git ls-files '*.sh' | sort) <(git ls-files '*.sh' | xargs grep -lE '^[[:space:]]*#.*(Usage:|\.md|AC[0-9]|#[0-9]|§|ai-docs/|\.claude/|\.githooks/)' | sort)`
+→ no output, both operands non-empty]. Those scripts are swept in the instructions/harness group, so
+a `verify` that reached the gate before that group would be red across a group boundary, with CI red
+on every push in between. Round 1 wired the runners after the *code-side* sweep and said so in this
+paragraph; the code-side sweep does not reach `*.sh` outside `.githooks/`, and the sentence was
+wrong.
 
 The one genuinely hard decision is *how the gate reads a comment*. Everything else follows from it.
 
@@ -99,18 +114,38 @@ decides are the lexically unambiguous ones:
 | `url` | an `http` or `https` scheme marker |
 | `module-symbol` | `<pkg>.<Exported>` where `<pkg>` is the name of a package of this module and is **not** the scanned file's own package (its `_test` suffix stripped) |
 
+**Membership is read off the tree the gate runs against, never off this document.** The set of
+`<pkg>` names is the set of package names in the module at run time, so a package added later is
+covered without an edit here — the property the spec asks for by name.
+
+**A gated file with no Go package** — `.env.example`, a `Makefile`, a `*.sh`, a `*.yml`, a `*.sql` —
+has nothing that could be "the comment's own package", so every qualifier naming a package of this
+module is outside it and is flagged. This is the spec's own reading, and it is the motivating case:
+`.env.example`'s header names this module's config loader with a package qualifier.
+
+**A qualifier that names a package of this module *and* a third-party module at once.** `backoff`
+is both [measured `4772d33` · `ls internal/` → `backoff` among the entries;
+`grep -n 'cenkalti/backoff' go.mod` → `github.com/cenkalti/backoff/v4 v4.3.0 // indirect`]. The
+classifier resolves a qualifier against this module's package names only, so it flags `backoff.X`
+whichever package the writer meant — including the third-party one, which KD-9 would otherwise
+leave alone. The direction is deliberate: over-flagging costs a comment rewrite, under-flagging is
+the rot the ban exists to stop. A named classification case carries the decision so that a later
+reader does not quietly "fix" it into an import-set lookup (§ Open questions).
+
 The gate does **not** decide the rest of the symbol class — a bare `Type.Field`, or a
-package-qualified symbol from the standard library or a third-party module. A pattern that caught
-those would fire on `time.Duration`, `errors.Is` and `context.Context` in contract prose, which are
-the most common qualified names in this tree's comments
+package-qualified symbol from the standard library or a third-party module whose name collides with
+nothing here. A pattern that caught those would fire on `time.Duration`, `errors.Is` and
+`context.Context` in contract prose, which are the most common qualified names in this tree's
+comments
 [measured `72d5bf7` · a probe over `git ls-files '*.go'` extracting `<lower>.<Upper>` occurrences from
 comment text ranked `telego`, `errors`, `backoff`, `time`, `http`, `context` as the leading
-qualifiers]. That half of AC1 is therefore verified the way AC16 is: by review, against the diff.
-`module-symbol` is included because a project package name is unambiguous, and because a reference
-into a sibling package of this module is the rot-prone case the owner's reason names.
+qualifiers].
 
-This is a deliberate reading of AC2/AC3, and it is the one place where the design narrows an AC:
-the gate refuses a banned reference **of a class it decides**. See `## Open questions`.
+**This is not a narrowing of any acceptance criterion, and round 1's claim that it was has been
+settled the other way.** The spec's amended § *Banned reference classes* puts the bare unqualified
+name and the outside-module qualifier **outside the banned class itself**, and says in terms that
+the gate decides the class in full, which is why AC2 and AC3 do not narrow. What is left for a
+reader is AC16's own territory: a bare "see such-and-such", and narration.
 
 ### D5 — Exemptions, applied before classification
 
@@ -141,25 +176,37 @@ the shape `check-citations.sh` already models for its own high-water mark
 
 `git` is invoked with a fixed argument vector and no shell. `gosec` may still flag the subprocess;
 if it does, the suppression is a specific `//nolint:gosec` with a stated reason, which is what
-`nolintlint`'s `require-specific` and `require-explanation` settings demand
-[measured `72d5bf7:.golangci.yml:42-48` · `cat -n .golangci.yml` → `nolintlint: require-explanation: true, require-specific: true`].
+`nolintlint`'s `require-specific` and `require-explanation` settings demand, and the config's only
+`gosec` exclusion is for test files
+[measured `4772d33:.golangci.yml:42-56` · `sed -n '39,57p' .golangci.yml` →
+`nolintlint: require-explanation: true, require-specific: true`, and `exclusions.rules` naming
+`gosec` only under `path: _test\.go`].
 
-### D7 — Wiring: `Makefile`, CI, pre-commit
+Who calls the command, with which argument vector, and what happens when the toolchain is absent is
+D16.
 
-- `Makefile` gains a `comment-refs` target running the command over the whole tracked set, and
-  `verify` gains it in its prerequisite list (AC9). No skill's `allowed-tools` line needs editing —
-  the grants are wildcard
-  [measured `72d5bf7` · `grep -rno "Bash(make[^)]*)" .claude/skills/*/SKILL.md .claude/agents/*.md` →
-  `Bash(make *)` in `task/SKILL.md`, `pr-ci-failed/SKILL.md`, `project-review/SKILL.md` and their siblings].
-- `.github/workflows/ci.yml` gains a **new filter key** naming every path class the gate covers —
-  the Go, shell, SQL, YAML, `Makefile`, `.gitignore`, `.env.example` and `.githooks/**` classes —
-  and a **new job** gated on it that sets up Go and runs `make comment-refs` (AC3). Neither existing
-  filter key covers the set: the `go` key does not name `**/*.sh` and the `harness` key does not name
-  `**/*.go`, and **neither names `.githooks/**`**
-  [measured `72d5bf7:.github/workflows/ci.yml:37-61` · `cat -n .github/workflows/ci.yml`].
-- `.githooks/pre-commit` becomes a symbolic link to a new `.githooks/pre-commit.sh` in the same
-  directory (D8), and the dispatcher runs the reference gate over the staged set before `exec`ing
-  the ratchet.
+### D7 — Wiring: `Makefile`, CI, pre-commit — in two landings, not one
+
+The wiring splits by what it judges, and the split is what keeps the tree green across the whole
+task (§ Approach):
+
+**Landing one, with the code-side sweep.** `Makefile` gains a `comment-refs` target running the
+command over the whole tracked set, and `.githooks/pre-commit` becomes a symbolic link to a new
+`.githooks/pre-commit.sh` that runs the reference gate over the staged set before `exec`ing the
+ratchet (D8, D16). Both judge only what a commit stages, so neither can be made red by a file no
+commit touches. Having the target exist early also gives the instructions/harness group a real
+command to cite and to run over its own sweep.
+
+**Landing two, last of all.** `verify` gains `comment-refs` in its prerequisite list (AC9), and
+`.github/workflows/ci.yml` gains a **new filter key** naming every path class the gate covers — the
+Go, shell, SQL, YAML, `Makefile`, `.gitignore`, `.env.example` and `.githooks/**` classes — and a
+**new job** gated on it that sets up Go and runs `make comment-refs` (AC3). Neither existing filter
+key covers the set: the `go` key does not name `**/*.sh`, the `harness` key does not name `**/*.go`,
+and **neither names `.githooks/**`**
+[measured `4772d33:.github/workflows/ci.yml:37-61` · `sed -n '37,61p' .github/workflows/ci.yml`].
+No skill's `allowed-tools` line needs editing for the new target — the grants are wildcard
+[measured `72d5bf7` · `grep -rno "Bash(make[^)]*)" .claude/skills/*/SKILL.md .claude/agents/*.md` →
+`Bash(make *)` in `task/SKILL.md`, `pr-ci-failed/SKILL.md`, `project-review/SKILL.md` and their siblings].
 
 ### D8 — The pre-commit dispatcher, and why it must be able to do nothing
 
@@ -175,16 +222,24 @@ Both assertions survive a symlink, because `grep` and `[ -x ]` follow one.
 That suite builds a throwaway repository by copying `.githooks` into a sandbox, and `cp -r`
 preserves a symlink on this toolchain
 [measured · scratch probe, a directory holding `real.sh` and a symlink to it, `cp -r` → the copy
-lists `link -> real.sh`]. So the sandbox inherits the new shape. But the sandbox has **no Go module
-and no gated path staged**, and a dispatcher that unconditionally ran the gate there would refuse
-every fixture commit and turn that suite red. The dispatcher therefore runs the gate only when
-there is at least one staged gated path **and** the repository root carries a `go.mod`; otherwise it
-says so on stderr and moves on — the same loud-skip direction the ratchet takes when `go` is
-missing.
+lists `link -> real.sh`]. So the sandbox inherits the new shape. But that sandbox has no Go module
+and stages no gated path, and a dispatcher that unconditionally ran the gate there would refuse
+every fixture commit and turn the suite red. The dispatcher therefore has named skip conditions and
+prints each one — D16 states them, and states the seam that lets the suite exercise a real refusal
+anyway.
 
 ### D9 — One `--help` shape, applied identically (KD-17, AC19)
 
-Placed immediately after the `set` line, before any other work, so `--help` can have no side effect:
+**The property AC19 is about is that nothing happens before `--help` is answered**: no file
+written, no `git` invoked, no measurement taken. Round 1 prescribed a *position* — immediately after
+the `set` line — and then carved out the one script that cannot take it, which made the rule
+contradict its own exception. The property replaces the position:
+
+- a script with no argument handling yet gains the `case` below, immediately after the `set` line;
+- a script that already parses an argument extends that existing site — `coverage-ratchet.sh` reads
+  a mode there
+  [measured `4772d33:.githooks/coverage-ratchet.sh:60` · `grep -n '^mode=' .githooks/coverage-ratchet.sh`
+  → `mode=${1:-raise}`], preceded only by constant assignments, which are not side effects.
 
 ```bash
 usage() {
@@ -204,10 +259,9 @@ printing the same `usage` to stderr and exiting non-zero. `doc-edit-guard.sh` ne
 rather than a smaller edit, because its present `usage` reads its own comment block back out of the
 file — an implementation the sweep destroys
 [measured `72d5bf7:ai-docs/scripts/doc-edit-guard.sh:36` · `sed -n '1,45p' ai-docs/scripts/doc-edit-guard.sh` →
-`usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }`]. `coverage-ratchet.sh` already
-parses `--check`, so it extends a `case` rather than introducing one.
+`usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }`].
 
-The fixed line `  -h|--help) usage; exit 0 ;;` is the shape marker a verifier greps for.
+The fixed line `  -h|--help) usage; exit 0 ;;` is the shape marker the checker of D10 greps for.
 
 ### D10 — The `--help` membership set is derived twice, from two different trees
 
@@ -216,18 +270,30 @@ after the sweep no comment carries any, so the criterion is unavailable in the p
 `[derived → AC20]`. Therefore:
 
 - the sweep and the Step-9 verifier each derive the set from the **merge base with `main`**
-  (`git show <base>:<path>`), never from a list in this document, exactly as the spec requires;
-- what survives forward is a new guard suite (`ai-docs/scripts/test-script-help.sh`) asserting the
-  properties that *are* checkable against any later tree: a tracked `*.sh` whose comments carry
-  usage prose must answer `--help`; every script that answers `--help` uses the D9 shape; `--help`
-  exits 0, prints a non-empty block, and runs nothing else.
+  (`git show <base>:<path>`), never from a list in this document, exactly as the spec requires.
+  AC17 and AC18 are established there, at sweep time, and are re-derivable by the same recipe;
+- what survives forward is a **checker plus its regression suite**, the pair every guard in this
+  repository is built as
+  [measured `4772d33` · `ls ai-docs/scripts` → `check-ac-shape.sh` beside `test-ac-shape.sh` and
+  `check-spec-shape.sh` beside `test-spec-shape.sh`; `ls .claude/skills/ai-audit/scripts` →
+  `check-citations.sh` beside `test-check-citations.sh`]:
+  - `ai-docs/scripts/check-script-shape.sh` asserts, over the tracked tree, the properties that hold
+    of any later tree: every script answering `--help` carries the D9 shape marker; `--help` exits 0,
+    prints a non-empty block and runs nothing else; and — AC8 — every tracked file beginning with a
+    `#!` shebang either ends in `.sh` or is a symbolic link to one.
+  - `ai-docs/scripts/test-script-shape.sh` is its regression suite, built from sandbox fixtures that
+    must each be flagged.
 
-That suite is the design's answer to the spec's third open question. `AGENTS.md` sets the bar at
+**AC8 is folded into the checker rather than left ungated.** Round 1 left it as a verifier's
+condition and listed the gap as an open question; it is one pass over `git ls-files`, over a tree the
+checker already walks, and an ungated condition over the tree is the thing that rots first.
+
+That pair is also the design's answer to the spec's third open question. `AGENTS.md` sets the bar at
 "any file with ~50+ lines of substantial logic"
 [measured `72d5bf7:AGENTS.md` § *Workflow* · `grep -n '50+ lines' AGENTS.md` →
 ``- Any file with ~50+ lines of substantial logic MUST have tests (`_test.go` beside it).``]; the
-suite clears it not by the flag's size but by the set's — the condition spans every script in the
-tree and rots the moment one is added.
+checker clears it not by the flag's size but by the set's — its conditions span every script in the
+tree and rot the moment one is added.
 
 ### D11 — What AC22 reaches, and what it does not
 
@@ -243,18 +309,27 @@ be conflated.
 ### D12 — The sweep's contract is the gate's silence, not a site count
 
 Each sweep subtask's completion condition is "`commentrefs <paths…>` reports nothing for this
-subtask's paths, and the review-judged classes (D4) are clear in the diff". No per-file site tally
-is written into this document: a tally is true for one commit, the implementor and the verifier
+subtask's paths, and the review-judged classes (D4, AC16) are clear in the diff". No per-file site
+tally is written into this document: a tally is true for one commit, the implementor and the verifier
 measure it anyway, and the gate is a better contract than a number, because it is re-runnable. The
 truncating-gate caveat in this subagent's own rules — where "N sites" is a floor because the gate
 stopped printing — is answered by the gate printing every finding and capping nothing
 `[derived → the command scenarios in § Test Design]`.
 
+**No gated path may fall between two subtasks.** The completion condition of the *last* sweep
+subtask of each group is the gate's silence over **the whole gated set minus the paths a later
+subtask owns**, not merely over the paths its own row names. A gated file that no row names — the
+Files columns are a plan, not an inventory — is therefore swept by whichever subtask's silence
+condition first reaches it, instead of surviving to the wiring subtask and turning `verify` red.
+
 Where a sentence exists only to carry a removed reference, the sentence goes with it; outside
 `config/**` and `.env.example` the fact is lost, by the owner's answer. Note that the *failure
 messages* these guard scripts print are not comments and are therefore untouched — a good deal of
 the rationale the sweep strips from `check-ac-shape.sh`'s header survives in the message it prints
-on a hit.
+on a hit
+[measured `4772d33:ai-docs/scripts/check-ac-shape.sh:103-122` · `sed -n '100,122p' ai-docs/scripts/check-ac-shape.sh`
+→ the `MSG` heredoc printed to stderr, which names the learnings-log date and the spec-writer rule
+the header also names].
 
 ### D13 — `config/**` gains prose (AC11)
 
@@ -271,23 +346,36 @@ changes.
 
 ### D14 — `.env.example` (AC12)
 
-Its per-variable prose already meets the bar. What goes is the header's package name, test path,
-markdown path and issue number
-[measured `72d5bf7:.env.example:1-16` · `cat -n .env.example`], and the per-key pointers — the
-`design D10` / `D13` / `D15` anchors and the `internal/config` and `GetUpdatesParams.Limit` symbols.
-What stays, restated in its own words (KD-15), is the file's contract: a variable the configuration
-loader does not read does not belong here. The cross-key constraint on the long-poll window stays —
-it names a sibling key of the same file, which is not outward. The key set must still match the
-loader's, which is asserted by an existing test
-[measured `72d5bf7` · `git ls-files internal/config/disjoint_test.go` → present].
+Its per-variable prose already meets the bar. What goes is the header's package name, its test path,
+its markdown path and its issue number
+[measured `72d5bf7:.env.example:1-16` · `cat -n .env.example`], the per-key `design D10` / `D13` /
+`D15` anchors, and the bare `internal/…` paths that head three of its sections. What stays, restated
+in its own words (KD-15), is the file's contract: a variable the configuration loader does not read
+does not belong here.
+
+Two things stay that round 1 listed among the deletions or left ambiguous, both corrected by the
+spec's narrowing:
+
+- **`GetUpdatesParams.Limit` survives as written.** It names a field of a third-party type, and the
+  amended spec puts it outside the banned symbol class by name
+  [measured `4772d33:.env.example` § `LAB_GAME_INGEST_BATCH_LIMIT` · `grep -n 'GetUpdatesParams' .env.example`
+  → `# GetUpdatesParams.Limit. The Bot API accepts values between 1 and 100.`]. Round 1 listed it as
+  a symbol the gate catches; that was written before the narrowing.
+- **The cross-key constraint on the long-poll window survives**, because it names a sibling key of
+  the same file, which is not outward.
+
+The key set must still match the loader's, which is asserted by an existing test that parses this
+file with the same library that would parse a real `.env`
+[measured `4772d33:internal/config/disjoint_test.go` · `grep -n 'godotenv.Read' internal/config/disjoint_test.go`
+→ `m, err := godotenv.Read(repoRootPath(t, ".env.example"))`].
 
 ### D15 — Rule text and propagation (AC13, AC14)
 
 `ai-docs/doc-convention.md` is rewritten, not retired (KD-11): § DOC-4 inverts from "cite the
 section" to the ban, carrying the banned-class table, the exemptions, the record that the narration
-half is review-judged (KD-13), and the record that shell in workflow `run:` blocks and in
-`.claude/settings.json` hook bodies obeys the rule without a gate (Scope item 7). § DOC-3 and
-§ DOC-5 stand.
+half and the bare-unqualified-name half are review-judged (KD-13, AC16), and the record that shell
+in workflow `run:` blocks and in `.claude/settings.json` hook bodies obeys the rule without a gate
+(Scope item 7). § DOC-3 and § DOC-5 stand.
 
 The propagation class is not bounded by any list, and the design does not pretend otherwise: the
 sweep runs `grep -rni` over `.claude/`, `AGENTS.md`, `ai-docs/` for each changed claim, per
@@ -307,19 +395,95 @@ the sites that make a
 claim about a comment the sweep rewrites (`AGENTS.md` § *Build & Test* on the ratchet header,
 `ai-docs/code-style.md` § *Linter posture* on the `Makefile` header, `ai-docs/context-status.md` on
 `.env.example`'s header), the sites naming `.githooks/pre-commit` as a regular file
-(`.claude/skills/task/reference.md` § Step 2, `AGENTS.md` § *Build & Test*), and the declared sync
-groups a new gate command and a new CI job trip (`ai-docs/propagation-groups.md` — the Review group,
-the gate-command row, the `/task` verify-list row, the CI group's per-class reproducer tables, and
-the `ci.yml`-job row; plus the generic obligation to update `ai-docs/claude-tools-hierarchy.md` for
-a new tool contract).
+(`.claude/skills/task/reference.md` § Step 2, `AGENTS.md` § *Build & Test*), the `AGENTS.md`
+§ *Build & Test* claim about what CI shellchecks, which D17 makes true rather than edits away, and
+the declared sync groups a new gate command and a new CI job trip (`ai-docs/propagation-groups.md` —
+the Review group, the gate-command row, the `/task` verify-list row, the CI group's per-class
+reproducer tables, and the `ci.yml`-job row; plus the generic obligation to update
+`ai-docs/claude-tools-hierarchy.md` for a new tool contract).
 
 One tension worth naming, because a reader will otherwise re-open it: the `…Unchecked` AXIOM
-requires a doc comment to name the guarantor, and a guarantor in another package cannot be named
-under the ban. The spec settles this — KD-9 and § *Source conflicts* item 4 keep both sections
-unchanged — and it is not live today, because the tree holds no such function
+requires a doc comment to name the guarantor, and a guarantor in another package of this module
+cannot be named under the ban. The spec settles this — KD-9 and § *Source conflicts* item 4 keep both
+sections unchanged — and it is not live today, because the tree holds no such function
 [measured `72d5bf7` · `ast-index search "Unchecked"` → `No results found`; `git ls-files '*.go' | xargs grep -n Unchecked` → no output].
 The design records the reading rather than reopening it: where a future guarantor is cross-package,
 the comment states the precondition and describes the guarantor without a package-qualified symbol.
+
+### D16 — How the dispatcher invokes the gate, and the seam that lets its suite see a real refusal
+
+Round 1 left the invocation unstated and the guard conditions unsatisfiable in the one place that
+asserts them. Both are settled here.
+
+**The invocation.** `.githooks/pre-commit.sh` runs `go run ./cmd/commentrefs --staged` from the
+worktree root it already resolves. Not a `$PATH` lookup and not a pre-built binary: a stale binary is
+a gate reporting on code that is not the code being committed, and `go run ./cmd/…` is the form this
+project already documents for its own commands
+[measured `4772d33:AGENTS.md` § *Build & Test* · `grep -n 'go run ./cmd/bot' AGENTS.md` →
+`go run ./cmd/bot   # run the bot …`].
+
+**Three named skip conditions, each printed to stderr**, in the loud-skip direction the ratchet
+already takes for a missing toolchain: no staged path of the gated set; no `go.mod` at the worktree
+root; no `go` on `$PATH`. A skip prints its reason and returns 0. A gate that ran returns its own
+status, and the dispatcher exits with it *before* reaching the ratchet — exit 2 (instrument failure,
+D6) refuses the commit exactly as exit 1 does, because an instrument that could not run is not a
+clean tree.
+
+**The seam.** The dispatch suite's sandbox becomes a repository that satisfies the first two
+conditions on its own terms: it writes an **untracked** `go.mod` and an **untracked**
+`cmd/commentrefs/main.go` whose exit status a fixture file controls and which records its argument
+vector in a marker file. Untracked matters twice — nothing about the stub is ever staged, so the
+coverage ratchet keeps taking its "nothing that can move coverage is staged" exit and the suite stays
+fast, and the fixtures stage a `*.sh` probe file, which is gated by KD-1 and is not a ratchet
+trigger. No production override exists: an environment variable that replaced the gate command would
+be a gate an agent can switch off, which `AGENTS.md` refuses on the same grounds as `--no-verify`.
+
+**What this proves, and what it does not.** It exercises the dispatcher's real invocation form, its
+three skip conditions, and its exit-code propagation in both directions. It does **not** prove the
+gate's verdict — that is `cmd/commentrefs`'s own Go tests over a scratch repository (§ Test Design).
+Saying so is the point: round 1's version proved neither, silently, which is the green-instrument
+shape `AGENTS.md` § *Patterns* 2 names.
+
+The sandbox needs a Go toolchain. Locally there is one; CI's Harness-guards job sets none up — its
+steps run straight from the checkout
+[measured `4772d33:.github/workflows/ci.yml:141-153` · `sed -n '129,155p' .github/workflows/ci.yml` →
+the job's `steps:` begin with `uses: actions/checkout@v7` and the next entry is the shellcheck step].
+So the wiring subtask adds `actions/setup-go@v7` with `go-version-file: go.mod` to that job: a case
+that skips in CI is a case that does not run, and a job that did not run is not a passing job.
+
+### D17 — CI shellchecks every tracked script (KD-18, AC24)
+
+KD-18 leaves the shape to the design. Two were open; the design takes the second.
+
+- **The `Makefile` target already reaches the whole tree.** It prunes `.git` and `tmp` and
+  shellchecks every `*.sh` beneath the root, `.githooks/` included
+  [measured `4772d33:Makefile` § shellcheck target · `sed -n '/^shellcheck:/,/^$/p' Makefile` →
+  `find . -path ./.git -prune -o -path ./tmp -prune -o -name '*.sh' -exec shellcheck -s bash {} +`
+  followed by `shellcheck -s bash .githooks/pre-commit`]. CI's own step reaches two directories
+  [measured `4772d33:.github/workflows/ci.yml:153` · `grep -n "find .claude ai-docs/scripts" .github/workflows/ci.yml`
+  → `find .claude ai-docs/scripts -name '*.sh' -print0 | xargs -0 -r shellcheck -s bash`].
+- **So the Harness-guards job runs `make shellcheck`** instead of carrying its own expression.
+  Extending the CI expression would leave two spellings of one gate — the drift the `Makefile`'s own
+  header names as the reason CI invokes sub-targets
+  [measured `4772d33:Makefile:1-15` · `sed -n '1,15p' Makefile` → "CI never runs `verify` — it
+  invokes the same sub-targets from its paths-filtered jobs, so a local run and a CI run cannot
+  disagree about what any gate's command is"] — and the gap being closed is precisely what the second
+  spelling caused.
+- **The header's own carve-out goes with it.** That same block records shellcheck as a gate "CI
+  reaches by another route", because the Harness-guards job "keeps its inline step". After this
+  change actionlint is the only such gate. The `Makefile` header is a comment in a gated file that
+  the sweep rewrites anyway, so restating it belongs to the wiring subtask rather than to a separate
+  propagation row.
+- **The target's second line goes too.** `shellcheck -s bash .githooks/pre-commit` exists because
+  that file has no `.sh` extension. After the symlink, `find` reaches the content through
+  `pre-commit.sh`, and `-name '*.sh'` does not match the link's own name, so the line becomes a
+  re-check of a file already checked.
+- **The filter.** `.githooks/**` joins the `harness` filter key, which is the second half of AC24 —
+  a commit touching only that directory currently matches no filter and runs no job at all. `Makefile`
+  joins it as well, because the job's command now lives in that file; a filter key may name a path
+  that another key also names, as `.github/workflows/**` already is
+  [measured `4772d33:.github/workflows/ci.yml:37-61` · `sed -n '37,61p' .github/workflows/ci.yml` →
+  `.github/workflows/**` under both the `go` and the `workflows` keys].
 
 ## Decomposition
 
@@ -332,39 +496,43 @@ the comment states the precondition and describes the guarantor without a packag
 | 5 | Sweep `internal/store` and its migrations, and `internal/testdb` | `internal/store/*.go`, `internal/store/migrations/*.sql`, `internal/testdb/*.go` | 3 |
 | 6 | Sweep `internal/tg` and `internal/tgtest` | `internal/tg/*.go`, `internal/tgtest/*.go` | 3 |
 | 7 | Sweep `internal/ingest` and `internal/scheduler` | `internal/ingest/*.go`, `internal/scheduler/*.go` | 3 |
-| 8 | Sweep the build and runtime gated files; clean the workflow's block-scalar comments by hand (cleaned, not gated — KD-6); give `coverage-ratchet.sh` the D9 `--help` | `.golangci.yml`, `.github/workflows/ci.yml`, `Makefile`, `.gitignore`, `.githooks/coverage-ratchet.sh` | 3 |
-| 9 | `.env.example`: strip the pointers, restate the file-level contract in its own words (D14) | `.env.example` | 3 |
-| 10 | `config/balance.yaml`: English self-contained prose per leaf key, values untouched (D13) | `config/balance.yaml` | 3 |
-| 11 | Wiring: `Makefile` target + `verify`, the shellcheck target's special case removed; the CI filter key, the new job, and the new guard-suite line; `.githooks/pre-commit` → symlink, `.githooks/pre-commit.sh` dispatching gate-then-ratchet (D7, D8) | `Makefile`, `.github/workflows/ci.yml`, `.githooks/pre-commit`, `.githooks/pre-commit.sh` | 4–10 |
-| 12 | Rewrite `ai-docs/doc-convention.md` to the new rule (D15, AC13) | `ai-docs/doc-convention.md` | 11 |
-| 13 | Sweep the harness shell scripts; move usage prose behind the D9 `--help`; add the `--help` conformance suite; extend the dispatch suite for the symlink and the two-gate dispatch | `.claude/**/scripts/*.sh`, `ai-docs/scripts/*.sh`, `ai-docs/scripts/test-script-help.sh`, `ai-docs/scripts/test-precommit-dispatch.sh` | 11 |
-| 14 | Propagate the rule text across the instruction surface and the hook messages, per D15 and the `grep -rni` sweep; AC22's grammar sites; the tool-hierarchy and propagation-group rows for the new gate, job and suite | `AGENTS.md`, `ai-docs/*.md`, `.claude/agents/*.md`, `.claude/skills/**/*.md`, `.claude/settings.json` | 12, 13 |
-| 15 | Rewrite the #68 body to the reformulated rule (AC23) | issue #68 (no tracked file) | 14 |
+| 8 | Sweep the build and runtime gated files; clean the workflow's block-scalar comments by hand (cleaned, not gated — KD-6); give `coverage-ratchet.sh` the D9 `--help` | `.golangci.yml`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, `Makefile`, `.gitignore`, `.githooks/coverage-ratchet.sh` | 3 |
+| 9 | The two files that gain prose rather than lose it: `.env.example` strips its pointers and restates its file-level contract (D14); `config/balance.yaml` gets English self-contained prose per leaf key, values untouched (D13) | `.env.example`, `config/balance.yaml` | 3 |
+| 10 | Landing one of the wiring (D7): `Makefile` gains the `comment-refs` target — **not** yet a `verify` prerequisite; `.githooks/pre-commit` becomes a symlink to a new `.githooks/pre-commit.sh` dispatching gate-then-ratchet with the D16 invocation and skip conditions | `Makefile`, `.githooks/pre-commit`, `.githooks/pre-commit.sh` | 4–9 |
+| 11 | Rewrite `ai-docs/doc-convention.md` to the new rule (D15, AC13) | `ai-docs/doc-convention.md` | 10 |
+| 12 | Sweep the harness shell scripts to the gate's silence; move usage prose behind the D9 `--help` | `ai-docs/scripts/*.sh`, `.claude/skills/*/scripts/*.sh` | 10 |
+| 13 | The script-shape checker and its regression suite (D10, AC8); extend the dispatch suite with the symlink case and the D16 dispatch cases | `ai-docs/scripts/check-script-shape.sh`, `ai-docs/scripts/test-script-shape.sh`, `ai-docs/scripts/test-precommit-dispatch.sh` | 12 |
+| 14 | Propagate the rule text across the instruction surface and the hook messages, per D15 and the `grep -rni` sweep; AC22's grammar sites; the tool-hierarchy and propagation-group rows for the new gate, job, checker and suite; rewrite the #68 body to the reformulated rule (AC23) | `AGENTS.md`, `ai-docs/*.md`, `.claude/agents/*.md`, `.claude/skills/**/*.md`, `.claude/settings.json`, issue #68 | 11, 12, 13 |
+| 15 | Landing two of the wiring (D7, D17): `verify` gains `comment-refs`; the CI filter key and the `comment-refs` job; the Harness-guards job runs `make shellcheck`, gains `actions/setup-go@v7`, gains the new checker's step and the new suite's line; `.githooks/**` and `Makefile` join the `harness` filter; the `Makefile`'s `pre-commit` special case and its shellcheck carve-out note go | `Makefile`, `.github/workflows/ci.yml` | 14 |
 
 ### Which subtask owns which acceptance criterion
 
 | AC | Owned by |
 |---|---|
-| AC1 | subtasks 4–10 and 13 (the classes the gate decides, plus the review-judged symbol half of D4) |
-| AC2 | subtask 11 (the dispatcher), asserted by subtask 13's dispatch cases |
-| AC3 | subtask 11 (the filter key and the job) |
+| AC1 | subtasks 4–9 and 12 for the classes the gate decides; the bare-name half is review-judged with AC16 |
+| AC2 | subtask 10 (the dispatcher and its invocation, D16), asserted by subtask 13's dispatch cases |
+| AC3 | subtask 15 (the filter key and the job) |
 | AC4 | subtask 3 (the report format) |
 | AC5 | subtask 1 (the Go and SQL extractors) |
-| AC6 | subtasks 1–3 — the gate is run over its own package as a completion condition |
-| AC7 | subtask 11 (the symlink and the dispatcher), asserted by subtask 13 |
-| AC8 | subtask 11 makes it true; a verifier's condition over the tree, with no gate behind it (see `## Open questions`) |
-| AC9 | subtask 11 (`verify` reaches the target), held green by every subtask's own gate run |
+| AC6 | subtasks 1–3 for the Go gate, subtask 13 for the new shell guards — each run over its own files as a completion condition |
+| AC7 | subtask 10 (the symlink and the dispatcher), asserted by subtask 13 |
+| AC8 | subtask 10 makes it true; subtask 13's checker gates it (D10) |
+| AC9 | subtask 15 (`verify` reaches the target), held green by every subtask's own gate run |
 | AC10 | subtasks 4–7 — `golangci-lint run` with `revive` unchanged is what refuses a removed doc comment, so the criterion is gated, not merely reviewed |
-| AC11 | subtask 10 |
+| AC11 | subtask 9 |
 | AC12 | subtask 9 |
-| AC13 | subtask 12 |
+| AC13 | subtask 11 |
 | AC14 | subtask 14 |
-| AC15 | subtasks 4–8 and 13, under the reading in `## Open questions` |
-| AC16 | subtasks 4–10 and 13, review-judged against the diff (KD-13) |
-| AC17, AC18, AC19, AC21 | subtask 8 for `coverage-ratchet.sh`, subtask 13 for the harness scripts and the conformance suite |
-| AC20 | subtasks 8 and 13, gated by the `repo-path` class once the prose moves behind `--help` |
+| AC15 | subtasks 4–9 and 12, under the carve-out the criterion itself now carries |
+| AC16 | subtasks 4–9 and 12, review-judged against the diff (KD-13) |
+| AC17 | subtask 8 for `coverage-ratchet.sh` and subtask 12 for the harness scripts, both derived from the merge base (D10) |
+| AC18 | subtask 12, derived from the merge base (D10) |
+| AC19 | subtasks 8 and 12 write the shape; subtask 13's checker holds it forward |
+| AC20 | subtasks 8 and 12, gated by the `repo-path` class once the prose moves behind `--help` |
+| AC21 | subtasks 8 and 12; `make shellcheck` clean is part of each one's completion condition |
 | AC22 | subtask 14, under the reading in D11 |
-| AC23 | subtask 15 |
+| AC23 | subtask 14 |
+| AC24 | subtask 15 (D17) |
 
 ## Handoff plan
 
@@ -375,33 +543,41 @@ by change-type (e), the group count is minimized subject to the cap and the depe
 each group is marked with its implementor model and effort (g), and the count is within the default
 maximum of `4` (h).
 
-**Change-type assignment used here.** *Code*: `*.go`, `*.sql`, and the build and runtime artefacts
-the rule does not name — `Makefile`, `.github/**`, `.golangci.yml`, `.gitignore`, `.env.example`,
+**Change-type assignment used here.** *Code*: `*.go`, `*.sql`, `go.mod` / `go.sum`, and the build
+and runtime artefacts — `Makefile`, `.github/**`, `.golangci.yml`, `.gitignore`, `.env.example`,
 `config/**`, `.githooks/**`. *Instructions/harness*: `*.md`, `.claude/**` (its scripts and
-`settings.json` included), `ai-docs/**` (its scripts included), `AGENTS.md`.
+`settings.json` included), `ai-docs/**` (its scripts included), `AGENTS.md`, and the tracking issue's
+body. The directory rule for the last two is (e)'s own: it names `.claude/**` and `ai-docs/**` as
+instructions/harness whatever a file's extension inside them is.
 
 - **Handoff into Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
   § *Compaction recovery (re-entry)* before the first subtask, as the every-group contract requires.
 - **Group A** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
-  window — subtasks 1–3 (code change-type: `*.go`, `go.mod`, `go.sum`). The gate, built and tested
-  before anything depends on it.
+  window — subtasks 1–10 (code change-type). The gate, the code-side sweep, the `comment-refs`
+  target and the pre-commit dispatcher. At the size cap of `10`.
+  **Its own completion condition for subtask 10**, whose durable regression does not exist until
+  Group B: the dispatcher is exercised in a scratch repository in both directions — a staged gated
+  file carrying a banned reference refused, a clean one accepted, and each of D16's three skip
+  conditions printed — and the probe recorded in the progress file. Group B converts that probe into
+  the suite; the group does not close on "it looks right".
 - **Handoff after Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
   § *Compaction recovery (re-entry)*. Parent `/task` resumes in Group B with fresh context.
-- **Group B** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
-  window — subtasks 4–11 (code change-type: `*.go`, `*.sql`, `.env.example`, `config/**`,
-  `Makefile`, `.github/**`, `.githooks/**`). The code-side sweep, then the wiring, in that order:
-  wiring first would make the pre-commit gate refuse the very commits that clean the tree.
+- **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
+  (typically xHigh) — NOT pinned — via the `general-purpose` subagent with no inline `model=`,
+  1M-token window — subtasks 11–14 (instructions/harness change-type). The doc-convention rewrite,
+  the harness shell sweep and its `--help` migration, the checker and the suites, the propagation
+  sweep and the issue body.
 - **Handoff after Group B:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
   § *Compaction recovery (re-entry)*. Parent `/task` resumes in Group C with fresh context.
-- **Group C** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
-  (typically xHigh) — NOT pinned — via the `general-purpose` subagent with no inline `model=`,
-  1M-token window — subtasks 12–15 (instructions/harness change-type: `*.md`, `.claude/**`,
-  `ai-docs/**`, `AGENTS.md`, and the tracking issue's body). Terminal group (4 subtasks; within the
-  `1..=10` range).
+- **Group C** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
+  window — subtask 15 (code change-type). Terminal group (1 subtask; within the `1..=10` range).
 
-Group A and Group B are the same change-type and adjacent; they are two groups only because their
-combined size exceeds the cap of `10`, so the count is minimized. Three groups, within the default
-maximum of `4`, so no user approval is needed for the count.
+**Why the count is three and cannot be two.** Subtasks 1–10 are one group already at the cap, so
+nothing more fits in it. Subtasks 11–14 are a change-type switch. Subtask 15 switches back, and it
+cannot be folded into Group A: it is what makes the whole tree the gate's subject, and every tracked
+`*.sh` is still dirty until subtask 12 (§ Approach). It cannot join Group B either — different
+change-type. Three groups, within the default maximum of `4`, so no user approval is needed for the
+count.
 
 ## Risks
 
@@ -410,8 +586,12 @@ maximum of `4`, so no user approval is needed for the count.
   the class names and patterns live in string constants and test fixtures, never in prose, and the
   gate is run over its own package as part of the subtask's completion condition —
   `[derived → AC6]`.
-- Group C's commits are made with the pre-commit gate already wired (it lands in Group B), so a
-  half-cleaned harness script cannot be committed. That is the gate working, but it makes Group C's
+- A qualifier that names a package of this module and a third-party module at once is flagged for
+  both readings (D4). Mitigation: the direction is conservative — the escape is to write the sentence
+  without the qualifier — and a named classification case records the decision so it is changed
+  deliberately or not at all — `[derived → the classification cases in § Test Design]`.
+- Group B's commits are made with the pre-commit gate already wired (it lands in subtask 10), so a
+  half-cleaned harness script cannot be committed. That is the gate working, but it makes Group B's
   commit granularity per-file rather than per-batch. Mitigation: stated here so the implementor
   stages what it has cleaned — `[derived → AC2]`.
 - A YAML comment in a position `go.yaml.in/yaml/v3` does not attach to any node would be a silent
@@ -424,17 +604,24 @@ maximum of `4`, so no user approval is needed for the count.
   suite parses every tracked `*.sh` of the tree and asserts no parse error —
   `[derived → the shell extraction cases in § Test Design]`.
 - The dispatch suite goes green for the wrong reason once the dispatcher can legitimately skip
-  (D8): every fixture there stages `README.md` only
+  (D8, D16): every fixture there stages `README.md` only
   [measured `72d5bf7:ai-docs/scripts/test-precommit-dispatch.sh` § `commit_from` ·
   `grep -n 'README.md' ai-docs/scripts/test-precommit-dispatch.sh` → every `git add` in the file
-  names `README.md` and nothing else], so the reference gate never runs and the suite
-  would pass with the dispatcher's gate call deleted. Mitigation: the suite gains its own instrument
-  case — a sandbox commit that stages a gated file carrying a banned reference must be refused —
+  names `README.md` and nothing else], so a gate call could be deleted with the suite still passing.
+  Mitigation: the D16 seam — a stub at the real invocation path whose verdict the fixture controls,
+  a staged `*.sh` probe so the gated-path condition is met, and paired refuse/accept cases —
   `[derived → AC7 and the dispatch cases in § Test Design]`.
+- The dispatch suite's new cases need a Go toolchain and would otherwise skip everywhere it is
+  missing, CI included. Mitigation: D17's `actions/setup-go@v7` step on the Harness-guards job, and
+  the skip is loud rather than silent wherever it does fire — `[derived → AC7, AC24]`.
+- Subtask 14 writes instruction-file rows describing a `verify` prerequisite and a CI job that do not
+  exist until subtask 15. Mitigation: the `comment-refs` target lands in subtask 10 precisely so the
+  prose has a real command to cite, and subtask 15's completion condition includes that every command
+  name and job name those files now cite resolves in the tree — `[derived → AC13, AC14, AC9]`.
 - `gosec` refuses the `git` subprocess in `--staged` mode. Mitigation: fixed argument vector, no
   shell; if the finding stands, a specific `//nolint:gosec` with a reason, which is what the lint
   config requires
-  [measured `72d5bf7:.golangci.yml:42-48` · `cat -n .golangci.yml` → `nolintlint: require-explanation: true, require-specific: true`].
+  [measured `4772d33:.golangci.yml:42-44` · `sed -n '39,57p' .golangci.yml` → `nolintlint: require-explanation: true, require-specific: true`].
 - The coverage ratchet blocks the commit because the new package arrived under-covered. Mitigation:
   D2 keeps `main` thin and the logic in `internal/commentref`, and the subtasks are TDD'd — the
   legitimate exits from a ratchet block are stated in `AGENTS.md` § *Build & Test*, and `--no-verify`
@@ -443,21 +630,13 @@ maximum of `4`, so no user approval is needed for the count.
   the owner's decided cost, not a defect; it is bounded by the fact that a script's printed failure
   messages are not comments and are untouched, and by `config/**` and `.env.example` gaining prose
   instead — `[derived → AC11, AC12, AC15]`.
-- AC15 read literally forbids the wiring in subtask 11, which rewrites non-comment lines in
-  `Makefile`, `ci.yml` and the pre-commit dispatcher. Mitigation: the reading in
-  `## Open questions`, settled before Step 9 rather than at it — `[derived → AC15]`.
-- CI's Harness-guards job shellchecks only what its `find` reaches, which is not `.githooks/**`,
-  while `AGENTS.md` § *Build & Test* says "shellcheck on every script". That claim is already
-  inaccurate and the symlink makes it more load-bearing. Mitigation: surfaced as a scope-boundary
-  item in `## Open questions` rather than silently widened —
-  [measured `72d5bf7:.github/workflows/ci.yml:150-153` · `cat -n .github/workflows/ci.yml` →
-  `find .claude ai-docs/scripts -name '*.sh' -print0 | xargs -0 -r shellcheck -s bash`].
 
 ## Test Design
 
-All of it is new, so every claim here is `[derived → …]`. Go tests are table-driven subtests beside
-the code, per `ai-docs/go-test-conventions.md`; the shell suites follow the shape of the guard
-suites already in `ai-docs/scripts/`.
+All of it is new, so every claim here is `[derived → …]` except where a grammar's behaviour was
+measured before being specified. Go tests are table-driven subtests beside the code, per
+`ai-docs/go-test-conventions.md`; the shell suites follow the shape of the guard suites already in
+`ai-docs/scripts/`.
 
 **Comment extraction — `internal/commentref` (subtask 1).**
 Entry point: the per-grammar extractor and the file-class router.
@@ -475,8 +654,20 @@ Scenarios, one table per grammar, each case a source snippet as a Go string lite
   **absent**; a comment on the line introducing the block scalar asserted **present**.
 - SQL: `--` at line start and mid-line; `--` inside a single-quoted string; a `/* */` block; a goose
   annotation.
-- `Makefile`, `.gitignore`, `.env.example`: line-start and mid-line `#`; a `#` in a recipe line; an
-  escaped `\#` in `.gitignore` asserted **absent**.
+- `Makefile`: line-start and mid-line `#`; a `#` in a recipe line.
+- `.gitignore`: a line whose first character is `#` reported; a `#` **after** a pattern asserted
+  **absent**, because git takes it as part of the pattern rather than as a comment marker — a
+  `.gitignore` holding `foo # bar` does not ignore `foo`
+  [measured `4772d33` · scratch repository, `.gitignore` holding `foo # bar`, `git check-ignore -v foo`
+  → no output, exit 1]; a leading `\#` asserted absent, since it escapes a pattern beginning with a
+  hash. Round 1 grouped this file with `Makefile` and `.env.example` under "line-start and mid-line
+  `#`", which would have baked a false positive into the extractor.
+- `.env.example`: a line-start `#` reported; a `#` preceded by whitespace after an **unquoted** value
+  reported, because that is where the file's own parser ends the value
+  [measured `4772d33` · `grep -n 'a comment (ie asdasd # some comment)' "$(go env GOMODCACHE)/github.com/joho/godotenv@v1.5.1/parser.go"`
+  → the backwards scan that ends an unquoted value at a `#` preceded by whitespace]; a `#` inside a
+  quoted value asserted **absent**. That library is the grammar to match because it is what reads
+  this file in this tree (D14).
 - Router: each gated path shape maps to its extractor; a path outside the gated set is reported as
   not gated rather than silently skipped.
 Fixtures: string literals in the test file, plus `git ls-files` for the whole-tree parse case.
@@ -491,7 +682,10 @@ class, reporting each; the directive exemptions of D5 with a clean directive and
 whose reason text carries a banned reference; `TODO(#N)` passing while a bare `#N` in the same
 comment is caught; a same-package qualified symbol passing and a sibling-package one caught, with
 the `_test` package suffix stripped; a standard-library qualified symbol passing, asserted with the
-reason, so a later widening has to change a named case rather than a regex quietly.
+reason, so a later widening has to change a named case rather than a regex quietly; a comment in a
+**non-Go** gated file carrying a package-qualified symbol of this module, caught, since no package is
+its own there; and the collision case of D4 — a qualifier that is both an `internal/` package here
+and a third-party module name — asserted **caught**, with the reason in the case name.
 `[derived → AC1 and AC4]`
 
 **Command — `cmd/commentrefs` (subtask 3).**
@@ -499,52 +693,51 @@ Entry point: `run(args, stdout, stderr) int`.
 Scenarios: a clean file exits 0 and prints nothing; a dirty file exits 1 and prints file, line, class
 and matched text; an unreadable path exits 2; explicit-paths mode; whole-tree mode; `--staged` mode
 driven against a scratch repository where the index and the worktree **disagree**, asserting the
-index blob is what was judged.
+index blob is what was judged. This is where the gate's own verdict is proven; the dispatch suite
+below deliberately does not attempt it.
 Fixtures: a scratch repository built with `t.TempDir()` and fixed `git` invocations.
 `[derived → AC2 and AC4]`
 
-**`--help` conformance — `ai-docs/scripts/test-script-help.sh` (subtask 13).**
-Scenarios over the tracked tree: every `*.sh` whose comments carry usage prose answers `--help`;
-every script that answers `--help` carries the D9 shape marker verbatim; `--help` exits 0 and prints
-a non-empty block. Sandbox fixtures: a conforming script, a script with usage prose and no `--help`,
-a script answering `--help` with a different shape, and a script whose `--help` runs its body first
-— each asserted to be flagged, which is this suite's instrument check.
-`[derived → AC17, AC18, AC19, AC21]`
+**Script shape — `ai-docs/scripts/check-script-shape.sh` and its suite (subtask 13).**
+The checker asserts over the tracked tree: every script answering `--help` carries the D9 shape
+marker; `--help` exits 0, prints a non-empty block and runs nothing else; every tracked file
+beginning with `#!` ends in `.sh` or is a symbolic link to one (AC8).
+`ai-docs/scripts/test-script-shape.sh` is its regression suite, over sandbox fixtures: a conforming
+script; a script answering `--help` with a different shape; a script whose `--help` runs its body
+first; a shebang file with neither a `.sh` name nor a symlink; and — the instrument check — a
+sandbox in which every fixture conforms, asserted to produce no finding, so a checker that reports
+nothing under all conditions cannot pass its own suite.
+`[derived → AC8, AC17, AC18, AC19, AC21]`
 
 **Pre-commit dispatch — `ai-docs/scripts/test-precommit-dispatch.sh` (subtask 13).**
-Added to the existing cases: the tracked entry is recorded as a symlink whose target is a `.sh` file
-in the same directory; a sandbox commit staging a gated file with a banned reference is refused; a
-sandbox commit staging a clean gated file is not; the existing ratchet-removed instrument case still
-refuses. The refused-dirty-file case paired with the accepted-clean-file case is what stops this
-suite from passing with the dispatcher's gate call deleted — `[derived → AC7]`.
+Added to the existing cases, on the D16 seam: the tracked entry is recorded as a symlink whose target
+is a `.sh` file in the same directory; with the stub gate refusing, a sandbox commit staging a gated
+`*.sh` probe is refused and the stub's stderr reaches the caller; with the stub accepting, the same
+commit succeeds; with only a non-gated path staged, the stub's marker file shows it was never
+invoked; with the stub module absent, the "no `go.mod`" skip is printed and the commit proceeds; the
+existing ratchet-removed instrument case still refuses. The refuse/accept pair and the
+never-invoked case together are what stop this suite from passing with the dispatcher's gate call
+deleted — `[derived → AC7]`.
 
-**Everything the sweep touches (subtasks 4–10, 13).**
+**Everything the sweep touches (subtasks 4–9, 12).**
 No new test. The completion condition is the gate's silence over the subtask's paths (D12) plus the
 existing suites staying green — `make verify`, and for the harness scripts their own regression
 suites, which must behave identically after their comments change.
 
 ## Open questions
 
-- **AC15's scope.** Read literally, "every line removed or rewritten in the diff is a comment line"
-  forbids subtask 11, which rewrites `Makefile`, `ci.yml` and the pre-commit dispatcher — all of them
-  required by Scope items 5 and 6 of the same spec. The design reads AC15 as a constraint on **the
-  sweep**: within a file whose only reason to appear in the diff is the sweep, only comment lines
-  change. Files that the gate wiring, the symlink or the `--help` migration touch are outside it, as
-  the AC's own carve-out for `config/**`, `.env.example` and the `--help` scripts already
-  acknowledges. Confirm before Step 9, since it is a verifier's criterion.
-- **AC2/AC3 versus what any lexical gate can decide.** The gate refuses a banned reference of a
-  class it decides (D4); the bare-symbol half of the class list is review-judged, exactly as AC16's
-  narration half is. This is a narrowing of the two ACs as written, and it is not a matter of effort
-  — a pattern that decided the rest would fire on `time.Duration` in contract prose. Confirm the
-  reading, or accept a gate that cannot be made green.
-- **CI shellchecks less than `AGENTS.md` claims.** The Harness-guards job's `find` reaches
-  `.claude` and `ai-docs/scripts` only, so `.githooks/**` is shellchecked locally by `make
-  shellcheck` and not by CI, while `AGENTS.md` § *Build & Test* says CI covers every script. Fixing
-  the filter is a small change and squarely out of this task's scope; flagged rather than
-  absorbed. The same paragraph is worth a decision on whether
-  `ai-docs/claude-tools-hierarchy.md` § *Shell guards* should also gain the rows it is missing for
-  suites that already exist.
-- **Whether `.githooks/pre-commit`'s symlink target should be gated by a check.** AC8 states a
-  condition over the tree — every tracked file with a shebang either ends in `.sh` or is a symlink
-  to one — with no gate behind it. The design leaves it as a verifier's condition; a mechanical form
-  is cheap and can be added later without disturbing this task's gate.
+- **The `module-symbol` collision** (D4). The gate flags `backoff.X` whether the writer meant this
+  module's `internal/backoff` or the third-party module of the same name, because the classifier
+  resolves qualifiers against this module's package names only. The design takes that over-flagging
+  direction and pins it with a named test. If the owner would rather the gate resolve the qualifier
+  against the file's own import set, that is a widening of subtask 2 and a further design round, not
+  a Step-9 fix.
+- **Two of round 1's open questions are closed by the spec, not by this design, and should not be
+  reopened at Step 9.** AC15 now carries its carve-out inside the criterion, naming the wiring, the
+  symlink, the `--help` scripts, `config/**`, `.env.example` and the shellcheck-gap files as outside
+  it. AC2 and AC3 are not narrowed by D4, because the amended § *Banned reference classes* puts the
+  bare unqualified name and the outside-module qualifier outside the banned class itself. Recorded
+  here so a later reader does not re-derive them from round 1's text.
+- **Round 1's third open question is now in scope, not open.** CI shellchecking less than
+  `AGENTS.md` claims became Scope item 11, KD-18 and AC24; D17 chooses the shape and subtask 15 owns
+  it.
