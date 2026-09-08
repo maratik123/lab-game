@@ -25,7 +25,7 @@
 # Anti-drift: runs the LIVE hook body, extracted with jq.
 # Verdict convention: the body exits 2 to block a tool call.
 #
-# Usage: bash .claude/skills/ai-audit/scripts/test-no-verify-guard.sh
+# Usage: bash ai-docs/scripts/test-no-verify-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail

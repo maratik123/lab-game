@@ -32,7 +32,7 @@
 # empty prompt must all ALLOW: the reviewer-side rule is the backstop, and a
 # guard that blocks on its own instrument failure stops every review.
 #
-# Usage: bash .claude/skills/ai-audit/scripts/test-spawn-contract-guard.sh
+# Usage: bash ai-docs/scripts/test-spawn-contract-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail

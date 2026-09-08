@@ -13,9 +13,9 @@
 # hold across those two runs; this guard does not depend on the rule holding.
 #
 # Usage:
-#   bash .claude/skills/task/scripts/doc-edit-guard.sh snapshot <file>
+#   bash ai-docs/scripts/doc-edit-guard.sh snapshot <file>
 #   ... the scripted edit ...
-#   bash .claude/skills/task/scripts/doc-edit-guard.sh verify <file>
+#   bash ai-docs/scripts/doc-edit-guard.sh verify <file>
 #
 # snapshot: copies <file> to <file>.bak and records the shape counts.
 # verify:   recounts. If any count SHRANK, restores <file> from <file>.bak,

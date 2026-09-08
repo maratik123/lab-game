@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression suite for .claude/skills/task/scripts/doc-edit-guard.sh.
+# Regression suite for ai-docs/scripts/doc-edit-guard.sh.
 #
 # The load-bearing fixture replays the real truncation of 2026-09-08
 # (ai-docs/learnings.md, "left the spec untracked for three rounds"): a spec
@@ -9,14 +9,14 @@
 # whole AC table. The guard must restore the file and exit 2. The same edit
 # anchored on "\n## Open questions\n" must pass.
 #
-# Usage: bash .claude/skills/task/scripts/test-doc-edit-guard.sh
+# Usage: bash ai-docs/scripts/test-doc-edit-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1
-guard=.claude/skills/task/scripts/doc-edit-guard.sh
+guard=ai-docs/scripts/doc-edit-guard.sh
 [ -f "$guard" ] || { echo "FAIL: $guard missing"; exit 1; }
 
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/doc-edit-guard.XXXXXX")

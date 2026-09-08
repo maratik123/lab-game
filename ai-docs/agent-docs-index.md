@@ -9,6 +9,7 @@ The full map of `ai-docs/**` and the harness's supporting pages. `AGENTS.md` § 
 | [`ai-docs/plans/INDEX.md`](plans/INDEX.md) | Plan index — statuses and dependency order |
 | `plans/*.spec.md` / `*.design.md` | Active task spec + design, committed from creation (`/interview` and Step 6); `*.progress.md` and `*.spec.md.state.md` are committed too and retired to `plans/ignored/` before the PR |
 | `ai-docs/plans/done/` | Completed plans (spec + design, implemented) |
+| `ai-docs/scripts/` | Shared shell guards: hook regression suites, CI gates over specs and registers, the document-edit guard — every script whose caller is not a single skill (`claude-tools-hierarchy.md` § Shell guards has the placement rule and one row per script) |
 | [`ai-docs/deferred/_inbox.jsonl`](deferred/_inbox.jsonl) | Triage queue — rows from completed specs |
 | [`ai-docs/templates/progress-format.md`](templates/progress-format.md) | Canonical `.progress.md` format |
 | [`ai-docs/templates/inbox-row.md`](templates/inbox-row.md) | Canonical `_inbox.jsonl` row shape |

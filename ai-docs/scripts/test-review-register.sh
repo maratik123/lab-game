@@ -6,14 +6,14 @@
 # reduced from the real history that earned the gate: the transport run
 # (PR #53) raised this same disagreement in five consecutive rounds.
 #
-# Usage: bash .claude/skills/ai-audit/scripts/test-review-register.sh
+# Usage: bash ai-docs/scripts/test-review-register.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1
-guard=.claude/skills/ai-audit/scripts/check-review-register.sh
+guard=ai-docs/scripts/check-review-register.sh
 [ -x "$guard" ] || { echo "FAIL: $guard not executable"; exit 1; }
 
 failures=0

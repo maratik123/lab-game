@@ -11,14 +11,14 @@
 # exemption. Both directions are asserted -- a regex that matches everything
 # satisfies the first half alone.
 #
-# Usage: bash .claude/skills/ai-audit/scripts/test-spec-shape.sh
+# Usage: bash ai-docs/scripts/test-spec-shape.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1
-guard=.claude/skills/ai-audit/scripts/check-spec-shape.sh
+guard=ai-docs/scripts/check-spec-shape.sh
 [ -f "$guard" ] || { echo "FAIL: $guard missing"; exit 1; }
 
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/spec-shape.XXXXXX")

@@ -23,7 +23,7 @@
 # Verdict convention: a body exits 2 to block a tool call. Any other exit
 # status means the call proceeds.
 #
-# Usage: bash .claude/skills/ai-audit/scripts/test-instruction-edit-guard.sh
+# Usage: bash ai-docs/scripts/test-instruction-edit-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail

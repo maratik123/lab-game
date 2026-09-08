@@ -109,7 +109,7 @@ If the resolved issue's `labels` array (already fetched by `⚡ Third` step 2) c
 
 First action: confirm the spec exists. Spawn the `design-writer` Subagent (per `.claude/agents/design-writer.md`) with the spec path; result: `ai-docs/plans/YYYY-MM-DD-name.design.md`.
 
-**Commit the design as soon as it lands, and after every design round** — `git add <design>` and commit. The branch already exists (`/interview` Step 2 created it). Between commits, `design-writer` wraps each scripted edit in `.claude/skills/task/scripts/doc-edit-guard.sh` (`design-writer.md` § Workflow), which undoes a truncating edit in the same command. The design is read by every delegate for hours and is rewritten whole each round; untracked, one truncating rewrite is unrecoverable, which is not hypothetical (`ai-docs/learnings.md` 2026-09-02: a 172-line design reduced to its header, restored only as a reconstruction).
+**Commit the design as soon as it lands, and after every design round** — `git add <design>` and commit. The branch already exists (`/interview` Step 2 created it). Between commits, `design-writer` wraps each scripted edit in `ai-docs/scripts/doc-edit-guard.sh` (`design-writer.md` § Workflow), which undoes a truncating edit in the same command. The design is read by every delegate for hours and is rewritten whole each round; untracked, one truncating rewrite is unrecoverable, which is not hypothetical (`ai-docs/learnings.md` 2026-09-02: a 172-line design reduced to its header, restored only as a reconstruction).
 
 ### Step 7: Design review
 
