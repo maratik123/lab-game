@@ -144,6 +144,10 @@ func runChild(ctx context.Context, childArgv []string, lookup envLookup, sm seam
 		logf(stderr, "testpg: could not start a server: %v\n", err)
 		return exitFailure
 	}
+	// Echoed on the path that grants it, so the arithmetic a run relied on
+	// is readable afterwards from that run's own log rather than recomputed
+	// from a core count nobody recorded.
+	logf(stderr, "testpg: started a server, ceiling %d (clients=%d, parallel=%d)\n", ceiling, clients, parallel)
 	//nolint:contextcheck // fresh context by design: teardown must survive a cancelled signal context, not be cancelled itself the instant it starts
 	defer func() {
 		if err := stop(context.Background()); err != nil {
@@ -252,7 +256,26 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 	}
 
 	logf(stdout, "%s\n", dsn)
-	logf(stderr, "testpg: shared server up, ceiling %d (clients=%d, parallel=%d)\n", ceiling, clients, parallel)
+
+	// Report the capacity the server HAS, not the one this invocation asked
+	// for: an existing container is reused under its name and keeps the
+	// ceiling it was created with, so a larger client count asked for here
+	// would otherwise be reported as granted while the server stayed the
+	// size it was. Reading it back is one round trip on a connection the
+	// probe opens anyway.
+	actual, err := sm.probe(ctx, dsn)
+	switch {
+	case err != nil:
+		logf(stderr, "testpg: shared server up, but its capacity could not be read: %v\n", err)
+	case actual < ceiling:
+		logf(stderr, "testpg: the shared server's capacity is %d, below the %d needed for clients=%d "+
+			"parallel=%d; a server already running under this name keeps the capacity it was created "+
+			"with, so take it down and bring it up again to resize\n", actual, ceiling, clients, parallel)
+		return exitFailure
+	default:
+		logf(stderr, "testpg: shared server up, capacity %d admits the %d needed (clients=%d, parallel=%d)\n",
+			actual, ceiling, clients, parallel)
+	}
 	return 0
 }
 
@@ -274,6 +297,15 @@ func runDown(ctx context.Context, sm seam, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		return 0
+	}
+
+	// Disabled for the same reason it is when creating the server, and one
+	// more: this invocation only reaches an existing container in order to
+	// remove it, so a reaper started here would supervise nothing and
+	// outlive the thing it was started for.
+	if err := os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true"); err != nil {
+		logf(stderr, "testpg: disabling the reaper: %v\n", err)
+		return exitFailure
 	}
 
 	_, stop, err := sm.provision(ctx, testdb.ServerOptions{ContainerName: testdb.SharedContainerName})

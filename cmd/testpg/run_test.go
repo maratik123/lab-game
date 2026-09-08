@@ -269,11 +269,16 @@ func TestRunChild_ceilingMatchesTheFormula(t *testing.T) {
 func TestRun_upDown_useTheSeamWithNoRuntime(t *testing.T) {
 	t.Parallel()
 
-	stub := &stubSeam{provisionDSN: "postgres://shared/db"}
+	// probeMaxConns stands for a server whose capacity admits the need: --up
+	// reads the capacity back rather than reporting the one it asked for.
+	stub := &stubSeam{provisionDSN: "postgres://shared/db", probeMaxConns: 100000}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"--up"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run(--up) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "capacity 100000") {
+		t.Errorf("--up stderr = %q, want the capacity read back from the server", stderr.String())
 	}
 	if !stub.provisionCalled {
 		t.Errorf("--up did not call provision")
@@ -290,6 +295,24 @@ func TestRun_upDown_useTheSeamWithNoRuntime(t *testing.T) {
 	}
 	if !stub2.provisionCalled || !stub2.stopCalled {
 		t.Errorf("--down did not stop the located server (provisionCalled=%v, stopCalled=%v)", stub2.provisionCalled, stub2.stopCalled)
+	}
+}
+
+func TestRun_upOnAnUndersizedExistingServer_failsNamingTheCapacity(t *testing.T) {
+	t.Parallel()
+
+	// A container already running under the shared name keeps the capacity it
+	// was created with, so provisioning "succeeds" while granting less than
+	// this invocation asked for. Reporting the requested number here would
+	// have the caller believe a larger client count was granted.
+	stub := &stubSeam{provisionDSN: "postgres://shared/db", probeMaxConns: 8}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up --clients 2) = 0, want non-zero; stderr: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "capacity is 8") {
+		t.Errorf("stderr = %q, want the server's own capacity named", stderr.String())
 	}
 }
 

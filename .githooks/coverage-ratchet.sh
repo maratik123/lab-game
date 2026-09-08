@@ -116,9 +116,9 @@ if ! go run ./cmd/testpg -- go test -covermode=atomic -coverprofile="$PROFILE" .
   printf 'coverage-ratchet: BLOCKED — the test suite is not green, so coverage is not measurable.\n' >&2
   printf 'Log: tmp/coverage-run.log\n' >&2
   grep -E '^(FAIL|---|ok)' tmp/coverage-run.log >&2
-  printf '\nIf this is a container-runtime failure, bring up a long-lived server first:\n' >&2
-  printf '  make test-db-up\n' >&2
-  printf 'or point the suite at a running one: export LAB_GAME_TEST_DSN=postgres://...\n' >&2
+  printf '\nIf no container runtime is reachable, point the suite at a server you already run:\n' >&2
+  printf '  export LAB_GAME_TEST_DSN=postgres://...\n' >&2
+  printf 'With a runtime but a slow suite, hold one server across commits: make test-db-up\n' >&2
   exit 1
 fi
 

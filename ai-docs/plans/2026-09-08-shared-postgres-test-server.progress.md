@@ -209,6 +209,21 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
+| R1-1 | round 1 | major | open | `go clean -testcache; for i in 1 2 3; do go run ./cmd/testpg -- bash -c 'echo "DSN=$LAB_GAME_TEST_DSN"; go test ./internal/store/'; done` |
+| R1-2 | round 1 | major | fixed@2ace7e6 | `make test-db-up CLIENTS=1; make test-db-up CLIENTS=2; psql "$(cat tmp/testpg-dsn)" -At -c 'show max_connections'` |
+| R1-3 | round 1 | major | fixed@2ace7e6 | `make test-contention CONTENTION_PARALLEL=2; grep -in ceiling tmp/test-contention-race.log tmp/test-contention-load.log` |
+| R1-4 | round 1 | minor | fixed@2ace7e6 | `DOCKER_HOST=unix:///nonexistent/podman.sock make test-db-up` |
+| R1-5 | round 1 | minor | open | `grep -n 'redirects to a file under' ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md` |
+| R1-6 | round 1 | nit | accepted@1 — shape only; the thirteen cases span three entry points and assert structurally different things (seam untouched / stop ran / ceiling arithmetic / usage error), so a table would need a per-case closure field, which separate test functions already are | `grep -c '^func Test' cmd/testpg/run_test.go` |
+| R1-7 | round 1 | nit | fixed@2ace7e6 | `go test -count=1 -run TestRun_reconcilesBeforeFirstCycle ./internal/scheduler/` |
+| R1-8 | round 1 | nit | fixed@2ace7e6 | `make test-db-up; make test-db-down; podman ps -a --format '{{.Names}}'` |
+| R1-A1 | round 1 | — | accepted@1 — the AC11 demonstration is sound: at the 10 ms instrument the scheduler suite is GREEN with no load (`-race` included), so the recorded RED was contention-induced, not an impossible budget | `go run ./cmd/testpg -- go test -race -count=1 ./internal/scheduler/` at a 10 ms reconcile bound |
+| R1-A2 | round 1 | — | accepted@1 — no production panic / log.Fatal added, so the panic index needs no row | `grep -nE '(^\|[^[:alnum:]_.])(panic\(\|log\.(Fatal\|Panic)[a-z]*\()' cmd/testpg/*.go internal/testdb/server.go internal/testdb/testdb.go` |
+| R1-A3 | round 1 | — | accepted@1 — no balance moves, no mechanic added, no schema or enum touched: the domain-invariant sweep is a no-op | `git diff --name-only dbff3d8..HEAD -- internal/store internal/store/migrations` |
+| R1-A4 | round 1 | — | accepted@1 — AC9 holds: every changed path class is already named in the CI change filter | `git diff --name-only dbff3d8..HEAD` against `.github/workflows/ci.yml:38-82` |
+| R1-A5 | round 1 | — | accepted@1 — KD-20's corrected consequence clause is true on the shipped tree | `go list -deps ./cmd/bot \| grep -c testcontainers` → 0 |
+| R1-A6 | round 1 | — | accepted@1 — both new `at:` SHAs in `learnings.md` resolve; the third is the deliberately-preserved wrong value its successor entry corrects | `git cat-file -t 56857fb314b73e180f9c9132ccd4e0c488b8b994 b8951419d4848f807f1fe105cd152fdb537e4a55` |
+| R1-A7 | round 1 | — | accepted@1 — the ratchet holds on a cold cache with headroom, so the recorded 89.44 is not a lucky replay | `go clean -testcache && make cover-ratchet` → 90.04% >= 89.44% |
 
 ## Files touched
 
@@ -226,3 +241,40 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `AGENTS.md` - § *Build & Test*: the six new targets plus the routing callout, the ratchet table's container-runtime row, and the cache-replay sentence made conditional on a stable DSN
 - `ai-docs/go-test-conventions.md` - § *Postgres is tested against Postgres*: the shared path, the long-lived pair, the fallback's own gate, D9's contention rule and the D12 probe
 - `ai-docs/key-decisions.md` - KD-20's amendment clause: the decision order, the bring-up/take-down pair, `Ceiling`'s formula term by term with each term's value, the floor/refusal asymmetry, and the two stated residues; the *Consequence* clause corrected to the import-graph invariant
+
+## Self-Review (Round 1)
+
+**Verdict:** REJECT
+
+**What was checked.** `AGENTS.md`; the spec's `## Acceptance Criteria` (AC1–AC18); the design's
+Approach, D1–D12, Decomposition, Handoff plan, Risks and Test Design. Diff `dbff3d8..HEAD`
+(27 files). Re-run against the shipped tree, not accepted from the progress file:
+`go vet ./...` (0), `golangci-lint run` (0 issues), `make comment-refs` (0),
+`make file-limits` (0), `make shellcheck` (0), `make actionlint` (0),
+`bash ai-docs/scripts/check-script-shape.sh` (0), `make test` (0),
+`make test-fallback` (0 — the four database-backed binaries take 8.9–13.5 s each, the
+per-binary container path observed rather than inferred: AC3 PASS),
+`make cover-ratchet` on a **cold** test cache (90.04% >= 89.44%, AC-adjacent),
+`make test-contention CONTENTION_PARALLEL=2` (0, exhaustion scan clean on both logs: AC10 PASS),
+a real `make test-db-up` / `make test-db-down` round trip (AC4 clause), and the AC11
+demonstration's missing control (the 10 ms instrument is GREEN with no load, so the recorded
+RED was contention: AC11 PASS). AC8, AC9, AC13, AC15, AC18 read in the diff; AC7 read at
+`.githooks/coverage-ratchet.sh:86-113` (the staged-file skip precedes the wrapper invocation).
+Working tree restored and verified clean after every mutation probe.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| R1-1 | `AGENTS.md:113-119`, `ai-docs/go-test-conventions.md:44`, `ai-docs/context-status.md:207`, design `:382` | major | **The test-cache claim this diff writes into three live documents is false, and in `AGENTS.md` it replaced a true sentence.** All four say the DSN is in the `go test` cache key, so the database-backed packages are "a cache miss on every run" under the wrapper's anonymous container. Measured: `go clean -testcache`, then three wrapper runs printing their own DSN — ports 36255, 35543, 42761, all distinct — gave `internal/store 1.039s`, then `(cached)`, then `(cached)`. Same result for `internal/scheduler`. So the wrapper's own path replays cached results exactly as before, `make test` / `make test-race` / the ratchet measurement can return green having run none of the database-backed packages, and D8's `-count=1` reasoning applies to them too — the design's ground for exempting them is this falsified premise. Violates AC14 (a live document must agree with shipped behaviour). The design half is a **Design Amendment trigger** — design doc `ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md:379-386` (D7) contradicts the implementation; recipe at `.claude/skills/task/SKILL.md` Step 11 fail-loud table. Whether any target gains `-count=1` is a scope decision for the owner, not part of this fix. | ⬜ Open |
+| R1-2 | `cmd/testpg/run.go:240-256` | major | **`--up` reports a ceiling the reused container does not have, and the documented remedy for D3a's stated residue therefore does not work.** `runUp` passes `ConnCeiling` alongside `ContainerName`, but `StartServer` reuses an existing container by name and the new ceiling is silently ignored. Measured: `make test-db-up CLIENTS=1` → "shared server up, ceiling 352", `show max_connections` = 352; then `make test-db-up CLIENTS=2` → "shared server up, ceiling 672" on the **same** container, `show max_connections` still **352**. Two `make test` runs each compute a need of 352, each is admitted by the 352-slot server, and the combined population is 704 — the exhaustion this task exists to remove. Contradicts design D4 (`:292`, "**It sizes with the same terms a run does**") and the remedy KD-20 now ships ("the answer is to size it (`make test-db-up CLIENTS=2`)"). | ✅ Fixed |
+| R1-3 | `cmd/testpg/run.go:136-146` | major | **The granted ceiling is never echoed on the path that grants it.** Only `runUp` prints a ceiling (`:255`); `runChild`'s provisioning branch prints nothing, and `Makefile:105` echoes only `clients=N parallel=N`. Measured: after a full `make test-contention CONTENTION_PARALLEL=2`, `grep -in ceiling tmp/sr-contention.log tmp/test-contention-race.log` returns **no output**. Design D12 requires "The target echoes the granted ceiling, the client count and the pinned value into the log, so the arithmetic a run relied on is readable after the fact", and Decomposition row 3 (design `:581`) lists "the granted ceiling echoed to stderr" as a deliverable of subtask 3. Neither is met, and the design was not amended to say so. | ✅ Fixed |
+| R1-4 | `AGENTS.md:100`, `.githooks/coverage-ratchet.sh:116-119` | minor | The ratchet's runtime-failure advice now leads with a command that cannot work in the case the same sentence names. `AGENTS.md:100` reads "Container runtime missing? `make test-db-up` brings up a long-lived one" — but that target reaches the runtime through the same socket. Measured: `DOCKER_HOST=unix:///nonexistent/podman.sock make test-db-up` → "could not start the shared server: … dial unix /nonexistent/podman.sock: connect: no such file or directory", exit 2. The correct answer (`LAB_GAME_TEST_DSN`) survives in the same cell but is now second. The script's wording ("container-runtime failure") is weaker but has the same ordering. | ✅ Fixed |
+| R1-5 | design `:793-794` | minor | The AC15 read recipe asserts "every gate this change adds or edits redirects to a file under `tmp/` and is read from there". Only the ratchet measurement and `test-contention`'s two children do; `test`, `test-race`, `test-fallback`, `test-db-up` and `test-db-down` write to the terminal. AC15's substance holds — no load-bearing status crosses a pipe — so this is the recipe's claim, not the tree's behaviour. Same Design Amendment route as R1-1 if the sentence is to be corrected. | ⬜ Open |
+| R1-6 | `cmd/testpg/run_test.go:81-336` | nit | Thirteen top-level `func Test…` over one `stubSeam`, where the case set is a decision-order matrix. The workspace default for more than two cases is a table-driven `t.Run` set; the design's own Test Design enumerates them as scenarios of one entry point. Behaviour-describing names are already there, so this is shape only. | ⚠️ Objected: the thirteen cases span three entry points and assert structurally different things (seam untouched / stop ran / ceiling arithmetic / usage error), so a table would need a per-case closure field, which separate test functions already are |
+| R1-7 | `internal/scheduler/reconcile_test.go:361` | nit | The widened instrument is now waited out in full: `Run` is asserted to return `context.DeadlineExceeded`, so the subtest blocks for the whole 5 s instead of the previous 0.5 s. D9 names polling-with-a-generous-ceiling as the better of its two routes; the generous-constant route was taken, adding ~4.5 s of pure waiting to every scheduler run in a task whose purpose is suite wall clock. | ✅ Fixed |
+| R1-8 | `cmd/testpg/run.go:263-296` | nit | `runDown` does not disable the reaper the way `runUp` does, so removing the long-lived server starts a Ryuk container to supervise nothing. Observed: `podman ps -a` immediately after `make test-db-down` lists `reaper_cd270f93…  Up 2 seconds`. It self-terminates, so this is cosmetic. | ✅ Fixed |
+
+**Recorded, not raised** — each is a register row (`accepted@1`) rather than a finding, so
+round 2 is scoped by it: the AC11 demonstration's own control (R1-A1), the panic-index
+sweep (R1-A2), the domain-invariant sweep (R1-A3), AC9's change-filter comparison (R1-A4),
+KD-20's corrected import-graph consequence (R1-A5), the two new `learnings.md` `at:` SHAs
+(R1-A6), and the cold-cache ratchet draw (R1-A7).

@@ -356,20 +356,35 @@ func TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot(t *testing.T) {
 		// The bound is an instrument, not the subject: this test asserts
 		// that reconciliation seeded the row before the first cycle, not
 		// that the database answered inside any particular window while
-		// other packages' tests hammer the same server. Widened well past
-		// any contention this suite can induce.
+		// other packages' tests hammer the same server. So the budget is
+		// a generous ceiling that is polled against, never waited out —
+		// waiting it out would put its whole width into every run's wall
+		// clock, and the width exists for the worst case, not the usual.
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		err = w.Run(ctx)
-		if !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("Run returned %v, want context.DeadlineExceeded", err)
-		}
+		runErr := make(chan error, 1)
+		go func() { runErr <- w.Run(ctx) }()
+
 		var count int
-		if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM scheduled_task WHERE type = 'recon.run2'`).Scan(&count); err != nil {
-			t.Fatalf("count: %v", err)
+		for count != 1 {
+			if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM scheduled_task WHERE type = 'recon.run2'`).Scan(&count); err != nil {
+				t.Fatalf("count: %v", err)
+			}
+			if count == 1 {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatalf("row count after Run = %d, want 1 (seeded before the first cycle)", count)
+			case err := <-runErr:
+				t.Fatalf("Run returned %v before the row was seeded", err)
+			case <-time.After(10 * time.Millisecond):
+			}
 		}
-		if count != 1 {
-			t.Fatalf("row count after Run = %d, want 1 (seeded before the first cycle)", count)
+
+		cancel()
+		if err := <-runErr; !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Run returned %v, want context.Canceled or context.DeadlineExceeded", err)
 		}
 	})
 

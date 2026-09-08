@@ -97,7 +97,7 @@ go run ./cmd/bot                                        # run the bot (exits non
 > |---|---|
 > | No `.go` / `.sql` / `go.mod` / `go.sum` staged | Skipped, silently — coverage cannot have moved. Most commits in a `/task` run cost nothing. |
 > | Unstaged edits to such files | **Blocked.** The measurement is taken on the working tree, so with them present it describes neither the commit nor the tree. |
-> | Suite not green | **Blocked** — coverage is not measurable. The measurement provisions its own shared server through `cmd/testpg`. Container runtime missing? `make test-db-up` brings up a long-lived one; `LAB_GAME_TEST_DSN` points the suite at a server you already run. |
+> | Suite not green | **Blocked** — coverage is not measurable. The measurement provisions its own shared server through `cmd/testpg`. Container runtime missing? `LAB_GAME_TEST_DSN` points the suite at a server you already run — `make test-db-up` needs the same runtime, so it is the answer to a slow suite, not to an absent runtime. |
 > | `go` not on `$PATH` | Skipped, loud. Named fail direction: a machine with no Go toolchain cannot measure Go coverage. |
 > | Coverage fell past the tolerance | **Blocked**, with the uncovered functions listed. |
 > | Ratchet file absent | Initialised at the measured value and staged. There is no separate setup step. |
