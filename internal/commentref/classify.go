@@ -132,9 +132,9 @@ func Classify(c Comment, ownPackage string, modulePackages map[string]struct{}) 
 	return findings
 }
 
-// stripDirective applies the KD-5 exemptions: a machine-read directive is
-// exempt in full, except `nolint:`, whose human reason text — everything
-// after the linter list — is classified normally.
+// stripDirective applies the machine-read-directive exemptions: such a
+// directive is exempt in full, except `nolint:`, whose human reason text —
+// everything after the linter list — is classified normally.
 func stripDirective(text string) (toClassify string, exempt bool) {
 	trimmed := strings.TrimLeft(text, " \t")
 	switch {

@@ -2,8 +2,8 @@ package commentref
 
 import "strings"
 
-// ExtractGitignore returns every comment in a `.gitignore` file. Git treats
-// only a line whose very first character is `#` as a comment; a `#` after
+// ExtractGitignore returns every comment in a git ignore-patterns file.
+// Git treats only a line whose very first character is `#` as a comment; a `#` after
 // a pattern is part of the pattern, and a leading `\#` escapes a pattern
 // that begins with a hash, so neither is reported.
 func ExtractGitignore(src []byte) ([]Comment, error) {

@@ -106,3 +106,31 @@ func TestExtract_UnknownClass(t *testing.T) {
 		t.Fatal("Extract(ClassNone, …) error = nil, want an error")
 	}
 }
+
+func TestExtract_DispatchesEveryClass(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		class   FileClass
+		content string
+	}{
+		{ClassGo, "// x\npackage p\n"},
+		{ClassShell, "# x\necho hi\n"},
+		{ClassYAML, "# x\na: 1\n"},
+		{ClassSQL, "-- x\nSELECT 1;\n"},
+		{ClassMakefile, "# x\nbuild:\n"},
+		{ClassGitignore, "# x\n/dist\n"},
+		{ClassEnvExample, "# x\nLAB_GAME_X=1\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.class.String(), func(t *testing.T) {
+			t.Parallel()
+			got, err := Extract(tc.class, []byte(tc.content))
+			if err != nil {
+				t.Fatalf("Extract(%v) error = %v", tc.class, err)
+			}
+			if len(got) == 0 {
+				t.Fatalf("Extract(%v) = nil, want the one comment its fixture carries", tc.class)
+			}
+		})
+	}
+}

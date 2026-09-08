@@ -2,9 +2,9 @@ package commentref
 
 import "strings"
 
-// ExtractEnvExample returns every comment in a `.env.example` file, using
-// the same rule `github.com/joho/godotenv` applies when it reads this file
-// for real: a line-start `#`, or a `#` preceded by whitespace once an
+// ExtractEnvExample returns every comment in an example environment file,
+// using the same rule `github.com/joho/godotenv` applies when it reads
+// such a file for real: a line-start `#`, or a `#` preceded by whitespace once an
 // unquoted value has ended. A `#` inside a quoted value is part of the
 // value and is never reported.
 func ExtractEnvExample(src []byte) ([]Comment, error) {

@@ -23,8 +23,29 @@ const (
 	ClassEnvExample
 )
 
+// fileClassNames names each FileClass for String, in declaration order.
+var fileClassNames = [...]string{
+	ClassNone:       "none",
+	ClassGo:         "go",
+	ClassShell:      "shell",
+	ClassYAML:       "yaml",
+	ClassSQL:        "sql",
+	ClassMakefile:   "makefile",
+	ClassGitignore:  "gitignore",
+	ClassEnvExample: "env-example",
+}
+
+// String returns c's name, or a numeric placeholder for a value outside
+// the declared set.
+func (c FileClass) String() string {
+	if c < 0 || int(c) >= len(fileClassNames) {
+		return fmt.Sprintf("FileClass(%d)", int(c))
+	}
+	return fileClassNames[c]
+}
+
 // ErrUnroutable reports a path under the content-keyed directory that
-// matches none of its recognised shapes — a `.sh` extension, a `#!`
+// matches none of its recognised shapes — the shell extension, a `#!`
 // shebang, or a symbolic link to either. The gated set names the
 // directory in full, so a member the router cannot classify is an
 // instrument failure, not a silent pass.
@@ -44,7 +65,7 @@ type Outcome struct {
 
 // Route decides which extractor, if any, a path is read with. content is
 // consulted only for a path under the content-keyed directory that carries
-// no `.sh` extension; every other class is decided by path shape alone.
+// no shell extension; every other class is decided by path shape alone.
 // A symbolic link is skipped rather than routed, whatever class its own
 // name would otherwise match, because it carries no comment of its own —
 // its target is scanned under its own path.
@@ -71,7 +92,7 @@ func Route(gitPath string, isSymlink bool, content []byte) (Outcome, error) {
 // classifyByPath decides a FileClass from a path's extension or base name
 // alone. It reports gated=false for anything that is not part of the
 // extension-or-name-keyed portion of the gated set — including a path
-// under the content-keyed directory with no `.sh` extension, which Route
+// under the content-keyed directory with no shell extension, which Route
 // resolves separately.
 func classifyByPath(gitPath string) (class FileClass, gated bool) {
 	base := path.Base(gitPath)

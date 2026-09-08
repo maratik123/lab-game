@@ -188,8 +188,8 @@ func TestClassify_ModuleSymbol_NonGoFileHasNoOwnPackage(t *testing.T) {
 	}
 }
 
-// TestClassify_ModuleSymbol_Collision is the D4 collision case: a
-// qualifier that is both an internal package of this module and a
+// TestClassify_ModuleSymbol_Collision covers the qualifier-collision case:
+// a qualifier that is both an internal package of this module and a
 // third-party module name is flagged, because the classifier resolves
 // only against this module's own package names and the direction is
 // deliberately conservative.
@@ -199,5 +199,38 @@ func TestClassify_ModuleSymbol_Collision(t *testing.T) {
 	got := Classify(Comment{Line: 1, Text: "retries with backoff.NewExponentialBackOff"}, "scheduler", pkgs)
 	if !containsClass(got, ClassModuleSymbol) {
 		t.Fatalf("Classify() = %v, want backoff.X caught even though it may name the third-party module", classesOf(got))
+	}
+}
+
+func TestClassify_RepoPath_AllRecognisedShapes(t *testing.T) {
+	t.Parallel()
+	pkgs := modulePkgs()
+	tests := []struct {
+		name string
+		text string
+	}{
+		{"go_extension", "read cmd/bot/main.go for the loop"},
+		{"sh_extension", "read the fixture.sh for the loop"},
+		{"sql_extension", "read migration.sql for the schema"},
+		{"yml_extension", "read pipeline.yml for the job"},
+		{"yaml_extension", "read pipeline.yaml for the job"},
+		{"makefile_root_name", "run Makefile to build it"},
+		{"gitignore_root_name", "see .gitignore for the patterns"},
+		{"env_example_root_name", "see .env.example for the keys"},
+		{"docs_top_dir", "read docs/assets/logo for the shape"},
+		{"ai_docs_top_dir", "read ai-docs/templates for orientation"},
+		{"config_top_dir", "read config/balance.yaml for the values"},
+		{"claude_top_dir", "see .claude/settings.json for the hook"},
+		{"github_top_dir", "see .github/workflows/ci.yml for the job"},
+		{"githooks_top_dir", "see .githooks/pre-commit for the dispatch"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := Classify(Comment{Line: 1, Text: tc.text}, "backoff", pkgs)
+			if !containsClass(got, ClassRepoPath) {
+				t.Fatalf("Classify(%q) = %v, want it to include repo-path", tc.text, classesOf(got))
+			}
+		})
 	}
 }

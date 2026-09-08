@@ -113,3 +113,13 @@ func TestExtractYAML_WholeTree(t *testing.T) {
 		}
 	}
 }
+
+// TestExtractYAML_ParseError asserts that source the YAML parser itself
+// rejects surfaces as an error.
+func TestExtractYAML_ParseError(t *testing.T) {
+	t.Parallel()
+	_, err := ExtractYAML([]byte("a: [1, 2\n"))
+	if err == nil {
+		t.Fatal("ExtractYAML() error = nil, want the malformed source reported")
+	}
+}

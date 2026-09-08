@@ -2,10 +2,10 @@ package commentref
 
 import "strings"
 
-// ExtractMakefile returns every comment in a Makefile: an unescaped `#`
-// through the end of its line, wherever the marker sits, recipe lines
-// included. A `\#` is a literal hash, per make's own escaping rule, and is
-// never reported.
+// ExtractMakefile returns every comment in a build-recipe file, in make's
+// own grammar: an unescaped `#` through the end of its line, wherever the
+// marker sits, recipe lines included. A `\#` is a literal hash, per make's
+// own escaping rule, and is never reported.
 func ExtractMakefile(src []byte) ([]Comment, error) {
 	lines := strings.Split(string(src), "\n")
 	out := make([]Comment, 0, len(lines))

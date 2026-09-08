@@ -59,3 +59,12 @@ func TestExtractSQL_WholeTree(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractSQL_DoubledQuoteIsAnEscapedQuoteNotTheStringEnd(t *testing.T) {
+	t.Parallel()
+	got, err := ExtractSQL([]byte("SELECT 'it''s here -- not a comment';\n-- real\n"))
+	if err != nil {
+		t.Fatalf("ExtractSQL() error = %v", err)
+	}
+	assertComments(t, got, []Comment{{Line: 2, Text: "real"}})
+}

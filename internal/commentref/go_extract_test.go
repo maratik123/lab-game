@@ -100,3 +100,14 @@ func TestExtractGo_WholeTree(t *testing.T) {
 		}
 	}
 }
+
+// TestExtractGo_ScannerError asserts that a source the scanner itself
+// flags — an unterminated block comment — surfaces as an error rather than
+// a partial, silently wrong result.
+func TestExtractGo_ScannerError(t *testing.T) {
+	t.Parallel()
+	_, err := ExtractGo([]byte("package p\n\n/* unterminated\n"))
+	if err == nil {
+		t.Fatal("ExtractGo() error = nil, want the unterminated block comment reported")
+	}
+}
