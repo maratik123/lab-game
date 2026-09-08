@@ -1,5 +1,5 @@
 # Progress: Shared PostgreSQL test server — ACTIVE
-_Updated: 2026-09-08 21:41_
+_Updated: 2026-09-08 21:56_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -11,7 +11,7 @@ _Updated: 2026-09-08 21:41_
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
 **current_step:** Step 8 — Group B COMPLETE (subtasks 10-13 of 13 committed)
-**last_passed_gate:** `make comment-refs && bash ai-docs/scripts/check-ac-shape.sh && bash ai-docs/scripts/check-spec-shape.sh && bash ai-docs/scripts/check-script-shape.sh && bash .claude/skills/ai-audit/scripts/check-citations.sh && CI's relative-markdown-link check re-run locally` | 2026-09-08T21:41Z | 47f526d
+**last_passed_gate:** `make comment-refs && bash ai-docs/scripts/check-ac-shape.sh && bash ai-docs/scripts/check-spec-shape.sh && bash ai-docs/scripts/check-script-shape.sh && bash .claude/skills/ai-audit/scripts/check-citations.sh && CI's relative-markdown-link check re-run locally` | 2026-09-08T21:56Z | b0b0be953bf570ec4c3e8390175a010a730e7b3e
 **entry_args:** 67
 
 ## Next action
