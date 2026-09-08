@@ -210,13 +210,13 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
 | R1-1 | round 1 | major | open | `go clean -testcache; for i in 1 2 3; do go run ./cmd/testpg -- bash -c 'echo "DSN=$LAB_GAME_TEST_DSN"; go test ./internal/store/'; done` |
-| R1-2 | round 1 | major | fixed@2ace7e6 | `make test-db-up CLIENTS=1; make test-db-up CLIENTS=2; psql "$(cat tmp/testpg-dsn)" -At -c 'show max_connections'` |
-| R1-3 | round 1 | major | fixed@2ace7e6 | `make test-contention CONTENTION_PARALLEL=2; grep -in ceiling tmp/test-contention-race.log tmp/test-contention-load.log` |
-| R1-4 | round 1 | minor | fixed@2ace7e6 | `DOCKER_HOST=unix:///nonexistent/podman.sock make test-db-up` |
+| R1-2 | round 1 | major | fixed@a11a5fa | `make test-db-up CLIENTS=1; make test-db-up CLIENTS=2; psql "$(cat tmp/testpg-dsn)" -At -c 'show max_connections'` |
+| R1-3 | round 1 | major | fixed@a11a5fa | `make test-contention CONTENTION_PARALLEL=2; grep -in ceiling tmp/test-contention-race.log tmp/test-contention-load.log` |
+| R1-4 | round 1 | minor | fixed@a11a5fa | `DOCKER_HOST=unix:///nonexistent/podman.sock make test-db-up` |
 | R1-5 | round 1 | minor | open | `grep -n 'redirects to a file under' ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md` |
 | R1-6 | round 1 | nit | accepted@1 — shape only; the thirteen cases span three entry points and assert structurally different things (seam untouched / stop ran / ceiling arithmetic / usage error), so a table would need a per-case closure field, which separate test functions already are | `grep -c '^func Test' cmd/testpg/run_test.go` |
-| R1-7 | round 1 | nit | fixed@2ace7e6 | `go test -count=1 -run TestRun_reconcilesBeforeFirstCycle ./internal/scheduler/` |
-| R1-8 | round 1 | nit | fixed@2ace7e6 | `make test-db-up; make test-db-down; podman ps -a --format '{{.Names}}'` |
+| R1-7 | round 1 | nit | fixed@a11a5fa | `go test -count=1 -run TestRun_reconcilesBeforeFirstCycle ./internal/scheduler/` |
+| R1-8 | round 1 | nit | fixed@a11a5fa | `make test-db-up; make test-db-down; podman ps -a --format '{{.Names}}'` |
 | R1-A1 | round 1 | — | accepted@1 — the AC11 demonstration is sound: at the 10 ms instrument the scheduler suite is GREEN with no load (`-race` included), so the recorded RED was contention-induced, not an impossible budget | `go run ./cmd/testpg -- go test -race -count=1 ./internal/scheduler/` at a 10 ms reconcile bound |
 | R1-A2 | round 1 | — | accepted@1 — no production panic / log.Fatal added, so the panic index needs no row | `grep -nE '(^\|[^[:alnum:]_.])(panic\(\|log\.(Fatal\|Panic)[a-z]*\()' cmd/testpg/*.go internal/testdb/server.go internal/testdb/testdb.go` |
 | R1-A3 | round 1 | — | accepted@1 — no balance moves, no mechanic added, no schema or enum touched: the domain-invariant sweep is a no-op | `git diff --name-only dbff3d8..HEAD -- internal/store internal/store/migrations` |
