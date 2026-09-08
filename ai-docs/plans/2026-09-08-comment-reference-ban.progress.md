@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** not run
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group A subtask 5 of 10 complete
-**last_passed_gate:** golangci-lint run (whole module)
+**current_step:** Step 8 — Group A subtask 6 of 10 complete
+**last_passed_gate:** golangci-lint run (whole module); go test -race ./internal/tg/... ./internal/tgtest/...
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** start Group A subtask 6 — sweep `internal/tg`, `internal/tgtest`.
+**Do this immediately:** start Group A subtask 7 — sweep `internal/ingest`, `internal/scheduler`.
 
 ## Subtasks
 
@@ -25,6 +25,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - [x] 3. The command `cmd/commentrefs`: input modes, exit codes, report format
 - [x] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
 - [x] 5. Sweep `internal/store` + migrations, `internal/testdb`
+- [x] 6. Sweep `internal/tg`, `internal/tgtest`
 - [ ] 3. The command `cmd/commentrefs`: input modes, exit codes, report format
 - [ ] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
 - [ ] 5. Sweep `internal/store` + migrations, `internal/testdb`
@@ -56,6 +57,9 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 5**: the sweep of `internal/store`, its embedded migrations and `internal/testdb` removed roughly 150 report lines across 24 files, the densest single subtask so far — the `00003_event_log.sql` migration alone carried ~34, mostly `§13.x`/`§11`/`§5` design-section citations woven into view-doc prose ("answers §13.3's headline MVP number") that needed rephrasing into standalone sentences ("answers the headline MVP activation number"), not just deletion.
 - **Subtask 5**: two SQL comments used "D1"/"D7" as the domain's own retention-metric shorthand (Day-1/Day-7 retention), which collided lexically with the `decision-anchor` pattern (`D[0-9]+`) though the sentence was never citing a design decision. Resolved by spelling them "Day-1"/"Day-7" in prose — clearer for a reader anyway, and it sidesteps the classifier without touching the classifier itself, consistent with the design's own risk note that the direction is conservative and the fix is to write the sentence without the colliding token.
 - **Subtask 5**: `internal/store/migrations/00004_ingest.sql`'s header comment named `scheduler.DeadTask` — a genuine cross-package module-symbol under KD-9's this-module-only narrowing, banned even from a comment that is, in substance, describing the shared contract — rephrased to describe the shape ("the same shape the scheduler's own dead-task row already has") without the qualified symbol.
+- **Subtask 6**: `internal/tg` + `internal/tgtest` was the densest single subtask — roughly 380 report lines across 20 files, `limit.go` and `limit_test.go` alone carrying ~55 `decision-anchor: D9` citations from a design section that spelled out the limiter's whole mechanism inline. Handled with the same per-file read-then-python-batch-replace-then-reverify loop as subtasks 4–5, always re-running `go run ./cmd/commentrefs <file>` after each batch before moving to the next file — every batch matched on the first attempt except two (`internal/store/basis_test.go`, `internal/tg/caller.go`) where a copy-paste typo in the search string was caught immediately by the tool's own "string not found" error, never landing a wrong edit.
+- **Subtask 6**: many comments narrated a **historical defect** ("self-review round 5's coverage sweep", "finding 6", "R1-8") rather than citing a design decision — these aren't `decision-anchor` matches (no `D<N>`/`KD-<N>` token) but were still rewritten to drop the "round N finding N" framing, since a future round-number is exactly the kind of thing that stops meaning anything once the review that produced it is history. Kept: the substance of what regressed and why the test exists.
+- **Subtask 6**: `-race` was run in addition to the standard gate set for this subtask specifically (`go test -race ./internal/tg/... ./internal/tgtest/...`) since the package's own suite uses `testing/synctest` and a shared `net.Pipe`-backed fake server across goroutines — a comment-only sweep should not be able to introduce a race, but the design's own AGENTS.md rule makes `-race` a required gate for any change touching goroutines or shared state, and this package is exactly that shape.
 
 ## Key discoveries (don't re-investigate)
 
@@ -109,3 +113,5 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `internal/backoff/backoff.go`, `internal/backoff/backoff_test.go` — comment sweep
 - `internal/store/*.go` (all non-test and test files), `internal/store/migrations/*.sql` — comment sweep
 - `internal/testdb/testdb.go`, `internal/testdb/testdb_test.go` — comment sweep
+- `internal/tg/*.go` (all 17 files) — comment sweep
+- `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` — comment sweep

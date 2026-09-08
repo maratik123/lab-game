@@ -114,17 +114,16 @@ func TestRetry_DelaysGrowAndStayPositive(t *testing.T) {
 	})
 }
 
-// TestRetry_JitterOptionThreadedThroughToBackoff is self-review round 4
-// finding 3's fix: Options.Jitter (client.go) is documented to supply
-// design D6's backoff formula's random factor, but no test ever set it —
-// TestBackoffDelay_JitterBoundsExactly calls backoff.EqualJitter directly with
+// TestRetry_JitterOptionThreadedThroughToBackoff guards a past
+// regression: Options.Jitter is documented to supply the backoff
+// formula's random factor, but no test ever set it — a sibling test
+// exercises the shared backoff package's jitter function directly with
 // its own function value, and TestRetry_DelaysGrowAndStayPositive above
-// asserts only "delay > 0 and non-decreasing", which D6's formula
+// asserts only "delay > 0 and non-decreasing", which the formula
 // guarantees for EVERY draw (real or fixed) and so cannot distinguish an
-// injected jitter source from client.go's real one. This test sets a
-// fixed jitter=0 through Options and asserts the exact delays D6's
-// formula predicts (base/2, doubling), the shape the design's own Test
-// Design calls for AC5.
+// injected jitter source from the client's real one. This test sets a
+// fixed jitter=0 through Options and asserts the exact delays the
+// formula predicts (base/2, doubling).
 func TestRetry_JitterOptionThreadedThroughToBackoff(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -147,7 +146,7 @@ func TestRetry_JitterOptionThreadedThroughToBackoff(t *testing.T) {
 		if len(times) != 4 {
 			t.Fatalf("attempts = %d, want 4", len(times))
 		}
-		// D6: delay_i = d_i/2 + u*d_i/2, d_i = min(base*2^i, maxDelay).
+		// delay_i = d_i/2 + u*d_i/2, d_i = min(base*2^i, maxDelay).
 		// With jitter fixed at 0, delay_i = d_i/2 exactly: 50ms, 100ms,
 		// 200ms for i = 0, 1, 2.
 		want := []time.Duration{50 * time.Millisecond, 100 * time.Millisecond, 200 * time.Millisecond}
@@ -160,11 +159,12 @@ func TestRetry_JitterOptionThreadedThroughToBackoff(t *testing.T) {
 	})
 }
 
-// TestRetry_NonDefaultFactorReachesTheCallSite is design D20's
+// TestRetry_NonDefaultFactorReachesTheCallSite is the
 // non-default-factor scenario: the only instrument that discriminates a
 // call site passing the configured Transport.RetryFactor from one
-// passing backoff.DefaultFactor, because every shipped test above runs
-// at the default (2) and would stay green either way.
+// passing the shared package's compiled-in default, because every
+// shipped test above runs at the default (2) and would stay green
+// either way.
 func TestRetry_NonDefaultFactorReachesTheCallSite(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -188,7 +188,7 @@ func TestRetry_NonDefaultFactorReachesTheCallSite(t *testing.T) {
 		if len(times) != 4 {
 			t.Fatalf("attempts = %d, want 4", len(times))
 		}
-		// D20: delay_i = d_i/2, d_i = min(base*factor^i, maxDelay), jitter
+		// delay_i = d_i/2, d_i = min(base*factor^i, maxDelay), jitter
 		// fixed at 0. factor=1.5: 50ms, 75ms, 112.5ms for i = 0, 1, 2.
 		want := []time.Duration{50 * time.Millisecond, 75 * time.Millisecond, 112500 * time.Microsecond}
 		for i := 1; i < len(times); i++ {
@@ -364,8 +364,8 @@ func TestRetry_DeadlineRefusalInsteadOfSleep(t *testing.T) {
 	})
 }
 
-// TestCaller_AttemptTimeoutAbandonsAttempt is design D10's AttemptTimeout
-// safety valve (docs/DESIGN.md §12.2's wedged-instance incident): a single
+// TestCaller_AttemptTimeoutAbandonsAttempt covers the AttemptTimeout
+// safety valve (a wedged-instance incident this option was added for): a single
 // HTTP attempt that outruns AttemptTimeout is abandoned at that timeout,
 // not at the caller's own (much longer-lived) context deadline. This test
 // deliberately runs in real time rather than under synctest: the fake
@@ -619,10 +619,10 @@ func TestRetry_Observation(t *testing.T) {
 	})
 }
 
-// TestClassifyAttempt_NonRetryableHTTPStatusIsTerminalNotAmbiguous is
-// self-review round 5's coverage sweep: classifyAttempt's
+// TestClassifyAttempt_NonRetryableHTTPStatusIsTerminalNotAmbiguous
+// covers classifyAttempt's
 // "httpStatus != 0" case (a real, non-429, non-5xx HTTP response — e.g.
-// a 400 Bad Request) had zero coverage hits. It asserts design D5's
+// a 400 Bad Request). It asserts the classifier's
 // table directly: Telegram answered, so the outcome is known — not
 // ambiguous — and not retryable ("never on doubt" applies only when the
 // outcome is unknown, which this is not).
@@ -635,10 +635,9 @@ func TestClassifyAttempt_NonRetryableHTTPStatusIsTerminalNotAmbiguous(t *testing
 	}
 }
 
-// TestSanitizeErr_NilErrorReturnsNil is self-review round 5's coverage
-// sweep: sanitizeErr's nil-err guard had zero coverage hits — every
-// existing caller passes a non-nil cause. The doc comment promises "A
-// nil err returns nil" (design D8); this checks that promise directly.
+// TestSanitizeErr_NilErrorReturnsNil covers sanitizeErr's nil-err guard
+// — every other caller passes a non-nil cause. The doc comment promises
+// "A nil err returns nil"; this checks that promise directly.
 func TestSanitizeErr_NilErrorReturnsNil(t *testing.T) {
 	t.Parallel()
 	replacer := strings.NewReplacer(tgtest.Token, "[REDACTED_TOKEN]")
@@ -647,20 +646,15 @@ func TestSanitizeErr_NilErrorReturnsNil(t *testing.T) {
 	}
 }
 
-// TestSanitizeErr_URLErrorWithNilUnderlyingErrDoesNotPanic is the fix for
-// the panic this coverage sweep surfaced: retry.go's "cause == nil"
-// fallback (uerr.Unwrap() returning nil because uerr.Err is nil) used to
-// call uerr.Err.Error() on that same nil error interface, which panics
-// (nil pointer dereference) rather than falling back to any message.
-// Confirmed against the pre-fix code with a scratch test constructing
-// &url.Error{Err: nil} and calling sanitizeErr on it directly: `panic:
-// runtime error: invalid memory address or nil pointer dereference` at
-// retry.go:121 (goroutine trace through sanitizeErr), deleted after
-// confirming and before writing this permanent test. This test asserts
-// the fixed behaviour: no panic, and the rendered/stored cause names the
-// operation (uerr.Op) without reintroducing the URL — D8 requires the URL
-// dropped, not merely token-scrubbed, and there is no real underlying
-// cause to preserve when uerr.Err is nil.
+// TestSanitizeErr_URLErrorWithNilUnderlyingErrDoesNotPanic guards a past
+// panic: sanitizeErr's "cause == nil" fallback (uerr.Unwrap() returning
+// nil because uerr.Err is nil) used to call uerr.Err.Error() on that
+// same nil error interface, which panics (nil pointer dereference)
+// rather than falling back to any message. This test asserts the fixed
+// behaviour: no panic, and the rendered/stored cause names the operation
+// (uerr.Op) without reintroducing the URL — the URL must stay dropped,
+// not merely token-scrubbed, and there is no real underlying cause to
+// preserve when uerr.Err is nil.
 func TestSanitizeErr_URLErrorWithNilUnderlyingErrDoesNotPanic(t *testing.T) {
 	t.Parallel()
 	replacer := strings.NewReplacer(tgtest.Token, "[REDACTED_TOKEN]")
@@ -682,9 +676,9 @@ func TestSanitizeErr_URLErrorWithNilUnderlyingErrDoesNotPanic(t *testing.T) {
 	}
 }
 
-// TestSanitizeErr_UnwrapsURLErrorAndDropsURL asserts D8's primary
-// token-leak defence directly (finding 6 — deleting the errors.As
-// unwrap block left the suite green, because
+// TestSanitizeErr_UnwrapsURLErrorAndDropsURL asserts the primary
+// token-leak defence directly (a past regression — deleting the
+// errors.As unwrap block left the suite green, because
 // TestRetry_TokenAbsentFromRenderedError only checks the token
 // substring, which the trailing strings.Replacer alone already
 // satisfies). Two things must both hold: the stored cause is the
@@ -716,10 +710,11 @@ func TestSanitizeErr_UnwrapsURLErrorAndDropsURL(t *testing.T) {
 	}
 }
 
-// TestBackoffDelay_JitterBoundsExactly asserts D6's equal-jitter formula
-// directly at the two ends of the jitter draw (finding 7 — no test
-// exercised backoff.EqualJitter or jitter directly; returning the full
-// delay with no jitter at all left the suite green).
+// TestBackoffDelay_JitterBoundsExactly asserts the equal-jitter formula
+// directly at the two ends of the jitter draw (a past regression — no
+// test exercised the shared backoff package's jitter function or jitter
+// directly; returning the full delay with no jitter at all left the
+// suite green).
 func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 	t.Parallel()
 	const base = 100 * time.Millisecond
@@ -732,17 +727,12 @@ func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 		t.Errorf("backoff.EqualJitter(attempt=0, jitter=1) = %v, want %v (half plus the full other half)", got, base)
 	}
 
-	// Self-review round 5 finding 1: backoff.EqualJitter's RetryMaxDelay
+	// A past regression: the shared backoff package's RetryMaxDelay
 	// enforcement had never been exercised at all — deleting it left the
-	// suite green. (The finding was written against the doubling loop's
-	// two enforcement branches, an in-loop early break and a post-loop
-	// clamp; design D20 replaced that loop with math.Pow and a single
-	// clamp before the time.Duration conversion, so both rows below now
-	// return through the same one.) These two rows measure the capped
-	// region at the shipped defaults (RetryBaseDelay 500ms, RetryMaxDelay
-	// 30s) that design D10's rationale states in words: "30s caps the
-	// scale so a higher configured attempt count cannot grow the wait
-	// without bound." Verified against the shipped tree (GREEN) and
+	// suite green. These two rows measure the capped region at the
+	// shipped defaults (RetryBaseDelay 500ms, RetryMaxDelay 30s): "30s
+	// caps the scale so a higher configured attempt count cannot grow the
+	// wait without bound." Verified against the shipped tree (GREEN) and
 	// against a scratch deletion of the enforcement (RED: "got 16s want
 	// 15s" at attempt=6, "got 8m32s want 30s" at attempt=10) before being
 	// added here.
@@ -755,18 +745,17 @@ func TestBackoffDelay_JitterBoundsExactly(t *testing.T) {
 		t.Errorf("backoff.EqualJitter(attempt=10, jitter=1) = %v, want %v (clamped: 500ms*2^10=512s >= max, so the ceiling is returned unconverted)", got, shippedMax)
 	}
 
-	// Self-review round 1 finding R1-8 instrumented the two rows above
-	// against a verbatim copy of Exponential, to attribute each to one of
-	// the doubling loop's two exit branches. Design D20 deleted that loop
+	// A past instrumentation pass attributed the two rows above to one of
+	// the doubling loop's two exit branches; that loop was later replaced
 	// — the ramp is float64(base)*math.Pow(factor, attempt) with one
 	// clamp before the time.Duration conversion — so the two rows no
 	// longer discriminate two branches; they pin that single clamp at two
 	// magnitudes, just past the ceiling (32s) and far past it (512s).
 	// New rejects
-	// Transport.RetryMaxDelay < Transport.RetryBaseDelay
-	// (client.go:116-117), so base > maxDelay cannot occur through the
-	// public Client constructor; backoff.EqualJitter is still called
-	// directly by every other case in this test. This row does not exist
+	// Transport.RetryMaxDelay < Transport.RetryBaseDelay, so base >
+	// maxDelay cannot occur through the public Client constructor; the
+	// shared backoff package's jitter function is still called directly
+	// by every other case in this test. This row does not exist
 	// for coverage — deleting it leaves the clamp's block at a non-zero
 	// count, measured — it exists to pin the VALUE the clamp returns when
 	// base alone already exceeds maxDelay, which no other case asserts.

@@ -12,7 +12,7 @@ import (
 
 // jsonConstructor implements telegoapi.RequestConstructor with
 // encoding/json — the request-marshalling half of the net/http +
-// encoding/json swap (design D3). It is stateless.
+// encoding/json swap. It is stateless.
 type jsonConstructor struct{}
 
 var _ ta.RequestConstructor = jsonConstructor{}
@@ -28,10 +28,9 @@ func (jsonConstructor) JSONRequest(parameters any) (*ta.RequestData, error) {
 }
 
 // MultipartRequest streams parameters and filesParameters as a multipart
-// form body. Not exercised by the MVP — no media mechanic exists yet
-// (design D4's recorded residue) — but implemented so the request
-// constructor's contract is total. Field order is sorted for
-// determinism (AGENTS.md § Code Style — never map-iteration order).
+// form body. Not exercised by the MVP — no media mechanic exists yet —
+// but implemented so the request constructor's contract is total. Field
+// order is sorted for determinism, never map-iteration order.
 func (jsonConstructor) MultipartRequest(parameters map[string]string, filesParameters map[string]ta.NamedReader) (*ta.RequestData, error) {
 	pr, pw := io.Pipe()
 	writer := multipart.NewWriter(pw)

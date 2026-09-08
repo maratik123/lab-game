@@ -4,8 +4,8 @@ import "time"
 
 // Observation is what this package reports to an Observer exactly once
 // per outbound call — after the last attempt returns, including a gate
-// refusal — carrying the four things §13.2's health dashboard asks of the
-// transport (design D11).
+// refusal — carrying the four things a health dashboard asks of the
+// transport.
 type Observation struct {
 	// Method is the Bot API method name.
 	Method string
@@ -17,7 +17,7 @@ type Observation struct {
 	StatusCode int
 	// RateLimited is true when any attempt of this call received a 429 —
 	// not only when the final response was one, since a 429-then-success
-	// call is exactly the event §13.2's 429 counter wants counted.
+	// call is exactly the event a 429 counter wants counted.
 	RateLimited bool
 	// Retries is the number of attempts beyond the first this call
 	// consumed.

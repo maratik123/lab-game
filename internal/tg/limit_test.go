@@ -51,7 +51,7 @@ func windowRespected(times []time.Time, w window) bool {
 	return true
 }
 
-// ---- Functional Limiter-level tests (AC10-AC15, AC30-AC33) ----
+// ---- Functional Limiter-level tests ----
 
 func TestLimiter_PerClassGlobalAdmission(t *testing.T) {
 	t.Parallel()
@@ -69,7 +69,7 @@ func TestLimiter_PerClassGlobalAdmission(t *testing.T) {
 		t.Errorf("global window(3,1s) violated by emissions %v", times)
 	}
 	// A call of an unbounded class must not be delayed by the message
-	// class's global allowance (AC10's second clause).
+	// class's global allowance.
 	tm, ok := acquireOK(t, l, noChatCall(ClassOther), epoch, time.Time{}, false)
 	if !ok || !tm.Equal(epoch) {
 		t.Errorf("ClassOther acquire = (%v, %v), want (epoch, true) — unaffected by ClassMessage's global allowance", tm, ok)
@@ -79,7 +79,7 @@ func TestLimiter_PerClassGlobalAdmission(t *testing.T) {
 func TestLimiter_CrossChatNonBlockingWithGlobalBounded(t *testing.T) {
 	t.Parallel()
 	limits := config.TransportLimits{Message: config.ClassLimits{
-		Global:   rate(100, time.Second), // generous, bounded (AC11 requires the global class bounded)
+		Global:   rate(100, time.Second), // generous, bounded — the global class stays bounded
 		ChatRate: rate(1, time.Second),
 		ChatCap:  rate(20, time.Minute),
 	}}
@@ -189,7 +189,7 @@ func TestLimiter_ClassLimitsRoutesEachClassToItsOwnConfig(t *testing.T) {
 	}
 }
 
-// TestLimiter_UnboundedClassNeverAllocatesPerChatSchedule asserts D9's
+// TestLimiter_UnboundedClassNeverAllocatesPerChatSchedule asserts the
 // registry claim directly: an unbounded class (no ChatRate, no ChatCap)
 // must not accumulate one map entry per distinct chat id — a schedule
 // with no windows never blocks, so storing one is pure unbounded growth.
@@ -210,7 +210,7 @@ func TestLimiter_PrivateChatIsChargedLikeAnyOther(t *testing.T) {
 	t.Parallel()
 	// The mechanism has no chat-type branch at all — a "private" chat is
 	// simply another Key. This test exercises that key and shows it is
-	// bounded exactly like the cross-chat test's "A"/"B" keys (AC14).
+	// bounded exactly like the cross-chat test's "A"/"B" keys.
 	limits := config.TransportLimits{Message: config.ClassLimits{ChatRate: rate(1, time.Second)}}
 	l := newLimiter(limits)
 	first, ok := acquireOK(t, l, chatCall(ClassMessage, "private:42"), epoch, time.Time{}, false)
@@ -248,10 +248,10 @@ func TestLimiter_SteadyOrderedEmission(t *testing.T) {
 	}
 }
 
-// TestLimiter_LaterArrivalDoesNotJumpAnEarlierGrant is R3 finding 1
-// (self-review round 3): AC30's "in the order they arrived" clause depends
+// TestLimiter_LaterArrivalDoesNotJumpAnEarlierGrant guards a past
+// regression: the "in the order they arrived" clause depends
 // entirely on chatScheduleLocked building the per-chat schedule as
-// orderedSchedule (limit.go), which clamps each candidate to be no earlier
+// orderedSchedule, which clamps each candidate to be no earlier
 // than the chat's own newest grant. Under the shipped chat windows
 // (ChatRate 1/1s, ChatCap 20/1m) — with grants already committed at epoch
 // and epoch+10s — a third acquire call whose own candidate ("now") is
@@ -362,26 +362,24 @@ func TestLimiter_SaturationEndsInEmissionOrError(t *testing.T) {
 	}
 }
 
-// TestLimiter_EvictRunsInsideAcquireBoundingMemory is self-review round
-// 4 finding 1's fix: D9's bounded-retention claim ("retention is
-// O(calls in flight), bounded by concurrency rather than by the window
-// set alone") is a claim about Limiter.acquire, the only production
-// caller of schedule.evict — not about schedule.evict in isolation.
-// TestSchedule_EvictBoundsMemoryAcrossManyAcquires (schedule_test.go)
-// hand-rolls s.evict/s.earliest/s.commit on a bare *schedule and never
-// calls Limiter.acquire, so it cannot see acquire's two evict(now) call
-// sites (limit.go: global.evict(now) and, when chat != nil,
-// chat.evict(now)) go missing. This test drives real-time-separated
-// calls through l.acquire itself — under the shipped message defaults'
-// shape (Global 30/1s, ChatRate 1/1s, ChatCap 20/1m) — and asserts both
-// the class-global schedule's and the per-chat schedule's retained
-// grant counts stay small and bounded, never growing with the number of
-// calls made.
+// TestLimiter_EvictRunsInsideAcquireBoundingMemory guards the
+// bounded-retention claim ("retention is O(calls in flight), bounded by
+// concurrency rather than by the window set alone") which is a claim
+// about Limiter.acquire, the only production caller of schedule.evict —
+// not about schedule.evict in isolation. A sibling test elsewhere in
+// this suite hand-rolls s.evict/s.earliest/s.commit on a bare *schedule
+// and never calls Limiter.acquire, so it cannot see acquire's two
+// evict(now) call sites (the class-global schedule's and, when chat !=
+// nil, the per-chat schedule's) go missing. This test drives
+// real-time-separated calls through l.acquire itself — under the
+// shipped message defaults' shape (Global 30/1s, ChatRate 1/1s, ChatCap
+// 20/1m) — and asserts both the class-global schedule's and the
+// per-chat schedule's retained grant counts stay small and bounded,
+// never growing with the number of calls made.
 //
-// Mutation-verified: deleting either `global.evict(now)` (limit.go:318)
-// or the `if chat != nil { chat.evict(now) }` block (limit.go:319-321)
-// makes this test fail — grants then accumulate one per call (500,
-// unbounded) instead of staying within the asserted bound.
+// Mutation-verified: deleting either evict call makes this test fail —
+// grants then accumulate one per call (500, unbounded) instead of
+// staying within the asserted bound.
 func TestLimiter_EvictRunsInsideAcquireBoundingMemory(t *testing.T) {
 	t.Parallel()
 	limits := config.TransportLimits{Message: config.ClassLimits{
@@ -414,9 +412,9 @@ func TestLimiter_EvictRunsInsideAcquireBoundingMemory(t *testing.T) {
 
 // TestLimiter_IdenticalBehaviourAcrossBaseURLs builds two real Clients
 // through New, differing ONLY in BaseURL, and asserts their limiters
-// produce byte-identical acquire results (AC15) — unlike a test that
+// produce byte-identical acquire results — unlike a test that
 // compares two Limiters built with no BaseURL anywhere in the picture,
-// this one actually varies the field AC15 names.
+// this one actually varies the field that matters.
 func TestLimiter_IdenticalBehaviourAcrossBaseURLs(t *testing.T) {
 	t.Parallel()
 	tr := validTransport()
@@ -440,14 +438,14 @@ func TestLimiter_IdenticalBehaviourAcrossBaseURLs(t *testing.T) {
 	}
 }
 
-// ---- Subtask 4's binding red-first broken-variant table ----
+// ---- A red-first broken-variant table ----
 //
 // Each variant below is a small, self-contained reproduction of a named
-// historical defect (design D9's history table). Every test runs the
+// historical defect. Every test runs the
 // SAME assertion against the broken variant FIRST (asserting it fails —
 // RED) and then against the real Limiter/schedule (asserting it passes —
-// GREEN). A row whose broken variant does not go red is itself a finding
-// (design's spawn-contract note) — none of the seven below stayed green.
+// GREEN). A row whose broken variant does not go red is itself a finding —
+// none of the seven below stayed green.
 
 // Row 1: commit-at-candidate — commit to the global schedule at the
 // candidate instant, then let a chat window push the emission later
@@ -704,10 +702,10 @@ func TestRedFirst_CountRetention(t *testing.T) {
 
 	// Broken: RED — retention keeps only the `count` grants with the
 	// LARGEST timestamp VALUES (the naive reading of "keep the newest c"
-	// on a schedule whose grants array is sorted BY VALUE, design D9's
-	// exact phrasing: "on an unordered schedule, whose inserts are sorted
-	// rather than appended, a count bound silently discards grants that
-	// are still inside a live window"). A far-future backlog (a busy
+	// on a schedule whose grants array is sorted BY VALUE: on an unordered
+	// schedule, whose inserts are sorted rather than appended, a count
+	// bound silently discards grants that are still inside a live
+	// window). A far-future backlog (a busy
 	// chat's already-reserved slots) permanently outranks any genuinely
 	// imminent, real near-term grant — so every near-term admission gets
 	// forgotten the instant it is granted, and the window's true cap is
@@ -874,8 +872,8 @@ func TestRedFirst_QuotaOnly(t *testing.T) {
 
 // ---- paceWindows dedup (finding 15) ----
 
-// TestPaceWindows_DedupesWhenTheyCoincide asserts design D9's
-// pacing-windows paragraph's claim directly: "When N is 1 the two windows
+// TestPaceWindows_DedupesWhenTheyCoincide asserts the
+// pacing-windows claim directly: "When N is 1 the two windows
 // coincide and the schedule holds one." Before the fix, N=1 produced two
 // textually identical windows.
 func TestPaceWindows_DedupesWhenTheyCoincide(t *testing.T) {

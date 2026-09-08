@@ -18,13 +18,12 @@ import (
 
 // installedConstructorTypeName reads the dynamic type name of the
 // *telego.Bot's own unexported `constructor` field — telego exposes no
-// accessor for it — via reflection over the addressable struct field
-// (design D3/finding 2: the two codecs' output bytes are equivalent, so
-// only the installed seam itself, not any request body, can distinguish
-// jsonConstructor from telego's default). Test-only: gosec is excluded
-// on _test.go files (.golangci.yml), and unsafe.Pointer here only lifts
-// reflect's own read-only restriction on an already-addressable field —
-// it never mutates anything.
+// accessor for it — via reflection over the addressable struct field.
+// The two codecs' output bytes are equivalent, so only the installed
+// seam itself, not any request body, can distinguish jsonConstructor
+// from telego's default. Test-only: gosec is excluded on test files, and
+// unsafe.Pointer here only lifts reflect's own read-only restriction on
+// an already-addressable field — it never mutates anything.
 func installedConstructorTypeName(t *testing.T, c *Client) string {
 	t.Helper()
 	bot := reflect.ValueOf(c.API()).Elem()
@@ -55,14 +54,13 @@ func installedLoggerFields(t *testing.T, c *Client) (debugMode, printErrors bool
 	return debugField.Bool(), printField.Bool()
 }
 
-// TestNew_InstallsPackageJSONConstructor is self-review round 4 finding
-// 2's fix: deleting telego.WithRequestConstructor(jsonConstructor{})
-// (client.go) leaves the suite green because telego then falls back to
-// its own default constructor, which produces byte-equivalent JSON —
-// AC2's import guard cannot see it either, since it is scoped to this
-// project's own imports (design D3), and telego's marshal path is not
-// one of them. The only thing that can distinguish the two is the
-// installed seam itself.
+// TestNew_InstallsPackageJSONConstructor guards against a past
+// regression: deleting telego.WithRequestConstructor(jsonConstructor{})
+// leaves the suite green because telego then falls back to
+// its own default constructor, which produces byte-equivalent JSON — an
+// import guard scoped to this project's own imports cannot see it
+// either, since telego's marshal path is not one of them. The only thing
+// that can distinguish the two is the installed seam itself.
 func TestNew_InstallsPackageJSONConstructor(t *testing.T) {
 	t.Parallel()
 	c, err := New(validOptions())
@@ -75,9 +73,9 @@ func TestNew_InstallsPackageJSONConstructor(t *testing.T) {
 	}
 }
 
-// TestNew_InstallsDiscardLoggerByDefault is self-review round 4 finding
-// 6's fix: Options.Logger's doc comment (client.go) promises "Nil means
-// telego.WithDiscardLogger()"; replacing the nil-Logger else branch's
+// TestNew_InstallsDiscardLoggerByDefault guards a promise Options.Logger's
+// own doc comment makes: "Nil means telego.WithDiscardLogger()";
+// replacing the nil-Logger else branch's
 // telego.WithDiscardLogger() call with a no-op leaves the suite green,
 // silently reverting to telego's own default logger (PrintErrors: true)
 // instead of the discard logger (PrintErrors: false) this package's own
@@ -111,12 +109,10 @@ type recordingLogger struct {
 func (l *recordingLogger) Debugf(string, ...any) {}
 func (l *recordingLogger) Errorf(string, ...any) {}
 
-// TestNew_InstallsProvidedLoggerWhenNonNil is self-review round 5 finding
-// 3: round 4's fix (TestNew_InstallsDiscardLoggerByDefault) pinned only
-// the nil-Options.Logger else branch; the non-nil if branch
-// (client.go:147-149, telego.WithLogger(opts.Logger)) was never once
-// exercised by any test, so a caller-supplied Logger silently reaching
-// telego.NewBot was never verified. This constructs with a recognisable
+// TestNew_InstallsProvidedLoggerWhenNonNil covers the branch its sibling
+// TestNew_InstallsDiscardLoggerByDefault leaves untouched: the non-nil
+// if branch (telego.WithLogger(opts.Logger)) — a caller-supplied Logger
+// silently reaching telego.NewBot. This constructs with a recognisable
 // Options.Logger (DebugMode true, PrintErrors false — the opposite of
 // telego's own DiscardLogger, which is DebugMode false / PrintErrors
 // false) and asserts it, not the discard logger, ends up installed.
@@ -137,10 +133,10 @@ func TestNew_InstallsProvidedLoggerWhenNonNil(t *testing.T) {
 	}
 }
 
-// validTransport returns a config.Transport that passes New's validation
+// validTransport returns a Transport value that passes New's validation
 // — every retry field positive, every rate-limit class unbounded (the
-// zero value), which is a legal configuration (design D9's "an unbounded
-// value contributes no window").
+// zero value), which is a legal configuration: an unbounded value
+// contributes no window.
 func validTransport() config.Transport {
 	return config.Transport{
 		RetryMaxAttempts: 3,
@@ -265,12 +261,11 @@ func TestChatTarget_String(t *testing.T) {
 		{ChatNone, "ChatNone"},
 		{ChatUnknown, "ChatUnknown"},
 		{ChatKnown, "ChatKnown"},
-		// Self-review round 5's coverage sweep: the default arm was
-		// never exercised. ChatTarget is exported and this package
+		// The default arm: ChatTarget is exported and this package
 		// defines no value outside 0-2, so an out-of-range value is a
 		// genuine caller mistake, not a fabricated scenario — the same
-		// fallback ChatUnknown already answers (the conservative,
-		// refuse-by-default state, design D12).
+		// fallback ChatUnknown already answers, the conservative,
+		// refuse-by-default state.
 		{ChatTarget(99), "ChatUnknown"},
 	}
 	for _, tc := range cases {

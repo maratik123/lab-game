@@ -10,18 +10,18 @@ import (
 )
 
 // window is one window constraint: no half-open interval of length Per
-// contains more than Count grants (design D9).
+// contains more than Count grants.
 type window struct {
 	count int
 	per   time.Duration
 }
 
-// scheduleKind distinguishes the two obligations a schedule can serve
-// (design D9): ordered (one chat key) raises a candidate to the key's own
+// scheduleKind distinguishes the two obligations a schedule can serve:
+// ordered (one chat key) raises a candidate to the key's own
 // newest grant first, so grants are non-decreasing; unordered (the
 // class-global key) answers the earliest admissible instant with no such
 // clamp, which is what stops one chat's backlog blocking another
-// (head-of-line, design D9's redirect finding).
+// (a head-of-line hazard).
 type scheduleKind int
 
 const (
@@ -30,7 +30,7 @@ const (
 )
 
 // schedule is the whole state for one limiter key: its window set, and the
-// emission instants already granted, held in ascending order (design D9).
+// emission instants already granted, held in ascending order.
 // The zero value is not usable; construct with newSchedule. A schedule is
 // not safe for concurrent use on its own — Limiter's single mutex is what
 // makes it safe.
@@ -58,7 +58,7 @@ func (s *schedule) maxPer() time.Duration {
 
 // holds reports whether inserting one more grant at t would keep every
 // window's invariant on the FULL sorted grant set — grant[j+c]-grant[j] >=
-// per for every j (design D9) — not merely the window ending at t. On an
+// per for every j — not merely the window ending at t. On an
 // unordered schedule t may sort before an already-committed later grant,
 // and that later grant's own window can be the one a naive
 // t-is-always-newest check would miss; only the O(count) positions
@@ -97,7 +97,7 @@ func (s *schedule) holds(t time.Time) bool {
 
 // earliest returns the earliest instant t >= candidate at which one more
 // grant still satisfies every window's invariant. It is a pure read,
-// mutating nothing (design D9): for the ordered kind, candidate is first
+// mutating nothing: for the ordered kind, candidate is first
 // raised to the schedule's own newest grant, so grants stay
 // non-decreasing; the search then tests candidate itself and every
 // grant+window.per instant in ascending order, returning the first that
@@ -141,14 +141,13 @@ func (s *schedule) earliest(candidate time.Time) time.Time {
 // that a single decision computed from one real "now" (a burst of
 // simultaneously-arriving calls, each granted a different future instant)
 // never has an earlier member of that same burst forgotten merely because
-// a later member's grant lands further in the future (design D9's
-// invariant must hold over the whole burst, not just pairwise against the
-// most recently committed instant).
+// a later member's grant lands further in the future: the invariant must
+// hold over the whole burst, not just pairwise against the most recently
+// committed instant.
 func (s *schedule) commit(t time.Time) {
 	if len(s.windows) == 0 {
-		// Unbounded: no window to constrain, so nothing to remember
-		// (design D9's "an unbounded value contributes no window ... and
-		// never allocates history").
+		// Unbounded: no window to constrain, so nothing to remember — an
+		// unbounded value contributes no window and never allocates history.
 		return
 	}
 
@@ -159,7 +158,7 @@ func (s *schedule) commit(t time.Time) {
 }
 
 // evict drops every grant that can no longer constrain any window as of
-// real time now — retention is by TIME alone, never by count (design D9):
+// real time now — retention is by TIME alone, never by count:
 // a grant is dropped once grant+maxPer(s) is in the past RELATIVE TO NOW,
 // never relative to a future grant instant this schedule has computed.
 // Eviction depends only on the window set and the clock, never on a
@@ -182,7 +181,7 @@ func (s *schedule) evict(now time.Time) {
 }
 
 // chatKey identifies one per-chat schedule: the destination chat's raw key
-// (or a reserved unknown-chat token, design D4) paired with the method
+// (or a reserved unknown-chat token) paired with the method
 // class.
 type chatKey struct {
 	key   string
@@ -190,15 +189,15 @@ type chatKey struct {
 }
 
 // unknownChatKey is the single reserved key every ChatUnknown call of one
-// class shares (design D4): bounded, never exempt, conservative when
+// class shares: bounded, never exempt, conservative when
 // several distinct real chats would otherwise collapse into it.
 const unknownChatKey = "\x00unknown"
 
 // Limiter owns every window schedule — the three class-global schedules
 // and every per-(chat, class) schedule of a bounded class — under one
-// mutex (design D9's "one lock, one instant, commit-after-decide"). It is
+// mutex: one lock, one instant, commit-after-decide. It is
 // in-process only: nothing here writes to a table, to disk, or to any
-// store that outlives the process (design D9, AC32).
+// store that outlives the process.
 type Limiter struct {
 	mu     sync.Mutex
 	global [3]*schedule
@@ -208,8 +207,8 @@ type Limiter struct {
 
 // newLimiter builds a Limiter from limits: one unordered class-global
 // schedule per MethodClass, built eagerly; per-chat schedules are ordered
-// and built lazily, on first reference, only for bounded classes (design
-// D9's registry — an unbounded class allocates no history at all).
+// and built lazily, on first reference, only for bounded classes — an
+// unbounded class allocates no history at all.
 func newLimiter(limits config.TransportLimits) *Limiter {
 	l := &Limiter{
 		limits: limits,
@@ -234,7 +233,7 @@ func (l *Limiter) classLimits(class MethodClass) config.ClassLimits {
 }
 
 // chatScheduleLocked returns call's per-chat schedule, or nil when call
-// addresses no chat (ChatNone — design D4/D12: such a call charges its
+// addresses no chat (ChatNone — such a call charges its
 // class-global schedule only). Must be called with l.mu held.
 func (l *Limiter) chatScheduleLocked(call Call) *schedule {
 	if call.Chat.Target == ChatNone {
@@ -250,8 +249,8 @@ func (l *Limiter) chatScheduleLocked(call Call) *schedule {
 	cl := l.classLimits(call.Class)
 	windows := append(paceWindows(cl.ChatRate), quotaWindows(cl.ChatCap)...)
 	if len(windows) == 0 {
-		// An unbounded class allocates no per-chat history at all (design
-		// D9's registry): a schedule with no windows never blocks, so
+		// An unbounded class allocates no per-chat history at all: a
+		// schedule with no windows never blocks, so
 		// there is nothing a stored entry would ever be consulted for —
 		// storing one anyway would let a distinct chat id per call grow
 		// this map without bound.
@@ -262,8 +261,8 @@ func (l *Limiter) chatScheduleLocked(call Call) *schedule {
 	return s
 }
 
-// maxAcquirePasses bounds the decide-then-commit fixed-point search
-// (design D9). The loop provably terminates — t strictly increases on
+// maxAcquirePasses bounds the decide-then-commit fixed-point search.
+// The loop provably terminates — t strictly increases on
 // every non-final pass and both schedules admit all sufficiently large
 // instants — in at most the number of distinct candidate instants either
 // schedule could propose, which is bounded by calls in flight. This bound
@@ -271,12 +270,12 @@ func (l *Limiter) chatScheduleLocked(call Call) *schedule {
 // it, never a fallback path a correct run relies on.
 const maxAcquirePasses = 4096
 
-// acquireFixedPoint runs design D9's decide-then-commit fixed-point
+// acquireFixedPoint runs the decide-then-commit fixed-point
 // search from start, consulting earliestFns (each a schedule's earliest,
 // or an equivalent) until none advances t any further, or until
-// maxAcquirePasses is exhausted. It mutates nothing — pure decision, as
-// D9 requires. Extracted from acquire so the exhaustion branch (finding
-// 12: exhaustion is a defect, not a silent fallback) is directly
+// maxAcquirePasses is exhausted. It mutates nothing — pure decision.
+// Extracted from acquire so the exhaustion branch — exhaustion is a
+// defect, not a silent fallback — is directly
 // testable with a deliberately non-converging stub, independent of any
 // real schedule's own termination proof.
 func acquireFixedPoint(start time.Time, earliestFns ...func(time.Time) time.Time) (t time.Time, converged bool) {
@@ -298,16 +297,16 @@ func acquireFixedPoint(start time.Time, earliestFns ...func(time.Time) time.Time
 
 // acquire decides the emission instant for call, not before now, honoring
 // deadline when hasDeadline is true, and commits to every relevant
-// schedule at that same instant — design D9's whole mechanism: decide
+// schedule at that same instant — decide
 // against every constraint first, commit to every constraint at that same
 // instant, never commit before the answer is final and never partially
 // undo. It returns (t, true, nil) on a grant, or (zero, false, nil) when
 // the required wait would end after deadline — in which case NOTHING has
-// been mutated (design D9's "a refusal cannot corrupt anything, because a
-// refusal happens before any mutation"). A non-nil error means the
+// been mutated: a refusal cannot corrupt anything, because a
+// refusal happens before any mutation. A non-nil error means the
 // fixed-point search did not converge within maxAcquirePasses — believed
 // unreachable given a correct window configuration, but treated as the
-// defect design D9's fixed-point-exhaustion paragraph calls it, never as a
+// defect it is, never as a
 // silent fallback: nothing is committed and no grant is returned.
 func (l *Limiter) acquire(call Call, now, deadline time.Time, hasDeadline bool) (time.Time, bool, error) {
 	l.mu.Lock()
@@ -341,14 +340,13 @@ func (l *Limiter) acquire(call Call, now, deadline time.Time, hasDeadline bool) 
 }
 
 // paceWindows expresses a pacing key's rate — steady emission at N per W,
-// no burst (design D9's "leaky bucket in the shaping sense") — as both
+// no burst, a leaky bucket in the shaping sense — as both
 // windows it needs: (1, ceil(W/N)), which bears the STEADY SHAPE, and
 // (N, W), which bears the BOUND itself. r's zero value (unbounded)
 // contributes no window. ceil rather than truncation buys evenness only —
-// the quota window is what forbids the N+1-th emission either way (design
-// D9's "Configuration maps onto windows"). When N is 1 the two windows
-// coincide exactly (design D9's pacing-windows paragraph), so only one is
-// kept.
+// the quota window is what forbids the N+1-th emission either way
+// (configuration maps onto windows). When N is 1 the two windows
+// coincide exactly, so only one is kept.
 func paceWindows(r config.Rate) []window {
 	if r.Count <= 0 {
 		return nil
@@ -363,7 +361,7 @@ func paceWindows(r config.Rate) []window {
 
 // quotaWindows expresses a quota key's cap — at most N in any window of
 // length W — as the one window that states it directly. r's zero value
-// (unbounded) contributes no window (design D9).
+// (unbounded) contributes no window.
 func quotaWindows(r config.Rate) []window {
 	if r.Count <= 0 {
 		return nil

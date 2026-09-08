@@ -3,10 +3,10 @@ package tg
 import "context"
 
 // ChatTarget describes what this package could determine about a call's
-// destination chat, from the derivation design D4 specifies. It is three
+// destination chat. It is three
 // states, not a boolean, because the two "no chat id" branches need
 // opposite treatment from an outbound Gate — a boolean would collapse
-// them (design D12).
+// them.
 type ChatTarget int
 
 const (
@@ -17,7 +17,7 @@ const (
 	ChatNone ChatTarget = iota
 	// ChatUnknown means the method addresses a chat, but this package
 	// could not read which one — a multipart request, whose body is a
-	// stream rather than raw bytes (design D4). A Gate must refuse these:
+	// stream rather than raw bytes. A Gate must refuse these:
 	// an unverifiable destination is exactly what an allowlist exists to
 	// stop.
 	ChatUnknown
@@ -41,7 +41,7 @@ func (t ChatTarget) String() string {
 }
 
 // ChatRef names a call's destination chat, or states that none exists or
-// could not be read (design D4, D12).
+// could not be read.
 type ChatRef struct {
 	// Key is the destination chat id's raw JSON token (a chat_id may be a
 	// @channelusername string rather than a number) — meaningful only
@@ -53,18 +53,18 @@ type ChatRef struct {
 
 // Call describes one outbound Bot API call for the purposes of the
 // outbound Gate and the rate limiter — both of which need the method
-// name, its MethodClass and its destination chat (design D4, D9, D12).
+// name, its MethodClass and its destination chat.
 type Call struct {
 	// Method is the Bot API method name, e.g. "sendMessage".
 	Method string
-	// Class is Method's MethodClass (design D4).
+	// Class is Method's MethodClass.
 	Class MethodClass
-	// Chat is Method's destination, or the absence of one (design D4).
+	// Chat is Method's destination, or the absence of one.
 	Chat ChatRef
 }
 
-// Gate is the outbound seam #22 installs its ALLOWED_CHAT_IDS allowlist
-// into (design D12). It is consulted before any attempt and before any
+// Gate is the outbound seam an ALLOWED_CHAT_IDS allowlist installs
+// into. It is consulted before any attempt and before any
 // limiter wait, so a refused call costs no allowance. AllowCall returning
 // a non-nil error refuses the call; this package wraps that error in its
 // own typed Error with Attempts 0, StatusCode 0 and Ambiguous false.
@@ -72,7 +72,7 @@ type Call struct {
 // This package installs no allowlist itself — the obligation here is
 // negative and structural: the seam exists, it is reachable from outside
 // the package via Options.Gate, and no exported API lets a caller issue
-// an outbound call that bypasses it (design D12, AC27).
+// an outbound call that bypasses it.
 type Gate interface {
 	// AllowCall reports whether call may proceed, given ctx.
 	AllowCall(ctx context.Context, call Call) error

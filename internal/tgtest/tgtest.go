@@ -1,21 +1,22 @@
 // Package tgtest provides a shared, in-process fake Bot API server for
-// internal/tg's own tests, #43's ordering/rate-limit/429 tests, and #44's
-// eval harness (design D13) — the threshold at which design-writer's
+// this module's Telegram client tests, an ordering/rate-limit/429 test
+// suite, and an eval harness — the threshold at which this project's own
 // rules require a shared package rather than copy-paste in each consumer.
 //
 // The server answers over net.Pipe through a real *http.Server and a real
 // *http.Transport, wired by a DialContext hook: there is no listener and
 // no socket. That is what makes the whole test suite runnable inside a
-// testing/synctest bubble (design D14) — a pipe connection is durably
+// testing/synctest bubble — a pipe connection is durably
 // blockable inside a bubble, a real socket is not — and it makes "no
 // network egress" structural: BaseURL is under the reserved ".invalid" TLD
-// (RFC 2606 § 2), so any dial this package's DialContext does not
+// (RFC 2606), so any dial this package's DialContext does not
 // intercept can only fail.
 //
-// tgtest imports neither internal/tg nor telego — net, net/http and
-// encoding/json are enough — so it carries no cycle and, imported only
-// from _test.go files, never links into cmd/bot (mirroring the consequence
-// KD-20 already states for internal/testdb).
+// tgtest imports neither this module's Telegram client package nor
+// telego — net, net/http and encoding/json are enough — so it carries no
+// cycle and, imported only from test files, never links into the bot
+// command (mirroring the same consequence for this module's database
+// test helper package).
 package tgtest
 
 import (
@@ -30,24 +31,23 @@ import (
 )
 
 // BaseURL is the fake server's base URL production code is pointed at in
-// tests, taken from the same config.BotAPIBaseURL field production uses
-// for the self-hosted instance and for api.telegram.org (design D13,
-// AC20).
+// tests, taken from the same configuration field production uses
+// for the self-hosted instance and for api.telegram.org.
 const BaseURL = "http://bot-api.invalid"
 
 // Token is a syntactically valid fake bot token — a digit run, a colon,
 // then 35 word/hyphen characters, matching telego's own tokenRegexp
 // exactly — so telego.NewBot accepts it. The repeated "FAKE-" body makes
 // it unmistakably not a credential.
-const Token = "1:FAKE-FAKE-FAKE-FAKE-FAKE-FAKE-FAKE-" //nolint:gosec // G101: syntactically valid but fake bot token literal, used only by tests against this in-process fake server — not a credential (design D13, mirroring internal/config/env.go's envBotToken precedent).
+const Token = "1:FAKE-FAKE-FAKE-FAKE-FAKE-FAKE-FAKE-" //nolint:gosec // G101: syntactically valid but fake bot token literal, used only by tests against this in-process fake server — not a credential.
 
 // Handler answers one HTTP request against the fake server. It is an
 // ordinary http.HandlerFunc-shaped value; the Success, TooManyRequests,
 // ServerError and Delayed helpers below construct the Bot API response
-// shapes design D13's tests need.
+// shapes this package's consumers need.
 type Handler func(w http.ResponseWriter, r *http.Request)
 
-// Server is an in-process fake Bot API server (design D13). The zero value
+// Server is an in-process fake Bot API server. The zero value
 // is not usable; construct one with New.
 type Server struct {
 	tb testing.TB
@@ -62,8 +62,7 @@ type Server struct {
 
 // New starts a fake server that answers every request with handler until
 // SetHandler replaces it, and registers the server's shutdown with
-// tb.Cleanup so no goroutine outlives the test (design D13's leaked-
-// goroutine risk).
+// tb.Cleanup so no goroutine outlives the test.
 func New(tb testing.TB, handler Handler) *Server {
 	tb.Helper()
 	s := &Server{
@@ -109,7 +108,7 @@ func (s *Server) SetHandler(h Handler) {
 
 // FailNextDial makes exactly the next DialContext call return an error
 // instead of connecting, reproducing "a transport-level failure with no
-// request written" (design D13, D5's classifier table) — httptrace's
+// request written" — httptrace's
 // WroteRequest hook never fires because no connection was ever obtained.
 func (s *Server) FailNextDial() {
 	s.mu.Lock()
@@ -149,8 +148,7 @@ func (s *Server) DialContext(ctx context.Context, _, _ string) (net.Conn, error)
 // Client returns an *http.Client whose Transport reaches this server
 // exclusively through DialContext — no other host is reachable through it
 // — with keep-alives disabled, which is required for a leaked-connection
-// goroutine never to survive past a synctest bubble's root returning
-// (design D14).
+// goroutine never to survive past a synctest bubble's root returning.
 func (s *Server) Client() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
@@ -162,8 +160,8 @@ func (s *Server) Client() *http.Client {
 
 // CloseWithoutResponse hijacks the connection and closes it with no bytes
 // written back, reproducing "a transport-level failure after the request
-// was written" — the ambiguous case design D5's classifier table and AC6
-// need. It reports (via s.tb) rather than panicking if the connection does
+// was written" — the ambiguous case the classifier table and its
+// callers need. It reports (via s.tb) rather than panicking if the connection does
 // not support hijacking, which does not happen over this package's own
 // net.Pipe-backed listener.
 func (s *Server) CloseWithoutResponse() Handler {
@@ -215,8 +213,8 @@ func Success(result json.RawMessage) Handler {
 
 // TooManyRequests answers with HTTP 429. When retryAfter is positive, the
 // body carries parameters.retry_after; when it is zero or negative, the
-// field is omitted entirely — design D5's "a 429 need not carry
-// parameters.retry_after" case.
+// field is omitted entirely — a 429 need not carry
+// parameters.retry_after.
 func TooManyRequests(retryAfter int) Handler {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		env := envelope{OK: false, ErrorCode: http.StatusTooManyRequests, Description: "Too Many Requests"}
@@ -236,7 +234,7 @@ func ServerError(status int) Handler {
 
 // Delayed waits for the given duration — through whichever clock is active
 // in the caller's goroutine tree, the real one or a testing/synctest
-// bubble's virtual one (design D14) — before invoking next.
+// bubble's virtual one — before invoking next.
 func Delayed(after time.Duration, next Handler) Handler {
 	return func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(after)
@@ -246,8 +244,7 @@ func Delayed(after time.Duration, next Handler) Handler {
 
 // pipeListener is a net.Listener with no real socket: Accept hands out
 // net.Pipe server-side connections fed by DialContext. It exists solely so
-// Server can drive a real *http.Server with no OS-level listener (design
-// D13).
+// Server can drive a real *http.Server with no OS-level listener.
 type pipeListener struct {
 	conns  chan net.Conn
 	closed chan struct{}

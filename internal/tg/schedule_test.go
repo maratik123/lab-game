@@ -32,9 +32,9 @@ func bruteForceEarliest(s *schedule, candidate time.Time) time.Time {
 }
 
 // TestSchedule_EarliestMatchesBruteForceOracle asserts schedule.earliest
-// against a slow, independent oracle over many small random scenarios
-// (design D9's "the mechanism is correct by a checkable postcondition,
-// not by an argument in this document").
+// against a slow, independent oracle over many small random scenarios —
+// the mechanism is correct by a checkable postcondition, not by an
+// argument in prose.
 func TestSchedule_EarliestMatchesBruteForceOracle(t *testing.T) {
 	t.Parallel()
 	rnd := rand.New(rand.NewPCG(1, 2))
@@ -66,9 +66,9 @@ func TestSchedule_EarliestMatchesBruteForceOracle(t *testing.T) {
 	}
 }
 
-// TestSchedule_InvariantHoldsAfterEveryCommit asserts D9's stated
-// invariant directly, in the form the design says a checkable
-// postcondition takes: for every window (c, per), grant[j+c]-grant[j] >=
+// TestSchedule_InvariantHoldsAfterEveryCommit asserts the schedule's
+// stated invariant directly, as a checkable postcondition: for every
+// window (c, per), grant[j+c]-grant[j] >=
 // per for every j.
 func TestSchedule_InvariantHoldsAfterEveryCommit(t *testing.T) {
 	t.Parallel()
@@ -97,7 +97,7 @@ func assertInvariant(t *testing.T, s *schedule, windows []window) {
 }
 
 // TestSchedule_OrderedEmissionIsNonDecreasing asserts the ordered kind's
-// non-decreasing property directly (design D9's table): a key's grants
+// non-decreasing property directly: a key's grants
 // never go backwards, so emission order is arrival order.
 func TestSchedule_OrderedEmissionIsNonDecreasing(t *testing.T) {
 	t.Parallel()
@@ -118,8 +118,8 @@ func TestSchedule_OrderedEmissionIsNonDecreasing(t *testing.T) {
 	}
 }
 
-// TestSchedule_UnboundedContributesNoWindow asserts design D9's "an
-// unbounded value contributes no window": a schedule with no windows never
+// TestSchedule_UnboundedContributesNoWindow asserts that "an unbounded
+// value contributes no window": a schedule with no windows never
 // blocks.
 func TestSchedule_UnboundedContributesNoWindow(t *testing.T) {
 	t.Parallel()
@@ -134,7 +134,7 @@ func TestSchedule_UnboundedContributesNoWindow(t *testing.T) {
 	}
 }
 
-// TestSchedule_RetentionIsTimeBasedNotCountBased asserts design D9's
+// TestSchedule_RetentionIsTimeBasedNotCountBased asserts the schedule's
 // retention rule directly on an UNORDERED schedule, where a count bound
 // would be unsound: grants still inside a live window must never be
 // evicted merely for being "not the newest c".
@@ -159,8 +159,8 @@ func TestSchedule_RetentionIsTimeBasedNotCountBased(t *testing.T) {
 	}
 }
 
-// TestSchedule_EvictIsRelativeToRealNowNotToAFutureGrant asserts the fix
-// this design's own history warns about: eviction must never be computed
+// TestSchedule_EvictIsRelativeToRealNowNotToAFutureGrant guards a past
+// regression: eviction must never be computed
 // against a newly-decided FUTURE grant instant, only against the real
 // clock. A burst of calls, all decided from one real "now", must not have
 // an early member evicted merely because a later member's grant lands far
@@ -228,8 +228,9 @@ func TestSchedule_EvictThreshold(t *testing.T) {
 	}
 }
 
-// TestSchedule_EvictBoundsMemoryAcrossManyAcquires asserts D9's bounded-
-// memory claim directly: a long sequence of real-time-separated acquires
+// TestSchedule_EvictBoundsMemoryAcrossManyAcquires asserts the schedule's
+// bounded-memory claim directly: a long sequence of real-time-separated
+// acquires
 // (each evicted before the next) must never accumulate an unbounded
 // grant history.
 func TestSchedule_EvictBoundsMemoryAcrossManyAcquires(t *testing.T) {

@@ -6,13 +6,13 @@ import (
 )
 
 // Error is the one typed error this package's caller ever returns for a
-// failed outbound call — carrying everything #43 needs to branch on
+// failed outbound call — carrying everything a caller needs to branch on
 // "retry later at time T" (RetryAfter > 0), "this chat is gone"
 // (StatusCode plus Description), and "unknown — do not re-send"
-// (Ambiguous) (design D8). Err is sanitised at construction time so that
+// (Ambiguous). Err is sanitised at construction time so that
 // this value is safe to render or log for the rest of its life: the bot
 // token never appears in Err, in Error()'s rendering, or in any
-// instrumentation observation (design D8, AC26).
+// instrumentation observation.
 type Error struct {
 	// Method is the Bot API method name — e.g. "sendMessage" — never the
 	// request URL and never the token.
@@ -30,9 +30,9 @@ type Error struct {
 	Attempts int
 	// Ambiguous is true when the last attempt's outcome is unknown — the
 	// request may or may not have reached Telegram — so the caller must
-	// not retry or re-send (design D5).
+	// not retry or re-send.
 	Ambiguous bool
-	// Err is the underlying cause, already token-sanitised (design D8).
+	// Err is the underlying cause, already token-sanitised.
 	Err error
 }
 

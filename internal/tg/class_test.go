@@ -2,11 +2,10 @@ package tg
 
 import "testing"
 
-// TestClassifyMethod exercises design D4's classifier against real method
-// names extracted from the pinned telego version's own generated methods
-// (methods.go), including the trap cases the design calls out explicitly:
-// the bare edit*/delete* prefixes would sweep in non-message methods, and
-// the prefix form must not do that.
+// TestClassifyMethod exercises the classifier against real method
+// names extracted from the pinned telego version's own generated methods,
+// including the trap cases: the bare edit*/delete* prefixes would sweep
+// in non-message methods, and the prefix form must not do that.
 func TestClassifyMethod(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
