@@ -29,7 +29,7 @@ SHELL := /bin/bash
 GO_MAX_LINES ?= 1000
 GO_MAX_TEST_LINES ?= 1500
 
-.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet
+.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet comment-refs
 
 verify: fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck
 
@@ -76,3 +76,9 @@ shellcheck:
 # whole suite under coverage instrumentation, and `verify` already ran it twice.
 cover-ratchet:
 	.githooks/coverage-ratchet.sh --check
+
+# The comment reference gate, over the whole tracked gated set. Not yet part
+# of `verify`: every tracked shell script still carries a comment this gate
+# would flag, and that sweep lands in a later group of this same task.
+comment-refs:
+	go run ./cmd/commentrefs
