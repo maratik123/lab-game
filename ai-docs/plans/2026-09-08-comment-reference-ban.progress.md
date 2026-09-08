@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** not run
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group A subtask 8 of 10 complete
-**last_passed_gate:** golangci-lint run (whole module); make shellcheck; actionlint .github/workflows/ci.yml
+**current_step:** Step 8 — Group A subtask 9 of 10 complete
+**last_passed_gate:** go test ./... (whole module, incl. internal/config); coverage ratchet holds
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** start Group A subtask 9 — `.env.example` restated; `config/balance.yaml` gains English self-contained prose.
+**Do this immediately:** start Group A subtask 10 — wiring landing one: `comment-refs` Makefile target; `.githooks/pre-commit` symlink + dispatcher.
 
 ## Subtasks
 
@@ -28,6 +28,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - [x] 6. Sweep `internal/tg`, `internal/tgtest`
 - [x] 7. Sweep `internal/ingest`, `internal/scheduler`
 - [x] 8. Sweep the build/runtime gated files; `coverage-ratchet.sh` gains the D9 `--help`
+- [x] 9. `.env.example` restated; `config/balance.yaml` gains English self-contained prose
 - [ ] 3. The command `cmd/commentrefs`: input modes, exit codes, report format
 - [ ] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
 - [ ] 5. Sweep `internal/store` + migrations, `internal/testdb`
@@ -67,6 +68,8 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 7**: `go test -race ./internal/ingest/... ./internal/scheduler/...` was run for the same reason as subtask 6 — both packages run a worker loop with goroutines, a shared pending-settlement map, and (in ingest's case) a mutex-guarded cache — required by AGENTS.md for any change touching goroutines or shared state, even a comment-only one.
 - **Subtask 8**: `.githooks/coverage-ratchet.sh` is the one script this subtask gives the D9 `--help` shape to (the design's own assignment — every other script gets it in Group B's subtask 12, copying this shape verbatim). It already parsed a mode at `mode=${1:-raise}`, so per D9 the `-h|--help` case was inserted at that existing site, after the file's constant assignments (TOLERANCE_PP, RATCHET_FILE, PROFILE) and before the mode-validation case — no side effect precedes it. The removed `# Usage:` header block became the `usage()` function's heredoc body verbatim; the fixed marker line `-h|--help) usage; exit 0 ;;` is exactly what subtask 12 must copy byte-identical later. Verified: `bash .githooks/coverage-ratchet.sh --help` prints the usage and exits 0 with nothing else run; `shellcheck -s bash` clean; the existing `ai-docs/scripts/test-precommit-dispatch.sh` suite (which drives this script through the real hook) still passes unchanged; a real `--check` run against the working tree still reports the correct percentage.
 - **Subtask 8**: `.golangci.yml`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, `Makefile`, `.gitignore` needed only the reference sweep (no `--help`, no functional wiring change — `Makefile`'s `comment-refs` target and the pre-commit dispatcher are subtask 10; `verify`'s prerequisite and the CI job are subtask 15, per the design's two-landing split).
+- **Subtask 9**: for each of `config/balance.yaml`'s leaf keys, the source `docs/DESIGN.md` section named by its own pointer was read (§2.2.2 for the chunk grid, §3.3 for stamina, §5/§3.5 for the noise-standing timers, §3.4 for death, §3.5 for the AFK cruelty dial, §2.3/§2.2.3 for doors, §4.6 for the monster budget, §4.2/§4.3/§4.4 for combat, §6.3/§6.4 for the shop) **before** the pointer was removed, per D13's ordering requirement — this is translation of substance into self-contained English prose, not transcription of the Russian wording, consistent with KD-12 (English for `config/**`) and the project's Russian-for-`docs/**`-only convention.
+- **Subtask 9**: no numeric value in either `.env.example` or `config/balance.yaml` changed — verified by grepping the diff for `key: value` / `LAB_GAME_*=` lines and confirming zero matches, not merely by intent. `go test ./internal/config/...` staying green (including the disjointness test between `.env.example`'s key set, the loader's actually-consulted set, and the loader's own declared set, and the balance-schema round-trip test) is independent confirmation that the schema and the example environment still agree.
 
 ## Key discoveries (don't re-investigate)
 
@@ -126,3 +129,5 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `internal/scheduler/*.go` (all 22 files) — comment sweep
 - `.golangci.yml`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, `Makefile`, `.gitignore` — comment sweep
 - `.githooks/coverage-ratchet.sh` — comment sweep + the D9 `--help` shape (`usage()`, the `-h|--help` case)
+- `.env.example` — header + per-key comment sweep, no key/value change
+- `config/balance.yaml` — every design-section pointer replaced with self-contained English prose read from that section, no value change
