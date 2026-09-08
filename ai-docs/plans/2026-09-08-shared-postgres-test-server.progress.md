@@ -1,5 +1,5 @@
 # Progress: Shared PostgreSQL test server — ACTIVE
-_Updated: 2026-09-08 21:00_
+_Updated: 2026-09-08 21:41_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -10,13 +10,13 @@ _Updated: 2026-09-08 21:00_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 8 — Group A complete (subtasks 1-9 of 13 committed), orchestrator gates re-run green
-**last_passed_gate:** `go build ./... && go vet ./... && golangci-lint run && golangci-lint fmt -d && make comment-refs && make cover-ratchet` | 2026-09-08T21:33Z | 0f54e394743fb8f1b68ad019dcbea038db24fece
+**current_step:** Step 8 — Group B, subtask 10 of 13 committed
+**last_passed_gate:** `make comment-refs && bash ai-docs/scripts/check-ac-shape.sh && bash ai-docs/scripts/check-spec-shape.sh && bash ai-docs/scripts/check-script-shape.sh && bash .claude/skills/ai-audit/scripts/check-citations.sh && CI's relative-markdown-link check re-run locally` | 2026-09-08T21:41Z | 56857fb314b73e180f9c9132ccd4e0c488b8b994
 **entry_args:** 67
 
 ## Next action
 
-**Do this immediately:** Group A is committed and its gates are green; hand off to Group B per the design's Handoff plan — spawn the `general-purpose` subagent (model inherited, NOT pinned) for subtasks 10-13: `ai-docs/key-decisions.md` (KD-20 amendment), `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres*, `AGENTS.md` § *Build & Test*, and the D10 propagation sweep. All four depend on subtask 9, which is done.
+**Do this immediately:** subtask 10 is committed. Continue Group B with subtask 11 — `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres*: the provisioning story, both paths.
 
 ## AC11 demonstration RED, recorded before any green (subtask 9, committed as 0f54e39)
 
@@ -74,7 +74,7 @@ Design: `ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md`. Group 
 - [x] 7. `.github/workflows/ci.yml`: added a `make test-fallback` step to the Test job, after `cover-ratchet` (D8/AC3 — no other Test-job step still reaches the per-package container path). Verified AC9/D11 by diffing every file this branch has touched (`git diff --name-only <base>..HEAD`) against the change filter's globs: every one (`*.go`, `Makefile`, `.githooks/**`, `ai-docs/**`, `.github/workflows/**`) is already named — no filter edit needed, confirming the design's own claim rather than trusting it. `actionlint` and `make comment-refs` green.
 - [x] 8. Contention tolerance per D9 — see "Group A note" below for the full list of what changed and why each was classified instrument vs. subject.
 - [x] 9. The AC11 demonstration — see the dedicated section above. RED recorded (a genuine assertion failure, exhaustion-scan clean) before the restore and the GREEN re-run. Group A is now COMPLETE.
-- [ ] 10. `ai-docs/key-decisions.md`: KD-20 amendment — connection arithmetic + corrected consequence clause
+- [x] 10. `ai-docs/key-decisions.md`: KD-20 amendment — connection arithmetic + corrected consequence clause. Written as an `*Amended by #67 …*` clause on the existing entry, following KD-27's and KD-31's own precedent, and in prose rather than a table or a fenced block, because the file has neither anywhere. The falsified *Consequence* clause was rewritten in place rather than appended to: the invariant it always meant (`go list -deps ./cmd/bot` free of `testcontainers` — re-measured: 0 matches for `cmd/bot`, 10 for `cmd/testpg`) is kept and the wrong version of it ("only `_test.go` files import `internal/testdb`") is named as no longer true, so a later reader does not read `cmd/testpg` as a violation.
 - [ ] 11. `ai-docs/go-test-conventions.md`: the provisioning story, both paths
 - [ ] 12. `AGENTS.md` § Build & Test: new targets, container-runtime row, the cache-replay sentence
 - [ ] 13. The propagation sweep of D10's class over the live tree, with the two stated exclusions
@@ -98,3 +98,4 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `.github/workflows/ci.yml` - `test-fallback` step added to the Test job
 - `ai-docs/coverage-ratchet.txt` - re-centred per commit, net 91.66 -> 89.44
 - `internal/scheduler/*_test.go` (deadline, failure, observe, reconcile, schedule, worker) - D9 instrument/subject retiming for cross-package contention
+- `ai-docs/key-decisions.md` - KD-20's amendment clause: the decision order, the bring-up/take-down pair, `Ceiling`'s formula term by term with each term's value, the floor/refusal asymmetry, and the two stated residues; the *Consequence* clause corrected to the import-graph invariant

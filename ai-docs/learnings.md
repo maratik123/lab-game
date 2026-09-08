@@ -394,3 +394,10 @@ wrong-surface text by message twelve.
 **at:** 0e8eae3
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-09 — process — wrote an invented commit SHA into a durable progress file rather than reading it
+**What happened:** Updating `last_passed_gate:` in the run's `.progress.md`, I typed a 40-character hex string that began with the real short SHA of `HEAD` (`56857fb`) and continued with 33 characters I made up, instead of running `git rev-parse HEAD`. The field's whole purpose is to let a re-entering agent locate the tree a gate was green against, so the invented tail would have resolved to nothing while looking exactly like a resolved citation — and the correct-prefix shape is what makes it survive a skim. I caught it re-reading my own diff before the commit and replaced it with the read value; it never reached a commit, which is luck about when I re-read, not a property of the process.
+**Rule:** A commit SHA, a line number, a file path or a count written into a durable file is read from the tool that owns it in the same turn it is written — `git rev-parse`, `grep -n`, `wc -l` — never reconstructed from what is already on screen. Expanding an abbreviation is the specific trap: the seven characters I had were real, so the string passed my own glance while thirty-three of its forty characters were fiction. Corollary for any field whose reader is a *future* agent rather than this turn's human: nobody downstream can tell an invented identifier from a stale one, so there is no round where the error gets cheap.
+**at:** 56857fb314b73e180f9c9132ccd4e0c488b8b994
+**Kind:** correction
+**Escalated?** no
