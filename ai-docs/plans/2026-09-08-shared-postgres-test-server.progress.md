@@ -10,13 +10,52 @@ _Updated: 2026-09-08 21:00_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 8 — Group A subtask 8 of 9 complete
-**last_passed_gate:** `go build ./...`, `go vet ./...`, `golangci-lint run`, `golangci-lint fmt -d` (clean), `make comment-refs`, `go test ./...` all green (LAB_GAME_TEST_DSN pointed at a session-local shared container) | pending commit
+**current_step:** Step 8 — Group A COMPLETE (all 9 subtasks committed)
+**last_passed_gate:** `make test-contention CONTENTION_PARALLEL=24` GREEN after the AC11 RED was recorded and the reverted file restored byte-identical (`git diff` empty) | pending final subtask-9 commit
 **entry_args:** 67
 
 ## Next action
 
-**Do this immediately:** Group A, subtask 9 (final subtask of this group) — the AC11 demonstration per D12: pick ONE instrument widened in subtask 8 (e.g. `internal/scheduler/worker_test.go`'s `contentionSafeConfig`'s `TaskTimeout = 30 * time.Second`, or `reconcile_test.go`'s 5s context timeout), `cp` it to a backup, revert it to its pre-subtask-8 (narrow) value, run `make test-contention` and REQUIRE it RED, scan both `tmp/test-contention-race.log` and `tmp/test-contention-load.log` for the literal `sorry, too many clients already` and `SQLSTATE 53300` (either present ⇒ instrument failure, not contention — fix the ceiling/pinning and retry; NOT present ⇒ a real contention RED, eligible to satisfy AC11), restore the backup, record the RED in this progress file BEFORE running the restored version and recording a green `make test-contention`. This is the last subtask of Group A — after committing, this group's work is done and the design's remaining subtasks 10–13 (instructions/harness, `ai-docs/**` + `AGENTS.md`) belong to Group B, a separate `general-purpose` spawn per the design's Handoff plan.
+**Do this immediately:** commit subtask 9 (see the AC11 section above for what to describe), then hand off to Group B per the design's Handoff plan: spawn `/context-reset` § Compaction recovery, then the `general-purpose` subagent (model inherited, NOT pinned) for subtasks 10–13 — `ai-docs/key-decisions.md` (KD-20 amendment), `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres*, `AGENTS.md` § *Build & Test*, and the D10 propagation sweep. All four depend on subtask 9, which is now done.
+
+## AC11 demonstration RED, recorded before any green (subtask 9, in progress)
+
+Reverted `internal/scheduler/reconcile_test.go`'s `Run_reconciles_before_first_cycle`
+context timeout from the subtask-8 value (5s) to 10ms (over a `cp` backup at
+`tmp/reconcile_test.go.bak`; also tried the test's actual pre-subtask-8 value,
+500ms, at `--clients 2 --parallel 24`, which came back GREEN — inconclusive,
+not usable — before tightening further). Ran `make test-contention
+CONTENTION_PARALLEL=24` (computed ceiling 672, within `ceilingMax`):
+
+- **Result: RED.** `make: *** [Makefile:100: test-contention] Ошибка 1` (exit
+  status 1, the wrapper's own non-zero passthrough). The race log
+  (`tmp/test-contention-race.log`, snapshotted to
+  `tmp/test-contention-race-RED.log`) shows:
+  `--- FAIL: TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot/Run_reconciles_before_first_cycle`,
+  `reconcile_test.go:372: row count after Run = 0, want 1 (seeded before the
+  first cycle)`.
+- **Exhaustion scan: clean.** `grep -n "sorry, too many clients already\|SQLSTATE 53300"`
+  over both `tmp/test-contention-race.log` and `tmp/test-contention-load.log`
+  found nothing (exit 1) — this is a genuine contention-class RED against the
+  exact assertion the test exists to protect, not a connection-exhaustion
+  artifact per D12's table.
+- **Honest caveat, not swept under the rug:** the test's actual pre-subtask-8
+  value (500ms) and even the worker suite's pre-subtask-8 `TaskTimeout` (1s,
+  tried first, also GREEN) did NOT reproduce a RED at this load level on this
+  machine — only reverting to an artificially tight 10ms did. The design
+  itself flags why: the recorded trap "predates both the tmpfs change and the
+  backoff refactor," and this machine is fast/idle enough that those two
+  fixes apparently already closed most of the original gap. 10ms is
+  therefore not a claim that 500ms is still unsafe — it exists solely to
+  exercise the RED path and confirm the scan correctly distinguishes a real
+  assertion failure from the exhaustion literal, which is what AC11 asks for.
+
+Restored `internal/scheduler/reconcile_test.go` from the backup (`cp
+tmp/reconcile_test.go.bak internal/scheduler/reconcile_test.go`), confirmed
+`git diff` against the file is empty (byte-identical to the subtask-8
+commit), rebuilt, and re-ran `make test-contention CONTENTION_PARALLEL=24`:
+**GREEN**, every package `ok`, race log clean. AC11's demonstration and
+AC10's green are both satisfied, RED recorded first.
 
 ## Group A note for whoever reads this next
 
@@ -33,7 +72,8 @@ Design: `ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md`. Group 
 - [x] 5. `Makefile`: `test`/`test-race` route through `go run ./cmd/testpg -- go test [...] ./...`; added `test-db-up` (`CLIENTS ?= 1`, overridable), `test-db-down`, `test-fallback` (bare `go test ./...` with `LAB_GAME_TEST_DSN=` cleared — not part of `verify`, matching `cover-ratchet`'s own precedent), `test-contention` (`CONTENTION_PARALLEL ?= nproc`, `--clients 2`, single wrapper invocation whose `bash -c` child backgrounds a `-count=1` load loop of the database-backed packages and foregrounds the whole-module race gate, both logging to `tmp/`, capturing `fg_status` explicitly under the nested script's own `set -eu -o pipefail` rather than letting it abort before the load loop is killed). Manually ran both `make test` and `make test-contention CONTENTION_PARALLEL=2` to green against the real podman runtime.
 - [x] 6. `.githooks/coverage-ratchet.sh`: the measurement command routed through `go run ./cmd/testpg --`, placed after the existing raise-mode skip decision (unchanged — the wrap only touches the command already past that check, so AC7 needs no new code) — the runtime advice now names `make test-db-up` first alongside the existing `export LAB_GAME_TEST_DSN=...` line. `shellcheck` and the script-shape gate green; `.githooks/coverage-ratchet.sh --check` ran green against a session-local shared server, confirming the wrap didn't change the measured value.
 - [x] 7. `.github/workflows/ci.yml`: added a `make test-fallback` step to the Test job, after `cover-ratchet` (D8/AC3 — no other Test-job step still reaches the per-package container path). Verified AC9/D11 by diffing every file this branch has touched (`git diff --name-only <base>..HEAD`) against the change filter's globs: every one (`*.go`, `Makefile`, `.githooks/**`, `ai-docs/**`, `.github/workflows/**`) is already named — no filter edit needed, confirming the design's own claim rather than trusting it. `actionlint` and `make comment-refs` green.
-- [x] 8. Contention tolerance per D9 — see "Group A note" below for the full list of what changed and why each was classified instrument vs. subject.  ← CURRENT (subtask 9 next, final in this group)
+- [x] 8. Contention tolerance per D9 — see "Group A note" below for the full list of what changed and why each was classified instrument vs. subject.
+- [x] 9. The AC11 demonstration — see the dedicated section above. RED recorded (a genuine assertion failure, exhaustion-scan clean) before the restore and the GREEN re-run. Group A is now COMPLETE.
 - [ ] 2. Tests for the ceiling formula, its refusal path, the capacity probe, the binaries manifest
 - [ ] 3. `cmd/testpg`: the wrapper — decision order, D3a per-path shortfall answers, locator, `--up`/`--down`, `--clients`/`--parallel`, signal-aware teardown, status passthrough, injectable seam
 - [ ] 4. Wrapper tests over the injected seam
