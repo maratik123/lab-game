@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** PASS
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group B complete (subtasks 11-14); Group C (subtask 15) next
-**last_passed_gate:** `make comment-refs` silent; `make shellcheck`; every hook body through `shellcheck`; all fourteen guard regression suites; the four standalone checkers; the CI markdown-link check; `go build ./...`
+**current_step:** Step 8 — Group B complete (subtasks 11-14), verified by the orchestrator; Group C (subtask 15) next
+**last_passed_gate:** make comment-refs; make shellcheck; golangci-lint run; go test ./... | 2026-09-08T11:34:03Z | 7485c40
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** hand off to `/context-reset` per the design's Handoff plan — Group B (subtasks 11-14) is complete. Parent `/task` resumes in Group C (subtask 15, code, `sonnet`/`code-writer`, terminal) with fresh context. **Group C also owes three forward-written claims their truth:** `ai-docs/code-style.md` § Linter posture now says actionlint is the ONLY gate CI reaches by another route; `ai-docs/claude-tools-hierarchy.md` § CI now carries a `Comment references` job row and a Harness-guards row saying that job runs `make shellcheck` plus the script-shape checker; and `.claude/skills/task/reference.md` § Step 9 now lists `make comment-refs` as item 9a discharged by `make verify`. Subtask 15 is what makes all three true.
+**Do this immediately:** spawn Group C (subtask 15, the `verify` prerequisite and the CI job) via `code-writer`; it must make the three forward-written claims below true.
 
 ## Subtasks
 
@@ -97,6 +97,8 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 
 - **Step 8 Group A**: the orchestrator re-ran build, vet, test, lint and the new gate against the returned tree rather than accepting the group's summary. All green; `make comment-refs` reports only harness `*.sh` findings, which subtask 12 owns, and `SKIP .githooks/pre-commit` confirms the GO-note-1 symlink branch works.
 
+- **Step 8 Group B**: the orchestrator re-verified the group rather than accepting its summary — `make comment-refs` is silent over the whole tracked tree, `make shellcheck` green, build and all 11 test packages green, and the `-h|--help` dispatch line collapses to exactly one byte sequence across all 19 carriers (AC19).
+
 ## Key discoveries (don't re-investigate)
 
 - `go.yaml.in/yaml/v3` never reports a comment's own line — it reports the attached node's line, and it attaches across a blank line contrary to its own field doc. D1a's nearest-match reconciliation, with `UNRECONCILED ⇒ exit 2`, is the answer; an offset rule is measurably wrong on `config/balance.yaml`.
@@ -109,6 +111,9 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - Three tracked `*.sh` legitimately answer nothing to `--help` and must stay that way: `check-citations.sh`, `cleanup-progress.sh`, `.githooks/pre-commit.sh`. Passing `--help` to the first two simply runs them, which is the pre-existing behaviour the spec measured and is what AC18 asks for.
 
 - The gate's report names the matched fragment, not the whole reference: `scripts/test-*.sh` is reported as `repo-path: .sh`, because the `*` ends the path match. The file, line and class are all correct, so AC4 holds; the fragment is a readability question for self-review, not a classification defect.
+
+- **Three claims are written ahead of the tree and subtask 15 owes them.** Verified false as of Group B's close: `ai-docs/code-style.md` § Linter posture says every gate but `actionlint` goes through `make` on both sides, "the harness `shellcheck` sweep included"; `ai-docs/claude-tools-hierarchy.md` § CI carries a `Comment references` job row; `.claude/skills/task/reference.md` § Step 9 lists `make comment-refs` as item 9a. `.github/workflows/ci.yml` currently has no `comment-refs` job and no `.githooks/**` filter. Subtask 15 makes each true — it must never resolve one by deleting the claim.
+- The script-shape checker's green was red-controlled, not assumed: replayed against the base tree (f1bc60f) it reports `.githooks/pre-commit` and exits 1, so its silence on the current tree is evidence about the tree rather than about the checker.
 
 ## AC Status
 
