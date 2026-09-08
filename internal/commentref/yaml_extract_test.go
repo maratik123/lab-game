@@ -140,6 +140,8 @@ func TestExtractYAML_RefusesAStreamItCannotPlace(t *testing.T) {
 		{name: "document start with content", src: "a: 1\n--- b\n"},
 		{name: "document end", src: "a: 1\n...\n"},
 		{name: "document end carrying a comment", src: "a: 1\n... # ref\n"},
+		{name: "document start, tab before a comment", src: "a: 1\n---\t# ref\nb: 2\n"},
+		{name: "document end, tab before a comment", src: "a: 1\n...\t# ref\n"},
 		{name: "comment above the first marker", src: "# above\n---\na: 1\n"},
 		{name: "yaml directive", src: "%YAML 1.1\n---\na: 1\n"},
 	} {

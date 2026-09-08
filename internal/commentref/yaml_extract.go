@@ -85,18 +85,25 @@ func ExtractYAML(src []byte) ([]Comment, error) {
 	return out, nil
 }
 
-// findYAMLStreamMarker returns the 1-based line number and the leading text
+// findYAMLStreamMarker returns the 1-based line number and the leading token
 // of the first unindented document marker or directive, or zero when the
 // source is a single plain document. A marker may only appear unindented, so
-// a column-zero match cannot be block-scalar content.
+// a column-zero match cannot be block-scalar content. The marker is matched
+// as the line's first whitespace-separated token, because YAML separates it
+// from what follows by a space or a tab and enumerating the separators has
+// already missed one.
 func findYAMLStreamMarker(lines []string) (int, string) {
 	for i, l := range lines {
-		t := strings.TrimRight(l, " \t\r")
-		switch {
-		case t == "---" || t == "..." || strings.HasPrefix(t, "--- ") || strings.HasPrefix(t, "... "):
-			return i + 1, strings.SplitN(t, " ", 2)[0]
-		case strings.HasPrefix(t, "%"):
-			return i + 1, strings.SplitN(t, " ", 2)[0]
+		if l == "" || l[0] == ' ' || l[0] == '\t' {
+			continue
+		}
+		fields := strings.Fields(strings.TrimRight(l, " \t\r"))
+		if len(fields) == 0 {
+			continue
+		}
+		switch tok := fields[0]; {
+		case tok == "---", tok == "...", strings.HasPrefix(tok, "%"):
+			return i + 1, tok
 		}
 	}
 	return 0, ""
