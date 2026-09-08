@@ -6,14 +6,14 @@
 # essentially only in its prescriptive sense — so the fixtures below carry the
 # near misses that would make that claim false if the pattern widened.
 #
-# Usage: bash .claude/skills/ai-audit/scripts/test-ac-shape.sh
+# Usage: bash ai-docs/scripts/test-ac-shape.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1
-guard=.claude/skills/ai-audit/scripts/check-ac-shape.sh
+guard=ai-docs/scripts/check-ac-shape.sh
 [ -x "$guard" ] || { echo "FAIL: $guard not executable"; exit 1; }
 
 failures=0

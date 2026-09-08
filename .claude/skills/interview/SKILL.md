@@ -53,7 +53,7 @@ These constants are **not** configurable via skill arguments in this iteration. 
 
 Path: `<spec_path>.state.md` — e.g. `ai-docs/plans/2026-05-09-name.spec.md` ↔ `ai-docs/plans/2026-05-09-name.spec.md.state.md`.
 
-Created at the start of round 1 and **committed with the spec from that moment on** — this file and `<spec_path>` are the only record of an interview that runs for hours, and both were untracked for their whole life until a delegate's truncating edit proved that unrecoverable (`ai-docs/learnings.md` 2026-09-02).
+Created at the start of round 1 and **committed with the spec after every delegate return — Step 3b item 0 is the command, and 3a refuses to spawn round ≥ 2 while the spec is untracked.** This file and `<spec_path>` are the only record of an interview that runs for hours. Both were untracked for their whole life until a delegate's truncating edit proved that unrecoverable (`ai-docs/learnings.md` 2026-09-02); the sentence you are reading then stated the spec was tracked, and a second truncation (2026-09-08) landed on a spec three rounds untracked, because a stated fact is read as background and only a step with a command is read as a step.
 
 **Lifecycle by exit:**
 
@@ -83,7 +83,8 @@ gh_issue:                          # present only when issue_ref resolves to a r
   comments:
     - author: "..."
       body: "..."
-  linked_issues: ["#<N>"]           # extracted from body / comments via #\d+ regex; may be empty
+  linked_issues: ["#<N>"]           # extracted from body / comments via #\d+ regex; may be empty — spec-writer READS each one (gh issue view) before round 1
+  issue_body_status: current         # or `superseded` — Step 1's answer when TASK differs from the persisted body
   linked_prs: ["#100"]             # same; may be empty
 task_description: |                # present only in free-text entry mode (mutually exclusive with gh_issue:)
   <user's free-text task description>
@@ -115,7 +116,7 @@ Inspect `$ARGUMENTS`. **First, apply the hand-off contract** (defined at the `/t
 
 Then detect entry mode:
 
-- **Issue ref** — matches `^#?\d+$`: load `gh issue view <N> --json title,body,state,labels,comments` once. Record `tracking_issue = <N>`. Extract `#\d+` references from the body + comments → `linked_issues` / `linked_prs` (split on whether the referenced number is an issue or a PR; cheap heuristic — running `gh pr view <M>` once per match is acceptable, or treating ambiguous refs as `linked_issues` is acceptable until a downstream consumer needs the precise split).
+- **Issue ref** — matches `^#?\d+$`: load `gh issue view <N> --json title,body,state,labels,comments` once. Record `tracking_issue = <N>`. **When the hand-off is sectioned and its `## TASK (verbatim)` is not the issue body** (the owner reframed the task in conversation — the shape of 2026-09-08, where the persisted body prescribed the opposite of TASK and the delegate spent its `## Source conflicts` on a source the spec itself declared void), ask before anything else — `AskUserQuestion`, single-select: **Update the issue now** (`gh issue edit <N> --body-file <path>` with TASK, recommended) / **TASK supersedes the body** / **Stop**. Record the answer as `issue_body_status: current | superseded` in the state file's `gh_issue:` block; `spec-writer` reads it (§ *Read before drafting* item 2 there) and treats a superseded body as history, not as a source. Extract `#\d+` references from the body + comments → `linked_issues` / `linked_prs` (split on whether the referenced number is an issue or a PR; cheap heuristic — running `gh pr view <M>` once per match is acceptable, or treating ambiguous refs as `linked_issues` is acceptable until a downstream consumer needs the precise split).
 - **Free text / empty**: use as task description, or ask "What do you want to plan?" if empty. `tracking_issue` is unset until Step 5.
 
 ### Step 2: Compute paths and seed state
@@ -158,7 +159,11 @@ Agent(
 
 Capture the returned `agentId` into the state file's `agent_id`. If the harness does not return a usable `agentId`, leave it null — rounds 2+ will use the cold-spawn fallback.
 
-**Rounds 2..cap — warm reuse if possible, cold fallback otherwise:**
+**Rounds 2..cap — two gates first, then warm reuse if possible, cold fallback otherwise:**
+
+0. `git ls-files --error-unmatch <spec_path>` exits 0, or STOP: the spec is untracked and 3b item 0 was skipped — run it now, then continue. A delegate edits this file with scripts; an untracked file has no copy to restore from.
+0a. Every message the owner sent since the previous round is already a `prior_qa` entry (its verbatim text as `answer`, the question it answers or `(unprompted)` as `question`). A message that arrived **while the delegate was live** was forwarded to it verbatim by `SendMessage` **as the first action of the turn that saw it** — before any log entry, memory write or verification, because a delegate drafting against a ruling the owner has already reversed costs a whole round (measured 2026-09-08: a ruling seen at 00:00 and relayed at 00:09 arrived after the round it should have shaped had returned `ready`). `AGENTS.md` § *Communication* already says corrections propagate in the same turn; this is the same rule with its position in the turn fixed.
+
 
 - If `agent_id` is set in state: `SendMessage(to=agent_id, prompt="""<same fields with updated round + prior_qa>""")`. Capture the response.
 - If `agent_id` is null OR the `SendMessage` call fails: cold spawn a fresh `Agent(subagent_type="spec-writer", prompt=...)` (no `model=` — the frontmatter `inherit` governs) with the full state in the prompt (the Subagent definition mandates re-derivation from prompt anyway). Update state file's `agent_id` from the new spawn (may again be null).
@@ -168,6 +173,8 @@ Capture the returned `agentId` into the state file's `agent_id`. If the harness 
 > **Cold-spawn is the contract, not a fallback.** Do **NOT** probe `ToolSearch` for `SendMessage` per round — its absence is stable for the whole session, so re-probing each round is wasted overhead. Do **NOT** emit fallback-framed status lines such as *"SendMessage not available — using cold spawn"* (they read as a regression). If a status line is emitted at all, phrase it neutrally — *"Spawning round N spec-writer."* Treat warm reuse as a silent optimization, never as the headline.
 
 #### 3b. Parse the YAML status block
+
+0. **Track what came back before reading what it says.** `git add <spec_path> <state_path> && git commit -q -m "chore(plans): interview round <N> — spec draft"` (the file may be new or modified; both are fine — `git add` on an unchanged path is a no-op). This is the copy the next delegate edit can be restored from, and the one `doc-edit-guard.sh` cannot replace: the guard undoes a truncating edit in the same command, git undoes everything else.
 
 The subagent's response ends with a fenced YAML block. Extract it; parse `status`, `round`, and `questions` / `reason` as applicable.
 
@@ -220,8 +227,8 @@ Build an `AskUserQuestion` with:
 Execute the chosen action:
 
 - **`extend_cap`** — bump `round_cap += 1` in state; loop to 3a with `round: <current> + 1`. The Subagent receives the new `round_cap` and may now `ask` if it has questions.
-- **`defer_to_deferred`** — `git mv <spec_path> ai-docs/plans/deferred/` (the spec is tracked from round 1); update `INDEX.md` (move row to **Deferred plans**, status `🟡 spec-only`); `git rm` the state file; commit; exit. Skip Step 4.
-- **`abort`** — `git rm <spec_path>` and the state file (both tracked from round 1), commit, exit. Skip Step 4. The branch is left for the user to delete.
+- **`defer_to_deferred`** — `git mv <spec_path> ai-docs/plans/deferred/` (the spec is tracked from 3b item 0 of round 1); update `INDEX.md` (move row to **Deferred plans**, status `🟡 spec-only`); `git rm` the state file; commit; exit. Skip Step 4.
+- **`abort`** — `git rm <spec_path>` and the state file (both tracked from 3b item 0 of round 1), commit, exit. Skip Step 4. The branch is left for the user to delete.
 - **`request_external_info`** — prompt the user via `AskUserQuestion` (single free-form question option) for the additional context; loop to 3a with `extra_context: <user paste>` injected into the next round's prompt.
 
 ### Step 4: Cross-link and exit (on `ready`)
@@ -238,7 +245,7 @@ Execute the chosen action:
      ```bash
      gh issue comment <N> --body "Spec: \`<spec_path>\`"
      ```
-   - **Do NOT delete the state file.** It is kept for every later return to `spec-writer` (§ *State file* → lifecycle table); `/task` Step 12 retires it. Commit the final spec and state file before exiting.
+   - **Do NOT delete the state file.** It is kept for every later return to `spec-writer` (§ *State file* → lifecycle table); `/task` Step 12 retires it. The final spec and state file are already committed by 3b item 0; `git status --porcelain -- <spec_path> <state_path>` is empty before exiting, or commit what it lists.
 4. Skill exits. `/task` (the caller) resumes at Step 6 (`design-writer` Subagent).
 
 > **Skip the tracking-issue resolution only if the user explicitly states "no tracking issue".** Note the reason in the spec header (`**Tracked in:** none — <reason>`) and skip the cross-link comment.

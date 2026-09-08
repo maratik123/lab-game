@@ -25,7 +25,7 @@
 # record of a red gate. It is a fixture below so that a later "fix" which
 # quietly un-blocks it fails this suite.
 #
-# Usage: bash .claude/skills/ai-audit/scripts/test-piped-gate-guard.sh
+# Usage: bash ai-docs/scripts/test-piped-gate-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
