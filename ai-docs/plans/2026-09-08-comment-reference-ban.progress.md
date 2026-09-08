@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** PASS
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** make verify (fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs) | 2026-09-08T14:33:37Z | 478f6e9
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** Step 9.5 — append the context-status entry with the literal `#TBD-at-Step-12` locator, then Step 10 self-review.
+**Do this immediately:** Step 10 — spawn self-review with the closed-list prompt (spec, design, progress, commit range).
 
 ## Subtasks
 
@@ -108,6 +108,8 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Step 9**: `make verify` green in full. The per-AC sweep found one real defect the gates could not: the sweep had rewritten 20 Go test-message string literals, which AC5 places outside the ban and which moved statements in sweep-only files, breaking AC15. Reverted on the owner's ruling at 478f6e9; the five trailing-comment edits in the same files were kept, because a comment is a comment wherever its marker sits (KD-14).
 - **Step 9**: two apparent defects were my own instrument, not the tree — `check-script-shape.sh` holds the help-marker as data rather than as a dispatch arm, so a naive grep counted it as a non-conforming carrier, and the design had replaced `test-script-help.sh` with the shape checker in a later round. Re-scanned against real dispatch arms: 19 carriers, all answering with a grammar and exit 0.
 - **Step 9**: no new production panic site, so `ai-docs/panic-index.md` is untouched; the domain-invariant sweep over the diff's added lines is empty, and no numeric value moved in `config/balance.yaml`.
+
+- **Step 9.5**: the context-status entry carries the literal #TBD-at-Step-12 locator, which sub-step 10a substitutes once the PR number exists; the removed-name sweep over the live docs found no stale reference to the inverted DOC-4, the old pre-commit shape, or CI's retired inline shellcheck find.
 
 ## Key discoveries (don't re-investigate)
 
