@@ -281,7 +281,7 @@ func TestFailurePolicy_decodeFailure(t *testing.T) {
 
 	pool := newScheduler(t)
 	ctx := context.Background()
-	cfg := testConfig()
+	cfg := contentionSafeConfig()
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: decodeFailHandler{}})
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)
@@ -340,7 +340,7 @@ func TestFailurePolicy_recurrenceNeverTerminal(t *testing.T) {
 
 	pool := newScheduler(t)
 	ctx := context.Background()
-	cfg := testConfig()
+	cfg := contentionSafeConfig()
 	period := 20 * time.Millisecond
 	reg, err := NewRegistry(Declaration{
 		Type: "test.recurrent", Handler: &alwaysFailHandler{err: errBoom},
@@ -385,7 +385,7 @@ func TestFailurePolicy_counterRisesAndResets(t *testing.T) {
 
 	pool := newScheduler(t)
 	ctx := context.Background()
-	cfg := testConfig()
+	cfg := contentionSafeConfig()
 	h := &writingHandler{outcome: OutcomeFailed, err: errBoom, reason: "counter-rises"}
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
 	if err != nil {
@@ -466,7 +466,7 @@ func TestFailurePolicy_undeclaredType_keepsComingDue(t *testing.T) {
 
 	pool := newScheduler(t)
 	ctx := context.Background()
-	cfg := testConfig()
+	cfg := contentionSafeConfig()
 	// An empty registry: "undeclared.type" has no Declaration.
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: &alwaysFailHandler{err: errBoom}})
 	if err != nil {

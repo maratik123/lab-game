@@ -30,7 +30,7 @@ func TestReconcile_seedsMissingRow(t *testing.T) {
 	ctx := context.Background()
 	period := time.Hour
 	reg := recurrentRegistry(t, "recon.seed", period)
-	w, err := New(Options{Pool: pool, Registry: reg, Config: testConfig()})
+	w, err := New(Options{Pool: pool, Registry: reg, Config: contentionSafeConfig()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestReconcile_seedsAgainstDeadRow(t *testing.T) {
 	pool := newScheduler(t)
 	ctx := context.Background()
 	reg := recurrentRegistry(t, "recon.dead", time.Hour)
-	w, err := New(Options{Pool: pool, Registry: reg, Config: testConfig()})
+	w, err := New(Options{Pool: pool, Registry: reg, Config: contentionSafeConfig()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestReconcile_correction(t *testing.T) {
 	t.Run("shortened_cadence_corrects", func(t *testing.T) {
 		t.Parallel()
 		regLong := recurrentRegistry(t, "recon.shorten", longPeriod)
-		wLong, err := New(Options{Pool: pool, Registry: regLong, Config: testConfig()})
+		wLong, err := New(Options{Pool: pool, Registry: regLong, Config: contentionSafeConfig()})
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -118,7 +118,7 @@ func TestReconcile_correction(t *testing.T) {
 
 		shortPeriod := time.Minute
 		regShort := recurrentRegistry(t, "recon.shorten", shortPeriod)
-		wShort, err := New(Options{Pool: pool, Registry: regShort, Config: testConfig()})
+		wShort, err := New(Options{Pool: pool, Registry: regShort, Config: contentionSafeConfig()})
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -151,7 +151,7 @@ func TestReconcile_correction(t *testing.T) {
 		t.Parallel()
 		shortPeriod := time.Minute
 		regShort := recurrentRegistry(t, "recon.lengthen", shortPeriod)
-		wShort, err := New(Options{Pool: pool, Registry: regShort, Config: testConfig()})
+		wShort, err := New(Options{Pool: pool, Registry: regShort, Config: contentionSafeConfig()})
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -164,7 +164,7 @@ func TestReconcile_correction(t *testing.T) {
 		}
 
 		regLong := recurrentRegistry(t, "recon.lengthen", longPeriod)
-		wLong, err := New(Options{Pool: pool, Registry: regLong, Config: testConfig()})
+		wLong, err := New(Options{Pool: pool, Registry: regLong, Config: contentionSafeConfig()})
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -190,11 +190,11 @@ func TestReconcile_concurrentCallsProduceOneRow(t *testing.T) {
 	pool := newScheduler(t)
 	ctx := context.Background()
 	reg := recurrentRegistry(t, "recon.concurrent", time.Hour)
-	w1, err := New(Options{Pool: pool, Registry: reg, Config: testConfig()})
+	w1, err := New(Options{Pool: pool, Registry: reg, Config: contentionSafeConfig()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	w2, err := New(Options{Pool: pool, Registry: reg, Config: testConfig()})
+	w2, err := New(Options{Pool: pool, Registry: reg, Config: contentionSafeConfig()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestReconcile_leavesImminentAndInFlightAlone(t *testing.T) {
 
 	t.Run("imminent", func(t *testing.T) {
 		t.Parallel()
-		cfg := testConfig()
+		cfg := contentionSafeConfig()
 		reg := recurrentRegistry(t, "recon.imminent", time.Minute)
 		w, err := New(Options{Pool: pool, Registry: reg, Config: cfg})
 		if err != nil {
@@ -269,7 +269,7 @@ func TestReconcile_leavesImminentAndInFlightAlone(t *testing.T) {
 	t.Run("in_flight", func(t *testing.T) {
 		t.Parallel()
 		reg := recurrentRegistry(t, "recon.inflight", time.Millisecond) // a cadence far shorter than the seeded row's, so the correction would otherwise fire
-		cfg := testConfig()
+		cfg := contentionSafeConfig()
 		w, err := New(Options{Pool: pool, Registry: reg, Config: cfg})
 		if err != nil {
 			t.Fatalf("New: %v", err)
@@ -325,7 +325,7 @@ func TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot(t *testing.T) {
 
 	pool := newScheduler(t)
 	reg := recurrentRegistry(t, "recon.run", time.Hour)
-	cfg := testConfig()
+	cfg := contentionSafeConfig()
 	cfg.PollInterval = 20 * time.Millisecond
 
 	t.Run("RunOnce_does_not_reconcile", func(t *testing.T) {
@@ -353,7 +353,12 @@ func TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		// The bound is an instrument, not the subject: this test asserts
+		// that reconciliation seeded the row before the first cycle, not
+		// that the database answered inside any particular window while
+		// other packages' tests hammer the same server. Widened well past
+		// any contention this suite can induce.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		err = w.Run(ctx)
 		if !errors.Is(err, context.DeadlineExceeded) {

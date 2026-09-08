@@ -33,6 +33,20 @@ func testConfig() config.Scheduler {
 	}
 }
 
+// contentionSafeConfig returns testConfig with its TaskTimeout raised well
+// past anything cross-package load can add to one task's own execution: the
+// worker re-applies TaskTimeout server-side as statement_timeout and
+// idle_in_transaction_session_timeout for the task's transaction, so a
+// value tuned for an uncontended server is an instrument that must not
+// fire once another package's tests are hammering the same one. Tests that
+// assert the deadline itself firing use shortDeadlineConfig instead and
+// never call this function, so its own value stays exactly as documented.
+func contentionSafeConfig() config.Scheduler {
+	cfg := testConfig()
+	cfg.TaskTimeout = 30 * time.Second
+	return cfg
+}
+
 // TestNew_RetryFactorRefusal covers the constructor's factor check:
 // exactly 1, +Inf and NaN are each refused naming RetryFactor — the same
 // values that would pass a wrong predicate borrowed from the duration
@@ -93,7 +107,7 @@ func TestNew_RetryFactorRefusal(t *testing.T) {
 
 func newWorker(t *testing.T, pool *pgxpool.Pool, reg *Registry) *Worker {
 	t.Helper()
-	w, err := New(Options{Pool: pool, Registry: reg, Config: testConfig()})
+	w, err := New(Options{Pool: pool, Registry: reg, Config: contentionSafeConfig()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
