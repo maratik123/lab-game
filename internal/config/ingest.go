@@ -7,10 +7,10 @@ import (
 	"github.com/maratik123/lab-game/internal/backoff"
 )
 
-// Environment variable names for internal/ingest's long-poll, batch and
-// retry tuning (design D15, issue #22). Every one of these is optional:
-// an absent value takes the compiled-in default named alongside it below
-// — the same optional-with-default class Transport and Scheduler already
+// Environment variable names for the update-ingest loop's long-poll,
+// batch and retry tuning. Every one of these is optional: an absent
+// value takes the compiled-in default named alongside it below — the
+// same optional-with-default class Transport and Scheduler already
 // established.
 const (
 	envIngestPollInterval     = "LAB_GAME_INGEST_POLL_INTERVAL"
@@ -23,9 +23,9 @@ const (
 )
 
 // ingestEnvKeys returns the seven ingest tuning variables, in declaration
-// order (deterministic — AGENTS.md § Code Style). It is appended to
-// EnvKeys() only; envKeys() itself is untouched, mirroring
-// transportEnvKeys' and schedulerEnvKeys' rule (design D15).
+// order (deterministic). It is appended to EnvKeys() only; envKeys()
+// itself is untouched, mirroring transportEnvKeys' and schedulerEnvKeys'
+// rule.
 func ingestEnvKeys() []string {
 	return []string{
 		envIngestPollInterval,
@@ -39,23 +39,22 @@ func ingestEnvKeys() []string {
 }
 
 // ingestBatchLimitMax is the Bot API's own stated ceiling on
-// GetUpdatesParams.Limit ("Values between 1-100 are accepted", design
-// D15).
+// GetUpdatesParams.Limit ("Values between 1-100 are accepted").
 const ingestBatchLimitMax = 100
 
-// Ingest holds internal/ingest's long-poll, batch and retry tuning. Every
-// field is optional-with-default (design D15) — like Transport and
+// Ingest holds the update-ingest loop's long-poll, batch and retry
+// tuning. Every field is optional-with-default — like Transport and
 // Scheduler, an absent LAB_GAME_INGEST_ variable never fails Load. Every
 // default here is chosen operational tuning, never a balance number.
 type Ingest struct {
-	// PollInterval is the wait between poll cycles, and — per design
-	// D19 — the whole bound on the retry rate against a failing Bot API
-	// (LAB_GAME_INGEST_POLL_INTERVAL, default 1s).
+	// PollInterval is the wait between poll cycles, and the whole bound on
+	// the retry rate against a failing Bot API (LAB_GAME_INGEST_POLL_INTERVAL,
+	// default 1s).
 	PollInterval time.Duration
 	// LongPollTimeout is the long-poll window transmitted on every
 	// getUpdates call (LAB_GAME_INGEST_LONG_POLL_TIMEOUT, default 25s).
 	// Load additionally requires it strictly below Transport.AttemptTimeout
-	// and a whole number of seconds (design D16).
+	// and a whole number of seconds.
 	LongPollTimeout time.Duration
 	// BatchLimit is GetUpdatesParams.Limit, the Bot API's own accepted
 	// range being 1-100 (LAB_GAME_INGEST_BATCH_LIMIT, default 100).
@@ -65,25 +64,24 @@ type Ingest struct {
 	// (LAB_GAME_INGEST_RETRY_MAX_ATTEMPTS, default 5).
 	RetryMaxAttempts int
 	// RetryBaseDelay is the backoff scale's base duration, consumed
-	// through backoff.Exponential (LAB_GAME_INGEST_RETRY_BASE_DELAY,
+	// through the shared exponential-backoff ramp (LAB_GAME_INGEST_RETRY_BASE_DELAY,
 	// default 1s).
 	RetryBaseDelay time.Duration
 	// RetryMaxDelay caps the backoff scale's growth at the configured
 	// RetryFactor (LAB_GAME_INGEST_RETRY_MAX_DELAY, default 8s).
 	RetryMaxDelay time.Duration
 	// RetryFactor is the backoff scale's exponential growth factor
-	// (LAB_GAME_INGEST_RETRY_FACTOR, default backoff.DefaultFactor) —
-	// design D20. Must be finite and strictly greater than 1.
+	// (LAB_GAME_INGEST_RETRY_FACTOR, default the shared package's compiled-in
+	// default). Must be finite and strictly greater than 1.
 	RetryFactor float64
 }
 
 // defaultIngest returns the compiled-in defaults every ingest key falls
-// back to when its environment variable is absent (design D15's table).
-// Under the default retry cap and ramp, and under the default factor, the
-// worst-case head-of-line stall a poisoned update imposes on the
-// sequential loop is 1s + 2s + 4s + 8s = 15s, the quarter-minute bound
-// spec Scope 7 names — a configured RetryFactor changes this sum (design
-// D20).
+// back to when its environment variable is absent. Under the default
+// retry cap and ramp, and under the default factor, the worst-case
+// head-of-line stall a poisoned update imposes on the sequential loop is
+// 1s + 2s + 4s + 8s = 15s, the quarter-minute bound this package targets
+// — a configured RetryFactor changes this sum.
 func defaultIngest() Ingest {
 	return Ingest{
 		PollInterval:     time.Second,
@@ -106,10 +104,10 @@ func defaultIngest() Ingest {
 // errors.Join, in declaration order.
 //
 // loadIngest validates BatchLimit against the Bot API's own accepted
-// range (design D15); it does NOT validate LongPollTimeout against
+// range; it does NOT validate LongPollTimeout against
 // Transport.AttemptTimeout or against whole-seconds-ness — both of those
 // cross-checks need Transport too, so they live in Load, beside each
-// other (design D16).
+// other.
 func loadIngest(lookup Lookup) (*Ingest, error) {
 	var errs []error
 	i := defaultIngest()
@@ -166,7 +164,7 @@ func loadIngest(lookup Lookup) (*Ingest, error) {
 	return &i, nil
 }
 
-// checkIngestLongPollTimeout is design D16's pair of cross-checks on
+// checkIngestLongPollTimeout is the pair of cross-checks on
 // LAB_GAME_INGEST_LONG_POLL_TIMEOUT, run from Load once both Ingest and
 // Transport have loaded successfully: the long-poll window must be
 // strictly below Transport.AttemptTimeout (otherwise every poll that runs

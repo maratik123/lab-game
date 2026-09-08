@@ -95,7 +95,7 @@ func TestCatalog_mirrors_database(t *testing.T) {
 
 	// event_type_definition, read ordered by id — the column that exists
 	// solely so this comparison can be element-for-element ordered rather
-	// than set-wise (AC5): a type present on one side only, one whose class
+	// than set-wise: a type present on one side only, one whose class
 	// differs, or a reordering all fail this equality.
 	erows, err := pool.Query(ctx, `SELECT id, code, volume_class FROM event_type_definition ORDER BY id`)
 	if err != nil {

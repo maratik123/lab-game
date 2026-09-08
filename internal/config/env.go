@@ -9,11 +9,11 @@ import (
 )
 
 // Environment variable names, LAB_GAME_ prefixed to match the existing
-// LAB_GAME_TEST_DSN (internal/testdb). Every variable declared here is
-// required and none has a compiled-in default; the Bot API transport's
-// tuning variables (transport.go) and the scheduler's polling/retry
-// tuning variables (scheduler.go) are separate, optional-with-default
-// classes, added on top by EnvKeys() (design D10, D13).
+// LAB_GAME_TEST_DSN this module's test helpers declare. Every variable
+// declared here is required and none has a compiled-in default; the Bot
+// API transport's tuning variables and the scheduler's polling/retry
+// tuning variables are separate, optional-with-default classes, added on
+// top by EnvKeys().
 const (
 	envBotToken = "LAB_GAME_BOT_TOKEN" //nolint:gosec // G101: this is an environment-variable NAME, not a credential value
 
@@ -26,30 +26,29 @@ const (
 
 // envKeys returns the four variables loadEnv itself validates. envBalancePath
 // and envWorldPath are validated by their own dedicated readers instead
-// (world.go's resolveWorldPath and config.go's Load) — each owns both the
-// presence check and the richer validation for its path (open/close for
-// the world set, YAML decode for the balance file), so no variable's
-// presence is checked in two places (design § Decomposition, subtasks
-// 3-5).
+// (resolveWorldPath and Load) — each owns both the presence check and the
+// richer validation for its path (open/close for the world set, YAML
+// decode for the balance file), so no variable's presence is checked in
+// two places.
 func envKeys() []string {
 	return []string{envBotToken, envDSN, envBotAPIBaseURL, envAllowedChatIDs}
 }
 
 // Lookup retrieves one environment variable's value, reporting whether it
-// was present at all — distinct from present-but-empty, which AC2 and AC10
-// treat differently (design D1). cmd/bot passes os.LookupEnv; tests pass a
-// map-backed or recording implementation, so no test touches the process
-// environment and every case may run under t.Parallel().
+// was present at all — distinct from present-but-empty, which this
+// package treats differently. The bot command passes os.LookupEnv; tests
+// pass a map-backed or recording implementation, so no test touches the
+// process environment and every case may run under t.Parallel().
 type Lookup func(key string) (value string, ok bool)
 
 // EnvKeys returns config's full declared environment-variable set, freshly
-// built on every call (AC1 — no package-level mutable state). It is the
-// set AC16's "consults no environment variable outside the documented set"
-// is checked against, and the set .env.example is asserted to equal
-// exactly (AC8). transportEnvKeys(), schedulerEnvKeys() and
+// built on every call — no package-level mutable state. It is the set
+// "consults no environment variable outside the documented set" is
+// checked against, and the set the example environment file is asserted
+// to equal exactly. transportEnvKeys(), schedulerEnvKeys() and
 // ingestEnvKeys() — the three optional-with-default tuning classes — are
 // appended alongside envBalancePath and envWorldPath, each validated by
-// its own dedicated reader rather than by loadEnv (design D10, D13, D15).
+// its own dedicated reader rather than by loadEnv.
 func EnvKeys() []string {
 	keys := append(envKeys(), envBalancePath, envWorldPath)
 	keys = append(keys, transportEnvKeys()...)
@@ -58,10 +57,9 @@ func EnvKeys() []string {
 }
 
 // envValues holds the environment layer's validated results: the two
-// secrets as plain strings (config.go's Load wraps them in Secret) and the
-// parsed Bot API base URL and chat-id list. The balance-file and world-set
-// paths are validated by their own dedicated readers, not by loadEnv (see
-// envKeys).
+// secrets as plain strings (Load wraps them in Secret) and the parsed Bot
+// API base URL and chat-id list. The balance-file and world-set paths are
+// validated by their own dedicated readers, not by loadEnv.
 type envValues struct {
 	BotToken       string
 	DSN            string
@@ -71,8 +69,8 @@ type envValues struct {
 
 // loadEnv reads and validates every LAB_GAME_ environment variable through
 // lookup, returning every failure at once as a joined *KeyError, each
-// naming its variable, in declaration order (deterministic — AGENTS.md
-// § Code Style — never map-iteration order).
+// naming its variable, in declaration order — deterministic, never
+// map-iteration order.
 func loadEnv(lookup Lookup) (*envValues, error) {
 	var errs []error
 	v := &envValues{}
@@ -120,10 +118,10 @@ func loadEnv(lookup Lookup) (*envValues, error) {
 }
 
 // parseBotAPIBaseURL validates s as an absolute http(s) URL with a
-// non-empty host (AC9). net/url.Parse alone is not enough: it is documented
-// as tolerant of a scheme-less host/path, and URL.IsAbs asserts only a
+// non-empty host. net/url.Parse alone is not enough: it is documented as
+// tolerant of a scheme-less host/path, and URL.IsAbs asserts only a
 // non-empty scheme — so Parse, IsAbs, an explicit scheme check and a host
-// check are all four required (design D4).
+// check are all four required.
 func parseBotAPIBaseURL(s string) (*url.URL, error) {
 	u, err := url.Parse(s)
 	if err != nil {
@@ -142,9 +140,8 @@ func parseBotAPIBaseURL(s string) (*url.URL, error) {
 }
 
 // parseAllowedChatIDs splits s on commas and parses every element as an
-// int64 (Telegram group ids are negative, AC10), preserving the file's
-// order — the returned slice's order is what makes AllowedChatIDs
-// deterministic (design D5).
+// int64 (Telegram group ids are negative), preserving the file's order —
+// the returned slice's order is what makes AllowedChatIDs deterministic.
 func parseAllowedChatIDs(s string) ([]int64, error) {
 	parts := strings.Split(s, ",")
 	ids := make([]int64, 0, len(parts))

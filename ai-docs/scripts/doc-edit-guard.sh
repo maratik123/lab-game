@@ -7,15 +7,9 @@
 # `s.rindex('\n**Revision:**')` ...) finds the FIRST occurrence of its anchor,
 # which is frequently an in-text mention of the heading rather than the heading
 # itself; everything after the true heading is then dropped. It has happened to
-# a design document (ai-docs/learnings.md 2026-09-02) and to a spec
-# (ai-docs/learnings.md 2026-09-08), both untracked at the time, both rebuilt
+# a design document and to a spec, both untracked at the time, both rebuilt
 # from the delegate's context. A rule that says "anchor with a newline" did not
 # hold across those two runs; this guard does not depend on the rule holding.
-#
-# Usage:
-#   bash ai-docs/scripts/doc-edit-guard.sh snapshot <file>
-#   ... the scripted edit ...
-#   bash ai-docs/scripts/doc-edit-guard.sh verify <file>
 #
 # snapshot: copies <file> to <file>.bak and records the shape counts.
 # verify:   recounts. If any count SHRANK, restores <file> from <file>.bak,
@@ -33,9 +27,20 @@
 
 set -uo pipefail
 
-usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+usage() {
+  cat <<'USAGE'
+Usage:
+  doc-edit-guard.sh snapshot <file>    record the shape counts, keep a backup
+  ... the scripted edit ...
+  doc-edit-guard.sh verify <file>      recount; restore the backup if any shrank
+USAGE
+}
 
-[ $# -eq 2 ] || usage
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
+
+[ $# -eq 2 ] || { usage >&2; exit 1; }
 mode=$1; file=$2
 [ -f "$file" ] || { printf 'doc-edit-guard: no such file: %s\n' "$file" >&2; exit 1; }
 bak="$file.bak"
@@ -76,5 +81,5 @@ case "$mode" in
     echo "doc-edit-guard: shape held"
     exit 0
     ;;
-  *) usage ;;
+  *) usage >&2; exit 1 ;;
 esac

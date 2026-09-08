@@ -4,7 +4,7 @@ import "time"
 
 // FailureKind classifies an Observation's failure, when Outcome is
 // OutcomeFailed. Every non-zero member is worker knowledge no other
-// surface can recover (design D12).
+// surface can recover.
 type FailureKind int
 
 const (
@@ -18,10 +18,9 @@ const (
 	// forever.
 	FailureUnregistered
 	// FailureDeadline means the task's per-task execution deadline was
-	// breached (design D11): the worker abandoned that task's
+	// breached: the worker abandoned that task's
 	// transaction and reports the failure immediately, though the
-	// settlement itself is deferred to the next cycle's drain (design
-	// D7).
+	// settlement itself is deferred to the next cycle's drain.
 	FailureDeadline
 	// FailureRolledBack means the outcome the handler reported did not
 	// survive: either its savepoint release failed (a swallowed database
@@ -30,8 +29,7 @@ const (
 )
 
 // Observation is reported to an Observer exactly once per executed task
-// — a task skipped at re-claim produces none, because nothing executed
-// (design D12).
+// — a task skipped at re-claim produces none, because nothing executed.
 type Observation struct {
 	// Type is the task's registered type.
 	Type Type

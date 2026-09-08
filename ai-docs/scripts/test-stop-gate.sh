@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# Regression suite for the Stop gate in .claude/settings.json.
+# Regression suite for the Stop hook gate.
 #
-# The gate blocks a turn that ends while `ai-docs/plans/.task-inflight` exists
-# and the turn neither advanced the flow nor handed back. A hand-back token
+# The gate blocks a turn that ends while the in-flight marker exists and the
+# turn neither advanced the flow nor handed back. A hand-back token
 # disarms it for ONE stop, and this hook spends the token itself.
 #
 # WHY THE HOOK SPENDS IT. The token used to be cleared by the orchestrator's
 # next turn — a disposition, and it failed the way dispositions fail. Measured
-# in the run that opened PR #54: the clearing `sed` travelled inside a compound
+# in the run that first hit it: the clearing `sed` travelled inside a compound
 # Bash command whose other half was refused by the PreToolUse piped-gate guard,
 # so the whole command was dropped, the agent re-sent only the half it had come
 # for, and a seven-minute-old token was still the marker's last line when the
 # next turn announced "moving to Step 12" and stopped. The gate exited 0 in
 # silence and the session idled for two hours. Case `replay-pr54` below is that
-# sequence; it must end in a BLOCK.
+# sequence; it must end in a BLOCK. Its name is the historical label the case
+# has carried since it was written.
 #
 # Anti-drift: this suite runs the LIVE hook body, extracted with jq and executed
 # as the program it is. No regex is copied here, so there is nothing to drift.
@@ -21,10 +22,20 @@
 # Verdict convention: the body exits 2 to block the stop. Any other status lets
 # the turn end.
 #
-# Usage: bash ai-docs/scripts/test-stop-gate.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-stop-gate.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1
@@ -91,7 +102,7 @@ grep -q '^handback-spent: 2026-09-05T12:55:03Z' "$d/$marker_rel" \
 grep -q '^handback: ' "$d/$marker_rel" \
   && { echo "FAIL [token-spent]: a live token survived the stop it permitted"; failures=$((failures + 1)); }
 
-# --- 5. replay of the PR #54 failure: one token, two stops ------------------
+# --- 5. replay of the recorded failure: one token, two stops ----------------
 # Stop 1 is the legitimate hand-back while self-review round 2 runs. The
 # delegate returns, the turn announces Step 12 and ends without doing it.
 # Stop 2 must BLOCK. Before this hook spent its own tokens it did not.

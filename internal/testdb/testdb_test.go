@@ -64,7 +64,7 @@ func TestSchema_dropped_after_cleanup(t *testing.T) {
 
 	var childName string
 	t.Run("child", func(t *testing.T) {
-		cfg := testdb.Schema(t) //nolint:contextcheck // testdb.Schema takes no context parameter by design (D11); the closure's later use of the outer ctx is unrelated
+		cfg := testdb.Schema(t) //nolint:contextcheck // testdb.Schema takes no context parameter by design; the closure's later use of the outer ctx is unrelated
 		childName = cfg.ConnConfig.RuntimeParams["search_path"]
 
 		var exists bool

@@ -9,8 +9,8 @@ import (
 // TestExponential_exactTable pins Exponential's zero-based contract at an
 // exact table of (attempt, base, ceiling) -> delay, including the
 // zeroth attempt, the attempt at which the ceiling is first reached, and
-// the attempt right after it, plus D2's base > ceiling row at the
-// zeroth attempt (design D2, AC23).
+// the attempt right after it, plus the base-greater-than-ceiling row at
+// the zeroth attempt.
 func TestExponential_exactTable(t *testing.T) {
 	t.Parallel()
 
@@ -30,7 +30,7 @@ func TestExponential_exactTable(t *testing.T) {
 		{"attempt 4", 4, base, ceiling, 16 * time.Second},
 		{"ceiling first reached", 5, base, ceiling, 30 * time.Second}, // 32s clamped
 		{"attempt past the ceiling", 6, base, ceiling, 30 * time.Second},
-		// D2: base already above ceiling, at the zeroth attempt.
+		// base already above ceiling, at the zeroth attempt.
 		{"base greater than ceiling", 0, 40 * time.Second, ceiling, ceiling},
 	}
 	for _, tc := range cases {
@@ -44,7 +44,7 @@ func TestExponential_exactTable(t *testing.T) {
 }
 
 // TestExponential_negativeAttemptClampsToZeroth asserts a negative
-// attempt behaves exactly as the zeroth (AC23).
+// attempt behaves exactly as the zeroth.
 func TestExponential_negativeAttemptClampsToZeroth(t *testing.T) {
 	t.Parallel()
 
@@ -59,7 +59,7 @@ func TestExponential_negativeAttemptClampsToZeroth(t *testing.T) {
 
 // TestExponential_strictlyPositiveAndNonDecreasing walks a run of
 // attempts and asserts the value is strictly positive, never exceeds the
-// ceiling, and never decreases (AC23).
+// ceiling, and never decreases.
 func TestExponential_strictlyPositiveAndNonDecreasing(t *testing.T) {
 	t.Parallel()
 
@@ -86,15 +86,14 @@ func TestExponential_strictlyPositiveAndNonDecreasing(t *testing.T) {
 	}
 }
 
-// TestExponential_overflowCasesNeverWrap is the table D2's contract
-// exists for: attempts far past any a naive base<<attempt survives at
-// the default factor (64, where a nanosecond base has already consumed
-// int64's range; 1000, where no shift is even defined), asserted on the
-// VALUE -- exactly the ceiling and strictly positive -- since a wrapped
-// time.Duration is a silent negative, not a crash (AC23). The shipped
-// ramp is neither a shift nor a loop (design D20): the product is
-// float64 arithmetic and the clamp sits before the time.Duration
-// conversion, so nothing out of range is ever converted.
+// TestExponential_overflowCasesNeverWrap covers attempts far past any a
+// naive base<<attempt survives at the default factor (64, where a
+// nanosecond base has already consumed int64's range; 1000, where no
+// shift is even defined), asserted on the VALUE -- exactly the ceiling
+// and strictly positive -- since a wrapped time.Duration is a silent
+// negative, not a crash. The shipped ramp is neither a shift nor a loop:
+// the product is float64 arithmetic and the clamp sits before the
+// time.Duration conversion, so nothing out of range is ever converted.
 func TestExponential_overflowCasesNeverWrap(t *testing.T) {
 	t.Parallel()
 
@@ -126,7 +125,7 @@ func TestExponential_overflowCasesNeverWrap(t *testing.T) {
 // TestExponential_outOfDomainRows pins the decided answers outside the
 // domain either shipped adopter can reach: base <= 0 returns base
 // unchanged (no growth, no lower clamp), and a positive base with a
-// non-positive ceiling returns the ceiling unchanged (design D2, AC23).
+// non-positive ceiling returns the ceiling unchanged.
 func TestExponential_outOfDomainRows(t *testing.T) {
 	t.Parallel()
 
@@ -160,8 +159,8 @@ func TestExponential_outOfDomainRows(t *testing.T) {
 }
 
 // TestDefaultFactor_isExactlyTwo pins DefaultFactor's value: every
-// behaviour-preserving claim in design D20's amendment rests on it, and
-// nothing else in this suite would notice it moving (design D20).
+// behaviour-preserving claim in this suite rests on it, and nothing else
+// in this suite would notice it moving.
 func TestDefaultFactor_isExactlyTwo(t *testing.T) {
 	t.Parallel()
 
@@ -171,7 +170,7 @@ func TestDefaultFactor_isExactlyTwo(t *testing.T) {
 }
 
 // TestValidFactor_exactTable pins ValidFactor's boundary: finite and
-// strictly greater than 1 (design D20, AC42, AC43).
+// strictly greater than 1.
 func TestValidFactor_exactTable(t *testing.T) {
 	t.Parallel()
 
@@ -206,7 +205,7 @@ func TestValidFactor_exactTable(t *testing.T) {
 // zero-based contract table with a LITERAL 2 in the new argument — never
 // DefaultFactor, so a later move of the default cannot silently carry a
 // pinned table with it — asserting every expected value stays
-// byte-identical (design D20's behaviour-preservation clause, AC40).
+// byte-identical.
 func TestExponential_factorAtDefaultTwoIsByteIdentical(t *testing.T) {
 	t.Parallel()
 
@@ -239,8 +238,7 @@ func TestExponential_factorAtDefaultTwoIsByteIdentical(t *testing.T) {
 // EXACT expectation — base<<k as an integer, computed by the test rather
 // than by calling Exponential's own formula — at a factor that is a
 // small integer, over attempts where the shift stays below the ceiling
-// and the base stays below 2^53 nanoseconds (design D20's exact-equality
-// bound, AC40).
+// and the base stays below 2^53 nanoseconds.
 func TestExponential_integerBaseShiftAtNonDefaultFactor(t *testing.T) {
 	t.Parallel()
 
@@ -258,11 +256,11 @@ func TestExponential_integerBaseShiftAtNonDefaultFactor(t *testing.T) {
 	}
 }
 
-// TestExponential_factorOutOfDomainRows pins D20's normalisation table:
-// a factor not strictly greater than 1 (below 1, exactly 1, or NaN)
+// TestExponential_factorOutOfDomainRows pins the normalisation table: a
+// factor not strictly greater than 1 (below 1, exactly 1, or NaN)
 // normalises to exactly 1 — base at every attempt, clamped by the
 // ceiling, never raised — and +Inf gives base at the zeroth attempt
-// (factor^0 == 1) and ceiling from the first attempt on (design D20).
+// (factor^0 == 1) and ceiling from the first attempt on.
 func TestExponential_factorOutOfDomainRows(t *testing.T) {
 	t.Parallel()
 
@@ -313,12 +311,12 @@ func TestExponential_factorOutOfDomainRows(t *testing.T) {
 // case at a factor that is not the default and at a factor barely above
 // 1, asserting only non-decrease — a strict-increase assertion is
 // deliberately never made here, because it would pass at every default
-// this tree ships while encoding a claim D20's contract table refutes:
-// a small base with a near-1 factor stands still for many attempts
+// this tree ships while encoding a claim the contract table refutes: a
+// small base with a near-1 factor stands still for many attempts
 // because the conversion truncates to a nanosecond. Beside it, the
 // truncation edge itself: two consecutive attempts at a base and factor
 // whose step is below a nanosecond return the SAME delay, asserted as
-// equality (design D20).
+// equality.
 func TestExponential_nonDecreaseAtNonDefaultFactor(t *testing.T) {
 	t.Parallel()
 
@@ -356,13 +354,13 @@ func TestExponential_nonDecreaseAtNonDefaultFactor(t *testing.T) {
 	})
 }
 
-// TestExponential_overflowAtNonIntegerFactor is D20's overflow contract:
-// at a non-integer factor, rows at attempts far past any doubling
+// TestExponential_overflowAtNonIntegerFactor covers the overflow contract
+// at a non-integer factor: rows at attempts far past any doubling
 // survives — including math.MaxInt — assert EXACTLY the ceiling and
 // strict positivity, never merely "it did not panic", because a wrapped
 // time.Duration is a silent negative rather than a crash. If the
 // math.MaxInt row times out rather than failing, the implementation has
-// reintroduced an O(attempt) loop (design D20).
+// reintroduced an O(attempt) loop.
 func TestExponential_overflowAtNonIntegerFactor(t *testing.T) {
 	t.Parallel()
 
@@ -380,9 +378,8 @@ func TestExponential_overflowAtNonIntegerFactor(t *testing.T) {
 }
 
 // TestExponential_toleratedNonIntegerFactorValues pins literal durations
-// at non-integer factors with the max(1ns, 1e-9*want) tolerance design
-// D20 bounds — never a re-computation of Exponential's own formula, which
-// would pin nothing (design D20).
+// at non-integer factors with a max(1ns, 1e-9*want) tolerance — never a
+// re-computation of Exponential's own formula, which would pin nothing.
 func TestExponential_toleratedNonIntegerFactorValues(t *testing.T) {
 	t.Parallel()
 
@@ -409,7 +406,7 @@ func TestExponential_toleratedNonIntegerFactorValues(t *testing.T) {
 // TestEqualJitter_nonIntegerFactorBracket asserts EqualJitter's result
 // stays within [Exponential(...)/2, Exponential(...)) — Exponential's own
 // return at the same arguments, at a non-integer factor — an inequality,
-// so no tolerance is needed (design D20).
+// so no tolerance is needed.
 func TestEqualJitter_nonIntegerFactorBracket(t *testing.T) {
 	t.Parallel()
 
@@ -434,7 +431,7 @@ func stubJitter(v float64) func() float64 {
 // TestEqualJitter_boundedWithinExpectedRange asserts EqualJitter's bound
 // within [d/2, d) for a jitter at each end of its draw, its base >
 // ceiling counterpart at ceiling/2, and its monotonicity for a fixed
-// jitter (AC23, D2's base > ceiling contract clause).
+// jitter.
 func TestEqualJitter_boundedWithinExpectedRange(t *testing.T) {
 	t.Parallel()
 
@@ -470,8 +467,7 @@ func TestEqualJitter_boundedWithinExpectedRange(t *testing.T) {
 }
 
 // TestEqualJitter_overflowCasesStayBounded repeats the overflow table for
-// EqualJitter, asserting the result stays within [ceiling/2, ceiling)
-// (AC23, D2's clamp-before-overflow contract).
+// EqualJitter, asserting the result stays within [ceiling/2, ceiling).
 func TestEqualJitter_overflowCasesStayBounded(t *testing.T) {
 	t.Parallel()
 

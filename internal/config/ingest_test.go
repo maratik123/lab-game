@@ -20,9 +20,9 @@ func TestLoadIngest_AllAbsentYieldsDefaults(t *testing.T) {
 }
 
 // TestLoadIngest_ExampleMatchesDefaults mirrors
-// TestLoadScheduler_ExampleMatchesDefaults: .env.example's own
-// LAB_GAME_INGEST_* values, run through loadIngest, must equal
-// defaultIngest() (design D15).
+// TestLoadScheduler_ExampleMatchesDefaults: the example environment
+// file's own LAB_GAME_INGEST_* values, run through loadIngest, must equal
+// defaultIngest().
 func TestLoadIngest_ExampleMatchesDefaults(t *testing.T) {
 	t.Parallel()
 	example := readEnvExampleKeys(t)
@@ -41,7 +41,7 @@ func TestLoadIngest_ExampleMatchesDefaults(t *testing.T) {
 // TestLoadIngest_DefaultRetryFactorIsBackoffDefaultFactor pins the
 // default to the shared constant directly, not merely to
 // defaultIngest()'s own return — so the config default and the shared
-// boundary cannot drift apart (design D20).
+// boundary cannot drift apart.
 func TestLoadIngest_DefaultRetryFactorIsBackoffDefaultFactor(t *testing.T) {
 	t.Parallel()
 	i, err := loadIngest(mapLookup(map[string]string{}))
@@ -134,7 +134,7 @@ func TestLoadIngest_Malformed(t *testing.T) {
 }
 
 // TestLoadIngest_BatchLimitAcceptsBotAPIRange pins the boundary of the
-// Bot API's stated 1-100 range (design D15).
+// Bot API's stated 1-100 range.
 func TestLoadIngest_BatchLimitAcceptsBotAPIRange(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -164,7 +164,7 @@ func TestLoadIngest_QueriesEveryKeyUnconditionally(t *testing.T) {
 	assertSameKeySet(t, "loadIngest-consulted keys", recorded(), "ingestEnvKeys()", ingestEnvKeys())
 }
 
-// TestLoad_IngestLongPollTimeoutBelowAttemptTimeout is design D16's first
+// TestLoad_IngestLongPollTimeoutBelowAttemptTimeout covers the first
 // cross-check: a long-poll timeout at or above Transport.AttemptTimeout is
 // rejected naming LAB_GAME_INGEST_LONG_POLL_TIMEOUT, and one strictly
 // below it is accepted.
@@ -203,7 +203,7 @@ func TestLoad_IngestLongPollTimeoutBelowAttemptTimeout(t *testing.T) {
 	})
 }
 
-// TestLoad_IngestLongPollTimeoutWholeSeconds is design D16's second
+// TestLoad_IngestLongPollTimeoutWholeSeconds covers the second
 // cross-check: a long-poll timeout that is not a whole number of seconds
 // is rejected naming LAB_GAME_INGEST_LONG_POLL_TIMEOUT even though it is
 // well below any plausible AttemptTimeout — the neighbouring check must

@@ -16,9 +16,9 @@ import (
 )
 
 // repoRootPath resolves rel against the repository root, regardless of the
-// test binary's working directory — internal/ingest is exactly two
-// directories below the root, the same depth internal/tg's own copy of
-// this helper resolves from.
+// test binary's working directory — this package is exactly two
+// directories below the root, the same depth a sibling package's own
+// copy of this helper resolves from.
 func repoRootPath(t *testing.T, rel string) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -29,8 +29,8 @@ func repoRootPath(t *testing.T, rel string) string {
 	return filepath.Join(root, filepath.FromSlash(rel))
 }
 
-// ingestNonTestFiles returns every non-test .go file's path in
-// internal/ingest.
+// ingestNonTestFiles returns every non-test Go source file's path in
+// this package.
 func ingestNonTestFiles(t *testing.T) []string {
 	t.Helper()
 	dir := repoRootPath(t, filepath.Join("internal", "ingest"))
@@ -76,9 +76,9 @@ func parseIngestSource(t *testing.T) map[string]*ast.File {
 	return out
 }
 
-// TestGuard_NoPanicLogFatalOrOsExit is AC11: the package's non-test
-// source contains no panic(, log.Fatal or os.Exit (design D7) — recover
-// raises none, so ai-docs/panic-index.md gains no row.
+// TestGuard_NoPanicLogFatalOrOsExit asserts that the package's non-test
+// source contains no panic(, log.Fatal or os.Exit — recover
+// raises none, so the panic index gains no row.
 func TestGuard_NoPanicLogFatalOrOsExit(t *testing.T) {
 	t.Parallel()
 	forbidden := []string{"panic(", "log.Fatal", "os.Exit"}
@@ -91,9 +91,9 @@ func TestGuard_NoPanicLogFatalOrOsExit(t *testing.T) {
 	})
 }
 
-// TestGuard_NoMetricsLibraryImport is AC19: this package imports no
-// metrics library — it declares only the Observer interface, and #23
-// owns exposition.
+// TestGuard_NoMetricsLibraryImport asserts that this package imports no
+// metrics library — it declares only the Observer interface; a future
+// integration owns exposition.
 func TestGuard_NoMetricsLibraryImport(t *testing.T) {
 	t.Parallel()
 	walkIngestSource(t, func(path string, content []byte) {
@@ -117,7 +117,8 @@ var telegoUpdateKindExemptions = map[string]bool{
 // payloadDeclaresField reports whether payload (a *telego.X struct type,
 // already unwrapped from the pointer) declares an exported field named
 // fieldName. It does not check the field's own type — callers pass the
-// exact name/kind combination D4's rule cares about (a Date int64 field,
+// exact name/kind combination the kind table's rule cares about (a Date
+// int64 field,
 // or a non-pointer Chat field), and a same-named field of a different
 // type would itself be a signal worth a loud test failure, not a silent
 // skip.
@@ -126,16 +127,15 @@ func payloadDeclaresField(payload reflect.Type, fieldName string) bool {
 	return ok
 }
 
-// TestGuard_TelegoUpdateFieldsMatchKindTable is design D4's drift check:
+// TestGuard_TelegoUpdateFieldsMatchKindTable is the drift check:
 // every exported pointer field of telego.Update has its json tag either
 // as a kindTable row or in the named exemption set above, every
-// kindTable row's token is a tag some field declares, and — the R3-2
-// extension — each row's date/chatID extractor presence matches whether
-// its own payload TYPE declares a Date int64 field / a non-pointer Chat
-// field (design D4: "a kind whose payload declares neither carries
-// nil"). A telego bump that adds an update type, or a kindTable row
-// whose extractors lag its payload's own fields, reds this test until
-// kind.go's table learns it.
+// kindTable row's token is a tag some field declares, and each row's
+// date/chatID extractor presence matches whether its own payload TYPE
+// declares a Date int64 field / a non-pointer Chat field — a kind whose
+// payload declares neither carries nil. A telego bump that adds an
+// update type, or a kindTable row whose extractors lag its payload's
+// own fields, reds this test until the kind table learns it.
 func TestGuard_TelegoUpdateFieldsMatchKindTable(t *testing.T) {
 	t.Parallel()
 
@@ -221,12 +221,12 @@ func pgxTxOrConnType(e ast.Expr) bool {
 	return sel.Sel.Name == "Tx" || sel.Sel.Name == "Conn"
 }
 
-// TestGuard_NoTransactionEscapesTheHandlerContract is AC8's structural
-// half: no exported function or method of internal/ingest RETURNS a
+// TestGuard_NoTransactionEscapesTheHandlerContract asserts a structural
+// property: no exported function or method of this package RETURNS a
 // pgx.Tx or pgx.Conn, and no exported type declares an exported FIELD of
 // either type — so the only transaction a Handler can reach is the one
 // the loop passes it as Handle's parameter. DeadUpdates, which TAKES a
-// caller-owned pgx.Tx (AC37), and Options.Pool, a *pgxpool.Pool (a
+// caller-owned pgx.Tx, and Options.Pool, a *pgxpool.Pool (a
 // connection source, not a transaction), are both legal under this
 // walk because it checks results and fields, never parameters.
 func TestGuard_NoTransactionEscapesTheHandlerContract(t *testing.T) {
@@ -288,12 +288,12 @@ func exportedReceiver(recv *ast.FieldList) bool {
 	return ok && ident.IsExported()
 }
 
-// TestGuard_NoOwnBotAPIPath is AC38's internal/ingest half (design D18's
-// composition note, AC3): this package's non-test source constructs no
+// TestGuard_NoOwnBotAPIPath asserts this package's own half of a
+// composition property: its non-test source constructs no
 // telego.Bot, no http.Client and no telegoapi caller of its own — it
-// reaches the Bot API only through the *telego.Bot that tg.Client.API()
-// returns. The internal/tg half of AC38 is already shipped
-// (TestGuard_RefusingGateBlocksTheAccessor) and is not re-proven here.
+// reaches the Bot API only through the *telego.Bot that the Telegram
+// client's own API() method returns. The Telegram-client half is already
+// shipped in a sibling test and is not re-proven here.
 func TestGuard_NoOwnBotAPIPath(t *testing.T) {
 	t.Parallel()
 	botConstruction := regexp.MustCompile(`telego\.NewBot\(|&?telego\.Bot\{|&?http\.Client\{`)
@@ -307,12 +307,12 @@ func TestGuard_NoOwnBotAPIPath(t *testing.T) {
 	})
 }
 
-// ctxFirstExemptions names every exported method of internal/ingest that
+// ctxFirstExemptions names every exported method of this package that
 // legitimately does not take ctx context.Context first, because it
-// reaches neither the network nor the database — AC2's own predicate is
+// reaches neither the network nor the database — that predicate is
 // not computable from an AST (reachability is whole-program), so this
 // walk demands ctx first from every exported method and the exemption
-// set is the only escape (design D9's own § Test Design rationale).
+// set is the only escape.
 var ctxFirstExemptions = map[string]string{
 	"(*Router).Kinds":      "returns the immutable, already-registered kind set — no I/O",
 	"(*Router).Lookup":     "an in-memory map lookup — no I/O",
@@ -328,15 +328,15 @@ var ctxFirstExemptions = map[string]string{
 	"ChatID":               "pure in-memory derivation — no I/O",
 }
 
-// TestGuard_CtxFirstAndNoRidingContext is design D9's ctx-discipline
-// walk (AC2): no type declared in this package has a context.Context
+// TestGuard_CtxFirstAndNoRidingContext is this package's ctx-discipline
+// walk: no type declared in this package has a context.Context
 // field; every exported method takes ctx context.Context as its first
 // parameter unless named in ctxFirstExemptions; no type embeds
 // telego.Update (only a NAMED field is legal); and the package's
 // non-test source contains no selector named Context or WithContext
 // (telego.Update's own riding-context accessors), since reading or
 // setting the riding context would silently escape both the loop's ctx
-// and the per-attempt transaction (design D9).
+// and the per-attempt transaction.
 func TestGuard_CtxFirstAndNoRidingContext(t *testing.T) {
 	t.Parallel()
 

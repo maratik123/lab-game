@@ -11,8 +11,8 @@ import (
 
 // recordingLookup wraps base, recording every key ever queried through it
 // (deduplicated, first-seen order — not that order matters here, since the
-// assertions below compare sorted sets). This is AC16's "disjoint in fact,
-// not only in prose": the recorded set is what the loader actually
+// assertions below compare sorted sets). This makes "disjoint in fact, not
+// only in prose" checkable: the recorded set is what the loader actually
 // consulted, not what a reader believes it consults.
 func recordingLookup(base Lookup) (lookup Lookup, recorded func() []string) {
 	seen := map[string]bool{}
@@ -30,9 +30,10 @@ func recordingLookup(base Lookup) (lookup Lookup, recorded func() []string) {
 		}
 }
 
-// readEnvExampleKeys parses .env.example with godotenv (never a hand-split
-// — .env quoting, comments and export prefixes are exactly where a naive
-// splitter goes wrong, design D13(b)) and returns its keys and values.
+// readEnvExampleKeys parses the module's example environment file with
+// godotenv (never a hand-split — .env quoting, comments and export
+// prefixes are exactly where a naive splitter goes wrong) and returns its
+// keys and values.
 func readEnvExampleKeys(t *testing.T) map[string]string {
 	t.Helper()
 	m, err := godotenv.Read(repoRootPath(t, ".env.example"))
@@ -50,8 +51,8 @@ func sortedCopy(s []string) []string {
 }
 
 // assertSameKeySet fails with a two-direction message — present in got,
-// absent from want, and vice versa — naming both, per D13(b): the failure
-// must explain itself rather than reading as a mysterious regression.
+// absent from want, and vice versa — naming both: the failure must
+// explain itself rather than reading as a mysterious regression.
 func assertSameKeySet(t *testing.T, gotName string, got []string, wantName string, want []string) {
 	t.Helper()
 	gotSet := map[string]bool{}
@@ -83,9 +84,9 @@ func assertSameKeySet(t *testing.T, gotName string, got []string, wantName strin
 	}
 }
 
-// TestEnvExample_MatchesLoaderAndEnvKeys is AC8+AC16's literal conjunction:
-// .env.example's key set, the loader's actually-consulted key set, and
-// EnvKeys() are all identical.
+// TestEnvExample_MatchesLoaderAndEnvKeys asserts a literal conjunction:
+// the example environment file's key set, the loader's actually-consulted
+// key set, and EnvKeys() are all identical.
 func TestEnvExample_MatchesLoaderAndEnvKeys(t *testing.T) {
 	t.Parallel()
 	example := readEnvExampleKeys(t)
@@ -104,7 +105,8 @@ func TestEnvExample_MatchesLoaderAndEnvKeys(t *testing.T) {
 	assertSameKeySet(t, "loader-consulted keys", recorded(), "config.EnvKeys()", EnvKeys())
 }
 
-// TestEnvExample_ValuesAreNonEmpty is AC8's placeholder requirement.
+// TestEnvExample_ValuesAreNonEmpty asserts the placeholder requirement:
+// every documented example value is non-empty.
 func TestEnvExample_ValuesAreNonEmpty(t *testing.T) {
 	t.Parallel()
 	for k, v := range readEnvExampleKeys(t) {
@@ -116,8 +118,8 @@ func TestEnvExample_ValuesAreNonEmpty(t *testing.T) {
 
 // rewriteExamplePaths returns a copy of example with LAB_GAME_BALANCE_PATH
 // and LAB_GAME_WORLD_PATH rewritten from repo-root-relative to absolute,
-// since .env.example documents repo-root-relative paths but a test may run
-// from any working directory (design § Risks).
+// since the example environment file documents repo-root-relative paths
+// but a test may run from any working directory.
 func rewriteExamplePaths(t *testing.T, example map[string]string) map[string]string {
 	t.Helper()
 	out := make(map[string]string, len(example))
@@ -129,8 +131,8 @@ func rewriteExamplePaths(t *testing.T, example map[string]string) map[string]str
 	return out
 }
 
-// TestLoad_ExampleEnvironmentSucceeds is AC7's second sentence: the tracked
-// balance file loads under the example environment.
+// TestLoad_ExampleEnvironmentSucceeds asserts that the tracked balance
+// file loads under the example environment.
 func TestLoad_ExampleEnvironmentSucceeds(t *testing.T) {
 	t.Parallel()
 	env := rewriteExamplePaths(t, readEnvExampleKeys(t))
@@ -139,8 +141,8 @@ func TestLoad_ExampleEnvironmentSucceeds(t *testing.T) {
 	}
 }
 
-// TestLoad_BalanceIndependentOfOtherVariables is AC16's second clause: the
-// tracked balance file, loaded under differing token/DSN/base-URL/chat-id
+// TestLoad_BalanceIndependentOfOtherVariables asserts that the tracked
+// balance file, loaded under differing token/DSN/base-URL/chat-id
 // environments, yields Balance values that compare equal — the balance
 // file's content depends on nothing but LAB_GAME_BALANCE_PATH.
 func TestLoad_BalanceIndependentOfOtherVariables(t *testing.T) {

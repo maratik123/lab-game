@@ -1,6 +1,6 @@
 module github.com/maratik123/lab-game
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/jackc/pgx-shopspring-decimal v0.0.0-20220624020537-1d36b5a1853e
@@ -12,6 +12,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	go.yaml.in/yaml/v3 v3.0.5
+	mvdan.cc/sh/v3 v3.14.1
 	pgregory.net/rapid v1.3.0
 )
 

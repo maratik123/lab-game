@@ -16,7 +16,7 @@ import (
 	"github.com/maratik123/lab-game/internal/testdb"
 )
 
-// craftBatch builds the §11:345 "крафт" shape: 3-5 distinct controlled
+// craftBatch builds a "крафт" shape: 3-5 distinct controlled
 // accounts debited by an integer amount in 1..10, plus one balancing World
 // credit per kind touched.
 func craftBatch(r *rand.Rand, players []racePlayer) []Posting {

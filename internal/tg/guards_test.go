@@ -16,9 +16,9 @@ import (
 )
 
 // repoRootPath resolves rel against the repository root, regardless of the
-// test binary's working directory — internal/tg is exactly two
-// directories below the root, same depth as internal/config's own copy of
-// this helper (internal/config/repo_root_test.go).
+// test binary's working directory — this package is exactly two
+// directories below the root, same depth as this module's configuration
+// package's own copy of this helper.
 func repoRootPath(t *testing.T, rel string) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -29,8 +29,8 @@ func repoRootPath(t *testing.T, rel string) string {
 	return filepath.Join(root, filepath.FromSlash(rel))
 }
 
-// walkGoFiles calls fn for every non-test .go file under root's cmd/ and
-// internal/ directories.
+// walkGoFiles calls fn for every non-test Go source file under root's
+// command and package directories.
 func walkGoFiles(t *testing.T, root string, fn func(path string, content []byte)) {
 	t.Helper()
 	for _, dir := range []string{"cmd", "internal"} {
@@ -58,12 +58,14 @@ func walkGoFiles(t *testing.T, root string, fn func(path string, content []byte)
 	}
 }
 
-// TestGuard_NoFastHTTPOrGoJSONImport is AC2: no non-test Go file under
-// cmd/ or internal/ imports a fasthttp or go-json package — the client's
+// TestGuard_NoFastHTTPOrGoJSONImport asserts that no non-test Go file
+// under this module's command or package directories imports a fasthttp
+// or go-json package — the client's
 // transport is net/http and its codec is encoding/json throughout this
-// project's own code (design D3's residue is telego's own internal
-// decode of its generated types, which this test does not and cannot
-// reach — it scans this project's imports, not the module graph).
+// project's own code (telego's own internal
+// decode of its generated types is the one residue, which this test does
+// not and cannot reach — it scans this project's imports, not the module
+// graph).
 func TestGuard_NoFastHTTPOrGoJSONImport(t *testing.T) {
 	t.Parallel()
 	forbidden := []string{`"github.com/valyala/fasthttp`, `"github.com/grbit/go-json`, `"github.com/valyala/fastjson`}
@@ -77,9 +79,9 @@ func TestGuard_NoFastHTTPOrGoJSONImport(t *testing.T) {
 	})
 }
 
-// TestGuard_NoMetricsRegistryImportInTG is AC17: no non-test Go file in
-// internal/tg imports a metrics-registry package — #23 owns registering
-// this package's Observations against one.
+// TestGuard_NoMetricsRegistryImportInTG asserts that no non-test Go file
+// in this package imports a metrics-registry package — a future
+// integration owns registering this package's Observations against one.
 func TestGuard_NoMetricsRegistryImportInTG(t *testing.T) {
 	t.Parallel()
 	root := repoRootPath(t, ".")
@@ -102,14 +104,14 @@ func TestGuard_NoMetricsRegistryImportInTG(t *testing.T) {
 	}
 }
 
-// TestGuard_NoRetryOrRateLimitLiteralAtCallSite is AC21's second clause:
-// no literal retry or rate-limit numeric-duration value appears at a call
-// site in internal/tg's own production files — every such value must
-// arrive from config.Transport. The pattern flags a numeric literal
+// TestGuard_NoRetryOrRateLimitLiteralAtCallSite asserts that no literal
+// retry or rate-limit numeric-duration value appears at a call site in
+// this package's own production files — every such value must arrive
+// from the Transport configuration. The pattern flags a numeric literal
 // multiplied directly by a time unit (e.g. "500 * time.Millisecond");
-// retry.go's own retry_after-seconds-to-Duration conversion multiplies a
-// runtime value (resp.Parameters.RetryAfter), not a literal, so it does
-// not match.
+// the retry_after-seconds-to-Duration conversion elsewhere in this
+// package multiplies a runtime value (resp.Parameters.RetryAfter), not a
+// literal, so it does not match.
 func TestGuard_NoRetryOrRateLimitLiteralAtCallSite(t *testing.T) {
 	t.Parallel()
 	pattern := regexp.MustCompile(`[0-9]+\s*\*\s*time\.(Nanosecond|Microsecond|Millisecond|Second|Minute|Hour)`)
@@ -133,13 +135,12 @@ func TestGuard_NoRetryOrRateLimitLiteralAtCallSite(t *testing.T) {
 	}
 }
 
-// TestGuard_NoTelegoBotConstructionOutsideTG is design D2's guard: no
-// non-test file outside internal/tg names telego.NewBot or any
+// TestGuard_NoTelegoBotConstructionOutsideTG asserts that no non-test file
+// outside this package names telego.NewBot or any
 // telego.With* option — the only reachable lever (bot.api is unexported)
 // that could apply an option to a bot this package did not build with its
-// own caller wired in (design D2's "accepted in-module exposure" section
-// discusses this same escape and why the scan is a complete cover, since
-// this module has no downstream importers).
+// own caller wired in. This module has no downstream importers, so the
+// scan over its own tree is a complete cover.
 func TestGuard_NoTelegoBotConstructionOutsideTG(t *testing.T) {
 	t.Parallel()
 	pattern := regexp.MustCompile(`telego\.(NewBot|With[A-Za-z]+)\(`)
@@ -155,11 +156,12 @@ func TestGuard_NoTelegoBotConstructionOutsideTG(t *testing.T) {
 	})
 }
 
-// TestGuard_BaseURLOnlyInConstructor is AC15's source-level half: BaseURL
-// appears in internal/tg's own production files only in client.go, as a
-// value handed to telego.WithAPIServer — never branched on. (The
-// behavioural half — identical limiter behaviour under two different base
-// URLs — is TestLimiter_IdenticalBehaviourAcrossBaseURLs in limit_test.go,
+// TestGuard_BaseURLOnlyInConstructor asserts the source-level half of a
+// wider property: BaseURL appears in this package's own production files
+// only in the client constructor, as a value handed to
+// telego.WithAPIServer — never branched on. (The behavioural half —
+// identical limiter behaviour under two different base URLs — is
+// TestLimiter_IdenticalBehaviourAcrossBaseURLs elsewhere in this suite,
 // since the Limiter never takes a URL parameter at all.)
 func TestGuard_BaseURLOnlyInConstructor(t *testing.T) {
 	t.Parallel()
@@ -186,14 +188,14 @@ func TestGuard_BaseURLOnlyInConstructor(t *testing.T) {
 	}
 }
 
-// TestGuard_TokenExposureSitesAreTheAcceptedOnes discharges design D4's
+// TestGuard_TokenExposureSitesAreTheAcceptedOnes discharges the
 // "accepted in-module exposure" note: telego.Bot.Token() and
 // FileDownloadURL are the only two telego methods that expose the token
 // by design, and this project's own use of them (if any) is confined to
 // this test file's own knowledge — the sweep exists so a future reader
 // does not mistake a legitimate hit on one of these two methods for a
-// leak (AC26 is about error messages, observations and fixtures, not
-// about telego's own exported accessors, design D4).
+// leak (the token-leak obligation is about error messages, observations
+// and fixtures, not about telego's own exported accessors).
 func TestGuard_TokenExposureSitesAreTheAcceptedOnes(t *testing.T) {
 	t.Parallel()
 	root := repoRootPath(t, ".")
@@ -205,12 +207,12 @@ func TestGuard_TokenExposureSitesAreTheAcceptedOnes(t *testing.T) {
 	})
 	// No assertion beyond "this compiles and runs" — the test's value is
 	// the log line a future reader can grep for; a real leak is caught by
-	// TestRetry_TokenAbsentFromRenderedError (retry_test.go) and by the
-	// fixture/error-rendering assertions throughout this package's own
+	// TestRetry_TokenAbsentFromRenderedError elsewhere in this suite and by
+	// the fixture/error-rendering assertions throughout this package's own
 	// tests, none of which render the token.
 }
 
-// TestGuard_RefusingGateBlocksTheAccessor is AC27's first clause,
+// TestGuard_RefusingGateBlocksTheAccessor asserts a refusal's effect
 // end-to-end through Client.API() itself — the only accessor this package
 // exposes.
 func TestGuard_RefusingGateBlocksTheAccessor(t *testing.T) {
@@ -224,8 +226,8 @@ func TestGuard_RefusingGateBlocksTheAccessor(t *testing.T) {
 		t.Fatal("GetMe: expected the gate to refuse the call")
 	}
 
-	// design D11: the observation point fires exactly once per outbound
-	// call, including a gate refusal — #23's health dashboard must see
+	// The observation point fires exactly once per outbound
+	// call, including a gate refusal — a future health dashboard must see
 	// refusals too.
 	all := obs.all()
 	if len(all) != 1 {
@@ -242,10 +244,10 @@ func TestGuard_RefusingGateBlocksTheAccessor(t *testing.T) {
 	}
 }
 
-// TestGuard_EndToEndViaConfigLoadProducedBaseURL is subtask 6's final
-// item: a call through Client.API() built from a config.Load-produced
-// Config.BotAPIBaseURL — proving the whole chain from the configuration
-// layer through the transport to a fake server (design D2, D10, AC20).
+// TestGuard_EndToEndViaConfigLoadProducedBaseURL asserts a call through
+// Client.API() built from a Load-produced Config.BotAPIBaseURL — proving
+// the whole chain from the configuration layer through the transport to
+// a fake server.
 func TestGuard_EndToEndViaConfigLoadProducedBaseURL(t *testing.T) {
 	t.Parallel()
 	srv := tgtest.New(t, tgtest.Success(json.RawMessage(`{"id":1}`)))

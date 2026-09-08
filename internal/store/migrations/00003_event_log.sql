@@ -1,14 +1,14 @@
 -- +goose Up
 -- event_volume_class partitions the event-type registry by traffic volume so
 -- a later retention pass can split storage by class without a migration to
--- classify events first (docs/DESIGN.md §11, §13.4). Members name the axis
+-- classify events first. Members name the axis
 -- itself (volume), not a reader (product/health) or a retention policy this
 -- migration does not ship.
 CREATE TYPE event_volume_class AS ENUM ('low_volume', 'high_volume');
 
 -- event_type_definition is the event-type registry: a new type is added by a
 -- forward migration inserting one row, never by editing this comment. Its id
--- exists solely to carry the §13.4 declaration order so the Go mirror's
+-- exists solely to carry this file's own declaration order so the Go mirror's
 -- comparison can be element-for-element ordered rather than set-wise; the id
 -- is referenced by nothing — event.type references code, not id.
 CREATE TABLE event_type_definition (
@@ -35,19 +35,18 @@ INSERT INTO event_type_definition (id, code, volume_class) VALUES
     (15, 'button_clicked',          'high_volume'),
     (16, 'bot_kicked',              'low_volume');
 
--- event is the append-only product-analytics log (docs/DESIGN.md §13.1): the
--- §13.4 dimensions that are universal across types — player, chat, maze,
--- depth — are columns; everything else is payload (ai-docs/domain-invariants.md
--- §5). maze_id carries no foreign key because no maze table exists yet (#29
--- adds it). No UPDATE/DELETE is ever issued against this table outside a
--- test (KD-3's append-only posture, enforced in code, never by a database
--- privilege).
+-- event is the append-only product-analytics log: the
+-- dimensions that are universal across types — player, chat, maze,
+-- depth — are columns; everything else is payload. maze_id carries no
+-- foreign key because no maze table exists yet. No UPDATE/DELETE is ever
+-- issued against this table outside a test (the ledger's append-only
+-- posture, enforced in code, never by a database privilege).
 CREATE TABLE event (
     id        bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     type      text        NOT NULL,
     player_id bigint      REFERENCES owner (id),
     chat_id   bigint      REFERENCES owner (id),
-    maze_id   bigint,                                    -- no FK yet: no maze table (#29)
+    maze_id   bigint,                                    -- no FK yet: no maze table
     depth     integer,
     payload   jsonb       NOT NULL DEFAULT '{}'::jsonb,
     ts        timestamptz NOT NULL DEFAULT now(),
@@ -64,7 +63,7 @@ CREATE INDEX event_ts_idx ON event (ts);
 
 -- The arc extension: an event may be the basis document of a journal_entry,
 -- exactly as a player_operation, manual_correction, deferred_task or
--- recurrent_task may (docs/DESIGN.md §11). The partial unique index makes
+-- recurrent_task may. The partial unique index makes
 -- the arc 1:1 — one event backs at most one journal_entry; a mechanic that
 -- must move balances twice under one event needs two events, or a different
 -- basis. There is no idempotency key on event: unlike player_operation,
@@ -90,7 +89,7 @@ CREATE UNIQUE INDEX journal_entry_event_key ON journal_entry (event_id) WHERE ev
 -- column names, order and types are a permanent contract: CREATE OR REPLACE
 -- VIEW can only append a column, never drop, rename, reorder or retype one.
 
--- metric_activation_funnel answers §13.3's headline MVP number:
+-- metric_activation_funnel answers the headline MVP activation number:
 -- bot_added_to_chat → player_started → first raid_started → return the
 -- next day. Attribution is a property of the PLAYER, not of the raid: each
 -- player with a player_started naming a chat belongs to the chat of their
@@ -98,8 +97,7 @@ CREATE UNIQUE INDEX journal_entry_event_key ON journal_entry (event_id) WHERE ev
 -- function and the view is deterministic. raid_started.chat_id is never
 -- read — every raid stage joins on player_id alone — which is an owner
 -- decision (round 3) that trades an unrecorded-chat_id obligation on
--- raid_started for one on player_started instead (ai-docs/domain-invariants.md
--- §5). "Returned" means a raid_started on the day immediately after that
+-- raid_started for one on player_started instead. "Returned" means a raid_started on the day immediately after that
 -- player's own earliest raid day — not "raided again at any later point",
 -- and not "was active the next day".
 CREATE VIEW metric_activation_funnel AS
@@ -141,16 +139,16 @@ LEFT JOIN first_raid   fr ON fr.player_id = a.player_id
 LEFT JOIN returned     r  ON r.player_id  = a.player_id
 GROUP BY c.chat_id, c.added_at;
 
--- metric_retention_daily answers §13.3's "Возвраты: D1/D7 retention, рейдов
--- на игрока в день". Row set: one row per UTC day on which ANY event
+-- metric_retention_daily answers the "Возвраты: Day-1/Day-7 retention, рейдов
+-- на игрока в день" metric. Row set: one row per UTC day on which ANY event
 -- occurred (not a generated calendar range, so a day with no events is
 -- absent rather than zero-filled). Two readings are chosen here rather than
--- read off §13.3, both owner decisions (round 3): a "return" is a
--- raid_started, not any activity; and D1/D7 are exactly day+1 and day+7,
+-- read off the design document, both owner decisions (round 3): a "return" is a
+-- raid_started, not any activity; and Day-1/Day-7 are exactly day+1 and day+7,
 -- not "active within N days". A cohort born fewer than seven days ago
--- cannot yet have a D7 (nor one born today a D1) and reports 0, not NULL,
+-- cannot yet have a Day-7 (nor one born today a Day-1) and reports 0, not NULL,
 -- for it — a retention "cliff" at the series' recent end is this window
--- artefact, not the game (ai-docs/domain-invariants.md §5).
+-- artefact, not the game.
 CREATE VIEW metric_retention_daily AS
 WITH days AS (
     SELECT DISTINCT (e.ts AT TIME ZONE 'UTC')::date AS day
@@ -210,7 +208,7 @@ LEFT JOIN cohort c  ON c.day  = d.day
 LEFT JOIN d1        ON d1.day = d.day
 LEFT JOIN d7        ON d7.day = d.day;
 
--- metric_death_by_depth answers §13.3's "Смерти по глубине". Row set: one
+-- metric_death_by_depth answers the "Смерти по глубине" metric. Row set: one
 -- row per (UTC day, depth) with at least one death; NULL depth is its own,
 -- deliberately visible group — a death with no recorded depth, not a value
 -- to discard. The day column is shipped from round 4 on: without it no
@@ -227,8 +225,8 @@ FROM event e
 WHERE e.type = 'death'
 GROUP BY 1, e.depth;
 
--- metric_faucet_sink answers §13.3's faucet/sink per resource, generic over
--- ledger_kind membership (AC14): it groups by account_definition.kind, not
+-- metric_faucet_sink answers the faucet/sink-per-resource metric, generic
+-- over ledger_kind membership: it groups by account_definition.kind, not
 -- by any named enum member, so a new kind appears as soon as postings of it
 -- exist against a World-owned account — no edit to this view is needed.
 -- account_definition.kind is cast to text (rule 3: a view-carried enum
@@ -260,7 +258,7 @@ SELECT
 FROM world_postings
 GROUP BY day, kind;
 
--- metric_notification_per_chat_day answers §13.3's per-chat spam budget.
+-- metric_notification_per_chat_day answers the per-chat spam-budget metric.
 -- Row set: one row per (UTC day, chat) with at least one chat-bearing
 -- notification_sent; a quiet chat-day is absent, not a zero row. Rows with
 -- a null chat_id are excluded — this is a per-chat number, not a global

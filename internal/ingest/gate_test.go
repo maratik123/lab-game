@@ -21,8 +21,8 @@ import (
 )
 
 // stubLookup is a PlayerLookup test double with fixed per-id answers, an
-// optional error, and a call counter — the fixture Test Design subtask 10
-// needs to prove a cached id issues no second lookup (AC35).
+// optional error, and a call counter — the fixture this suite needs to
+// prove a cached id issues no second lookup.
 type stubLookup struct {
 	mu      sync.Mutex
 	answers map[int64]bool
@@ -149,7 +149,7 @@ func TestGate_positiveResultIsCachedWithNoSecondLookup(t *testing.T) {
 	}
 }
 
-// TestGate_uncommittedOwnerRowIsInvisible pins design D18's behaviour: a
+// TestGate_uncommittedOwnerRowIsInvisible pins this behaviour: a
 // handler that creates a player's owner row and DMs that player before
 // returning is refused on the attempt, because PlayerLookup runs on its
 // own pool connection and the loop's still-open transaction has written
@@ -171,7 +171,7 @@ func TestGate_uncommittedOwnerRowIsInvisible(t *testing.T) {
 		t.Fatalf("CreateOwner: %v", err)
 	}
 
-	// Not committed yet — design D18's refusal.
+	// Not committed yet — refused.
 	callErr := g.AllowCall(ctx, tg.Call{Chat: tg.ChatRef{Key: "9001", Target: tg.ChatKnown}})
 	if !errors.Is(callErr, ErrChatRefused) {
 		t.Fatalf("AllowCall before commit = %v, want it to wrap ErrChatRefused (design D18: the row is not yet visible)", callErr)

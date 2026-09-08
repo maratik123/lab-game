@@ -1,75 +1,134 @@
-# lab-game balance constants (issue #18, docs/DESIGN.md §16.5).
+# lab-game balance constants.
 #
-# Every key below is required by internal/config's schema; adding a key to
-# only one side (this file or the schema) fails start-up. Values here are
-# placeholders — loadable and shaped correctly, but not authoritative — and
-# are replaced by issue #46 with real balance numbers. Where a design
-# section is cited, the number matches that section's own reference value;
-# every other value is an arbitrary, obviously-placeholder number.
+# Every key below is required by the configuration loader's schema; adding
+# a key to only one side (this file or the schema) fails start-up. Values
+# here are placeholders — loadable and shaped correctly, but not
+# authoritative — and will be replaced with real balance numbers before
+# release. Where a value matches this project's own design reference for
+# that mechanic, it is not arbitrary; every other value is an arbitrary,
+# obviously-placeholder number.
 
 world:
+  # World-generation constants: the hex-chunk grid a maze is generated in
+  # units of.
   chunk:
-    # docs/DESIGN.md §2.2.2 (ориентир 16x16).
+    # cols/rows: the hex-chunk grid's size — the reference value is 16x16
+    # hexes. A chunk is the unit of the world's connectivity guarantee: a
+    # spanning structure plus extra passages inside it guarantees internal
+    # connectivity, and one or two guaranteed portals per border connect
+    # it to its neighbours.
     cols: 16
     rows: 16
 
 raid:
+  # Every raid-mechanic constant: stamina, the noise-standing escalation,
+  # death, the AFK-leader cruelty dial, crafted doors, and the
+  # monster-budget curve.
   stamina:
+    # cap: the stamina reservoir's ceiling, reached from zero over one to
+    # two days of ticking accrual.
     cap: 100
+    # step_cost: stamina spent per step through a maze node — never on
+    # combat — so it is what ties raid depth, and a crafted door's
+    # payoff, to a concrete cost.
     step_cost: 1
 
   standing:
-    # docs/DESIGN.md §5 (> ~5 минут), §3.5.
+    # How the noise-standing escalation ("monsters on the scent")
+    # telegraphs before it bites: a group standing on one node longer than
+    # calm_to_noises hears distant howling; noises_to_wave later, a wave
+    # of monsters arrives; wave_to_wave paces every further wave while the
+    # group keeps standing. Warning matters more than punishment here —
+    # the escalation is stepped and announced, never a silent clock.
     calm_to_noises: 5m
     noises_to_wave: 2m
     wave_to_wave: 1m
 
   death:
+    # backpack_ttl: how long a dead player's dropped backpack survives on
+    # its node before it disappears.
     backpack_ttl: 30m
+    # own_chat_head_start: how long that backpack stays visible only to
+    # the deceased's own chat before every chat can see and loot it.
     own_chat_head_start: 2m
+    # respawn_debuff: how long a debuff lasts after a resurrection that
+    # follows death by anything other than burning all current stamina —
+    # the anti-"suicide as a shortcut home" measure.
     respawn_debuff: 1m
 
   afk:
-    # docs/DESIGN.md §3.5: the cruelty dial's *shape* is a placeholder too,
-    # not only its number (design D9) — a bounded [0,1] decimal is this
-    # task's guess at a dial, not a decision the raid-FSM work inherits.
+    # cruelty: how harshly an unattended (AFK) raid leader's session is
+    # escalated toward its conservative outcome — retreating home with
+    # part of the loot dropped — by timer edges alone, with no player
+    # input. A bounded [0,1] decimal; both its number and its very shape
+    # as a single dial are placeholders, not a decision later raid-FSM
+    # work must inherit.
     cruelty: 0.5
 
   door:
-    # price(dist) = price_base + price_per_distance * dist^price_distance_exponent
-    # — not yet confirmed. docs/DESIGN.md §2.3 states only that the price
-    # rises with distance; #46 confirms this combination or replaces it.
+    # A crafted door's price curve: price(dist) = price_base +
+    # price_per_distance * dist^price_distance_exponent — an unconfirmed
+    # combining formula; the one settled fact is that price rises with
+    # distance from the chat's own entrance.
     price_base: 10
     price_per_distance: 2
     price_distance_exponent: 1
-    # docs/DESIGN.md §2.2.3 (TTL ~30 мин (конфиг)).
+    # boss_reward_ttl: how long the one-shot, one-way door a felled boss
+    # opens stays open before it closes unused.
     boss_reward_ttl: 30m
 
   monster_budget:
-    # budget(dist), multiplied at use by k(level) — docs/DESIGN.md §4.6.
+    # A raid node's monster budget as a function of distance from the
+    # nearest chat entrance, scaled at use by the raiding group's
+    # strongest member: budget(dist) = base + per_distance *
+    # dist^distance_exponent, and scaling_per_level is that budget's
+    # growth per level the strongest member exceeds the node's own
+    # threshold — a novice never weakens the node's monsters, a veteran
+    # never makes it lethal for weaker companions.
     base: 5
     per_distance: 1
     distance_exponent: 1
-    # docs/DESIGN.md §4.6 (≈ +3% за уровень).
     scaling_per_level: 0.03
 
 combat:
-  # docs/DESIGN.md §4.2 (d20, 10 + DEF).
+  # The combat dice and multipliers the pure combat() function rolls
+  # under the hood; the player never sees these numbers, only outcomes
+  # and narration.
+  # hit_die_sides/base_defence: a hit is a roll of this die plus ATK,
+  # against base_defence plus the target's own DEF.
   hit_die_sides: 20
   base_defence: 10
+  # critical_natural/fumble_natural: the natural roll that always crits
+  # (double damage dice) and the one that always misses, with a
+  # narrative flavour of confusion.
   critical_natural: 20
   fumble_natural: 1
-  # docs/DESIGN.md §4.2 (≈2d6).
+  # weapon_dice_count/weapon_die_sides: the weapon's own damage roll —
+  # this many dice of this many sides, plus POW and the elemental
+  # multiplier below.
   weapon_dice_count: 2
   weapon_die_sides: 6
-  # docs/DESIGN.md §4.4 (SPD + d4).
+  # initiative_die_sides: turn order is SPD plus a roll of this die, so
+  # ties break pseudo-randomly rather than deterministically.
   initiative_die_sides: 4
+  # max_rounds: the round limit at which combat ends even with neither
+  # side reduced to zero — monsters "lose interest," or the group retreats
+  # at a cost, rather than fighting forever.
   max_rounds: 20
-  # docs/DESIGN.md §4.3 (+50% / -50%).
+  # vulnerability_multiplier/resist_multiplier: the damage multiplier a
+  # monster's elemental vulnerability or resistance applies to a matching
+  # attack.
   vulnerability_multiplier: 1.5
   resist_multiplier: 0.5
 
 economy:
   shop:
+    # sell_rate: the fraction of an item's "fair" value the shop pays
+    # when a player sells a surplus — deliberately below market, so
+    # selling is disposal, not a way to earn.
     sell_rate: 0.25
+    # buy_markup: how much buying a stock item from the shop costs over
+    # its base value. The shop is a floor — reliable, mediocre gear,
+    # never the best-in-slot ceiling only crafting reaches, and never a
+    # source of raw resources.
     buy_markup: 0.5

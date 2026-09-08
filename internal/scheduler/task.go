@@ -10,7 +10,7 @@ import (
 
 // Type is the persisted task-type name. The database stores it as text
 // and validates nothing about it; the Registry is the sole authority on
-// which types exist (design D6).
+// which types exist.
 type Type string
 
 // TaskID identifies a row in scheduled_task.
@@ -26,7 +26,7 @@ type Task struct {
 	// string for a keyless one-shot.
 	InstanceKey string
 	// Payload is the row's raw JSON payload, exactly as stored (jsonb
-	// normalises key order, whitespace and duplicate keys — design D5).
+	// normalises key order, whitespace and duplicate keys).
 	Payload json.RawMessage
 	// RunAt is the instant this task became due.
 	RunAt time.Time
@@ -35,7 +35,7 @@ type Task struct {
 }
 
 // Request is what Schedule takes to insert a new task. Delay is relative,
-// never an absolute instant (design D3): "a wave in five minutes" is what
+// never an absolute instant: "a wave in five minutes" is what
 // a mechanic's timer edge actually expresses, and a relative delay keeps
 // the caller out of the clock business entirely.
 type Request struct {
@@ -75,7 +75,7 @@ const (
 	OutcomeFailed
 )
 
-// DeadTask is one give-up row, enumerated by DeadTasks (AC10).
+// DeadTask is one give-up row, enumerated by DeadTasks.
 type DeadTask struct {
 	// Type is the task's registered type.
 	Type Type
@@ -93,7 +93,7 @@ type DeadTask struct {
 // by the consumer and registered once, at start-up, through Declaration.
 //
 // A Handler MUST propagate the ctx it is handed to every call it makes on
-// tx: this is the contract the per-task execution deadline (design D11)
+// tx: this is the contract the per-task execution deadline
 // depends on to reclaim a task's locked row after a breach. A Handler
 // that issues statements on a context of its own — context.Background(),
 // or a fresh context.WithTimeout — never sees the deadline's

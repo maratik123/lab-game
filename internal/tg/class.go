@@ -2,19 +2,19 @@ package tg
 
 import "strings"
 
-// MethodClass groups Bot API methods for rate-limiting purposes (design
-// D4): ClassMessage carries the published send-rate figures, ClassEdit
+// MethodClass groups Bot API methods for rate-limiting purposes:
+// ClassMessage carries the published send-rate figures, ClassEdit
 // and ClassOther exist as their own keys so an operator can bound them
 // later with no code change, and both default to unbounded because no
-// published figure supports a default bound (design D10).
+// published figure supports a default bound.
 type MethodClass int
 
 const (
 	// ClassMessage is every method that delivers, copies or forwards a
-	// message (design D4's send*/copyMessage*/forwardMessage* prefixes).
+	// message (the send*/copyMessage*/forwardMessage* prefixes).
 	ClassMessage MethodClass = iota
 	// ClassEdit is every method that edits or deletes a message, or stops
-	// a live location or a poll (design D4's editMessage*/deleteMessage*
+	// a live location or a poll (the editMessage*/deleteMessage*
 	// prefixes plus the two exact names).
 	ClassEdit
 	// ClassOther is every other Bot API method.
@@ -35,8 +35,8 @@ func (c MethodClass) String() string {
 	}
 }
 
-// classifyMethod maps a Bot API method name to its MethodClass by prefix,
-// matching design D4's table exactly. The prefix form is deliberately
+// classifyMethod maps a Bot API method name to its MethodClass by prefix.
+// The prefix form is deliberately
 // fail-safe: a method added later that delivers a message (any send*
 // name) is throttled by default rather than escaping the limiter, and the
 // edit/delete side is spelled out to the "Message" segment on purpose —

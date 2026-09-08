@@ -39,7 +39,7 @@ func (r failReader) Read([]byte) (int, error) { return 0, r.err }
 func (r failReader) Name() string { return "broken.bin" }
 
 // TestWriteMultipartBody_FieldWriteErrorIsWrapped forces writer.WriteField
-// to fail (constructor.go:70-72) by writing to an always-failing
+// to fail by writing to an always-failing
 // io.Writer, and asserts the error is wrapped with the field's name and
 // the underlying cause, per writeMultipartBody's %w wrapping.
 func TestWriteMultipartBody_FieldWriteErrorIsWrapped(t *testing.T) {
@@ -59,7 +59,7 @@ func TestWriteMultipartBody_FieldWriteErrorIsWrapped(t *testing.T) {
 }
 
 // TestWriteMultipartBody_CreateFormFileErrorIsWrapped forces
-// writer.CreateFormFile to fail (constructor.go:83-85) the same way, with
+// writer.CreateFormFile to fail the same way, with
 // no parameters so the field loop cannot fail first.
 func TestWriteMultipartBody_CreateFormFileErrorIsWrapped(t *testing.T) {
 	t.Parallel()
@@ -78,7 +78,7 @@ func TestWriteMultipartBody_CreateFormFileErrorIsWrapped(t *testing.T) {
 }
 
 // TestWriteMultipartBody_FileCopyErrorIsWrapped forces io.Copy(part, file)
-// to fail (constructor.go:86-88) via a file whose Read always errors,
+// to fail via a file whose Read always errors,
 // against a real (succeeding) underlying writer so CreateFormFile itself
 // succeeds first.
 func TestWriteMultipartBody_FileCopyErrorIsWrapped(t *testing.T) {
@@ -99,7 +99,7 @@ func TestWriteMultipartBody_FileCopyErrorIsWrapped(t *testing.T) {
 }
 
 // TestJSONRequest_MarshalErrorIsWrapped forces json.Marshal to fail
-// (constructor.go:24-26) with a value encoding/json cannot represent (a
+// with a value encoding/json cannot represent (a
 // bare channel), and asserts the error is wrapped rather than dropped.
 func TestJSONRequest_MarshalErrorIsWrapped(t *testing.T) {
 	t.Parallel()

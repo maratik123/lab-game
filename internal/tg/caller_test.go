@@ -19,10 +19,8 @@ import (
 )
 
 // newTestClient builds a Client wired to srv, proving the whole chain —
-// telego.WithAPICaller/WithRequestConstructor, the D4 derivation, the D9
-// limiter and the D12 gate seam — is actually connected end to end
-// (design D2, subtask 4's "minimal caller its end-to-end scenarios
-// require").
+// telego.WithAPICaller/WithRequestConstructor, the chat-ref derivation,
+// the limiter and the gate seam — is actually connected end to end.
 func newTestClient(t *testing.T, srv *tgtest.Server, opts func(*Options)) *Client {
 	t.Helper()
 	o := Options{
@@ -58,8 +56,7 @@ func TestCaller_EndToEndSuccess(t *testing.T) {
 // TestCaller_DerivesChatKnownFromSendMessage drives a real
 // (*telego.Bot).SendMessage call through the whole chain and asserts the
 // Call the gate observes: Method "sendMessage", ClassMessage, and a
-// ChatKnown target carrying the numeric chat id's raw JSON token (design
-// D4).
+// ChatKnown target carrying the numeric chat id's raw JSON token.
 func TestCaller_DerivesChatKnownFromSendMessage(t *testing.T) {
 	t.Parallel()
 	srv := tgtest.New(t, tgtest.Success(json.RawMessage(`{"message_id":1,"date":0,"chat":{"id":-1001234567890,"type":"group"}}`)))
@@ -91,8 +88,8 @@ func TestCaller_DerivesChatKnownFromSendMessage(t *testing.T) {
 	}
 }
 
-// TestCaller_RequestCarriesContentTypeHeader is doAttempt's request-
-// construction half of design D2: the outbound HTTP request must carry
+// TestCaller_RequestCarriesContentTypeHeader asserts doAttempt's request-
+// construction half: the outbound HTTP request must carry
 // the Content-Type header the request constructor set on RequestData
 // (ta.ContentTypeJSON for an ordinary JSON call), or a real Bot API
 // server would reject it — a claim tgtest's other handlers cannot check
@@ -150,7 +147,7 @@ func TestCaller_LimiterDelaysAndHonoursDeadline(t *testing.T) {
 
 	// A second call, with a deadline shorter than the limiter's required
 	// wait, must return promptly with a context error rather than block
-	// for the full wait (AC18).
+	// for the full wait.
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
 	start := time.Now()
@@ -164,10 +161,10 @@ func TestCaller_LimiterDelaysAndHonoursDeadline(t *testing.T) {
 	}
 }
 
-// TestCaller_HTTPClientFallsBackToDefaultClient is self-review round 5's
-// coverage sweep: (*caller).httpClient's http.DefaultClient fallback
-// (caller.go:230) had zero coverage hits — every fixture in this file
-// supplies Options.HTTPClient via newTestClient. This constructs a Client
+// TestCaller_HTTPClientFallsBackToDefaultClient covers
+// (*caller).httpClient's http.DefaultClient fallback, which every other
+// fixture in this file bypasses by supplying Options.HTTPClient via
+// newTestClient. This constructs a Client
 // with no HTTPClient set (validOptions leaves it nil) and reads the
 // unexported field back directly, without issuing any real HTTP call.
 func TestCaller_HTTPClientFallsBackToDefaultClient(t *testing.T) {
@@ -182,9 +179,9 @@ func TestCaller_HTTPClientFallsBackToDefaultClient(t *testing.T) {
 	}
 }
 
-// TestMethodFromURL_MalformedURLReturnsEmpty is self-review round 5's
-// coverage sweep: methodFromURL's url.Parse error path (caller.go:238-240)
-// had zero coverage hits — every fixture passes a well-formed URL.
+// TestMethodFromURL_MalformedURLReturnsEmpty covers methodFromURL's
+// url.Parse error path, which every other fixture bypasses by passing a
+// well-formed URL.
 func TestMethodFromURL_MalformedURLReturnsEmpty(t *testing.T) {
 	t.Parallel()
 	// A control character in the path is what makes net/url reject the
@@ -194,10 +191,9 @@ func TestMethodFromURL_MalformedURLReturnsEmpty(t *testing.T) {
 	}
 }
 
-// TestDoAttempt_NoBodyReturnsError is self-review round 5's coverage
-// sweep: doAttempt's "no body" default case (caller.go:193-194) had zero
-// coverage hits — every RequestData this package's own constructors
-// produce sets either BodyRaw or BodyStream (constructor.go), so the
+// TestDoAttempt_NoBodyReturnsError covers doAttempt's "no body" default
+// case — every RequestData this package's own constructors
+// produce sets either BodyRaw or BodyStream, so the
 // branch is unreachable through the public Client.API() surface. It is
 // still reachable by calling doAttempt directly with a bare
 // *ta.RequestData, which is the shape a hostile or buggy
@@ -220,10 +216,10 @@ func TestDoAttempt_NoBodyReturnsError(t *testing.T) {
 	}
 }
 
-// TestDoAttempt_MalformedURLReturnsBuildRequestError is self-review round
-// 5's coverage sweep: doAttempt's http.NewRequestWithContext error path
-// (caller.go:198-200) had zero coverage hits — every fixture passes a
-// well-formed rawURL built from tgtest.BaseURL.
+// TestDoAttempt_MalformedURLReturnsBuildRequestError covers doAttempt's
+// http.NewRequestWithContext error path, which every other fixture
+// bypasses by passing a well-formed rawURL built from the test server's
+// own base URL.
 func TestDoAttempt_MalformedURLReturnsBuildRequestError(t *testing.T) {
 	t.Parallel()
 	srv := tgtest.New(t, tgtest.Success(nil))
@@ -239,9 +235,8 @@ func TestDoAttempt_MalformedURLReturnsBuildRequestError(t *testing.T) {
 	}
 }
 
-// TestDoAttempt_TruncatedBodyReturnsReadError is self-review round 5's
-// coverage sweep: doAttempt's io.ReadAll error path (caller.go:212-214)
-// had zero coverage hits. The handler hijacks the connection and writes a
+// TestDoAttempt_TruncatedBodyReturnsReadError covers doAttempt's
+// io.ReadAll error path. The handler hijacks the connection and writes a
 // response whose Content-Length promises more bytes than are actually
 // sent before the connection closes, which makes io.ReadAll return
 // io.ErrUnexpectedEOF.
@@ -250,8 +245,8 @@ func TestDoAttempt_TruncatedBodyReturnsReadError(t *testing.T) {
 	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
 		// This handler runs on http.Server's own goroutine, not the test
 		// goroutine — testing forbids FailNow (t.Fatal/t.Fatalf) there.
-		// Report via t.Errorf and return, matching
-		// internal/tgtest/tgtest.go's CloseWithoutResponse.
+		// Report via t.Errorf and return, matching this module's own test
+		// server helper CloseWithoutResponse.
 		hj, ok := w.(http.Hijacker)
 		if !ok {
 			t.Errorf("ResponseWriter does not support Hijack")
@@ -277,10 +272,9 @@ func TestDoAttempt_TruncatedBodyReturnsReadError(t *testing.T) {
 	}
 }
 
-// TestDoAttempt_InvalidJSONReturnsDecodeError is self-review round 5's
-// coverage sweep: doAttempt's json.Unmarshal error path (caller.go:217-219)
-// had zero coverage hits — every fixture's handler answers with a
-// well-formed Bot API envelope.
+// TestDoAttempt_InvalidJSONReturnsDecodeError covers doAttempt's
+// json.Unmarshal error path, which every other fixture's handler bypasses
+// by answering with a well-formed Bot API envelope.
 func TestDoAttempt_InvalidJSONReturnsDecodeError(t *testing.T) {
 	t.Parallel()
 	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
@@ -300,9 +294,8 @@ func TestDoAttempt_InvalidJSONReturnsDecodeError(t *testing.T) {
 	}
 }
 
-// TestCaller_AttemptFailureWithNoResponseErrorUsesGenericCause is
-// self-review round 5's coverage sweep: the retry loop's default lastCause
-// case (caller.go:109-110) had zero coverage hits. It fires when an
+// TestCaller_AttemptFailureWithNoResponseErrorUsesGenericCause covers the
+// retry loop's default lastCause case. It fires when an
 // attempt neither errors nor carries a resp.Error — a decoded envelope
 // with "ok":false and no error/description/parameters fields at all — and
 // is not retryable (a plain 400), so the loop gives up after exactly one
@@ -337,12 +330,11 @@ type gateFunc func(ctx context.Context, call Call) error
 
 func (f gateFunc) AllowCall(ctx context.Context, call Call) error { return f(ctx, call) }
 
-// TestCaller_MultipartRequestNeverRetried asserts design D5 directly
-// (finding 1 — the retry loop's exits never consulted data.BodyStream,
-// so a multipart request against a permanent 500 made 3 attempts,
-// re-reading an already-drained io.Pipe on attempts 2-3). A BodyStream
-// request must make exactly one attempt, however retryable the response
-// looks.
+// TestCaller_MultipartRequestNeverRetried asserts a regression directly:
+// the retry loop's exits once never consulted data.BodyStream, so a
+// multipart request against a permanent 500 made 3 attempts, re-reading
+// an already-drained io.Pipe on attempts 2-3. A BodyStream request must
+// make exactly one attempt, however retryable the response looks.
 func TestCaller_MultipartRequestNeverRetried(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -369,12 +361,11 @@ func TestCaller_MultipartRequestNeverRetried(t *testing.T) {
 }
 
 // TestChatRefFromData is a table test over chatRefFromData's whole
-// branch set (findings 2 and 3 — the derivation had zero coverage, and
-// two of its four branches fell open to ChatNone instead of
-// ChatUnknown). Design D4/D12's table: ChatUnknown when there is no
-// decodable body at all (BodyRaw nil, whether or not BodyStream is set,
-// and BodyRaw present but undecodable), ChatNone when the body decodes
-// cleanly with no chat_id field, ChatKnown otherwise.
+// branch set — a past regression once let two of its four branches fall
+// open to ChatNone instead of ChatUnknown. The table: ChatUnknown when
+// there is no decodable body at all (BodyRaw nil, whether or not
+// BodyStream is set, and BodyRaw present but undecodable), ChatNone when
+// the body decodes cleanly with no chat_id field, ChatKnown otherwise.
 func TestChatRefFromData(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

@@ -23,9 +23,8 @@ import (
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
 
-// testIngestConfig returns a config.Ingest with millisecond-scale retry
-// and poll tuning, so retry/poll-cadence assertions run fast (Test
-// Design subtask 9's fixtures).
+// testIngestConfig returns an Ingest config with millisecond-scale retry
+// and poll tuning, so retry/poll-cadence assertions run fast.
 func testIngestConfig() config.Ingest {
 	return config.Ingest{
 		PollInterval:     20 * time.Millisecond,
@@ -38,7 +37,7 @@ func testIngestConfig() config.Ingest {
 	}
 }
 
-// newTestClient builds a tg.Client wired to srv.
+// newTestClient builds a Telegram client wired to srv.
 func newTestClient(t *testing.T, srv *tgtest.Server) *tg.Client {
 	t.Helper()
 	c, err := tg.New(tg.Options{
@@ -99,9 +98,9 @@ type getUpdatesRequest struct {
 	AllowedUpdates []string `json:"allowed_updates"`
 }
 
-// requestCapture records every request body a tgtest.Handler sees, under
-// a mutex (concurrent by construction — the same posture recordingObserver
-// takes).
+// requestCapture records every request body a test-server Handler sees,
+// under a mutex (concurrent by construction — the same posture
+// recordingObserver takes).
 type requestCapture struct {
 	mu       sync.Mutex
 	requests []getUpdatesRequest
@@ -261,7 +260,7 @@ func TestLoop_happyPath(t *testing.T) {
 	if len(updates) != 1 || updates[0].Outcome != OutcomeHandled || updates[0].Kind != KindMessage {
 		t.Fatalf("Updates() = %+v, want exactly one OutcomeHandled/KindMessage observation", updates)
 	}
-	// AC18 (design D13): a KindMessage update carries its own date, so
+	// A KindMessage update carries its own date, so
 	// LagKnown must be true and Lag must reflect it — not a value read
 	// as a healthy zero. The message is backdated by 3s so a mutant
 	// lagFor that returns (0, true) unconditionally is caught.
@@ -344,7 +343,7 @@ func TestLoop_unrouted(t *testing.T) {
 	if len(updates) != 1 || updates[0].Outcome != OutcomeUnrouted || updates[0].Kind != KindCallbackQuery {
 		t.Fatalf("Updates() = %+v, want exactly one OutcomeUnrouted/KindCallbackQuery observation", updates)
 	}
-	// AC18 (design D13): KindCallbackQuery declares no date, so LagKnown
+	// KindCallbackQuery declares no date, so LagKnown
 	// must be false — a mutant lagFor that returns (0, true) always
 	// would make this indistinguishable from a genuinely healthy zero
 	// lag.
@@ -353,9 +352,10 @@ func TestLoop_unrouted(t *testing.T) {
 	}
 }
 
-// TestLoop_malformedUpdateReportsDerivationError covers R1-10: raw
-// carries an empty CallbackQuery.ID, which NewUpdate rejects with
-// ErrEmptyID (operation.go's operationID). processUpdate must not
+// TestLoop_malformedUpdateReportsDerivationError covers a past
+// regression: raw carries an empty CallbackQuery.ID, which NewUpdate
+// rejects with ErrEmptyID from the operation-id builder. processUpdate
+// must not
 // discard that error — it settles the update as unrouted (still
 // advancing the offset, so one bad payload never stalls the batch) and
 // carries the error onto the resulting Observation.

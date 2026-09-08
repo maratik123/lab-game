@@ -13,12 +13,12 @@ import (
 )
 
 // reasonMustBePositive is New's rejection reason for every non-positive
-// config.Scheduler field.
+// Scheduler config field.
 const reasonMustBePositive = "must be positive"
 
 // OptionError is returned by New when an Options field is invalid.
 type OptionError struct {
-	// Field names the invalid config.Scheduler field.
+	// Field names the invalid Scheduler config field.
 	Field string
 	// Reason describes why the value was rejected.
 	Reason string
@@ -53,14 +53,14 @@ type Worker struct {
 	observer Observer
 
 	// pendingMu guards pending, the set of tasks whose transaction died
-	// before it could settle them — a deadline breach or a failed COMMIT
-	// (design D7, D11). Run and a caller's RunOnce may both touch it.
+	// before it could settle them — a deadline breach or a failed COMMIT.
+	// Run and a caller's RunOnce may both touch it.
 	pendingMu sync.Mutex
 	pending   map[TaskID]pendingSettlement
 }
 
 // New builds a Worker from opts, refusing a nil Pool, a nil Registry, or
-// any non-positive config.Scheduler field with an *OptionError naming the
+// any non-positive Scheduler config field with an *OptionError naming the
 // field.
 func New(opts Options) (*Worker, error) {
 	if opts.Pool == nil {
@@ -96,11 +96,11 @@ func New(opts Options) (*Worker, error) {
 	}, nil
 }
 
-// RunOnce runs one discovery-then-execute cycle (design D2): one
+// RunOnce runs one discovery-then-execute cycle: one
 // discovery statement, then each discovered id in its own transaction.
 // It reports exactly one LoopObservation per call, whether it succeeds or
 // fails — a discovery failure is reported through LoopObservation.Err
-// (design D12) as well as returned, since this package has no logger and
+// as well as returned, since this package has no logger and
 // Run must not stop on a transient one.
 func (w *Worker) RunOnce(ctx context.Context) error {
 	start := time.Now()
@@ -130,7 +130,7 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 // interval until ctx is done, returning ctx.Err(). If Reconcile fails,
 // Run returns its error without entering the loop at all — a worker
 // that could not reconcile is one whose recurrences may be missing, and
-// running anyway would hide that behind a quiet loop (design D10).
+// running anyway would hide that behind a quiet loop.
 // RunOnce does not call Reconcile: it is the single-cycle primitive the
 // tests drive, and an implicit reconcile inside it would make every
 // cycle test a reconcile test too.
@@ -138,7 +138,7 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 // After Reconcile, Run runs one cycle immediately, then waits, so a
 // freshly inserted due task need not wait a full poll interval to be
 // picked up on start-up. Run does not stop on a RunOnce error — each
-// cycle already reports it through ObserveLoop (design D12) — because a
+// cycle already reports it through ObserveLoop — because a
 // worker that stopped on a transient discovery failure would need an
 // external restart for no reason.
 func (w *Worker) Run(ctx context.Context) error {

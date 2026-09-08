@@ -5,8 +5,8 @@ import (
 )
 
 // IDSpace names one namespace an operation_id's raw identifier is drawn
-// from. internal/store treats operation_id as opaque, so the grammar and
-// the set of spaces are this package's to define (design D9). A third
+// from. The ledger package treats operation_id as opaque, so the grammar
+// and the set of spaces are this package's to define. A third
 // space costs a new member and a new field on Update, never a migration
 // of stored rows.
 type IDSpace string
@@ -22,11 +22,11 @@ const (
 )
 
 // operationIDSeparator joins an IDSpace and a raw identifier into one
-// operation_id. No IDSpace member may contain it (design D9).
+// operation_id. No IDSpace member may contain it.
 const operationIDSeparator = ":"
 
-// operationID builds one operation_id as "<space>:<id>" (design D9's
-// grammar), refusing an empty space (ErrEmptyIDSpace) or an empty id
+// operationID builds one operation_id as "<space>:<id>", refusing an
+// empty space (ErrEmptyIDSpace) or an empty id
 // (ErrEmptyID). Unexported: a handler has no function to assemble an
 // operation_id from raw Telegram fields — only Update's own derived
 // fields carry one.

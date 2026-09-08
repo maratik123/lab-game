@@ -19,14 +19,16 @@ func TestLoadTransport_AllAbsentYieldsDefaults(t *testing.T) {
 	}
 }
 
-// TestLoadTransport_ExampleMatchesDefaults is AC22's and AC23's
-// "documented default for each" clause: .env.example's own LAB_GAME_TG_*
-// values, run through loadTransport, must equal defaultTransport() — so a
-// change to either side that is not mirrored in the other goes RED. A
+// TestLoadTransport_ExampleMatchesDefaults asserts the
+// "documented default for each" clause: the example environment file's
+// own LAB_GAME_TG_* values, run through loadTransport, must equal
+// defaultTransport() — so a change to either side that is not mirrored
+// in the other goes RED. A
 // bare `*tr == defaultTransport()` comparison against an empty
 // environment (as TestLoadTransport_AllAbsentYieldsDefaults does above)
 // cannot detect that drift: it would pass for any value
-// defaultTransport() happens to return, whatever .env.example says.
+// defaultTransport() happens to return, whatever the example environment
+// file says.
 func TestLoadTransport_ExampleMatchesDefaults(t *testing.T) {
 	t.Parallel()
 	example := readEnvExampleKeys(t)
@@ -45,7 +47,7 @@ func TestLoadTransport_ExampleMatchesDefaults(t *testing.T) {
 // TestLoadTransport_DefaultRetryFactorIsBackoffDefaultFactor pins the
 // default to the shared constant directly, not merely to
 // defaultTransport()'s own return — so the config default and the shared
-// boundary cannot drift apart (design D20).
+// boundary cannot drift apart.
 func TestLoadTransport_DefaultRetryFactorIsBackoffDefaultFactor(t *testing.T) {
 	t.Parallel()
 	tr, err := loadTransport(mapLookup(map[string]string{}))
@@ -159,12 +161,12 @@ func TestLoadTransport_Malformed(t *testing.T) {
 
 		// Every remaining key gets its own malformed case (missing slash is
 		// enough to drive lookupRate's error branch and, via assertKeyError,
-		// confirm the *KeyError names THAT key specifically) — AC22's
-		// malformed clause must be unverified for none of the keys, not
-		// just the one (envTGLimitMessageGlobal) the rows above already
-		// drive. envTGLimitMessageChatRate/ChatCap additionally exercise
+		// confirm the *KeyError names THAT key specifically) — the malformed
+		// clause must be unverified for none of the keys, not just the one
+		// (envTGLimitMessageGlobal) the rows above already drive.
+		// envTGLimitMessageChatRate/ChatCap additionally exercise
 		// loadClass's second and third branches, which no case above
-		// reaches at all (self-review round 6, R6-1).
+		// reaches at all.
 		{"limit missing slash (message chat rate)", envTGLimitMessageChatRate, "30"},
 		{"limit missing slash (message chat cap)", envTGLimitMessageChatCap, "30"},
 		{"limit missing slash (edit global)", envTGLimitEditGlobal, "30"},

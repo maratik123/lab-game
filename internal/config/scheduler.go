@@ -7,12 +7,11 @@ import (
 	"github.com/maratik123/lab-game/internal/backoff"
 )
 
-// Environment variable names for internal/scheduler's polling, claim-batch
-// and retry tuning (design D13). Every one of these is optional: an
-// absent value takes the compiled-in default named alongside it below —
-// the same optional-with-default class internal/tg's transport keys
-// established (transport.go), and the second such class this package now
-// carries.
+// Environment variable names for the task scheduler's polling, claim-batch
+// and retry tuning. Every one of these is optional: an absent value takes
+// the compiled-in default named alongside it below — the same
+// optional-with-default class the Telegram transport keys established,
+// and the second such class this package now carries.
 const (
 	envSchedulerPollInterval    = "LAB_GAME_SCHEDULER_POLL_INTERVAL"
 	envSchedulerClaimLimit      = "LAB_GAME_SCHEDULER_CLAIM_LIMIT"
@@ -24,9 +23,8 @@ const (
 )
 
 // schedulerEnvKeys returns the seven scheduler tuning variables, in
-// declaration order (deterministic — AGENTS.md § Code Style). It is
-// appended to EnvKeys() only; envKeys() itself is untouched, mirroring
-// transportEnvKeys' rule (design D13).
+// declaration order (deterministic). It is appended to EnvKeys() only;
+// envKeys() itself is untouched, mirroring transportEnvKeys' rule.
 func schedulerEnvKeys() []string {
 	return []string{
 		envSchedulerPollInterval,
@@ -39,13 +37,12 @@ func schedulerEnvKeys() []string {
 	}
 }
 
-// Scheduler holds internal/scheduler's polling, claim-batch and retry
-// tuning. Every field is optional-with-default (design D13) — like
-// Transport, an absent LAB_GAME_SCHEDULER_ variable never fails Load.
-// Every default here is chosen operational tuning, never a balance number
-// and never sourced from docs/DESIGN.md — a task's game-meaningful delay
-// is set by the mechanic that schedules it, from the balance file, never
-// here.
+// Scheduler holds the task scheduler's polling, claim-batch and retry
+// tuning. Every field is optional-with-default — like Transport, an
+// absent LAB_GAME_SCHEDULER_ variable never fails Load. Every default
+// here is chosen operational tuning, never a balance number and never
+// sourced from the game design — a task's game-meaningful delay is set
+// by the mechanic that schedules it, from the balance file, never here.
 type Scheduler struct {
 	// PollInterval is how often the worker polls for due tasks
 	// (LAB_GAME_SCHEDULER_POLL_INTERVAL, default 1s).
@@ -62,23 +59,21 @@ type Scheduler struct {
 	RetryBaseDelay time.Duration
 	// RetryMaxDelay caps the backoff scale's growth at the configured
 	// RetryFactor (LAB_GAME_SCHEDULER_RETRY_MAX_DELAY, default 5m). It also
-	// bounds how often an undeclared task type's row is retried (design
-	// D7).
+	// bounds how often an undeclared task type's row is retried.
 	RetryMaxDelay time.Duration
 	// RetryFactor is the backoff scale's exponential growth factor
-	// (LAB_GAME_SCHEDULER_RETRY_FACTOR, default backoff.DefaultFactor) —
-	// design D20. Must be finite and strictly greater than 1.
+	// (LAB_GAME_SCHEDULER_RETRY_FACTOR, default the shared package's
+	// compiled-in default). Must be finite and strictly greater than 1.
 	RetryFactor float64
 	// TaskTimeout bounds a single task's execution — the handler's context
 	// deadline and the transaction-local statement_timeout and
-	// idle_in_transaction_session_timeout (design D11)
+	// idle_in_transaction_session_timeout
 	// (LAB_GAME_SCHEDULER_TASK_TIMEOUT, default 30s).
 	TaskTimeout time.Duration
 }
 
 // defaultScheduler returns the compiled-in defaults every scheduler key
-// falls back to when its environment variable is absent (design D13's
-// table).
+// falls back to when its environment variable is absent.
 func defaultScheduler() Scheduler {
 	return Scheduler{
 		PollInterval:     time.Second,

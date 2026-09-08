@@ -12,12 +12,13 @@ import (
 	"github.com/maratik123/lab-game/internal/store"
 )
 
-// runAttempts drives u's bounded retry (design D6, D23, D24): one
+// runAttempts drives u's bounded retry: one
 // attempt per transaction, a strictly positive and non-shrinking delay
-// between failed attempts via backoff.Exponential, up to
+// between failed attempts via the shared exponential-backoff package's
+// ramp function, up to
 // Config.RetryMaxAttempts. It returns nil once the update is settled —
 // handled, duplicate or given-up all count as settled — and a non-nil
-// ctx.Err() only when ctx is cancelled mid-retry (design D25), leaving
+// ctx.Err() only when ctx is cancelled mid-retry, leaving
 // the update unsettled with the offset behind it.
 func (l *Loop) runAttempts(ctx context.Context, h Handler, u Update) error {
 	var lastErr error
@@ -42,9 +43,9 @@ func (l *Loop) runAttempts(ctx context.Context, h Handler, u Update) error {
 	return l.settleGivenUp(ctx, u, l.cfg.RetryMaxAttempts, lastErr)
 }
 
-// attemptOnce runs h.Handle inside its own transaction for u (design
-// D6): a panic is recovered (design D7), and the outcome is classified
-// by design D8's sentinel test. It returns settled=true once the update
+// attemptOnce runs h.Handle inside its own transaction for u: a panic
+// is recovered, and the outcome is classified
+// by a sentinel test. It returns settled=true once the update
 // no longer needs another attempt — OutcomeHandled or OutcomeDuplicate,
 // both of which advance the offset before returning — and settled=false
 // with the handler's error otherwise, having already rolled the attempt
@@ -56,7 +57,7 @@ func (l *Loop) attemptOnce(ctx context.Context, h Handler, u Update, attempt int
 	}
 
 	// duration measures h.Handle itself, per Observation.Duration's
-	// contract (design D12: "the call's duration") — not the surrounding
+	// contract ("the call's duration") — not the surrounding
 	// transaction plumbing (advanceOffset, Commit, Rollback), so a slow
 	// database has no bearing on this number and a fast handler always
 	// reports as fast, whatever its transaction later does.
@@ -81,7 +82,7 @@ func (l *Loop) attemptOnce(ctx context.Context, h Handler, u Update, attempt int
 
 	case errors.Is(handlerErr, store.ErrAlreadyPosted):
 		// The effects already exist from an earlier delivery: roll this
-		// attempt back first (design D5) — any other write the handler
+		// attempt back first — any other write the handler
 		// made before Post is a replayed effect, not a wanted one — then
 		// advance the offset in a transaction of its own.
 		_ = tx.Rollback(ctx)
@@ -103,7 +104,7 @@ func (l *Loop) attemptOnce(ctx context.Context, h Handler, u Update, attempt int
 	}
 }
 
-// safeHandle calls h.Handle under recover (design D7): a panic never
+// safeHandle calls h.Handle under recover: a panic never
 // terminates the process, and is reported to the caller as an error
 // distinct from a returned one via the panicked return.
 func safeHandle(ctx context.Context, h Handler, tx pgx.Tx, u Update) (err error, panicked bool) {
@@ -118,7 +119,7 @@ func safeHandle(ctx context.Context, h Handler, tx pgx.Tx, u Update) (err error,
 }
 
 // reportAttempt reports one per-attempt Observation, filling Lag from
-// design D13's rule.
+// this package's own lag rule.
 func (l *Loop) reportAttempt(u Update, attempt int, outcome Outcome, duration time.Duration) {
 	lag, lagKnown := lagFor(u)
 	observeUpdate(l.observer, Observation{

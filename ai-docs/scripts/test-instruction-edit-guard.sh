@@ -1,32 +1,43 @@
 #!/usr/bin/env bash
-# Regression suite for the PreToolUse instruction-edit guard in .claude/settings.json.
+# Regression suite for the PreToolUse instruction-edit hook guard.
 #
-# The guard blocks a write into an instruction file (AGENTS.md, CLAUDE.md,
-# .claude/**, ai-docs/code-style.md, ai-docs/doc-convention.md -- the list is
-# AGENTS.md > Learning Log > Boundary rule 2's, verbatim) while an interview is
-# live: an ai-docs/plans/*.spec.md.state.md exists and ai-docs/plans/.task-inflight
-# does not. Steps 8-12 of /task carry the marker and are exempt; a branch with
-# no state file is exempt; /improve therefore runs untouched on its own branch.
+# The guard blocks a write into an instruction file -- the project rule file,
+# its per-tool alias, the agent-and-skill directory, and the code-style and
+# doc-convention pages, the list the learning-log boundary rule states verbatim
+# -- while an interview is live: an interview state file exists and the
+# in-flight marker does not. Steps 8-12 of /task carry the marker and are
+# exempt; a branch with no state file is exempt; /improve therefore runs
+# untouched on its own branch.
 #
 # Anti-drift: this suite runs the LIVE hook bodies, extracted with jq and
 # executed as the programs they are, inside a scratch directory whose plans/
 # folder is set to each of the three states the guard distinguishes. There is
 # no copied regex here, so there is nothing to drift.
 #
-# The must-block fixtures are the real shapes from the 2026-09-08 run
-# (ai-docs/learnings.md, "read 'the instruction should say X' as authorisation"):
-# a python heredoc that write_text()s .claude/agents/spec-writer.md, and its
-# Edit-tool equivalent. The must-allow fixtures include the rollback that undid
+# The must-block fixtures are the real shapes from the 2026-09-08 run, where
+# "the instruction should say X" was read as authorisation: a python heredoc
+# that write_text()s an agent instruction file, and its Edit-tool equivalent.
+# The must-allow fixtures include the rollback that undid
 # it (git checkout -- <file>): a guard that blocks the recovery is worse than
 # no guard.
 #
 # Verdict convention: a body exits 2 to block a tool call. Any other exit
 # status means the call proceeds.
 #
-# Usage: bash ai-docs/scripts/test-instruction-edit-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-instruction-edit-guard.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1

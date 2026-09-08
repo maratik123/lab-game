@@ -25,7 +25,7 @@ Designer Subagent. Receives a task description (and optionally reviewer feedback
 
 ## Workflow
 
-**Every scripted edit of the design is wrapped:** `bash ai-docs/scripts/doc-edit-guard.sh snapshot <design_path>` before the edit, `… verify <design_path>` after it, in the same command. The guard restores the file and exits 2 when a section heading, an AC row or a `D<N>` / `KD-<N>` row disappeared — the shape of a heading-anchored slice that matched an in-text mention instead of the heading, which truncated a design on 2026-09-02 and a spec on 2026-09-08 (`ai-docs/learnings.md`). Anchor headings on `"\n## <heading>\n"`, and rely on the guard rather than on remembering to. `/task` Step 6 commits the design after every round; the guard covers the edits between commits.
+**Every scripted edit of the design is wrapped** by `ai-docs/scripts/doc-edit-guard.sh` — snapshot before the edit, verify after it, in the same command. Run the script with `--help` for the two forms rather than copying them from here; a grammar reproduced in prose is a grammar that rots. The guard restores the file and exits 2 when a section heading, an AC row or a `D<N>` / `KD-<N>` row disappeared — the shape of a heading-anchored slice that matched an in-text mention instead of the heading, which truncated a design on 2026-09-02 and a spec on 2026-09-08 (`ai-docs/learnings.md`). Anchor headings on `"\n## <heading>\n"`, and rely on the guard rather than on remembering to. `/task` Step 6 commits the design after every round; the guard covers the edits between commits.
 
 ### First round (no feedback)
 

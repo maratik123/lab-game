@@ -14,30 +14,30 @@ import (
 // in a NAMED field — never embedded, because embedding would promote
 // telego.Update's own Context() and WithContext() methods onto this
 // type, and the context riding inside a polled update is always a
-// context.Background() (design D9, spec *Technical constraints* item 5)
-// — plus this package's own derived fields, computed once by the loop so
+// context.Background() — plus this package's own derived fields,
+// computed once by the loop so
 // a handler never assembles an operation_id from raw Telegram fields
 // itself.
 type Update struct {
 	// Raw is the update exactly as GetUpdates returned it.
 	Raw telego.Update
-	// Kind is Raw's derived Kind (design D4). The zero Kind means Raw
+	// Kind is Raw's derived Kind. The zero Kind means Raw
 	// matched no table row.
 	Kind Kind
 	// OperationID is Raw's canonical idempotency key, in the
-	// IDSpaceUpdate space (design D9).
+	// IDSpaceUpdate space.
 	OperationID string
 	// CallbackQueryOperationID is Raw's callback-query idempotency key,
 	// in the IDSpaceCallbackQuery space. Empty when Raw carries no
 	// callback query — every real operation_id this package builds is
-	// non-empty by construction (design D9), so the empty string is a
+	// non-empty by construction, so the empty string is a
 	// safe "absent" sentinel here.
 	CallbackQueryOperationID string
 }
 
 // NewUpdate derives every field of an Update from raw: its Kind, its
 // canonical operation_id in the update_id space, and — when raw carries a
-// callback query — its callback-query operation_id (design D9).
+// callback query — its callback-query operation_id.
 func NewUpdate(raw telego.Update) (Update, error) {
 	opID, err := operationID(IDSpaceUpdate, strconv.Itoa(raw.UpdateID))
 	if err != nil {
@@ -62,18 +62,17 @@ func NewUpdate(raw telego.Update) (Update, error) {
 // the consumer and registered once, at start-up, through Route.
 //
 // A Handler MUST propagate the ctx it is handed to every call it makes on
-// tx (mirrors scheduler.Handler's obligation — design D7's risk row):
+// tx (mirrors this module's task-scheduler handler obligation):
 // Handle must use the ctx parameter, never Raw's own riding context,
 // which is always a context.Background() on this poll path and would
-// silently escape both the loop's ctx and the per-attempt transaction
-// (design D9).
+// silently escape both the loop's ctx and the per-attempt transaction.
 //
 // A Handler MUST NOT issue an outbound Bot API call whose permission
-// rests on a row its own uncommitted transaction created (design D18): a
+// rests on a row its own uncommitted transaction created: a
 // Telegram send is not rollback-able, so a message justified by a row
 // the transaction then rolls back has already reached a real person. The
 // designed route for a post-commit send is the outbound notification
-// queue (#43); until it lands, perform such a send after the loop has
+// queue; until it lands, perform such a send after the loop has
 // committed, outside Handle.
 type Handler interface {
 	// Handle runs u's effects inside tx, the loop's own transaction for
@@ -89,15 +88,16 @@ type Route struct {
 }
 
 // Router dispatches an Update to the Handler registered for its Kind.
-// Immutable once built by NewRouter — mirrors scheduler.Registry.
+// Immutable once built by NewRouter — mirrors this module's
+// task-scheduler registry.
 type Router struct {
 	handlers map[Kind]Handler
 	kinds    []Kind
 }
 
 // NewRouter builds a Router from routes, refusing a duplicate Kind and a
-// Kind with no kindTable row (design D4 — a route can never be
-// registered into a hole).
+// Kind with no kindTable row — a route can never be registered into a
+// hole.
 func NewRouter(routes ...Route) (*Router, error) {
 	handlers := make(map[Kind]Handler, len(routes))
 	kinds := make([]Kind, 0, len(routes))

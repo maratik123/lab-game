@@ -65,7 +65,7 @@ Read [`ai-docs/domain-invariants.md`](../../ai-docs/domain-invariants.md) first.
 - Exported where unexported would suffice? (This module has no outside consumers — `internal/` is the default.)
 - Interfaces declared by the consumer rather than shipped beside the implementation?
 - Stutter in names (`raid.RaidSession`), `Get` prefixes on getters, abbreviations with the wrong case (`chatId`)?
-- Naming (`AGENTS.md` § API Naming): does every `…Unchecked` function document its precondition **and** the caller that guarantees it? Does any unsuffixed function silently skip a check its sibling performs? → finding.
+- Naming (`AGENTS.md` § API Naming): does every `…Unchecked` function document its precondition **and** the caller that guarantees it? Does any unsuffixed function silently skip a check its sibling performs? → finding. A guarantor in another package of this module is described, not named with its package qualifier — the reference ban forbids that form, and the doc comment is conforming without it.
 
 ### 3. Test coverage
 - Every file with ~50+ lines of non-trivial logic has a `_test.go` beside it?
@@ -94,7 +94,7 @@ For every exported item, flag each of:
 - **A sentinel error a function can return that its doc does not name.**
 - **An `…Unchecked` variant** whose doc does not state the precondition **and** the caller that guarantees it.
 - **A type meant for concurrent use** whose doc does not say so (the default reading is "not safe").
-- **A design citation by line number** instead of section (`docs/DESIGN.md §2.2.4`, never `:118`).
+- **Any outward reference in a comment** — a markdown path, a design-section number, an acceptance-criterion id or decision anchor, an issue number outside `TODO(#…)`, a repository path, a URL, or a package-qualified symbol of this module named outside the comment's own package. `make comment-refs` decides those; you decide the two halves it cannot — a comment that narrates the implementation step by step, and one that points elsewhere by a bare unqualified name.
 - **A `TODO` without an issue reference**, commented-out code, or a comment that restates the code.
 - **A stale comment** — behaviour changed, the comment above it did not.
 

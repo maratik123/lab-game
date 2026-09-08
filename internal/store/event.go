@@ -15,16 +15,15 @@ const (
 	// constraint violation (class 23, integrity constraint violation).
 	sqlstateForeignKeyViolation = "23503"
 	// constraintEventTypeFKey names the foreign key from event.type to
-	// event_type_definition.code in migration 00003_event_log.sql;
-	// Event.insert maps a violation of exactly this constraint to
-	// ErrUnknownEventType.
+	// event_type_definition.code in the event-log migration; Event.insert
+	// maps a violation of exactly this constraint to ErrUnknownEventType.
 	constraintEventTypeFKey = "event_type_fkey"
 )
 
 // Event is both the basis document for an event-backed posting group
-// (docs/DESIGN.md §11, §13.1) and the row AppendEvent writes on the
+// and the row AppendEvent writes on the
 // no-posting path. Type must name a row of the event_type_definition
-// registry. PlayerID, ChatID, MazeID and Depth are the §13.4 dimensions that
+// registry. PlayerID, ChatID, MazeID and Depth are the dimensions that
 // are universal across types — the ones every shipped view may filter or
 // group on — and are pointers uniformly, one per nullable column, because a
 // zero-as-absent encoding would corrupt Depth: 0 is a real depth, the
@@ -79,7 +78,7 @@ func (e *Event) insert(ctx context.Context, tx pgx.Tx) (int64, error) {
 
 // AppendEvent writes one event row inside tx and returns its id. Unlike
 // Post, it creates no journal_entry and moves no balances — the majority
-// shape of event traffic (§13.4: node_entered, notification_sent,
+// shape of event traffic (node_entered, notification_sent,
 // button_clicked, …). The caller owns tx: AppendEvent neither commits nor
 // rolls back. e is taken by value, not by pointer, so the no-posting path
 // has no nil case to define: there is no basis for a nil check to be about.

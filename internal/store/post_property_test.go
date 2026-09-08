@@ -10,7 +10,7 @@ import (
 	"pgregory.net/rapid"
 )
 
-// bandedAmount draws a scale-5 decimal from AC2's three int64-safe bands:
+// bandedAmount draws a scale-5 decimal from three int64-safe bands:
 // band 0 is a single digit whole part, band 1 up to nine digits, band 2 up
 // to ~1.6e6 shifted 18 places (1e23..1.6e24), each plus a random scale-5
 // fraction. A zero draw is lifted to 0.00002 so every leg is non-zero.
@@ -131,7 +131,7 @@ func TestPost_zero_invariant_property(t *testing.T) {
 			ulp = ulp.Neg()
 		}
 		mutated[idx].Amount = mutated[idx].Amount.Add(ulp)
-		// Keep the mutated amount itself individually valid (D5), so the
+		// Keep the mutated amount itself individually valid, so the
 		// rejection is provably the per-kind sum, not the per-posting check.
 		if mutated[idx].Amount.IsZero() || mutated[idx].Amount.Abs().GreaterThanOrEqual(decimal.New(1, 25)) {
 			return // vanishingly rare; skip this draw

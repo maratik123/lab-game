@@ -83,10 +83,10 @@ func TestLoad_WorldAndBalanceBothFail(t *testing.T) {
 	}
 }
 
-// TestLoad_RetryFactorIsolatedPerScope is design D20's isolation clause
-// (AC41): setting one scope's LAB_GAME_*_RETRY_FACTOR changes only that
-// scope's RetryFactor — the other two scopes' RetryFactor stay at
-// backoff.DefaultFactor.
+// TestLoad_RetryFactorIsolatedPerScope asserts the isolation clause:
+// setting one scope's LAB_GAME_*_RETRY_FACTOR changes only that scope's
+// RetryFactor — the other two scopes' RetryFactor stay at the package's
+// compiled-in default factor.
 func TestLoad_RetryFactorIsolatedPerScope(t *testing.T) {
 	t.Parallel()
 

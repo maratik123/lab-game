@@ -9,9 +9,9 @@ import (
 const redacted = "[redacted]"
 
 // Secret wraps a value whose accidental leak is an incident — the bot
-// token and the database DSN (AGENTS.md § Permissions: a leaked token is
-// rotated through BotFather, not edited out of history). It is the one
-// place both secrets sit together in a single struct, so a future %v of it
+// token and the database DSN; a leaked token is rotated through
+// BotFather, not edited out of history. It is the one place both secrets
+// sit together in a single struct, so a future %v of it
 // is the cheapest leak path; String, GoString and the %q spelling below
 // make that mistake harder, not impossible — %q still prints the
 // underlying string, so this is a guard-rail, not a guarantee.
@@ -38,14 +38,14 @@ func (s Secret) Reveal() string {
 // returns an error naming every rejected key. Transport and Scheduler are
 // the two exceptions: their fields are individually optional-with-default,
 // so an absent LAB_GAME_TG_ or LAB_GAME_SCHEDULER_ variable never fails
-// Load — every other field has no compiled-in fallback (design D10, D13).
+// Load — every other field has no compiled-in fallback.
 // Treat the returned value as read-only; Config is not defended against
 // mutation by the type system.
 type Config struct {
 	// BotToken is the Telegram bot token (LAB_GAME_BOT_TOKEN).
 	BotToken Secret
 	// DSN is the Postgres connection string (LAB_GAME_DSN). Not parsed
-	// here — internal/store already owns DSN parsing.
+	// here — this module's storage package already owns DSN parsing.
 	DSN Secret
 	// BotAPIBaseURL is the self-hosted telegram-bot-api instance's base
 	// URL (LAB_GAME_BOT_API_BASE_URL): absolute, scheme http or https,
@@ -57,19 +57,18 @@ type Config struct {
 	AllowedChatIDs []int64
 	// WorldPath is the world-set target (LAB_GAME_WORLD_PATH) — the path
 	// only. This package declares no type describing the world set's
-	// interior (AC15); nothing inside it is read here.
+	// interior; nothing inside it is read here.
 	WorldPath string
 	// Balance holds every game constant, decoded from LAB_GAME_BALANCE_PATH.
 	Balance Balance
-	// Transport holds internal/tg's retry and rate-limit tuning
-	// (LAB_GAME_TG_*), each field optional-with-default (design D10).
+	// Transport holds the Telegram client's retry and rate-limit tuning
+	// (LAB_GAME_TG_*), each field optional-with-default.
 	Transport Transport
-	// Scheduler holds internal/scheduler's polling, claim-batch and retry
-	// tuning (LAB_GAME_SCHEDULER_*), each field optional-with-default
-	// (design D13).
+	// Scheduler holds the task scheduler's polling, claim-batch and retry
+	// tuning (LAB_GAME_SCHEDULER_*), each field optional-with-default.
 	Scheduler Scheduler
-	// Ingest holds internal/ingest's long-poll, batch and retry tuning
-	// (LAB_GAME_INGEST_*), each field optional-with-default (design D15).
+	// Ingest holds the update-ingest loop's long-poll, batch and retry tuning
+	// (LAB_GAME_INGEST_*), each field optional-with-default.
 	Ingest Ingest
 }
 
@@ -115,8 +114,9 @@ func Load(lookup Lookup) (*Config, error) {
 		errs = append(errs, err)
 	}
 
-	// D16's pair of cross-checks needs both Ingest and Transport, so it
-	// runs here, once each has loaded successfully on its own — a
+	// The long-poll/attempt-timeout cross-check needs both Ingest and
+	// Transport, so it runs here, once each has loaded successfully on
+	// its own — a
 	// malformed LongPollTimeout or a malformed AttemptTimeout is already
 	// reported above, and this check would otherwise report a second,
 	// confusing error about a value that never validated in the first

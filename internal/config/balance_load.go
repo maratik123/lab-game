@@ -23,7 +23,7 @@ type schemaEntry struct {
 // (buildSchemaTree), so the walk can match it against the document's
 // mapping nodes segment by segment. order preserves the schema's own
 // declaration order, since map iteration order is never used for anything
-// observable (AGENTS.md § Code Style — Determinism).
+// observable.
 type schemaNode struct {
 	entry    *schemaEntry
 	children map[string]*schemaNode
@@ -31,10 +31,10 @@ type schemaNode struct {
 }
 
 // bindInt returns a binder that accepts only a "!!int" node (rejecting a
-// "!!null" node and a truncating "!!float" node alike, D6), decodes it into
+// "!!null" node and a truncating "!!float" node alike), decodes it into
 // dst, and checks predicate.
 //
-//nolint:unparam // want is always "positive" today because every int-typed key in D9 happens to be positive; kept symmetric with bindDuration/bindDecimal for the next int key that isn't
+//nolint:unparam // want is always "positive" today because every int-typed key in the schema happens to be positive; kept symmetric with bindDuration/bindDecimal for the next int key that isn't
 func bindInt(dst *int, predicate func(int) bool, want string) func(*yaml.Node) error {
 	return func(n *yaml.Node) error {
 		if n.Tag != "!!int" {
@@ -53,7 +53,7 @@ func bindInt(dst *int, predicate func(int) bool, want string) func(*yaml.Node) e
 }
 
 // bindDuration returns a binder that accepts only a "!!str" node — a bare
-// "!!int" is rejected rather than silently becoming nanoseconds (D6) — and
+// "!!int" is rejected rather than silently becoming nanoseconds — and
 // checks predicate on the decoded value.
 func bindDuration(dst *time.Duration, predicate func(time.Duration) bool, want string) func(*yaml.Node) error {
 	return func(n *yaml.Node) error {
@@ -73,8 +73,8 @@ func bindDuration(dst *time.Duration, predicate func(time.Duration) bool, want s
 }
 
 // bindDecimal returns a binder that accepts a "!!int" or "!!float" node —
-// rejecting a quoted "!!str" number, so every number has one spelling (D6)
-// — and checks predicate on the decoded value.
+// rejecting a quoted "!!str" number, so every number has one spelling —
+// and checks predicate on the decoded value.
 func bindDecimal(dst *decimal.Decimal, predicate func(decimal.Decimal) bool, want string) func(*yaml.Node) error {
 	return func(n *yaml.Node) error {
 		if n.Tag != "!!int" && n.Tag != "!!float" {
@@ -93,10 +93,9 @@ func bindDecimal(dst *decimal.Decimal, predicate func(decimal.Decimal) bool, wan
 }
 
 // balanceSchema returns the balance file's key-path schema — path,
-// destination and predicate for every key docs/DESIGN.md §16.5 enumerates
-// (design D9) — writing into b. Called fresh on every load: no package-level
-// state (AC1).
-func balanceSchema(b *Balance) []schemaEntry { //nolint:funlen // one row per balance key (D9); splitting loses the at-a-glance schema shape
+// destination and predicate for every configurable balance key — writing
+// into b. Called fresh on every load: no package-level state.
+func balanceSchema(b *Balance) []schemaEntry { //nolint:funlen // one row per balance key; splitting loses the at-a-glance schema shape
 	zero := decimal.Zero
 	one := decimal.NewFromInt(1)
 	entry := func(path string, bind func(n *yaml.Node) error) schemaEntry {
@@ -238,8 +237,8 @@ func walkLeaf(doc *yaml.Node, e *schemaEntry) []error {
 
 // walkInterior validates one mapping-level schema node against doc (nil when
 // the whole subtree is absent, in which case every leaf beneath it reports
-// missing — this is how AC6's "everything missing" report falls out of the
-// same code path as a normal partial mapping, D6), reports every key doc
+// missing — this is how an "everything missing" report falls out of the
+// same code path as a normal partial mapping), reports every key doc
 // carries that the schema does not declare, and recurses into every schema
 // child in declaration order.
 func walkInterior(doc *yaml.Node, node *schemaNode, path []string) []error {
@@ -276,7 +275,7 @@ func walkInterior(doc *yaml.Node, node *schemaNode, path []string) []error {
 }
 
 // checkDuplicateKeys unmarshals data into a map, which — unlike unmarshalling
-// into a yaml.Node — reports a duplicated mapping key at any depth (D6). A
+// into a yaml.Node — reports a duplicated mapping key at any depth. A
 // duplicate is returned as the library's own error, unmodified; every other
 // unmarshal failure (a syntax error, a non-mapping root) is left for the
 // node-based parse to report with better context, so it is deliberately
@@ -291,7 +290,7 @@ func checkDuplicateKeys(data []byte) error {
 
 // loadBalance reads, parses and validates the balance file at path against
 // balanceSchema, returning a populated Balance or a joined error naming
-// every rejected or missing key (AC3-AC6).
+// every rejected or missing key.
 func loadBalance(path string) (*Balance, error) {
 	//nolint:gosec // G304: path is the operator-supplied LAB_GAME_BALANCE_PATH value — reading it is the feature.
 	data, err := os.ReadFile(path)

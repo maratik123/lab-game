@@ -12,16 +12,16 @@ import (
 	ta "github.com/mymmrac/telego/telegoapi"
 )
 
-// defaultJitter is the default source for design D6's equal-jitter
+// defaultJitter is the default source for the package's equal-jitter
 // backoff — a spread over the retry interval, not a security decision, so
 // math/rand/v2 (not crypto/rand) is the right choice.
 //
-//nolint:gosec // G404: jitter is a backoff spread, not a security decision (design D6).
+//nolint:gosec // G404: jitter is a backoff spread, not a security decision.
 func defaultJitter() float64 {
 	return rand.Float64()
 }
 
-// outcome classifies one attempt per design D5's table: whether it may be
+// outcome classifies one attempt per a fixed table: whether it may be
 // retried, whether it is ambiguous (the request may have reached
 // Telegram, but the outcome is unknown), and the retry_after wait when the
 // attempt was a 429 that carried one.
@@ -33,8 +33,8 @@ type outcome struct {
 
 // classifyAttempt reports outcome for one attempt, given the real HTTP
 // status code received (0 when none), the decoded envelope (nil when
-// none), and whether httptrace observed the request being fully written
-// (design D5). Any evidence outside the table's rows classifies as
+// none), and whether httptrace observed the request being fully written.
+// Any evidence outside the table's rows classifies as
 // ambiguous and terminal only when nothing was written; otherwise a
 // response of any other shape is terminal, not ambiguous — Telegram
 // answered, so the outcome is known even when it is a failure.
@@ -51,12 +51,12 @@ func classifyAttempt(httpStatus int, resp *ta.Response, wrote bool) outcome {
 		// Any other HTTP response — success is handled by the caller
 		// before classifyAttempt is reached, so this is a non-2xx or
 		// ok:false response. Telegram answered: not ambiguous, not
-		// retryable (design D5's "never on doubt" applies only when the
-		// outcome is unknown).
+		// retryable — "never on doubt" applies only when the
+		// outcome is unknown.
 		return outcome{}
 	case wrote:
 		// No response, but the request was fully written: ambiguous and
-		// terminal (design D5).
+		// terminal.
 		return outcome{ambiguous: true}
 	default:
 		// No response, and no evidence the request was ever written:
@@ -67,7 +67,7 @@ func classifyAttempt(httpStatus int, resp *ta.Response, wrote bool) outcome {
 
 // sanitizedError wraps an error whose rendering is guaranteed
 // token-scrubbed, while still exposing the original cause through Unwrap
-// for errors.Is/errors.As (design D8). rendered is computed once, at
+// for errors.Is/errors.As. rendered is computed once, at
 // construction.
 type sanitizedError struct {
 	rendered string
@@ -77,12 +77,12 @@ type sanitizedError struct {
 func (e *sanitizedError) Error() string { return e.rendered }
 func (e *sanitizedError) Unwrap() error { return e.cause }
 
-// sanitizeErr builds a *sanitizedError from err (design D8's
-// "sanitised at construction, not a test obligation"):
+// sanitizeErr builds a *sanitizedError from err — sanitised at
+// construction, not a test obligation:
 //   - When err's chain carries a *url.Error, its stored cause is the
 //     unwrapped value beneath it — never the *url.Error itself, which
 //     net/http formats with the full request URL (and therefore the bot
-//     token) embedded (design D8).
+//     token) embedded.
 //   - Every string this package renders is additionally passed through
 //     replacer, a defense-in-depth layer that does not depend on having
 //     predicted every path a token could take.
@@ -102,17 +102,17 @@ func sanitizeErr(err error, replacer *strings.Replacer) error {
 			// does not mean "nothing to report" — it means the wrapped
 			// cause itself is absent. Rendering uerr.Error() here would
 			// reintroduce the request URL (and therefore the bot token)
-			// that D8 requires dropped, and uerr.Err is nil so it cannot
-			// be rendered anyway. Name only what IS known and safe: the
-			// operation that failed.
+			// this package requires dropped, and uerr.Err is nil so it
+			// cannot be rendered anyway. Name only what IS known and
+			// safe: the operation that failed.
 			cause = fmt.Errorf("%s: no underlying error", uerr.Op)
 		}
 	}
 	return &sanitizedError{rendered: replacer.Replace(cause.Error()), cause: cause}
 }
 
-// giveUpError builds the D8 typed error for a call the retry loop gives
-// up on, sanitising cause via c's token replacer.
+// giveUpError builds the package's typed error for a call the retry loop
+// gives up on, sanitising cause via c's token replacer.
 func (c *Client) giveUpError(method string, statusCode int, description string, retryAfter time.Duration, attempts int, ambiguous bool, cause error) *Error {
 	return &Error{
 		Method:      method,
@@ -125,9 +125,8 @@ func (c *Client) giveUpError(method string, statusCode int, description string, 
 	}
 }
 
-// observe reports one Observation to c's Observer, when configured
-// (design D11) — exactly once per outbound call, including a gate
-// refusal.
+// observe reports one Observation to c's Observer, when configured —
+// exactly once per outbound call, including a gate refusal.
 func (c *Client) observe(method string, latency time.Duration, statusCode int, rateLimited bool, retries int) {
 	if c.observer == nil {
 		return

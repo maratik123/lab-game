@@ -8,24 +8,33 @@
 # reading.
 #
 # WHY IT IS A GATE. The same finding was raised in FIVE consecutive rounds of
-# one run (ai-docs/plans/ignored/2026-09-04-bot-api-transport.progress.md,
-# register rows R2-8, R3-3, R4-4, R5-5, R6-7): "N rows still read open although
-# round N-1's own table marks them ✅ Fixed". Each round fixed the instance by
-# hand and the next round found the next one. Five recurrences of a rule that
+# one run — register rows R2-8, R3-3, R4-4, R5-5, R6-7: "N rows still read open
+# although round N-1's own table marks them ✅ Fixed". Each round fixed the
+# instance by hand and the next round found the next one. Five recurrences of a rule that
 # exists as text — one more than the four this project had previously measured
 # as the point where a disposition is proven not to hold.
 #
 # THE JOIN KEY is the register id: a self-review row for finding `n` of round
 # `N` is `R<N>-<n>` (`SR<N>-<n>` is also accepted; the leading letters are
 # free). Rows whose id does not parse are SKIPPED, not failed — design-review
-# rows (`D1-1`) and free-form ids are not this check's business.
+# ids and free-form ids are not this check's business.
 #
-# Usage: check-review-register.sh <progress-file>...
 # Exit 0 = every ✅ Fixed row has a register row that agrees (or there is no
 #          register to check).
 # Exit 1 = at least one disagreement.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  check-review-register.sh <progress-file>...
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 [ $# -gt 0 ] || { printf 'check-review-register: usage: %s <progress-file>...\n' "$0" >&2; exit 0; }
 

@@ -7,7 +7,7 @@ import (
 )
 
 // mapLookup builds a Lookup backed by m, so no test touches the process
-// environment (design D1).
+// environment.
 func mapLookup(m map[string]string) Lookup {
 	return func(key string) (string, bool) {
 		v, ok := m[key]
@@ -117,7 +117,7 @@ func TestLoadEnv_AllowedChatIDs(t *testing.T) {
 	}
 }
 
-// TestLoadEnv_Aggregation asserts AC12: several variables unset at once
+// TestLoadEnv_Aggregation asserts that several variables unset at once
 // report all of them, in the same (declaration) order on repeated runs —
 // a determinism assertion, not an incidental one.
 func TestLoadEnv_Aggregation(t *testing.T) {
@@ -143,7 +143,7 @@ func TestLoadEnv_Aggregation(t *testing.T) {
 }
 
 // TestEnvKeys_IncludesPathVariables asserts that EnvKeys (the full declared
-// set AC8/AC16 check against) carries the balance-file and world-set
+// environment-variable set) carries the balance-file and world-set
 // variables even though loadEnv does not itself validate them.
 func TestEnvKeys_IncludesPathVariables(t *testing.T) {
 	t.Parallel()

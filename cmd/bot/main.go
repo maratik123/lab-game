@@ -1,8 +1,7 @@
 // Command bot is the Telegram bot process for the lab-game maze game.
 //
 // Scaffold only: the update loop, storage, and raid FSM land with their own
-// specs (see docs/DESIGN.md §14 for the MVP scope). Configuration is
-// loaded and validated before any other work (issue #18).
+// specs. Configuration is loaded and validated before any other work.
 package main
 
 import (
@@ -25,8 +24,8 @@ func main() {
 // anything else — configuration failing leaves stdout untouched, only
 // stderr — and returns the process exit code: non-zero with the rejected
 // or missing keys named on stderr, or zero with the build identity on
-// stdout. run never terminates the process itself (AC11): main exiting
-// non-zero is not a panic and needs no ai-docs/panic-index.md row.
+// stdout. run never terminates the process itself: main exiting non-zero
+// is not a panic.
 func run(lookup config.Lookup, stderr, stdout io.Writer) int {
 	if _, err := config.Load(lookup); err != nil {
 		if _, writeErr := fmt.Fprintf(stderr, "lab-game bot: configuration: %v\n", err); writeErr != nil {

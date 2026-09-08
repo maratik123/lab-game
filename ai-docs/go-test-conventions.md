@@ -51,7 +51,7 @@ The ledger's invariants are database behaviour — the zero-sum check, the `CHEC
 
 ## Panics
 
-No `panic` / `log.Fatal` in production code. A `PostToolUse` hook flags them on write. Any survivor is justified in its doc comment **and** listed in [`panic-index.md`](panic-index.md); tests may panic freely (`t.Fatal` is the idiomatic failure).
+No `panic` / `log.Fatal` in production code. A `PostToolUse` hook flags them on write. Any survivor is justified in its doc comment **and** listed in [`panic-index.md`](panic-index.md) — the comment states the justification itself and does not point at the index, because a comment naming a markdown path is what the reference ban forbids ([`doc-convention.md`](doc-convention.md) § DOC-4). Tests may panic freely (`t.Fatal` is the idiomatic failure).
 
 ## What not to do
 

@@ -1,28 +1,24 @@
 #!/usr/bin/env bash
-# Regression suite for the PreToolUse reviewer-spawn-contract guard in
-# .claude/settings.json.
+# Regression suite for the PreToolUse reviewer-spawn-contract hook guard.
 #
 # The guard blocks a `self-review` / `design-review` spawn whose prompt carries
 # a line outside the closed list those two agent files declare. Reviewer-side
-# enforcement (finding #1, `major`, PROMPT-CONTAMINATION) costs a whole review
+# enforcement — a `major` PROMPT-CONTAMINATION finding — costs a whole review
 # round to discharge; the hook costs one re-spawn, before the round is spent.
 #
 # Anti-drift: this suite runs the LIVE hook body, extracted with jq and executed
 # as the program it is. There is no copied regex here, so there is nothing to
 # drift.
 #
-# The corpora are artefacts, not imagination (ai-docs/hook-verification.md
-# MUST 2 — "a corpus you wrote is drawn from the same imagination that wrote
-# the bug"):
-#   must-allow -- the four spawn templates this harness actually ships
-#                 (`task/SKILL.md` Step 10, `task/reference.md` design-review,
-#                 `bugfix/SKILL.md`, `project-review/SKILL.md`), with their
-#                 placeholders realised.
+# The corpora are artefacts, not imagination — a corpus you wrote is drawn from
+# the same imagination that wrote the bug:
+#   must-allow -- the four spawn templates this harness actually ships, with
+#                 their placeholders realised.
 #   must-block -- the round-2 prompt recorded verbatim in the 2026-09-03 run's
 #                 review register, which the reviewer opened with a `major`
-#                 PROMPT-CONTAMINATION row (`ai-docs/learnings.md` 2026-09-03),
-#                 plus the two pre-unification template shapes, so a revert to
-#                 either fails here instead of in a review round.
+#                 PROMPT-CONTAMINATION row, plus the two pre-unification
+#                 template shapes, so a revert to either fails here instead of
+#                 in a review round.
 #
 # Verdict convention: the body exits 2 to block a spawn. Any other exit status
 # means the spawn proceeds.
@@ -32,10 +28,20 @@
 # empty prompt must all ALLOW: the reviewer-side rule is the backstop, and a
 # guard that blocks on its own instrument failure stops every review.
 #
-# Usage: bash ai-docs/scripts/test-spawn-contract-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-spawn-contract-guard.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1

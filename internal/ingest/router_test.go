@@ -16,7 +16,7 @@ type noopHandler struct{}
 func (noopHandler) Handle(context.Context, pgx.Tx, Update) error { return nil }
 
 // TestNewRouter_duplicateKindRefused asserts registering the same Kind
-// twice is refused (design D4).
+// twice is refused.
 func TestNewRouter_duplicateKindRefused(t *testing.T) {
 	t.Parallel()
 
@@ -30,8 +30,8 @@ func TestNewRouter_duplicateKindRefused(t *testing.T) {
 }
 
 // TestNewRouter_unknownKindRefused asserts registering a Kind with no
-// kindTable row is refused (design D4 — a route can never be registered
-// into a hole).
+// kindTable row is refused — a route can never be registered
+// into a hole.
 func TestNewRouter_unknownKindRefused(t *testing.T) {
 	t.Parallel()
 
@@ -99,7 +99,7 @@ func TestRouter_lookupUnregisteredKindReportsAbsence(t *testing.T) {
 }
 
 // TestNewRouter_empty asserts an empty router builds successfully with
-// an empty Kinds set — the routeless-loop case D3 relies on.
+// an empty Kinds set — the routeless-loop case this package relies on.
 func TestNewRouter_empty(t *testing.T) {
 	t.Parallel()
 
@@ -114,7 +114,7 @@ func TestNewRouter_empty(t *testing.T) {
 
 // TestNewUpdate_derivesKindAndOperationIDs asserts NewUpdate derives Kind,
 // the canonical update_id operation_id, and — only when Raw carries a
-// callback query — the callback_query.id operation_id (design D9).
+// callback query — the callback_query.id operation_id.
 func TestNewUpdate_derivesKindAndOperationIDs(t *testing.T) {
 	t.Parallel()
 

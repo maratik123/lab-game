@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Regression suite for the PreToolUse --no-verify guard in .claude/settings.json.
+# Regression suite for the PreToolUse --no-verify hook guard.
 #
-# `.githooks/pre-commit` runs the coverage ratchet, and `git commit --no-verify`
-# switches it off. That escape belongs to the owner, not to an agent: a gate an
-# agent can turn off is not a gate. The project has one recorded instance of an
-# agent dodging a textual gate by rewording the match (ai-docs/learnings.md
-# 2026-09-04), which is why the ratchet's bypass is closed mechanically on the
-# same day the ratchet lands rather than after the first dodge.
+# The pre-commit hook runs the coverage ratchet, and the bypass flag switches
+# it off. That escape belongs to the owner, not to an agent: a gate an agent
+# can turn off is not a gate. The project has one recorded instance, on
+# 2026-09-04, of an agent dodging a textual gate by rewording the match, which
+# is why the ratchet's bypass is closed mechanically on the same day the
+# ratchet lands rather than after the first dodge.
 #
 # The short flag is covered too: `git commit -n` IS `--no-verify`, and a
 # guard that matched only the long spelling would be the same gate with a
@@ -25,10 +25,20 @@
 # Anti-drift: runs the LIVE hook body, extracted with jq.
 # Verdict convention: the body exits 2 to block a tool call.
 #
-# Usage: bash ai-docs/scripts/test-no-verify-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-no-verify-guard.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1

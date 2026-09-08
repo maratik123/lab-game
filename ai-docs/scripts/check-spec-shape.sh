@@ -2,20 +2,18 @@
 # A spec stores how a thing is located and how it is measured -- never a bare
 # line number and never a tally.
 #
-# WHAT THIS REFUSES, in a `*.spec.md`:
-#   1. a bare `path:line` reference -- `ai-docs/doc-convention.md:41`,
-#      `internal/tg/limit.go:190` -- with no 7-hex commit in front of it. A line
-#      number is invalidated by any edit above it, and a spec is read on a
-#      different tree than it was written on. The pinned form
-#      `[source: <commit>:<file> § <section-or-symbol> · <command>]` passes; so
-#      does a `<commit>:<path>:<line>` coordinate or a module-version one
-#      (`telego@v1.11.2/methods.go:28`), which at least name the tree they
-#      were taken at.
+# WHAT THIS REFUSES, in a spec file:
+#   1. a bare path-and-line reference with no 7-hex commit in front of it. A
+#      line number is invalidated by any edit above it, and a spec is read on a
+#      different tree than it was written on. The pinned form -- a `source:`
+#      annotation carrying the commit, the file, the section or symbol, and the
+#      command that reads it -- passes; so does a commit-prefixed coordinate or
+#      a module-version one, which at least name the tree they were taken at.
 #   2. a counting command inside a `[source: ... · <command>]` annotation --
 #      `wc -l`, `grep -c`, `uniq -c`, `sort -n` -- because a command that counts
 #      exists to justify a stored tally, and the tally is what must not be stored.
 #   3. a `### Sizing` heading, the shape the stored-tally section took when it
-#      was measured (ai-docs/learnings.md 2026-09-08).
+#      was measured.
 #
 # EXEMPTION, visible on the line: a spec whose subject is the reference ban has
 # to show a banned form as an example. A line carrying the HTML comment
@@ -23,28 +21,36 @@
 # reason -- the marker is in the diff, and an example row is the only shape
 # that earns it.
 #
-# WHY IT IS A GATE AND NOT A SENTENCE. spec-writer.md Rule 8 and the
+# WHY IT IS A GATE AND NOT A SENTENCE. The spec-writing rule and the
 # `## Source conflicts` template contradicted each other for the whole life of
-# the file (one required a commit pin, the other prescribed `file:line`), and
-# the delegate obeyed the template. The project convention -- a durable
-# reference names a symbol or carries its commit -- lived in ai-docs/learnings.md
-# with `Escalated? no`, binding nothing. The owner rejected a spec on sight for
-# exactly this form on 2026-09-08. A rule that says "cite properly" has been
-# written three times; this file is the fourth time and the first that runs.
+# the file (one required a commit pin, the other prescribed a bare coordinate),
+# and the delegate obeyed the template. The project convention -- a durable
+# reference names a symbol or carries its commit -- was recorded only as a
+# correction, binding nothing. The owner rejected a spec on sight for exactly
+# this form on 2026-09-08. A rule that says "cite properly" has been written
+# three times; this file is the fourth time and the first that runs.
 #
 # WHAT A DIGIT GREP CANNOT SEE, stated so nobody records a pass it never
 # earned: a tally spelled in words ("thirteen of the sixteen") passes here.
-# That residue is the reviewer's, and Rule 8 says so.
-#
-# Usage:
-#   check-spec-shape.sh                 check the lines this branch added or
-#                                       changed in any *.spec.md, against the
-#                                       merge base with main
-#   check-spec-shape.sh <file>...       audit the named specs in full
+# That residue is the reviewer's.
 #
 # Exit 0 = clean (or nothing to check). Exit 1 = at least one hit.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  check-spec-shape.sh                 check the lines this branch added or
+                                      changed in any spec file, against the
+                                      merge base with main
+  check-spec-shape.sh <file>...       audit the named specs in full
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || {
   printf 'check-spec-shape: not a git work tree; skipped\n' >&2; exit 0; }
@@ -53,8 +59,8 @@ cd "$root" || exit 1
 # A path with a source-ish extension, a colon, digits -- NOT preceded by
 # `<7-hex>:` (the pinned form) and not part of a URL or a time.
 bare_ref='(^|[^A-Za-z0-9_/.:-])[A-Za-z0-9_.][A-Za-z0-9_./-]*\.(md|go|sh|sql|yml|yaml|json|toml|mod)(:[0-9]+)(-[0-9]+)?([^0-9A-Za-z]|$)'
-# Two pins: a commit (`f5b236a:path:line`) and a module version
-# (`telego@v1.11.2/methods.go:28-35`) -- both name the tree they were read on.
+# Two pins: a commit prefix and a module version -- both name the tree they
+# were read on.
 pinned='([0-9a-f]{7,40}:[A-Za-z0-9_.][A-Za-z0-9_./-]*|[A-Za-z0-9_./-]+@v?[0-9][A-Za-z0-9_.+-]*/[A-Za-z0-9_./-]*)\.(md|go|sh|sql|yml|yaml|json|toml|mod):[0-9]+'
 # Deliberately `.*`, not `[^]]*`: an annotation's command routinely contains
 # `]` (`[[:space:]]`, `AC[0-9]`), and a class that stops at the first one

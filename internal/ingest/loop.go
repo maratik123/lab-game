@@ -14,7 +14,7 @@ import (
 )
 
 // reasonMustNotBeNil and reasonMustBePositive are New's rejection
-// reasons, mirroring scheduler.Worker's New (design D15).
+// reasons, mirroring this module's task-scheduler worker's own New.
 const (
 	reasonMustNotBeNil   = "must not be nil"
 	reasonMustBePositive = "must be positive"
@@ -35,29 +35,29 @@ func (e *OptionError) Error() string {
 
 // Options configures a Loop.
 type Options struct {
-	// Client is the tg.Client this Loop polls getUpdates through and
-	// hands to no other purpose. Its Options.Gate — installed at tg.New,
-	// per design D17's wiring order — is this task's chat allowlist. Must
-	// not be nil.
+	// Client is the Telegram client this Loop polls getUpdates through and
+	// hands to no other purpose. Its Options.Gate — installed at
+	// construction, per this module's wiring order — is this task's chat
+	// allowlist. Must not be nil.
 	Client *tg.Client
 	// Pool is the connection pool the loop begins each attempt's
 	// transaction on. Must not be nil.
 	Pool *pgxpool.Pool
 	// Router dispatches a routed update to its Handler. Must not be nil;
-	// an empty Router (no routes registered) is legal (design D3).
+	// an empty Router (no routes registered) is legal.
 	Router *Router
 	// Config holds the loop's polling, batch and retry tuning. Every
 	// duration field must be strictly positive; BatchLimit and
 	// RetryMaxAttempts must be strictly positive integers.
 	Config config.Ingest
 	// Observer optionally receives this loop's observations. A nil
-	// Observer is checked, not called (design D12).
+	// Observer is checked, not called.
 	Observer Observer
 }
 
 // Loop is the update-ingestion front door: long-poll, dispatch, retry,
-// idempotency and offset advance (design § Approach). Its structural
-// model is scheduler.Worker.
+// idempotency and offset advance. Its structural
+// model is this module's task-scheduler worker.
 type Loop struct {
 	client   *tg.Client
 	pool     *pgxpool.Pool
@@ -66,16 +66,15 @@ type Loop struct {
 	observer Observer
 
 	// allowedUpdates is transmitted on every getUpdates call, computed
-	// once from Router.Kinds() at New time (Router is immutable — design
-	// D4). Never empty: an empty route set carries D3's reserved
-	// sentinel instead, so "send an empty list" — which encoding/json's
-	// omitempty would silently erase — is never attempted.
+	// once from Router.Kinds() at New time (Router is immutable). Never
+	// empty: an empty route set carries a reserved sentinel instead, so
+	// "send an empty list" — which encoding/json's omitempty would
+	// silently erase — is never attempted.
 	allowedUpdates []string
 }
 
 // New builds a Loop from opts, refusing a nil Client, Pool or Router, or
-// any non-positive tuning field, with an *OptionError naming the field
-// (design D15).
+// any non-positive tuning field, with an *OptionError naming the field.
 func New(opts Options) (*Loop, error) {
 	if opts.Client == nil {
 		return nil, &OptionError{Field: "Client", Reason: reasonMustNotBeNil}
@@ -123,7 +122,7 @@ func New(opts Options) (*Loop, error) {
 		allowed = append(allowed, string(k))
 	}
 	if len(allowed) == 0 {
-		// design D3's reserved sentinel: an id space this bot can never
+		// A reserved sentinel: an id space this bot can never
 		// receive, present only while the route set is empty.
 		allowed = append(allowed, string(telego.ShippingQueryUpdates))
 	}
@@ -141,9 +140,8 @@ func New(opts Options) (*Loop, error) {
 // PollOnce runs one long-poll cycle: read the offset to transmit, call
 // getUpdates, and process every returned update in order. It reports
 // exactly one LoopObservation per call, whether it succeeds or fails — a
-// poll failure is reported through LoopObservation.Err (design D12) as
-// well as returned, since Run must not stop on a transient one (design
-// D19).
+// poll failure is reported through LoopObservation.Err as
+// well as returned, since Run must not stop on a transient one.
 func (l *Loop) PollOnce(ctx context.Context) error {
 	start := time.Now()
 
@@ -176,7 +174,7 @@ func (l *Loop) PollOnce(ctx context.Context) error {
 }
 
 // Run loops PollOnce at the configured poll interval until ctx is done,
-// returning ctx.Err() (design D19). Run does not stop on a PollOnce
+// returning ctx.Err(). Run does not stop on a PollOnce
 // error — each cycle already reports it through ObserveLoop — because a
 // loop that stopped on a transient poll failure against a self-hosted
 // telegram-bot-api instance would need an external restart for no
@@ -204,9 +202,9 @@ func (l *Loop) Run(ctx context.Context) error {
 }
 
 // processUpdate derives raw's Update and dispatches it: to its Handler
-// when one is registered, or to the unrouted settlement when none is
-// (design D4, D9). A non-nil return means ctx was cancelled mid-attempt
-// (design D25) — every other outcome is fully settled internally and
+// when one is registered, or to the unrouted settlement when none is.
+// A non-nil return means ctx was cancelled mid-attempt
+// — every other outcome is fully settled internally and
 // reported through the observer, never returned as an error PollOnce
 // must react to.
 func (l *Loop) processUpdate(ctx context.Context, raw telego.Update) error {
@@ -215,7 +213,7 @@ func (l *Loop) processUpdate(ctx context.Context, raw telego.Update) error {
 		// A malformed update (an empty operation_id component) cannot be
 		// settled meaningfully; treat it as unrouted rather than
 		// stalling the whole batch on one bad payload. err is carried
-		// into the observation rather than dropped (design D12).
+		// into the observation rather than dropped.
 		return l.settleUnrouted(ctx, Update{Raw: raw}, err)
 	}
 
@@ -226,7 +224,7 @@ func (l *Loop) processUpdate(ctx context.Context, raw telego.Update) error {
 	return l.runAttempts(ctx, handler, u)
 }
 
-// lagFor computes u's Observation.Lag/LagKnown pair (design D13): known
+// lagFor computes u's Observation.Lag/LagKnown pair: known
 // only when u's derived kind carries its own date.
 func lagFor(u Update) (time.Duration, bool) {
 	date, ok := Date(&u.Raw)

@@ -127,7 +127,7 @@ func TestPost_phase_and_capture_order(t *testing.T) {
 			t.Fatalf("posting insert %d account = %v, want %d", i, ins.Args[1], batch[i].AccountID)
 		}
 	}
-	// 5. Inter-phase order and total count (AC3): SELECT < document INSERT
+	// 5. Inter-phase order and total count: SELECT < document INSERT
 	// < journal_entry INSERT < first UPDATE; last UPDATE < first posting
 	// INSERT; and nothing else was issued.
 	firstIdx := func(sub string) int {

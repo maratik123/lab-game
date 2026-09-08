@@ -156,7 +156,7 @@ func TestEvent_unknownType_returnsErrUnknownEventType(t *testing.T) {
 	})
 }
 
-// TestErrUnknownEventType_distinctFromOtherSentinels asserts AC8's
+// TestErrUnknownEventType_distinctFromOtherSentinels asserts
 // distinguishability as a loop over the sentinel set, so a future sentinel
 // added by aliasing (rather than errors.New) fails this test.
 func TestErrUnknownEventType_distinctFromOtherSentinels(t *testing.T) {
@@ -174,7 +174,7 @@ func TestErrUnknownEventType_distinctFromOtherSentinels(t *testing.T) {
 	}
 }
 
-// TestEvent_noIdempotencyKey_replayWritesTwoRows asserts the § Approach
+// TestEvent_noIdempotencyKey_replayWritesTwoRows asserts a design
 // consequence directly, rather than leaving it as prose: unlike
 // PlayerOperation, Event carries no (source, operation_id)-style key, so a
 // second Post built from an equal Event value is not deduplicated.

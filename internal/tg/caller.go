@@ -20,13 +20,11 @@ import (
 )
 
 // caller implements telego's telegoapi.Caller — the one seam every
-// outbound Bot API call in this project passes through (design D2). It
-// derives the method name and ChatRef from the request (design D4),
-// consults the gate (design D12), runs the attempt loop with the limiter
-// charged once per attempt (design D2), classifies each attempt's
-// evidence (design D5), honours retry_after exactly (design D7), backs
-// off between attempts (design D6), and reports exactly one Observation
-// per call (design D11).
+// outbound Bot API call in this project passes through. It derives the
+// method name and ChatRef from the request, consults the gate, runs the
+// attempt loop with the limiter charged once per attempt, classifies each
+// attempt's evidence, honours retry_after exactly, backs off between
+// attempts, and reports exactly one Observation per call.
 type caller struct {
 	client *Client
 }
@@ -46,7 +44,7 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 	// A multipart (BodyStream) request streams its body through an
 	// io.Pipe that is already drained after the first attempt, so a
 	// second attempt would re-read nothing and send a malformed request —
-	// design D5's "a multipart request is never retried".
+	// a multipart request is never retried.
 	multipart := data.BodyRaw == nil && data.BodyStream != nil
 
 	if c.client.gate != nil {
@@ -114,8 +112,8 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 
 		out := classifyAttempt(httpStatus, resp, wrote)
 		if multipart {
-			// design D5: exactly one attempt, whatever the classifier
-			// otherwise concluded.
+			// Exactly one attempt for a multipart request, whatever the
+			// classifier otherwise concluded.
 			out.retryable = false
 		}
 		lastAmbiguous = out.ambiguous
@@ -128,9 +126,9 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 		}
 
 		// The wait before the next attempt: retry_after is honoured
-		// exactly and never shortened or replaced by backoff (design D7);
-		// otherwise equal-jitter backoff (design D6). Either way it costs
-		// exactly one attempt, never a time budget (design D7).
+		// exactly and never shortened or replaced by backoff;
+		// otherwise equal-jitter backoff. Either way it costs
+		// exactly one attempt, never a time budget.
 		var wait time.Duration
 		if out.retryAfter > 0 {
 			wait = out.retryAfter
@@ -165,9 +163,9 @@ func observedRetries(attempts int) int {
 
 // doAttempt performs exactly one HTTP round trip and decodes its Bot API
 // envelope, bounded by the client's configured AttemptTimeout on top of
-// ctx (design D10's AttemptTimeout). It always reports the real HTTP
+// ctx. It always reports the real HTTP
 // status code received (0 when none) and whether httptrace observed the
-// request being fully written — design D5's classifier evidence — even
+// request being fully written — the classifier's evidence — even
 // when it also returns an error.
 func (c *caller) doAttempt(ctx context.Context, rawURL string, data *ta.RequestData) (resp *ta.Response, httpStatus int, wrote bool, err error) {
 	attemptCtx := ctx
@@ -223,8 +221,7 @@ func (c *caller) doAttempt(ctx context.Context, rawURL string, data *ta.RequestD
 }
 
 // httpClient returns the client's configured *http.Client, or
-// http.DefaultClient when none was supplied (design D2's
-// Options.HTTPClient).
+// http.DefaultClient when none was supplied.
 func (c *caller) httpClient() *http.Client {
 	if c.client.httpClient != nil {
 		return c.client.httpClient
@@ -234,7 +231,7 @@ func (c *caller) httpClient() *http.Client {
 
 // methodFromURL returns the Bot API method name from rawURL — the last
 // path segment, whether or not telego's test-server path inserts a
-// "/test/" segment before it (design D4).
+// "/test/" segment before it.
 func methodFromURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -245,12 +242,12 @@ func methodFromURL(rawURL string) string {
 
 // chatIDProbe decodes only the chat_id field of a request body, as raw
 // JSON — a chat_id may be a @channelusername string rather than a number,
-// so the key is the raw token, not an int64 (design D4).
+// so the key is the raw token, not an int64.
 type chatIDProbe struct {
 	ChatID json.RawMessage `json:"chat_id"`
 }
 
-// chatRefFromData derives a Call's ChatRef from data, per design D4's two
+// chatRefFromData derives a Call's ChatRef from data, per two
 // distinct "no chat id" branches: ChatUnknown when there is no decodable
 // body at all (a multipart request, BodyRaw nil), ChatNone when the body
 // decodes but carries no chat_id field, ChatKnown otherwise.
@@ -258,7 +255,7 @@ func chatRefFromData(data *ta.RequestData) ChatRef {
 	if data.BodyRaw == nil {
 		// No decodable body at all — a multipart request (BodyStream) or
 		// no body whatsoever. Either way the destination is unreadable,
-		// which is ChatUnknown, not ChatNone (design D4/D12): #22's
+		// which is ChatUnknown, not ChatNone: the
 		// allowlist gate must refuse an unverifiable destination, not
 		// let it through exempt from every per-chat window.
 		return ChatRef{Target: ChatUnknown}
@@ -266,20 +263,20 @@ func chatRefFromData(data *ta.RequestData) ChatRef {
 	var probe chatIDProbe
 	if err := json.Unmarshal(data.BodyRaw, &probe); err != nil {
 		// The body is present but not decodable — the same "destination
-		// unreadable" failure mode as no body at all (design D4).
+		// unreadable" failure mode as no body at all.
 		return ChatRef{Target: ChatUnknown}
 	}
 	if len(probe.ChatID) == 0 {
 		// The body decodes cleanly and simply carries no chat_id —
 		// getMe, getUpdates, an inline-message edit. There is no
-		// destination to check (design D4).
+		// destination to check.
 		return ChatRef{Target: ChatNone}
 	}
 	return ChatRef{Key: string(probe.ChatID), Target: ChatKnown}
 }
 
-// waitUntil blocks until t or until ctx is done, whichever comes first
-// (design D9's cancellation obligation, AC18).
+// waitUntil blocks until t or until ctx is done, whichever comes first —
+// the cancellation obligation every wait in this package honours.
 func waitUntil(ctx context.Context, t time.Time) error {
 	d := time.Until(t)
 	if d <= 0 {

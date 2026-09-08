@@ -22,7 +22,7 @@ func TestLoadScheduler_AllAbsentYieldsDefaults(t *testing.T) {
 // TestLoadScheduler_DefaultRetryFactorIsBackoffDefaultFactor pins the
 // default to the shared constant directly, not merely to
 // defaultScheduler()'s own return — so the config default and the shared
-// boundary cannot drift apart (design D20).
+// boundary cannot drift apart.
 func TestLoadScheduler_DefaultRetryFactorIsBackoffDefaultFactor(t *testing.T) {
 	t.Parallel()
 	s, err := loadScheduler(mapLookup(map[string]string{}))
@@ -35,9 +35,9 @@ func TestLoadScheduler_DefaultRetryFactorIsBackoffDefaultFactor(t *testing.T) {
 }
 
 // TestLoadScheduler_ExampleMatchesDefaults mirrors
-// TestLoadTransport_ExampleMatchesDefaults: .env.example's own
-// LAB_GAME_SCHEDULER_* values, run through loadScheduler, must equal
-// defaultScheduler() (design D13, AC15).
+// TestLoadTransport_ExampleMatchesDefaults: the example environment
+// file's own LAB_GAME_SCHEDULER_* values, run through loadScheduler,
+// must equal defaultScheduler().
 func TestLoadScheduler_ExampleMatchesDefaults(t *testing.T) {
 	t.Parallel()
 	example := readEnvExampleKeys(t)

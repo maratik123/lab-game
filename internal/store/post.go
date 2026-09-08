@@ -22,11 +22,11 @@ type Posting struct {
 }
 
 // maxIntegerDigitsBound is 10^25 — the exclusive upper bound on the
-// absolute value of a representable amount (25 integer digits, D5).
+// absolute value of a representable amount (25 integer digits).
 var maxIntegerDigitsBound = decimal.New(1, 25)
 
 // validAmount reports whether a is exactly representable at scale 5,
-// non-zero, and within 25 integer digits (D5).
+// non-zero, and within 25 integer digits.
 func validAmount(a decimal.Decimal) bool {
 	return !a.IsZero() && a.Truncate(5).Equal(a) && a.Abs().LessThan(maxIntegerDigitsBound)
 }
@@ -44,10 +44,10 @@ const (
 // Post applies one balanced batch of postings under basis, inside the
 // caller's transaction tx. The caller owns the transaction: Post neither
 // commits nor rolls back. Postings may reference an account more than
-// once (KD-7) — deltas are summed per account before any balance is
+// once — deltas are summed per account before any balance is
 // written.
 //
-// Phases, in order (docs/DESIGN.md §11, spec Scope 4):
+// Phases, in order:
 //
 //	a. static shape check, no SQL: basis non-nil and not a typed-nil basis
 //	   (ErrNoBasis, transaction untouched); postings non-empty

@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
-# Fixture test for append-task-run.sh.
+# Fixture test for the task-run record appender.
 #
-# Locks the extractor's contract for the task-run telemetry corpus
-# (ai-docs/metrics/task-runs.jsonl). See ai-docs/task-run-schema.md for the
-# schema those cases assert against.
+# Locks the extractor's contract for the task-run telemetry corpus. The schema
+# page carries the schema those cases assert against.
 #
 # The case count is NOT written here. It is derived at the end of the run and
-# asserted equal to the design's § Cases row count (that assertion IS AC6), and
-# the closing banner prints the derived number. This header previously said
-# "Eighteen cases" and was stale within one round -- a transcribed count in a
-# comment is a claim nothing checks, which is the same defect AC6 exists to
-# catch one layer down.
+# asserted equal to the case-registry row count, and the closing banner prints
+# the derived number. This header previously said "Eighteen cases" and was
+# stale within one round -- a transcribed count in a comment is a claim nothing
+# checks, which is the same defect the registry coupling exists to catch one
+# layer down.
 #
 # What this test deliberately does NOT cover:
 #   - the /task Step 12 sub-step 5a integration itself. No harness can execute a
-#     skill sub-step; its coverage is the AC2 ordering grep plus the Step-12
+#     skill sub-step; its coverage is the ordering grep plus the Step-12
 #     verification block on the schema page.
 #   - `instruction_corpus_lines` as a VALUE. It is environment-dependent (it
 #     counts the live instruction corpus), so cases assert only that it is
@@ -22,20 +21,30 @@
 #   - `date` / `branch` / the diff-size trio in case 1, for the same reason. The
 #     trio gets its own purpose-built sandbox repo in case 12.
 #
-# FIXTURE STRATEGY — deliberately different from test-check-citations.sh, which
-# mutates a tracked file under a trap triad. The entry point here takes explicit
+# FIXTURE STRATEGY — deliberately different from the citation guard's suite,
+# which mutates a tracked file under a trap triad. The entry point here takes explicit
 # path arguments, so every fixture and every append target lives inside a
 # `mktemp -d` sandbox and ZERO tracked files are touched. Case 13 asserts that
 # property rather than assuming it.
 #
-# Fixture issue numbers are `#42`, never the real one: check-citations.sh skips
-# any `#N` at or below the local PR high-water mark, so a low number keeps this
-# file green under that guard.
+# Fixture issue numbers are deliberately low, never the real one: the citation
+# guard skips any bare number at or below the local pull-request high-water
+# mark, so a low number keeps this file green under that guard.
 #
-# Usage: bash .claude/skills/task/scripts/test-append-task-run.sh
 # Exit 0 = all cases pass. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-append-task-run.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel) || exit 1
 cd "$repo_root" || exit 1
@@ -50,8 +59,8 @@ trap 'rm -rf "$tmp"' EXIT INT TERM
 status_before=$(git status --porcelain)
 
 # Every assertion label begins `case <N>[<suffix>]:`. Recording N here makes the
-# set of cases that ACTUALLY EXECUTED observable at runtime, which is what AC6
-# compares against the design. Counting `# --- Case N` comments instead would
+# set of cases that ACTUALLY EXECUTED observable at runtime, which is what the
+# closing assertion compares against the registry. Counting `# --- Case N` comments instead would
 # count the inventory rather than the run: deleting a case body while leaving
 # its banner comment would still read as present.
 case_ids=""
@@ -397,7 +406,7 @@ cat > "$f10" <<EOF
 - \`src/a.go\` — a
 EOF
 
-# --- Case 1: F1 happy path (AC9) ---------------------------------------------
+# --- Case 1: F1 happy path ---------------------------------------------------
 t1="$tmp/out1.jsonl"
 bash "$script" "$f1" "$t1" >/dev/null 2>&1
 assert_exit "case 1: F1 exits 0" "$?" 0
@@ -419,8 +428,8 @@ assert_jq "case 1: spec_base from basename"    "$l1" '.spec_base == "f1"'
 assert_jq "case 1: schema_version == 1"        "$l1" '.schema_version == 1'
 assert_jq "case 1: corpus lines is an int > 0" "$l1" '.instruction_corpus_lines | type == "number" and . > 0'
 
-# The corpus count must come from the PINNED command INCLUDING its
-# `:(exclude)ai-docs/learnings.md` term. A script carrying the pre-exclusion form
+# The corpus count must come from the PINNED command INCLUDING its exclusion of
+# the append-only corrections log. A script carrying the pre-exclusion form
 # writes every record on a superseded, non-comparable basis — and the value is
 # plausible either way, so nothing but this equality catches it. Derived live
 # rather than hardcoded: the count is environment-dependent by construction.
@@ -454,14 +463,14 @@ assert_jq "case 2: findings total 10 despite decoys" "$l1" '([.findings[]] | add
 assert_jq "case 2: objections bounded to 2"         "$l1" '.objections == 2'
 assert_jq "case 2: objections_reopened bounded to 1" "$l1" '.objections_reopened == 1'
 
-# --- Case 3: F1 carry-forward (AC9's explicit clause) -------------------------
-# `src/b.go:20` appears in R1 (objected) and R2 (re-opened): counted TWICE in
+# --- Case 3: F1 carry-forward -------------------------------------------------
+# One fixture row appears in R1 (objected) and R2 (re-opened): counted TWICE in
 # `findings`, ONCE in `findings_first_seen`. Without this pair the two fields are
 # indistinguishable on any fixture whose rows are all unique.
 assert_jq "case 3: carry-forward counted twice in findings"      "$l1" '.findings.major == 4'
 assert_jq "case 3: carry-forward counted once in first_seen"     "$l1" '.findings_first_seen.major == 3'
 
-# --- Case 4: F2 absent (AC7) --------------------------------------------------
+# --- Case 4: F2 absent --------------------------------------------------------
 t4="$tmp/out4.jsonl"
 bash "$script" "$f2" "$t4" >/dev/null 2>&1
 assert_exit "case 4: absent progress file still exits 0" "$?" 0
@@ -477,7 +486,7 @@ assert_jq "case 4: trio is integer-typed"   "$l4" \
 assert_jq "case 4: no bogus progress-derived optionals" "$l4" \
   '(has("rounds")|not) and (has("verdicts")|not) and (has("findings")|not) and (has("objections")|not) and (has("files_touched")|not)'
 
-# --- Case 5: F3 no Self-Review sections (AC7) ---------------------------------
+# --- Case 5: F3 no Self-Review sections ---------------------------------------
 t5="$tmp/out5.jsonl"
 bash "$script" "$f3" "$t5" >/dev/null 2>&1
 assert_exit "case 5: no-sections file exits 0" "$?" 0
@@ -487,7 +496,7 @@ assert_jq "case 5: rounds == 0"            "$l5" '.rounds == 0'
 assert_jq "case 5: verdicts == []"         "$l5" '.verdicts == []'
 assert_jq "case 5: hit_round_cap == false" "$l5" '.hit_round_cap == false'
 
-# --- Case 6: F4 garbled (AC7) -------------------------------------------------
+# --- Case 6: F4 garbled -------------------------------------------------------
 t6="$tmp/out6.jsonl"
 bash "$script" "$f4" "$t6" >/dev/null 2>&1
 assert_exit "case 6: garbled file exits 0" "$?" 0
@@ -510,7 +519,7 @@ l7=$(tail -1 "$t7" 2>/dev/null)
 assert_jq "case 7: hit_round_cap == true" "$l7" '.hit_round_cap == true'
 assert_jq "case 7: verdicts all REJECT"   "$l7" '.verdicts == ["REJECT","REJECT","REJECT"]'
 
-# --- Case 8: cannot append (AC8) ----------------------------------------------
+# --- Case 8: cannot append ----------------------------------------------------
 # A non-existent PARENT DIRECTORY, not `chmod 000`: a root-run test would defeat
 # a permission-based fixture.
 t8="$tmp/does-not-exist/task-runs.jsonl"
@@ -532,7 +541,7 @@ bash "$script" "$f1" "$t9" >/dev/null 2>&1
 assert_eq "case 9: second run appends, total 2 lines" "$(grep -c '' "$t9" 2>/dev/null)" "2"
 assert_eq "case 9: line 1 byte-identical after re-run" "$(head -1 "$t9" 2>/dev/null)" "${first_line%$'\n'}"
 
-# --- Case 10: trailing newline (AC1) ------------------------------------------
+# --- Case 10: trailing newline ------------------------------------------------
 nl_ok=1
 for t in "$t1" "$t4" "$t5" "$t6" "$t7" "$t9"; do
   [ "$(tail -c1 "$t" 2>/dev/null | xxd -p)" = "0a" ] || nl_ok=0
@@ -540,12 +549,12 @@ done
 if [ "$nl_ok" -eq 1 ]; then pass "case 10: every appending case ends with 0x0a"
 else fail "case 10: every appending case ends with 0x0a"; fi
 
-# --- Case 11: AC10 two-path containment ---------------------------------------
+# --- Case 11: two-path containment --------------------------------------------
 # All three key sets are derived MECHANICALLY from the artefacts — the required
 # set from the schema page's own field table, never hardcoded here, so a field
 # added to the schema cannot drift out of this assertion. Content-addressed on
 # the `## Field table` / `### Worked fallback example` headings, never on line
-# numbers: check-citations.sh's header documents at length how a line-pinned
+# numbers: the citation guard's header documents at length how a line-pinned
 # exclusion silently re-points after an unrelated insertion.
 req_f="$tmp/keys-required.txt"; ex_f="$tmp/keys-example.txt"; sc_f="$tmp/keys-script.txt"
 all_f="$tmp/keys-all.txt"
@@ -581,7 +590,7 @@ fi
 assert_eq "case 11: SCRIPT key set equals the schema page's field table" \
   "$(comm -3 "$all_f" "$sc_f" | tr -d '\t' | tr '\n' ' ')" ""
 
-# --- Case 12: AC11a shortstat shapes ------------------------------------------
+# --- Case 12: shortstat shapes ------------------------------------------------
 # A real throwaway repo, not a "parse this string" hook in the script: adding an
 # API surface that exists only for the test was rejected.
 #
@@ -656,8 +665,8 @@ assert_jq "case 12d: singular deletion(-) parsed" "$l12d" \
 # silent key collision waiting to happen.
 #
 # ISOLATED via a `git` shim on $PATH rather than the throwaway sandbox: the
-# sandbox's `corpus` command already reads 0 (it has none of AGENTS.md /
-# ai-docs/*.md), which degrades the record for an UNRELATED reason and would
+# sandbox's `corpus` command already reads 0 (it holds none of the instruction
+# corpus), which degrades the record for an UNRELATED reason and would
 # make this assertion pass whether or not the branch fix exists. Run against
 # F1 (real repo, every other trigger already closed per case 1) with only
 # `git branch --show-current` intercepted, so `incomplete: true` here can be
@@ -679,16 +688,16 @@ assert_jq "case 12e: unobtainable branch -> branch is empty" "$l12e" '.branch ==
 assert_jq "case 12e: unobtainable branch -> incomplete == true from branch alone" "$l12e" \
   '.incomplete == true'
 
-# --- Case 14: F1 key drift — the over-count asserted as EXPECTED (AC9a) --------
-# `src/g.go:70` (R1) and `src/g.go:73` (R2) are ONE finding: same file, same
-# `Finding` text, at a line number the `src/g.go:15` fix above them shifted. Under
-# the shipped `File:line` identity key they are two different keys, so the row
-# receives NO de-duplication and is counted twice in BOTH counters.
+# --- Case 14: F1 key drift — the over-count asserted as EXPECTED --------------
+# Two fixture rows are ONE finding: same file, same `Finding` text, at a line
+# number an earlier fix in that file shifted. Under the shipped `File:line`
+# identity key they are two different keys, so the row receives NO
+# de-duplication and is counted twice in BOTH counters.
 #
 # THE OVER-COUNT BELOW IS NOT A BUG. It is measured behaviour, and it is
-# expected under the current File:line key. See ai-docs/task-run-schema.md
-# § "Counting units" — the frequency clause, the degeneracy signature, and the
-# coupling clause all describe exactly this. Do NOT "repair" the parser to make
+# expected under the current File:line key. The schema page's counting-units
+# section — the frequency clause, the degeneracy signature, and the coupling
+# clause — describes exactly this. Do NOT "repair" the parser to make
 # the number look right: switching the key to path + Finding text would make
 # `.findings_first_seen.minor` read 3, fail this case, and silently change what
 # every record in the corpus means MID-SERIES. If this case is red, read the
@@ -834,17 +843,17 @@ assert_jq "case 20: no degradation from either escape form"               "$l20"
 status_after=$(git status --porcelain)
 assert_eq "case 13: working tree unchanged by the test run" "$status_after" "$status_before"
 
-# --- AC6: the expected case count is DERIVED from the design, both sides ------
-# This assertion is AC6. Before it existed the file ended with a hard-coded
+# --- The expected case count is DERIVED from the registry, both sides --------
+# Before this assertion existed the file ended with a hard-coded
 # `echo "PASS: all 18 cases green."` -- a hand-typed string that agreed with
 # nothing, so fixture-side drift (a case added, the banner not updated) was
 # invisible and the design-side check ran only when a human typed it at a
 # terminal. Both halves are derived now: `cases_run` from the labels emitted by
-# this run, `C` from the design's § Cases table.
+# this run, `C` from the case registry.
 #
-# The registry lives in ai-docs/task-run-schema.md § Cases -- a LIVE page, not a
-# frozen plan document, because the coupling is a standing contract rather than
-# history. Absent registry == FAIL, deliberately: AC6 IS the coupling, and a
+# That registry lives on the schema page -- a LIVE page, not a frozen plan
+# document, because the coupling is a standing contract rather than history.
+# Absent registry == FAIL, deliberately: this assertion IS the coupling, and a
 # gate that quietly skips when its reference is missing is the defect this
 # assertion was written to remove.
 # These paths are $PWD-relative and that is SAFE, not an oversight: the script

@@ -18,14 +18,14 @@ var nullJSON = json.RawMessage("null")
 // Schedule inserts req as a new row, returning its TaskID. tx is
 // caller-owned: Schedule neither commits nor rolls back, so a mechanic
 // can schedule a task's timer edges inside its own transition's
-// transaction (design D9).
+// transaction.
 //
 // Schedule refuses req.Type with no Declaration (ErrUnknownType),
 // req.Delay < 0 (ErrInvalidDelay), a malformed req.Payload
 // (ErrInvalidPayload), and a live duplicate identity (ErrDuplicateTask) —
 // the last of these by declining the INSERT rather than raising a raw
-// SQLSTATE 23505, exactly as store.Post's PlayerOperation basis does, so
-// a duplicate timer edge cannot abort the caller's transaction.
+// SQLSTATE 23505, exactly as the ledger's own PlayerOperation basis does,
+// so a duplicate timer edge cannot abort the caller's transaction.
 func (r *Registry) Schedule(ctx context.Context, tx pgx.Tx, req Request) (TaskID, error) {
 	if _, ok := r.declaration(req.Type); !ok {
 		return 0, fmt.Errorf("%w: %q", ErrUnknownType, req.Type)
@@ -59,7 +59,7 @@ func (r *Registry) Schedule(ctx context.Context, tx pgx.Tx, req Request) (TaskID
 
 // DeadTasks returns every give-up row (state = 'dead'), ordered by
 // run_at then id, up to limit. tx is caller-owned — the same shape
-// Schedule and store.Post take (design D1's NOTE 3(a)).
+// Schedule and the ledger's own Post take.
 func DeadTasks(ctx context.Context, tx pgx.Tx, limit int) ([]DeadTask, error) {
 	rows, err := tx.Query(ctx,
 		`SELECT type, coalesce(instance_key, ''), run_at, consecutive_failures, coalesce(last_error, '')

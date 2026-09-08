@@ -7,7 +7,7 @@ import (
 )
 
 // advanceOffsetFresh advances the offset for u in a transaction of its
-// own — the shape design D5 gives every settled outcome that does not
+// own — the shape given to every settled outcome that does not
 // commit alongside a handler's own effects: a duplicate (whose attempt
 // transaction was already rolled back) and, via settleUnrouted and
 // settleGivenUp, the attempt-less outcomes.
@@ -26,8 +26,8 @@ func (l *Loop) advanceOffsetFresh(ctx context.Context, u Update) error {
 	return nil
 }
 
-// settleUnrouted settles u whose derived Kind has no registered Handler
-// (design D9, AC9): no attempt ran, and the offset still advances so an
+// settleUnrouted settles u whose derived Kind has no registered Handler:
+// no attempt ran, and the offset still advances so an
 // unrouted kind never blocks the loop. derivationErr carries NewUpdate's
 // error when u could not be fully derived (a malformed raw payload) —
 // nil for a genuinely-unrouted Kind — and is reported on the resulting
@@ -50,7 +50,7 @@ func (l *Loop) settleUnrouted(ctx context.Context, u Update, derivationErr error
 }
 
 // settleGivenUp settles u after every configured attempt failed or
-// panicked (design D6, D14): its identity is written to
+// panicked: its identity is written to
 // ingest_dead_update — never its raw payload — the offset still
 // advances, and the loop continues polling.
 func (l *Loop) settleGivenUp(ctx context.Context, u Update, attempts int, lastErr error) error {

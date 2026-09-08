@@ -11,8 +11,8 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// viewNames is the exact set of views AC11/AC13 fix: exactly the five MVP
-// families, and no placeholder for any deferred one.
+// viewNames is the exact set of views this migration set creates: exactly
+// the five MVP families, and no placeholder for any deferred one.
 var viewNames = []string{
 	"metric_activation_funnel",
 	"metric_retention_daily",
@@ -53,7 +53,7 @@ func TestViews_exactViewSet(t *testing.T) {
 }
 
 // TestViews_columnContract pins each view's column names, order and types
-// (AC11) — the one thing CREATE OR REPLACE VIEW can never loosen later.
+// — the one thing CREATE OR REPLACE VIEW can never loosen later.
 func TestViews_columnContract(t *testing.T) {
 	t.Parallel()
 
@@ -134,8 +134,8 @@ func TestViews_columnContract(t *testing.T) {
 	}
 }
 
-// TestViews_emptyLog_zeroRows asserts AC11's "queryable and returns zero
-// rows, never an error" on a freshly migrated, event-free database.
+// TestViews_emptyLog_zeroRows asserts the "queryable and returns zero
+// rows, never an error" property on a freshly migrated, event-free database.
 func TestViews_emptyLog_zeroRows(t *testing.T) {
 	t.Parallel()
 
@@ -173,8 +173,7 @@ func at(y int, m time.Month, d, hh, mm int) time.Time {
 func ptrInt32(v int32) *int32 { return &v }
 
 // insertEvent writes one event row by direct SQL with an explicit ts — the
-// Go write API stamps now(), so a multi-day fixture must bypass it
-// (design § Test Design, subtask 5).
+// Go write API stamps now(), so a multi-day fixture must bypass it.
 func insertEvent(t *testing.T, ctx context.Context, pool *pgxpool.Pool, typ EventType, playerID, chatID *OwnerID, depth *int32, ts time.Time) {
 	t.Helper()
 	if _, err := pool.Exec(ctx,
@@ -193,8 +192,8 @@ type viewsFixture struct {
 }
 
 // seedViewsFixture writes the ONE shared fixture every view subtest below
-// reads (design § Test Design, subtask 5 — "each view's subtest reads the
-// same world"). Every boundary case § Test Design names is present:
+// reads — each view's subtest reads the same world. Every boundary case
+// below is present:
 //   - every raid_started carries a null chat_id (proves attribution runs
 //     through player_started, not the raid)
 //   - D raids twice the same day (not a next-day return)
@@ -204,7 +203,7 @@ type viewsFixture struct {
 //     credited to the first chat)
 //   - F's player_started names no chat (attributed nowhere)
 //   - G/H register on the same day, only G returns the next day (a
-//     fractional D1 rate for that day's retention cohort)
+//     fractional Day-1 rate for that day's retention cohort)
 //   - a death with a null depth, and deaths spanning two days
 //   - a notification_sent with a null chat_id (excluded from its view)
 //   - a faucet-only day for metric_faucet_sink (no sink that day)
@@ -564,7 +563,7 @@ func decStr(d *decimal.Decimal) string {
 	return d.String()
 }
 
-// TestMetricFaucetSink_ledgerKindGenericity is AC14: adding a new
+// TestMetricFaucetSink_ledgerKindGenericity asserts that adding a new
 // ledger_kind member, without editing the view, makes postings of that kind
 // appear. The member must be committed before it can be used (Postgres
 // refuses "unsafe use of new value" inside the same transaction that added

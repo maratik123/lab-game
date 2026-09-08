@@ -1,8 +1,8 @@
 // Package store implements the quantitative ledger's write path: the
 // owner/scope/account catalog, its forward migrations, and Post, the only
-// function that moves a balance. See docs/DESIGN.md §11 "Учетная машина:
-// двойная запись с глобальным счетом" for the design this package
-// implements; nothing here redesigns it.
+// function that moves a balance. It implements the game's double-entry
+// accounting design against a single global account; nothing here
+// redesigns it.
 package store
 
 import (
@@ -15,7 +15,7 @@ import (
 )
 
 // NewPool builds a connection pool whose connections decode PostgreSQL
-// numeric values into shopspring/decimal.Decimal (D4). cfg must come from
+// numeric values into shopspring/decimal.Decimal. cfg must come from
 // pgxpool.ParseConfig — pgxpool itself panics on a hand-built config with a
 // nil ConnConfig, so every caller in this codebase satisfies that
 // precondition by construction.

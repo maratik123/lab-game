@@ -160,8 +160,8 @@ func TestPost_underDeferredAndRecurrentTask_succeeds(t *testing.T) {
 		t.Fatalf("recurrent journal entries = %d, want 1", recurrentCount)
 	}
 
-	// AC4: each of those journal_entry rows names exactly one non-null
-	// basis column.
+	// Each of those journal_entry rows names exactly one non-null basis
+	// column.
 	var nonNullCount int
 	if err := tx.QueryRow(ctx,
 		`SELECT num_nonnulls(player_operation_id, manual_correction_id, deferred_task_id, recurrent_task_id)
@@ -261,8 +261,8 @@ func TestDeferredTask_survivesTaskRowDeletion(t *testing.T) {
 	}
 }
 
-// TestBasisTables_keylessOneShots_distinguishedByTaskID is D14's stated
-// reason for TaskID: two concurrent keyless one-shots of the same type and
+// TestBasisTables_keylessOneShots_distinguishedByTaskID asserts TaskID's
+// stated reason for existing: two concurrent keyless one-shots of the same type and
 // instant produce basis documents that would otherwise be byte-identical,
 // and delete-on-done has already removed the scheduled_task rows that
 // would have told them apart.
@@ -305,12 +305,12 @@ func TestBasisTables_keylessOneShots_distinguishedByTaskID(t *testing.T) {
 	}
 }
 
-// TestBasisTables_noForeignKeyToScheduledTask is AC27's own scope, not
-// D4's wider condition: neither new basis table declares a referential
-// constraint back to scheduled_task, so a delete there cannot cascade or
-// block on a ledger row (design D14, D4 — the residual risk is that
-// nothing in this schema enforces the wider no-FK-anywhere condition the
-// lock-mode equivalence actually rests on).
+// TestBasisTables_noForeignKeyToScheduledTask asserts a narrower scope
+// than the schema's wider condition: neither new basis table declares a
+// referential constraint back to scheduled_task, so a delete there cannot
+// cascade or block on a ledger row (the residual risk is that nothing in
+// this schema enforces the wider no-FK-anywhere condition the lock-mode
+// equivalence actually rests on).
 func TestBasisTables_noForeignKeyToScheduledTask(t *testing.T) {
 	t.Parallel()
 

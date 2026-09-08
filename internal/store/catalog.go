@@ -10,7 +10,7 @@ type ScopeDefinition struct {
 
 // AccountDefinition mirrors a row of the seeded account_definition catalog:
 // a named account inside a scope, its ledger kind, and whether it is
-// controlled — i.e. carries an account_balance row (KD-28).
+// controlled — i.e. carries an account_balance row.
 type AccountDefinition struct {
 	ID                int16
 	ScopeDefinitionID int16
@@ -19,14 +19,14 @@ type AccountDefinition struct {
 	Controlled        bool
 }
 
-// scopeDefinitions mirrors migration 00001_ledger_core.sql's seeded
+// scopeDefinitions mirrors the ledger-core migration's seeded
 // scope_definition rows exactly.
 var scopeDefinitions = []ScopeDefinition{
 	{ID: 1, Code: "world", OwnerKind: OwnerWorld},
 	{ID: 2, Code: "attributes", OwnerKind: OwnerPlayer},
 }
 
-// accountDefinitions mirrors migration 00001_ledger_core.sql's seeded
+// accountDefinitions mirrors the ledger-core migration's seeded
 // account_definition rows exactly.
 var accountDefinitions = []AccountDefinition{
 	{ID: 1, ScopeDefinitionID: 1, Code: "money", Kind: KindMoney, Controlled: false},
@@ -42,8 +42,7 @@ var accountDefinitions = []AccountDefinition{
 // comparison fails on either side doing so without the other.
 type EventType string
 
-// EventType members, in migration 00003_event_log.sql's §13.4 declaration
-// order (docs/DESIGN.md §13.4).
+// EventType members, in the event-log migration's own declaration order.
 const (
 	EventBotAddedToChat        EventType = "bot_added_to_chat"
 	EventPlayerStarted         EventType = "player_started"
@@ -65,16 +64,15 @@ const (
 
 // EventTypeDefinition mirrors a row of the seeded event_type_definition
 // catalog: a registered event type and its volume class. ID exists solely
-// to carry §13.4's declaration order (migration 00003_event_log.sql) so the
-// mirror comparison can be ordered rather than set-wise; it is referenced by
-// nothing.
+// to carry the migration's own declaration order so the mirror comparison
+// can be ordered rather than set-wise; it is referenced by nothing.
 type EventTypeDefinition struct {
 	ID          int16
 	Code        EventType
 	VolumeClass EventVolumeClass
 }
 
-// eventTypeDefinitions mirrors migration 00003_event_log.sql's seeded
+// eventTypeDefinitions mirrors the event-log migration's seeded
 // event_type_definition rows exactly, in declaration order: notification_sent
 // and button_clicked carry VolumeHigh, every other type VolumeLow.
 var eventTypeDefinitions = []EventTypeDefinition{

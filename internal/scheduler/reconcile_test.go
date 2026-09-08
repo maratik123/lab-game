@@ -20,8 +20,8 @@ func recurrentRegistry(t *testing.T, typ Type, period time.Duration) *Registry {
 	return reg
 }
 
-// TestReconcile_seedsMissingRow is AC33: a declared recurrence with no
-// row is seeded, one cadence ahead, not immediately, and the seeded
+// TestReconcile_seedsMissingRow asserts that a declared recurrence with
+// no row is seeded, one cadence ahead, not immediately, and the seeded
 // row's instance_key is its type name.
 func TestReconcile_seedsMissingRow(t *testing.T) {
 	t.Parallel()
@@ -53,8 +53,9 @@ func TestReconcile_seedsMissingRow(t *testing.T) {
 	}
 }
 
-// TestReconcile_seedsAgainstDeadRow is AC33: a declared recurrence whose
-// only row is dead is seeded, leaving exactly one pending row beside the
+// TestReconcile_seedsAgainstDeadRow asserts that a declared recurrence
+// whose only row is dead is seeded, leaving exactly one pending row
+// beside the
 // untouched dead one.
 func TestReconcile_seedsAgainstDeadRow(t *testing.T) {
 	t.Parallel()
@@ -88,8 +89,9 @@ func TestReconcile_seedsAgainstDeadRow(t *testing.T) {
 	}
 }
 
-// TestReconcile_correction covers AC33's directional and idempotence
-// properties: a shortened cadence corrects run_at; a lengthened cadence
+// TestReconcile_correction covers the reconciler's directional and
+// idempotence properties: a shortened cadence corrects run_at; a
+// lengthened cadence
 // leaves the row alone; running Reconcile twice changes nothing the
 // second time.
 func TestReconcile_correction(t *testing.T) {
@@ -179,7 +181,7 @@ func TestReconcile_correction(t *testing.T) {
 	})
 }
 
-// TestReconcile_concurrentCallsProduceOneRow is AC33/AC29 under -race:
+// TestReconcile_concurrentCallsProduceOneRow asserts under -race that
 // two Reconcile calls racing produce exactly one row, the loser's insert
 // resolved by the constraint's no-op rather than a lock wait.
 func TestReconcile_concurrentCallsProduceOneRow(t *testing.T) {
@@ -223,7 +225,7 @@ func TestReconcile_concurrentCallsProduceOneRow(t *testing.T) {
 	}
 }
 
-// TestReconcile_leavesImminentAndInFlightAlone is AC33/AC35: an imminent
+// TestReconcile_leavesImminentAndInFlightAlone asserts that an imminent
 // occurrence (inside a poll interval) and an in-flight occurrence (its
 // row held by an open transaction under the same locking mode the
 // correction takes) are both left untouched — the correction returns
@@ -314,7 +316,7 @@ func TestReconcile_leavesImminentAndInFlightAlone(t *testing.T) {
 	})
 }
 
-// TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot is design D10: Run
+// TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot asserts that Run
 // seeds a declared recurrence's row before any task executes, while
 // RunOnce does not reconcile at all; and a Reconcile that fails stops
 // Run from entering the loop.

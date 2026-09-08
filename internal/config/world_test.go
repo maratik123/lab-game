@@ -33,8 +33,7 @@ func TestResolveWorldPath_ParentIsRegularFile(t *testing.T) {
 		t.Fatalf("fixture: %v", err)
 	}
 	// regular is a file, so a path treating it as a directory can never
-	// resolve for any uid — deterministic without a chmod fixture (design
-	// § Risks).
+	// resolve for any uid — deterministic without a chmod fixture.
 	path := filepath.Join(regular, "subpath")
 	_, err := resolveWorldPath(mapLookup(map[string]string{envWorldPath: path}))
 	assertKeyError(t, err, ErrUnreadable, envWorldPath)

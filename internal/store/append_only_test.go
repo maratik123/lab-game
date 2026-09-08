@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// appendOnlyPattern is the spec's AC9 pattern (KD-3), extended by this task's
-// AC10 to the event table: no statement may UPDATE or DELETE FROM the
+// appendOnlyPattern extends the ledger's append-only pattern to the event
+// table: no statement may UPDATE or DELETE FROM the
 // append-only tables posting, journal_entry and event. The word boundary
 // after each alternative is what keeps "event" from matching
 // "event_type_definition" — that table is a seeded catalog, not append-only,
@@ -17,8 +17,8 @@ import (
 var appendOnlyPattern = regexp.MustCompile(`(?i)update\s+(posting|journal_entry|event)\b|delete\s+from\s+(posting|journal_entry|event)\b`)
 
 // TestAppendOnly_no_update_or_delete_on_ledger_tables is the in-suite twin
-// of the Step-9 AC9 sweep (design § Test Design → AC9): every non-test Go
-// source of this package and every embedded migration is scanned for a
+// of the design-time source sweep: every non-test Go source of this
+// package and every embedded migration is scanned for a
 // statement that would rewrite ledger history. The positive control runs
 // first so a broken pattern fails the test before any file is scanned.
 func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
@@ -52,9 +52,10 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 	}
 
 	// Collect first: non-test Go sources of this package (the test binary's
-	// working directory is the package directory; _test.go files are
-	// excluded because post_test.go carries the planted control lines) and
-	// the embedded migrations (a migration is a code path under KD-3 too).
+	// working directory is the package directory; test source files are
+	// excluded because one of them carries the planted control lines) and
+	// the embedded migrations (a migration is a code path this pattern must
+	// also cover).
 	type source struct {
 		name    string
 		content string

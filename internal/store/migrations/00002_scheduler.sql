@@ -20,7 +20,7 @@ CREATE INDEX scheduled_task_due_idx ON scheduled_task (run_at) WHERE state = 'pe
 
 CREATE TABLE deferred_task (
     id           bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    task_id      bigint,                      -- by value; deliberately NOT a foreign key (AC27)
+    task_id      bigint,                      -- by value; deliberately NOT a foreign key
     task_type    text        NOT NULL,
     instance_key text,
     run_at       timestamptz NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE deferred_task (
 );
 CREATE TABLE recurrent_task (
     id           bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    task_id      bigint,                      -- by value; deliberately NOT a foreign key (AC27)
+    task_id      bigint,                      -- by value; deliberately NOT a foreign key
     task_type    text        NOT NULL,
     instance_key text,
     run_at       timestamptz NOT NULL,

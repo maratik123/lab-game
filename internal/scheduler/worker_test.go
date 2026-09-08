@@ -18,7 +18,7 @@ import (
 // errBoom is a fixed handler-error test double.
 var errBoom = errors.New("boom")
 
-// testConfig returns a config.Scheduler tuned for fast, deterministic
+// testConfig returns a Scheduler config tuned for fast, deterministic
 // tests: a short poll interval, a small claim limit, and retry values
 // that make backoff assertions quick without sleeping for long.
 func testConfig() config.Scheduler {
@@ -33,14 +33,14 @@ func testConfig() config.Scheduler {
 	}
 }
 
-// TestNew_RetryFactorRefusal is design D20's constructor factor check:
+// TestNew_RetryFactorRefusal covers the constructor's factor check:
 // exactly 1, +Inf and NaN are each refused naming RetryFactor — the same
 // values that would pass a wrong predicate borrowed from the duration
 // checks beside it (<= 0) — and an invalid factor beside an
 // earlier-invalid field names the EARLIER field, which is the only row
 // that can red a factor check inserted anywhere but last in New's chain.
 // No migrated schema is needed: New only nil-checks the pool and never
-// dials it (design D20, Test Design subtask 15).
+// dials it.
 func TestNew_RetryFactorRefusal(t *testing.T) {
 	t.Parallel()
 
@@ -101,8 +101,8 @@ func newWorker(t *testing.T, pool *pgxpool.Pool, reg *Registry) *Worker {
 }
 
 // writingHandler inserts a manual_correction row (a real table write, so
-// "its writes are absent" is asserted against the migrated schema, design
-// § Test Design) and then returns a fixed Outcome/error.
+// "its writes are absent" is asserted against the migrated schema) and
+// then returns a fixed Outcome/error.
 type writingHandler struct {
 	mu      sync.Mutex
 	outcome Outcome
@@ -128,8 +128,8 @@ func (h *writingHandler) seenCount() int {
 }
 
 // swallowingHandler triggers a real unique-violation, swallows it, and
-// reports OutcomeDone — the round-6 regression guard for the raw-SQL
-// savepoint (design § Approach, D2 steps 5-6): written against
+// reports OutcomeDone — a regression guard for the raw-SQL
+// savepoint: written against
 // pgx.Tx.Begin's pseudo-nested transaction this class of handler would
 // silently report success.
 type swallowingHandler struct {
@@ -183,8 +183,8 @@ func TestRunOnce_batchBoundedAndSkipNotWait(t *testing.T) {
 	}
 
 	// Insert three due tasks; hold two of them locked in a concurrent,
-	// uncommitted transaction, exactly the exclusion protocol AC35
-	// assigns to this test.
+	// uncommitted transaction, exactly the exclusion protocol this test
+	// covers.
 	var ids [3]TaskID
 	for i := range ids {
 		ids[i] = dueNow(t, pool, reg, Request{Type: "test.oneshot"})
@@ -283,7 +283,8 @@ func TestRunOnce_rowTakenBeforeReclaim_skippedSilently(t *testing.T) {
 	}
 }
 
-// TestRunOnce_failedHandler_writesRolledBack_attemptRecorded is AC7.
+// TestRunOnce_failedHandler_writesRolledBack_attemptRecorded covers a
+// failed handler's rollback and attempt recording.
 func TestRunOnce_failedHandler_writesRolledBack_attemptRecorded(t *testing.T) {
 	t.Parallel()
 
@@ -314,7 +315,8 @@ func TestRunOnce_failedHandler_writesRolledBack_attemptRecorded(t *testing.T) {
 	}
 }
 
-// TestRunOnce_noop_writesAbsent_rowSettled is AC8.
+// TestRunOnce_noop_writesAbsent_rowSettled covers a no-op outcome's
+// settlement.
 func TestRunOnce_noop_writesAbsent_rowSettled(t *testing.T) {
 	t.Parallel()
 
@@ -342,10 +344,10 @@ func TestRunOnce_noop_writesAbsent_rowSettled(t *testing.T) {
 	}
 }
 
-// TestRunOnce_swallowedDatabaseError_settlesAsFailure is the round-6
+// TestRunOnce_swallowedDatabaseError_settlesAsFailure is a
 // regression guard: a handler that swallows a real database error and
 // reports OutcomeDone must have its attempt settled as a failure, because
-// the savepoint release fails (design § Approach, D2 steps 5-6).
+// the savepoint release fails.
 func TestRunOnce_swallowedDatabaseError_settlesAsFailure(t *testing.T) {
 	t.Parallel()
 
@@ -380,7 +382,8 @@ func TestRunOnce_swallowedDatabaseError_settlesAsFailure(t *testing.T) {
 	}
 }
 
-// TestRunOnce_deleteOnDone_bothDirections is AC25.
+// TestRunOnce_deleteOnDone_bothDirections covers delete-on-done in both
+// directions.
 func TestRunOnce_deleteOnDone_bothDirections(t *testing.T) {
 	t.Parallel()
 
@@ -424,8 +427,9 @@ func TestRunOnce_deleteOnDone_bothDirections(t *testing.T) {
 	}
 }
 
-// TestRunOnce_recurrence_singleLiveRow is AC11: the row's id is unchanged
-// and the live-row count for the recurrence is exactly one at every
+// TestRunOnce_recurrence_singleLiveRow asserts that the row's id is
+// unchanged and the live-row count for the recurrence is exactly one at
+// every
 // commit boundary, across a committed execution, a rolled-back
 // execution, and a failed execution.
 func TestRunOnce_recurrence_singleLiveRow(t *testing.T) {

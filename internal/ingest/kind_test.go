@@ -8,7 +8,7 @@ import (
 )
 
 // TestDerive_perRow builds an Update with exactly one payload field set
-// per D4's table row, and asserts the derived kind, its date extraction
+// per the kind table's own row, and asserts the derived kind, its date extraction
 // (present or absent) and its chat-id extraction (present or absent).
 func TestDerive_perRow(t *testing.T) {
 	t.Parallel()
@@ -99,7 +99,7 @@ func TestDerive_perRow(t *testing.T) {
 	}
 }
 
-// TestDerive_noPayloadFieldSetYieldsZeroKind is AC4/AC9's unrouted case: a
+// TestDerive_noPayloadFieldSetYieldsZeroKind asserts the unrouted case: a
 // telego.Update with no payload field set derives the zero Kind.
 func TestDerive_noPayloadFieldSetYieldsZeroKind(t *testing.T) {
 	t.Parallel()

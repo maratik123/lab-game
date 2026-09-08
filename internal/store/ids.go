@@ -8,8 +8,8 @@ type OwnerID int64
 // telegram_id column.
 type AccountID int64
 
-// WorldOwner is the seeded id of the singleton World owner (migration
-// 00001_ledger_core.sql).
+// WorldOwner is the seeded id of the singleton World owner, from the
+// ledger-core migration's seed data.
 const WorldOwner OwnerID = 1
 
 // WorldMoney is the seeded id of the World's uncontrolled money account.

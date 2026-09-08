@@ -27,6 +27,7 @@ jobs:
       go: ${{ steps.filter.outputs.go }}
       harness: ${{ steps.filter.outputs.harness }}
       workflows: ${{ steps.filter.outputs.workflows }}
+      commentrefs: ${{ steps.filter.outputs.commentrefs }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -50,15 +51,35 @@ jobs:
               - 'ai-docs/**'
               - 'AGENTS.md'
               - 'CLAUDE.md'
-              # The gate-log-path suite asserts about .gitignore's content — a
-              # root *.gate.log must NOT be ignored, tmp/*.gate.log must be.
-              # Without this line a .gitignore-only commit matches no filter,
-              # every job's `if:` is false, and the assertion that would catch
-              # a re-added rule never runs. "A job that did not run is not a
-              # passing job" (AGENTS.md § Build & Test).
+              # The gate-log-path suite asserts about the content of the
+              # entry below: a root gate log must NOT be ignored, one under
+              # the scratch directory must be. Without the entry here, a
+              # commit touching only that file does not reach this job, and
+              # the assertion that would catch a re-added rule never runs. A
+              # job that did not run is not a passing job.
               - '.gitignore'
+              # A commit touching only the pre-commit dispatcher or the
+              # coverage-ratchet script must still reach the shellcheck gate,
+              # which this job is the only one to run; the target that sweep
+              # runs from is named here too, for the same reason.
+              - '.githooks/**'
+              - 'Makefile'
             workflows:
               - '.github/workflows/**'
+            # Every path class the comment-reference gate reaches — kept as
+            # its own key because neither `go` nor `harness` names the whole
+            # gated set: the first omits the shell class, the second omits
+            # the Go class.
+            commentrefs:
+              - '**/*.go'
+              - '**/*.sh'
+              - '**/*.sql'
+              - '**/*.yml'
+              - '**/*.yaml'
+              - '.gitignore'
+              - '.env.example'
+              - 'Makefile'
+              - '.githooks/**'
 
   format:
     name: Format
@@ -106,7 +127,7 @@ jobs:
       # where a drop is meant to be caught. This step catches a commit made on
       # a machine whose core.hooksPath is unset, and it re-rolls the suite's
       # timing-dependent statements on a runner rather than on the author's
-      # machine — see the drift measurement in .githooks/coverage-ratchet.sh.
+      # machine.
       - run: make cover-ratchet
 
   lint:
@@ -147,10 +168,11 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
-      - name: shellcheck every harness script
-        run: |
-          set -euo pipefail
-          find .claude ai-docs/scripts -name '*.sh' -print0 | xargs -0 -r shellcheck -s bash
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: shellcheck every tracked script
+        run: make shellcheck
       - name: shellcheck every hook body in settings.json
         run: |
           set -euo pipefail
@@ -190,10 +212,13 @@ jobs:
           bash ai-docs/scripts/test-instruction-edit-guard.sh
           bash ai-docs/scripts/test-doc-edit-guard.sh
           bash ai-docs/scripts/test-spec-shape.sh
+          bash ai-docs/scripts/test-script-shape.sh
       - name: acceptance criteria state conditions, not tests
         run: bash ai-docs/scripts/check-ac-shape.sh
       - name: specs locate by commit or symbol and store no tally
         run: bash ai-docs/scripts/check-spec-shape.sh
+      - name: every script's --help dispatch shape; shebang-extension pairing
+        run: bash ai-docs/scripts/check-script-shape.sh
       - name: relative markdown links resolve
         run: |
           set -euo pipefail
@@ -223,3 +248,15 @@ jobs:
         with:
           reporter: github-check
           fail_level: error
+
+  comment-refs:
+    name: Comment references
+    needs: changes
+    if: needs.changes.outputs.commentrefs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make comment-refs

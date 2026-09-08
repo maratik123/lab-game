@@ -3,13 +3,23 @@
 #
 # The guard refuses a progress file whose `## Review register` still reads
 # `open` for a finding the round's own table marks `✅ Fixed`. The fixtures are
-# reduced from the real history that earned the gate: the transport run
-# (PR #53) raised this same disagreement in five consecutive rounds.
+# reduced from the real history that earned the gate: the transport run raised
+# this same disagreement in five consecutive rounds.
 #
-# Usage: bash ai-docs/scripts/test-review-register.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-review-register.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1

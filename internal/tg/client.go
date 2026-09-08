@@ -11,30 +11,28 @@ import (
 	"github.com/maratik123/lab-game/internal/config"
 )
 
-// Options configures a Client (design D2). Every outbound-call method
+// Options configures a Client. Every outbound-call method
 // Client.API() exposes is telego's own generated method, taking
 // ctx context.Context first — Options and Client themselves store no
-// context.Context field (AC1).
+// context.Context field.
 type Options struct {
 	// BaseURL is the Bot API server's base URL — the self-hosted
 	// instance, api.telegram.org, or a fake server's URL in a test — all
-	// three are values of this one field, never a branch in code
-	// (design D2, AC20).
+	// three are values of this one field, never a branch in code.
 	BaseURL string
 	// Token is the Telegram bot token.
 	Token string
 	// Transport holds the retry, backoff and rate-limit tuning this
-	// client is built from (design D9, D10).
+	// client is built from.
 	Transport config.Transport
-	// Gate, when non-nil, is consulted before every outbound call
-	// (design D12). Nil means no gate: every call proceeds to the
-	// limiter.
+	// Gate, when non-nil, is consulted before every outbound call. Nil
+	// means no gate: every call proceeds to the limiter.
 	Gate Gate
-	// Observer, when non-nil, receives one Observation per outbound call
-	// (design D11). Nil means no observation.
+	// Observer, when non-nil, receives one Observation per outbound call.
+	// Nil means no observation.
 	Observer Observer
 	// Jitter, when non-nil, supplies the backoff formula's random factor
-	// in [0,1) (design D6). Nil means the default math/rand/v2 source.
+	// in [0,1). Nil means the default math/rand/v2 source.
 	Jitter func() float64
 	// HTTPClient, when non-nil, is the *http.Client this package's caller
 	// performs attempts with. Nil means every attempt uses
@@ -45,7 +43,7 @@ type Options struct {
 	// means telego.WithDiscardLogger() — this package's typed Error and
 	// Observer are the transport's real output, and telego's own default
 	// stderr logger is a duplicate, token-redacted-but-still-noisy
-	// channel this package does not want to own by default (design D2).
+	// channel this package does not want to own by default.
 	Logger telego.Logger
 }
 
@@ -72,7 +70,7 @@ func optionErrorf(field, format string, args ...any) *OptionError {
 	return &OptionError{Field: field, Err: fmt.Errorf(format, args...)}
 }
 
-// Client is lab-game's one Telegram Bot API client (design D2). Every
+// Client is lab-game's one Telegram Bot API client. Every
 // outbound call in the project is a call on the *telego.Bot Client.API()
 // returns, and every one of them is routed through this package's own
 // telegoapi.Caller — the retry loop, the retry_after wait, both rate
@@ -81,7 +79,7 @@ func optionErrorf(field, format string, args ...any) *OptionError {
 // Client is safe for concurrent use: every field set at construction is
 // never mutated afterward, and the one piece of mutable state — the
 // Limiter's window schedules — serialises every acquisition under its
-// own mutex (design D9).
+// own mutex.
 type Client struct {
 	bot           *telego.Bot
 	transport     config.Transport
@@ -95,8 +93,8 @@ type Client struct {
 
 // New validates opts and constructs a Client. It returns an *OptionError
 // naming the offending field rather than falling back to a compiled-in
-// value — internal/config (design D10) is the one place defaults live
-// (design D2).
+// value — this module's configuration package is the one place defaults
+// live.
 func New(opts Options) (*Client, error) {
 	if opts.BaseURL == "" {
 		return nil, optionErrorf("BaseURL", "must not be empty")
@@ -139,10 +137,9 @@ func New(opts Options) (*Client, error) {
 	}
 
 	// WithAPICaller and WithRequestConstructor are the whole net/http +
-	// encoding/json swap (design D3): telego's own bot never gets a
+	// encoding/json swap: telego's own bot never gets a
 	// chance to install its default fasthttp caller or constructor, so no
-	// call issued through the returned Client can reach them (design D2's
-	// accessor guarantee, AC2, AC27).
+	// call issued through the returned Client can reach them.
 	botOptions := []telego.BotOption{
 		telego.WithAPIServer(opts.BaseURL),
 		telego.WithAPICaller(&caller{client: c}),
@@ -166,7 +163,7 @@ func New(opts Options) (*Client, error) {
 // API returns the configured *telego.Bot every outbound Bot API call goes
 // through. Across the generated-method surface — every Bot.SendMessage-
 // shaped method, which is the whole Bot API — there is no path that skips
-// this package's own caller (design D2, AC27).
+// this package's own caller.
 func (c *Client) API() *telego.Bot {
 	return c.bot
 }

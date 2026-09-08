@@ -8,7 +8,7 @@ import (
 
 // TestOperationID_differentSpacesSameRawID asserts the update_id and
 // callback_query.id spaces produce different values from the same raw
-// identifier (design D9).
+// identifier.
 func TestOperationID_differentSpacesSameRawID(t *testing.T) {
 	t.Parallel()
 
@@ -27,8 +27,7 @@ func TestOperationID_differentSpacesSameRawID(t *testing.T) {
 }
 
 // TestOperationID_grammar asserts every derived value carries a
-// non-empty space token, the separator, and a non-empty identifier
-// (design D9).
+// non-empty space token, the separator, and a non-empty identifier.
 func TestOperationID_grammar(t *testing.T) {
 	t.Parallel()
 
@@ -49,7 +48,7 @@ func TestOperationID_grammar(t *testing.T) {
 }
 
 // TestOperationID_emptySpaceRefused and TestOperationID_emptyIDRefused
-// pin the two refusal rows (design D9).
+// pin the two refusal rows.
 func TestOperationID_emptySpaceRefused(t *testing.T) {
 	t.Parallel()
 
@@ -70,7 +69,7 @@ func TestOperationID_emptyIDRefused(t *testing.T) {
 
 // TestIDSpace_noneContainsTheSeparator asserts every declared IDSpace
 // member is free of the grammar's own separator, so a raw operation_id
-// can always be split unambiguously (design D9).
+// can always be split unambiguously.
 func TestIDSpace_noneContainsTheSeparator(t *testing.T) {
 	t.Parallel()
 

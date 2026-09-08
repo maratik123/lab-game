@@ -17,8 +17,8 @@ func TestMain(m *testing.M) {
 }
 
 // newIngestPool builds a fresh, migrated schema-scoped pool for tb and
-// closes it on cleanup — this package's fixture, shaped like
-// internal/scheduler's newScheduler and internal/store's newStore.
+// closes it on cleanup — this package's fixture, shaped like the same
+// helper in the task-scheduler and ledger packages' own test suites.
 func newIngestPool(tb testing.TB) *pgxpool.Pool {
 	tb.Helper()
 
