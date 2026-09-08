@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # The coverage ratchet: statement coverage may rise freely and may not fall.
 #
-# ONE IMPLEMENTATION, THREE CALLERS. `.githooks/pre-commit` runs it in raise
+# ONE IMPLEMENTATION, THREE CALLERS. The pre-commit hook runs it in raise
 # mode, `make cover-ratchet` and CI run it with --check. A second spelling of
 # the measurement would let a local run and a CI run disagree about what the
-# number is, which is the whole reason the Makefile exists (KD-16).
+# number is, which is the whole reason the project's own build entry point
+# exists.
 #
 # WHAT IS MEASURED. `go test -coverprofile ./...` over every package, statement
 # mode, each package covered by ITS OWN tests — the Go default. Cross-package
@@ -17,8 +18,8 @@
 # Float arithmetic throughout; the tolerance absorbs the epsilon.
 #
 # THE TOLERANCE is not zero because the suite's coverage drifts between runs on
-# its own: a few error paths in internal/scheduler and internal/ingest are
-# reached only when a deadline or a cancellation lands inside a database
+# its own: a few error paths in the task-scheduler and update-ingest packages
+# are reached only when a deadline or a cancellation lands inside a database
 # round-trip. Today that is 6 statements, 0.34 pp of 1757.
 #
 # To re-derive the drifting set instead of trusting this sentence:
@@ -43,19 +44,27 @@
 # total that can be lost silently is one tolerance below the all-time high —
 # ONCE, not per commit.
 #
-# Usage:
-#   coverage-ratchet.sh            raise mode: check, and record a new high
-#   coverage-ratchet.sh --check    check only: never writes, never stages
-#
 # Exit 0 = coverage holds (or the ratchet was initialised, or the run was
 #          skipped for a named reason printed to stderr).
 # Exit 1 = coverage fell past the tolerance, or it could not be measured.
 
 set -uo pipefail
 
+usage() {
+  cat <<'USAGE'
+Usage:
+  coverage-ratchet.sh            raise mode: check, and record a new high
+  coverage-ratchet.sh --check    check only: never writes, never stages
+USAGE
+}
+
 TOLERANCE_PP=0.60
 RATCHET_FILE=ai-docs/coverage-ratchet.txt
 PROFILE=tmp/coverage.out
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 mode=${1:-raise}
 case "$mode" in

@@ -1,7 +1,7 @@
 # Build output
 /bin/
 /dist/
-# `go build ./...` drops each cmd/ binary in the working directory
+# `go build ./...` drops each command binary in the working directory
 /bot
 
 # Local environment — the bot token and DSN never enter the repository
@@ -10,7 +10,7 @@
 !.env.example
 
 # Scratch. Every gate log, mutation backup and throwaway probe a flow writes
-# lands here (AGENTS.md § Build & Test — capture to a file, never pipe a gate).
+# lands here — capture to a file, never pipe a gate.
 # One ignored directory instead of a spreading pattern: 60 `*.gate.log` files
 # had accumulated in the repository root by 2026-09-05, invisible to
 # `git status` and therefore to everyone, because the ignore rule was a glob
@@ -21,14 +21,14 @@
 # it runs (so a delegate's truncating edit is recoverable from history), then
 # `mv`s them here and commits the deletion of the old paths as the last commit
 # before the PR. Ignoring the directory keeps them out of the repo; moving them
-# also takes them out of the `ls ai-docs/plans/*.progress.md` and
-# `ls ai-docs/plans/*.spec.md.state.md` probes, which a plain untrack does not.
+# also takes them out of the equivalent progress-file and spec-state-file
+# probes, which a plain untrack does not.
 /ai-docs/plans/ignored/
 /ai-docs/main-ci/ignored/
 
-# Harness local-only state (see AGENTS.md § Agent Docs)
+# Harness local-only state
 /ai-docs/plans/**/*.progress.md
-# /task in-flight marker (Stop-hook contract, .claude/skills/task/SKILL.md)
+# /task in-flight marker (Stop-hook contract)
 /ai-docs/plans/.task-inflight
 /ai-docs/pr-comments/
 /ai-docs/bugfix/trace-*.md

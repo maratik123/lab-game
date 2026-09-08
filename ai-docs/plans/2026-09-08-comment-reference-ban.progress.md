@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** not run
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group A subtask 7 of 10 complete
-**last_passed_gate:** golangci-lint run (whole module); go test -race ./internal/ingest/... ./internal/scheduler/...
+**current_step:** Step 8 — Group A subtask 8 of 10 complete
+**last_passed_gate:** golangci-lint run (whole module); make shellcheck; actionlint .github/workflows/ci.yml
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** start Group A subtask 8 — sweep the build/runtime gated files; give `coverage-ratchet.sh` the D9 `--help`.
+**Do this immediately:** start Group A subtask 9 — `.env.example` restated; `config/balance.yaml` gains English self-contained prose.
 
 ## Subtasks
 
@@ -27,6 +27,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - [x] 5. Sweep `internal/store` + migrations, `internal/testdb`
 - [x] 6. Sweep `internal/tg`, `internal/tgtest`
 - [x] 7. Sweep `internal/ingest`, `internal/scheduler`
+- [x] 8. Sweep the build/runtime gated files; `coverage-ratchet.sh` gains the D9 `--help`
 - [ ] 3. The command `cmd/commentrefs`: input modes, exit codes, report format
 - [ ] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
 - [ ] 5. Sweep `internal/store` + migrations, `internal/testdb`
@@ -64,6 +65,8 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 7**: `internal/ingest` + `internal/scheduler` was the largest subtask by file count (43 files, ~370 initial report lines) but individually thinner per file than subtask 6 — mostly straightforward "(design DN)" parenthetical citations, handled with a first-pass regex strip (`\s*\(design D[0-9]+(?:, ?D[0-9]+)*\)`) across every file before the per-file manual read-and-patch loop, which cut the remaining hand-edited residue by roughly two-thirds.
 - **Subtask 7**: the regex-first strip left five stray `//.`/`// .` orphan comment lines (a citation that was the whole remainder of its sentence, same shape as subtask 4's `config/balance.go` finding) — caught by `golangci-lint run`'s `gocritic` `commentFormatting` check, not by the comment-reference gate itself (an orphaned marker with no banned token is not a finding). Fixed by re-flowing each sentence to end on the preceding line rather than leaving the bare marker.
 - **Subtask 7**: `go test -race ./internal/ingest/... ./internal/scheduler/...` was run for the same reason as subtask 6 — both packages run a worker loop with goroutines, a shared pending-settlement map, and (in ingest's case) a mutex-guarded cache — required by AGENTS.md for any change touching goroutines or shared state, even a comment-only one.
+- **Subtask 8**: `.githooks/coverage-ratchet.sh` is the one script this subtask gives the D9 `--help` shape to (the design's own assignment — every other script gets it in Group B's subtask 12, copying this shape verbatim). It already parsed a mode at `mode=${1:-raise}`, so per D9 the `-h|--help` case was inserted at that existing site, after the file's constant assignments (TOLERANCE_PP, RATCHET_FILE, PROFILE) and before the mode-validation case — no side effect precedes it. The removed `# Usage:` header block became the `usage()` function's heredoc body verbatim; the fixed marker line `-h|--help) usage; exit 0 ;;` is exactly what subtask 12 must copy byte-identical later. Verified: `bash .githooks/coverage-ratchet.sh --help` prints the usage and exits 0 with nothing else run; `shellcheck -s bash` clean; the existing `ai-docs/scripts/test-precommit-dispatch.sh` suite (which drives this script through the real hook) still passes unchanged; a real `--check` run against the working tree still reports the correct percentage.
+- **Subtask 8**: `.golangci.yml`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, `Makefile`, `.gitignore` needed only the reference sweep (no `--help`, no functional wiring change — `Makefile`'s `comment-refs` target and the pre-commit dispatcher are subtask 10; `verify`'s prerequisite and the CI job are subtask 15, per the design's two-landing split).
 
 ## Key discoveries (don't re-investigate)
 
@@ -121,3 +124,5 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` — comment sweep
 - `internal/ingest/*.go` (all 23 files) — comment sweep
 - `internal/scheduler/*.go` (all 22 files) — comment sweep
+- `.golangci.yml`, `.github/workflows/ci.yml`, `.github/dependabot.yml`, `Makefile`, `.gitignore` — comment sweep
+- `.githooks/coverage-ratchet.sh` — comment sweep + the D9 `--help` shape (`usage()`, the `-h|--help` case)

@@ -106,7 +106,7 @@ jobs:
       # where a drop is meant to be caught. This step catches a commit made on
       # a machine whose core.hooksPath is unset, and it re-rolls the suite's
       # timing-dependent statements on a runner rather than on the author's
-      # machine — see the drift measurement in .githooks/coverage-ratchet.sh.
+      # machine.
       - run: make cover-ratchet
 
   lint:
