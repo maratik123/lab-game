@@ -48,9 +48,9 @@ type stagedEntry struct {
 	mode string // e.g. "100644", "120000" (symlink)
 }
 
-// stagedEntries lists the staged, gated-candidate paths of the index whose
-// status is Added, Copied, Modified or Renamed — the set a commit will
-// actually write.
+// stagedEntries lists the staged paths of the index whose status is Added,
+// Copied, Modified or Renamed — the set a commit will actually write.
+// Gatedness is not decided here; the router decides it per path.
 func stagedEntries(ctx context.Context, root string) ([]stagedEntry, error) {
 	out, err := runGit(ctx, root, "diff", "--cached", "--raw", "-z")
 	if err != nil {

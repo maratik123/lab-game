@@ -123,3 +123,30 @@ func TestExtractYAML_ParseError(t *testing.T) {
 		t.Fatal("ExtractYAML() error = nil, want the malformed source reported")
 	}
 }
+
+// TestExtractYAML_EveryDocumentOfAStream asserts that a comment in the
+// second or later document of a multi-document stream is reported with its
+// own source line. Decoding only the first document returns no comment and
+// no error, so the gate would fail open on such a file.
+func TestExtractYAML_EveryDocumentOfAStream(t *testing.T) {
+	t.Parallel()
+	src := "# first\na: 1\n---\n# second\nb: 2\n---\n# third\nc: 3\n"
+	got, err := ExtractYAML([]byte(src))
+	if err != nil {
+		t.Fatalf("ExtractYAML() error = %v, want nil", err)
+	}
+	want := []Comment{
+		{Line: 1, Text: "first"},
+		{Line: 4, Text: "second"},
+		{Line: 7, Text: "third"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("ExtractYAML() returned %d comments, want %d: %+v", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if got[i].Line != w.Line || got[i].Text != w.Text {
+			t.Errorf("comment %d = {Line:%d Text:%q}, want {Line:%d Text:%q}",
+				i, got[i].Line, got[i].Text, w.Line, w.Text)
+		}
+	}
+}

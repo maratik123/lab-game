@@ -61,17 +61,15 @@ type DeathBalance struct {
 	RespawnDebuff    time.Duration
 }
 
-// AFKBalance is the AFK-leader cruelty dial. Its
-// shape — not only its number — is a placeholder; see the design's open
-// questions.
+// AFKBalance is the AFK-leader cruelty dial. Its shape — not only its
+// number — is a placeholder.
 type AFKBalance struct {
 	Cruelty decimal.Decimal
 }
 
 // DoorBalance is the crafted-door price curve and the boss-reward door
 // TTL. PriceBase, PricePerDistance and PriceDistanceExponent are a key
-// triple whose combining formula is not fixed by this package — see the
-// comment above the corresponding keys in the balance file.
+// triple whose combining formula is not fixed by this package.
 type DoorBalance struct {
 	PriceBase             decimal.Decimal
 	PricePerDistance      decimal.Decimal
@@ -81,8 +79,7 @@ type DoorBalance struct {
 
 // MonsterBudgetBalance is the monster budget-by-distance curve. Base,
 // PerDistance and DistanceExponent are a key triple whose combining
-// formula is not fixed by this package — see the comment above the
-// corresponding keys in the balance file.
+// formula is not fixed by this package.
 type MonsterBudgetBalance struct {
 	Base             decimal.Decimal
 	PerDistance      decimal.Decimal

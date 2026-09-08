@@ -1,8 +1,10 @@
 package commentref
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	yaml "go.yaml.in/yaml/v3"
@@ -14,7 +16,8 @@ import (
 // silently wrong line is worse than a refusal to run.
 var ErrYAMLCommentUnreconciled = errors.New("yaml comment did not reconcile to a source line")
 
-// ExtractYAML returns every comment in a YAML file. The underlying parser
+// ExtractYAML returns every comment in a YAML file, across every document
+// of the stream. The underlying parser
 // reports a comment on the node it attaches to, and only a same-line
 // comment shares that node's own line; a comment written above or below its
 // node is recovered by matching the retained text back against the source,
@@ -22,11 +25,6 @@ var ErrYAMLCommentUnreconciled = errors.New("yaml comment did not reconcile to a
 func ExtractYAML(src []byte) ([]Comment, error) {
 	if len(strings.TrimSpace(string(src))) == 0 {
 		return nil, nil
-	}
-
-	var doc yaml.Node
-	if err := yaml.Unmarshal(src, &doc); err != nil {
-		return nil, fmt.Errorf("yaml source: %w", err)
 	}
 
 	lines := strings.Split(string(src), "\n")
@@ -63,9 +61,19 @@ func ExtractYAML(src []byte) ([]Comment, error) {
 			}
 		}
 	}
-	walk(&doc)
-	if walkErr != nil {
-		return nil, walkErr
+	dec := yaml.NewDecoder(bytes.NewReader(src))
+	for {
+		var doc yaml.Node
+		if err := dec.Decode(&doc); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("yaml source: %w", err)
+		}
+		walk(&doc)
+		if walkErr != nil {
+			return nil, walkErr
+		}
 	}
 	return out, nil
 }

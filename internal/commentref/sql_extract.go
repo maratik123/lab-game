@@ -53,7 +53,7 @@ func ExtractSQL(src []byte) ([]Comment, error) {
 }
 
 // skipSQLString advances past a single-quoted string literal starting at
-// s[i], which must be the opening quote, handling a doubled quote (”) as
+// s[i], which must be the opening quote, handling a doubled apostrophe as
 // an escaped quote rather than the string's end. It returns the index just
 // past the string and the line number reached.
 func skipSQLString(s string, i, line int) (int, int) {
