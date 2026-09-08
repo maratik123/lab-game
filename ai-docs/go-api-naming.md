@@ -13,6 +13,8 @@ Rules behind `AGENTS.md` § *API Naming*.
 > | `…Unchecked` whose doc comment does not name the guarantor | **Wrong** — the comment is the contract |
 >
 > The suffix is a warning to the reader, not an optimisation badge. If no measurement showed the check mattered, delete the unchecked variant and keep one honest function.
+>
+> **Naming the guarantor under the comment-reference ban.** The guarantor is named the way the ban allows: a symbol in the comment's own package is written as the symbol, because a symbol that *is* the contract is not an outward reference. A guarantor in **another package of this module** is described rather than written as `<pkg>.<Ident>` — "the caller that has already taken the session lock", not the qualified name. The AXIOM is unchanged by this: the comment still states the precondition and still says who guarantees it. See [`doc-convention.md`](doc-convention.md) § DOC-4.
 
 ## Naming rules
 

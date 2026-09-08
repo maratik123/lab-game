@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** PASS
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group B subtask 13 of 14 complete
-**last_passed_gate:** `make comment-refs` silent; `make shellcheck`; all fourteen guard regression suites (the new one included); the four standalone checkers; two dispatcher mutants each caught and reverted
+**current_step:** Step 8 — Group B complete (subtasks 11-14); Group C (subtask 15) next
+**last_passed_gate:** `make comment-refs` silent; `make shellcheck`; every hook body through `shellcheck`; all fourteen guard regression suites; the four standalone checkers; the CI markdown-link check; `go build ./...`
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** start Group B subtask 14 — propagate the rule text across the instruction surface and the hook messages, per the design's D15 and the `grep -rni` sweep; the AC22 grammar sites; the tool-hierarchy and propagation-group rows for the new gate, job, checker and suite; rewrite the #68 body.
+**Do this immediately:** hand off to `/context-reset` per the design's Handoff plan — Group B (subtasks 11-14) is complete. Parent `/task` resumes in Group C (subtask 15, code, `sonnet`/`code-writer`, terminal) with fresh context. **Group C also owes three forward-written claims their truth:** `ai-docs/code-style.md` § Linter posture now says actionlint is the ONLY gate CI reaches by another route; `ai-docs/claude-tools-hierarchy.md` § CI now carries a `Comment references` job row and a Harness-guards row saying that job runs `make shellcheck` plus the script-shape checker; and `.claude/skills/task/reference.md` § Step 9 now lists `make comment-refs` as item 9a discharged by `make verify`. Subtask 15 is what makes all three true.
 
 ## Subtasks
 
@@ -33,7 +33,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - [x] 11. Rewrite `ai-docs/doc-convention.md` to the new rule
 - [x] 12. Sweep the harness shell scripts; usage prose behind `--help`, block copied verbatim
 - [x] 13. The script-shape checker and its suite; extend the dispatch suite
-- [ ] 14. Propagate the rule text across the instruction surface and the hook messages
+- [x] 14. Propagate the rule text across the instruction surface and the hook messages
 - [ ] 15. Wiring landing two: `verify` prerequisite; the CI job; Harness-guards runs `make shellcheck`
 
 ## Decisions log
@@ -86,6 +86,14 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 13 — the stub records its own argument vector** rather than the suite asserting the invocation from the dispatcher's source: `gate-marker.txt` must read `--staged` after a refusing run and must not exist after a skipping one, so the "gate ran over the staged set" claim comes from the run and not from a grep of the file that makes it.
 - **Subtask 13 — the two new scripts answer no `--help`, deliberately.** AC17 and AC18 are derived from the pre-sweep tree, and a file that did not exist there carried no usage prose; adding a flag would be the permissive reading of AC18's "no script that carried no usage prose answers `--help`". The restrictive reading is taken, which is also what subtask 10 did for the new dispatcher. Neither new script takes an argument, so nothing is left undocumented.
 - **Subtask 13 — one `shellcheck` suppression**: the checker's failure message prints the dispatch block as advice, and the block contains the parameter-expansion form literally, which trips SC2016. Suppressed with the specific code and a stated reason. The advice interpolates the same `marker` variable the assertion compares against, so the printed shape cannot drift from the enforced one.
+
+- **Subtask 14 — what the propagation actually reached.** Sites that *mandated* a banned reference: `.claude/agents/self-review.md` § 6 and `.claude/agents/review-findings.md` § 6 (both said "design citations by section, never by line" — now they state the ban and name the two review-judged halves), and `.claude/skills/project-review/SKILL.md` Step 4 item 6 (same, plus its `rg 'docs/DESIGN\.md:[0-9]'` scan dropped, since the gate decides that class in full now). Sites making a claim the change falsifies: `AGENTS.md` § Build & Test on what `.githooks/pre-commit` is and runs, `ai-docs/code-style.md` § Linter posture on the `Makefile` header's carve-out, `.claude/skills/task/reference.md`'s recon example naming `.githooks/pre-commit` as the shebang file without the extension. New rule text: `AGENTS.md` § Code Style gained the ban bullet, `ai-docs/code-style.md` gained a § Comments section, and both point at the doc-convention section rather than restating the class table.
+- **Subtask 14 — the `Unchecked` tension, recorded rather than reopened.** The AXIOM requires a doc comment to name the guarantor, and a cross-package guarantor cannot be written as `<pkg>.<Ident>` under the ban. The spec keeps both sections unchanged, so the resolution landed as a caveat in three places that state the rule — `ai-docs/go-api-naming.md` § The `…Unchecked` AXIOM, `.claude/agents/self-review.md` § 4, `.claude/agents/review-findings.md` § 2, plus `ai-docs/agent-writing-style.md`'s row — each saying the guarantor is *described* rather than qualified, and that this is conformance, not evasion. No tree instance exists today, so nothing in the sweep turned on it.
+- **Subtask 14 — the panic-justification rule got the same treatment**: the doc comment states the justification itself and does not point at the panic index, in `AGENTS.md` § Go Test Conventions, `ai-docs/go-test-conventions.md` § Panics, and the panic-gate hook's own message.
+- **Subtask 14 — AC22 read as the design reads it (D11)**: a site that *reproduces* a script's invocation grammar loses it; a site that merely names a script keeps it. Three sites qualified — `design-writer.md` and `spec-writer.md`'s document-edit-guard wrapping instruction, and `spec-writer.md`'s shape-gate step — and each keeps its operational imperative (snapshot before, verify after; run both gates before emitting a status) while delegating the forms to `--help`. The tool-hierarchy row for that guard lost its `snapshot <file>` / `verify <file>` spelling for the same reason. A final grep for the `<script>.sh <arg>` shape across the instruction surface returns nothing.
+- **Subtask 14 — three rows are written ahead of the tree, which the design pre-authorises** (its risk row: "Subtask 14 writes instruction-file rows describing a `verify` prerequisite and a CI job that do not exist until subtask 15"). They are named in `## Next action` so Group C cannot miss them, and each is a claim subtask 15 makes true rather than one it must edit.
+- **Subtask 14 — the #68 body was already reformulated during the interview**, so AC23's substance was standing; two things were still wrong. The **title** still read "Strip every comment from .go, .sh and .sql — doc comments included", the exact direction the body withdraws, which is the mislead Scope item 10 exists to prevent — retitled to match. And the body's Scope list predated the spec's Scope item 11, so the CI shellcheck-gap bullet was added. Edited with `--body-file`, never an inline `--body`, because the commit-block hook matches the substring.
+- **Subtask 14 — a defect in subtask 13 surfaced here and was fixed in its own commit.** `check-script-shape.sh` refused the tree the moment `test-script-shape.sh` became tracked: the suite spelled its dispatch fixtures literally inside heredocs, and the checker read five of them as that file's own dispatch. The reason it was not caught at subtask 13 is worth carrying — the checker walks `git ls-files`, and both new scripts were still untracked when it first reported "every tracked script conforms", so the green was true and said nothing about them. Fixed by assembling the arm at runtime, the device the citation guard's suite already uses for its fixture date.
 
 - **Step 8 Group A**: the orchestrator re-ran build, vet, test, lint and the new gate against the returned tree rather than accepting the group's summary. All green; `make comment-refs` reports only harness `*.sh` findings, which subtask 12 owns, and `SKIP .githooks/pre-commit` confirms the GO-note-1 symlink branch works.
 
@@ -158,6 +166,18 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `.githooks/pre-commit` — now a symlink to `.githooks/pre-commit.sh`
 - `ai-docs/scripts/*.sh` (all 15) — comment sweep; 15 of them gain the D9 `--help`
 - `ai-docs/scripts/check-script-shape.sh` — new: the four shape rules over the tracked tree
+- `AGENTS.md` — § Build & Test (the gate list, the pre-commit dispatcher), § Code Style (the ban bullet), § Go Test Conventions (the panic justification)
+- `ai-docs/code-style.md` — § Linter posture restated, new § Comments
+- `ai-docs/doc-convention.md`, `ai-docs/go-api-naming.md`, `ai-docs/go-test-conventions.md`, `ai-docs/agent-writing-style.md` — the rule and the cross-package guarantor caveat
+- `ai-docs/claude-tools-hierarchy.md` — the two new guard rows, the document-edit-guard row's grammar removed, the CI table's Harness-guards row and a new Comment-references job row
+- `ai-docs/propagation-groups.md` — two new rows: the DOC-4 group, and the `--help` shape group
+- `ai-docs/agent-docs-index.md` — the scripts-directory row names the script-shape checker
+- `.claude/agents/self-review.md`, `.claude/agents/review-findings.md`, `.claude/skills/project-review/SKILL.md` — the Review group, all three in step
+- `.claude/agents/design-writer.md`, `.claude/agents/spec-writer.md` — the AC22 grammar sites
+- `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/SKILL.md`, `.claude/skills/dependabot-pr/reference.md` — the CI group's `comment-refs` failure class and its reproducer
+- `.claude/skills/task/SKILL.md`, `.claude/skills/task/reference.md` — the verify list, the gate checklist, the recon example
+- `.claude/settings.json` — the `--no-verify` guard's message names the dispatcher and the gate's own escape; the panic gate's message says the comment does not point at the index
+- issue #68 — retitled to the reformulated rule; the Scope list gained the CI shellcheck-gap bullet
 - `ai-docs/scripts/test-script-shape.sh` — new: its regression suite, one sandbox per defect plus the all-conforming instrument check
 - `ai-docs/scripts/test-precommit-dispatch.sh` — extended: the symlink case and the four gate-dispatch cases on the stub seam
 - `.claude/skills/ai-audit/scripts/check-citations.sh` — comment sweep only (owes no `--help`)

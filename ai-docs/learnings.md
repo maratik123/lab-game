@@ -387,3 +387,10 @@ wrong-surface text by message twelve.
 **at:** fd5dd57
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-08 — tooling — ran a tree-walking checker over its own new files while they were still untracked, and recorded the green
+**What happened:** I wrote `ai-docs/scripts/check-script-shape.sh`, which enumerates its subject with `git ls-files`, ran it, and recorded "script shape: every tracked script conforms" as the subtask's verification. Both new scripts were untracked at that moment, so the enumeration could not reach either of them: the sentence was true and said nothing about the work it was cited for. One commit later, with the files tracked, the same checker refused the tree — its own suite spelled the dispatch fixtures literally inside heredocs, and the checker read five of them as that file's own dispatch, in three different shapes. The defect was in the artefact I had just declared verified, and the instrument had been pointed away from it.
+**Rule:** A checker whose subject is "the tracked tree" — `git ls-files`, `git diff --cached`, a paths-filter, an index walk — says nothing about a file that is not yet in that set, so its verdict is scoped to what was staged when it ran. Run such a checker AFTER `git add`, and where the checker is itself new, run it against its own new files explicitly by path as well. The general shape is the one `AGENTS.md` § *Patterns* 2 names: a green result is a claim about the instrument's reach first and about the subject second, and "no findings" from an enumeration that reached nothing is the cheapest false clearance there is. The second half of the same lesson: a guard's own regression suite is a member of the corpus that guard scans, so a fixture spelled literally is a fixture the guard reads as production text — assemble it at runtime, the way the citation guard's suite already assembles its fixture date.
+**at:** 0e8eae3
+**Kind:** correction
+**Escalated?** no

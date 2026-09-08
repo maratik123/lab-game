@@ -48,6 +48,7 @@ golangci-lint run                                       # strict lint gate
 golangci-lint fmt                                       # apply every enabled formatter
 golangci-lint fmt -d                                    # format check — non-zero exit = dirty
 go mod tidy && git diff --exit-code go.mod go.sum       # module hygiene gate
+make comment-refs                                       # the comment-reference ban, over the whole tracked gated set
 actionlint .github/workflows/<file>.yml                 # required gate for any new/modified workflow file
 shellcheck <script>.sh                                  # required gate for any new/modified shell script
 go run ./cmd/bot                                        # run the bot (exits non-zero unless .env.example's variables are exported)
@@ -66,8 +67,10 @@ go run ./cmd/bot                                        # run the bot (exits non
 
 > **A zero exit status is evidence about the LAST pipeline stage, not about your question.** Never pipe a gate whose exit code is load-bearing — `go test ./... | tail -6` reports `tail`'s status (always 0), so a RED gate records as green, and `tail -N` can truncate away the `FAIL` line you needed. Capture to a file **under `tmp/`** and grep the saved log: `mkdir -p tmp && go test ./... > tmp/gate.log 2>&1 && echo GATE-GREEN || echo GATE-RED`, then `grep -E "^(FAIL|ok|---)" tmp/gate.log`. `tmp/` is the one ignored scratch directory — a gate log, a mutation backup or a throwaway probe written to the repository ROOT is refused by a `PreToolUse` hook, because 60 of them accumulated there unseen while this sentence named a single filename. (`set -o pipefail` also works.) A `PreToolUse` hook blocks the `go test … | tail/head` form; the principle is broader than what the hook matches — the same silent-success shape covers a `jq` filter printing `null` from an error body, and a mutating flag (`rg -r`) rewriting output while exiting 0.
 
-> **AXIOM — statement coverage may rise and may not fall.** `.githooks/pre-commit` runs
-> `.githooks/coverage-ratchet.sh`, which measures `go test -coverprofile ./...`, compares it with
+> **AXIOM — statement coverage may rise and may not fall.** `.githooks/pre-commit` is a symbolic
+> link to `.githooks/pre-commit.sh`, which runs the comment-reference gate over the staged set and
+> then the ratchet.
+> `.githooks/coverage-ratchet.sh` measures `go test -coverprofile ./...`, compares it with
 > the value recorded in [`ai-docs/coverage-ratchet.txt`](ai-docs/coverage-ratchet.txt), refuses a
 > drop past the tolerance, and records a new high-water mark in the same commit. `make cover-ratchet`
 > and CI's Test job run the identical script with `--check` — it never writes there.
@@ -126,6 +129,7 @@ Thin by design — this project grows its own style rules through the learning l
 - **Magic numbers:** a literal with semantic meaning becomes a named constant. **Balance constants are different and stronger: they belong in configuration, not in Go source** (`docs/DESIGN.md` §16.5 — stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice). A tuning value hard-coded in a `.go` file is a defect even when it is named.
 - **Determinism:** world generation, combat, and any PvP-trail replay are pure functions of `(seed, input)`. No `time.Now()`, no map-iteration order, and no un-seeded `math/rand` on those paths.
 - **Documentation:** every exported item carries a doc comment starting with its name; every package has a package comment. See [`ai-docs/doc-convention.md`](ai-docs/doc-convention.md).
+- **Comments point at nothing outside themselves.** A comment says what the thing is, states its call contract, and carries what the linter requires; it carries no markdown path, design-section number, acceptance-criterion id, decision anchor, issue number outside `TODO(#…)`, repository path, URL, or package-qualified symbol of this module named outside its own package. The reason is rot: the thing pointed at is edited and the comment becomes a claim nothing checks. `make comment-refs` gates the lexical half over `*.go`, `*.sh`, `*.sql`, `*.yml`, `*.yaml`, `.gitignore`, `.env.example`, `Makefile` and `.githooks/**`; narration and the bare unqualified name are review-judged. Full rule, exemptions and the two review-judged halves: [`ai-docs/doc-convention.md`](ai-docs/doc-convention.md) § DOC-4.
 - **File size:** soft 500/800; hard 1000, and 1500 for `_test.go` — both gated; exemptions and the don't-over-split counter-rule are in `code-style.md`.
 
 See [`ai-docs/code-style.md`](ai-docs/code-style.md) for the canonical (growing) reference.
@@ -341,7 +345,7 @@ Run `/improve` when **≥3 unescalated correction entries**, **≥2 unescalated 
 
 - **Table-driven subtests** are the default shape: a `[]struct{name string; …}` slice, `t.Run(tc.name, …)`, `t.Parallel()` where the test is independent. Test names describe behaviour: `returns_error_when_stamina_exhausted`.
 - **`go test -race ./...` is a required gate for any change touching goroutines, the scheduler, or shared state.** A race is a defect, never a flake.
-- **No `panic` / `log.Fatal` in production code.** A `PostToolUse` hook flags them on write; every surviving instance is justified in a doc comment **and** recorded in [`ai-docs/panic-index.md`](ai-docs/panic-index.md). `main` may exit non-zero; libraries return errors.
+- **No `panic` / `log.Fatal` in production code.** A `PostToolUse` hook flags them on write; every surviving instance is justified in a doc comment **and** recorded in [`ai-docs/panic-index.md`](ai-docs/panic-index.md). The comment states the justification itself and does not point at the index — a comment naming a markdown path is what the reference ban forbids, and the index is found by name, not by a pointer from the code. `main` may exit non-zero; libraries return errors.
 - **Determinism is testable, so test it exactly.** Generation, combat, and trail replays take an explicit seed: assert exact outputs, and keep the golden log of a combat in the repository (`combat()` is a pure function by design — `docs/DESIGN.md` §4 — so a snapshot test is free and the freedom to rewrite combat depends on it).
 - **Postgres is tested against Postgres**, not a mock: the ledger's invariants (zero-sum per kind, the `CHECK` constraints, the capture order under concurrency) are database behaviour. Concurrency stress tests run under `-race`.
 - **Assert on behaviour, transitions, errors, and edge cases** — for the raid FSM that means every edge, including the timer edges whose guard fails (a stale task firing late is expected traffic, `docs/DESIGN.md` §3.5).

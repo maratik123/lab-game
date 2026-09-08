@@ -100,7 +100,7 @@ A passing test doesn't mean it's correct. Mentally comment out the production fi
   For every hit, ask: "Can this return an error instead?" On a handler, a scheduler task, or a ledger write the answer is **always yes** — a panic there drops a player's action or leaves a session's `seq` un-advanced. `main` may exit non-zero on a startup failure and needs no index row.
 - **Error handling.** Every returned error handled or wrapped with `%w` plus operation context? No `_ = err`? No error compared with `==` where it may be wrapped (`errors.Is`/`errors.As` instead)? Any violation → REJECT.
 - **Context discipline.** `ctx` first parameter on anything touching the database, network, or scheduler; no context stored in a struct; no `context.Background()` invented inside a request path → REJECT.
-- **`Unchecked` contract** (`AGENTS.md` § API Naming): every new `…Unchecked` function's doc comment names its precondition **and** the caller that guarantees it; no unsuffixed function silently skips a check its sibling performs. Violation → REJECT.
+- **`Unchecked` contract** (`AGENTS.md` § API Naming): every new `…Unchecked` function's doc comment names its precondition **and** the caller that guarantees it; no unsuffixed function silently skips a check its sibling performs. Violation → REJECT. Where the guarantor lives in **another package of this module**, the reference ban forbids the package-qualified form: the comment states the precondition and describes the guarantor without the qualifier, and that is conformance, not evasion.
 
 ### 4a. Domain invariants (this project's hard rules)
 
@@ -140,7 +140,7 @@ On any error → REJECT with the exact tool message as the finding.
 - **Sentinel errors named** in the doc of any function that can return them.
 - **Preconditions stated** on an `…Unchecked` variant, with the guarantor named.
 - **Concurrency safety stated** where the type is meant to be used from several goroutines; absent that, the reader assumes it is not safe.
-- **Design citations by section, never by line** — `docs/DESIGN.md §2.2.4`, not `:118`.
+- **No outward reference in any comment**, in any file of the gated set — not a markdown path, not a design-section number, not an acceptance-criterion id or decision anchor, not an issue number outside `TODO(#…)`, not a repository path, not a URL, not a package-qualified symbol of this module named outside the comment's own package. `make comment-refs` decides those lexically and CI refuses them; what it cannot decide is yours, and both halves are REJECTs: a comment that **narrates** what the code does step by step or how it is implemented, and a comment that points the reader elsewhere by a **bare unqualified name** ("see such-and-such"). The rule and its exemptions: [`ai-docs/doc-convention.md`](../../ai-docs/doc-convention.md) § DOC-4.
 - **No `TODO` without an issue reference**, no commented-out code, no comment that restates the code.
 
 ### 7. Objection quality (round > 1 only)

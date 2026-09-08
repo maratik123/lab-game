@@ -158,6 +158,7 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 | `race` | Test | `WARNING: DATA RACE` |
 | `lint` | Lint | a `golangci-lint` finding with its linter name in brackets, or `<path>: N lines exceeds hard limit M` from the `file-limits` gate |
 | `harness` | Harness guards | shellcheck finding, RED citation, guard-suite failure, size-cap breach, broken link |
+| `comment-refs` | Comment references | `<file>:<line>: <class>: <text>` lines — a comment in a gated file points outward |
 | `actionlint` | Actionlint | actionlint exit code != 0 |
 | `other` | — | None of the above — pause and surface |
 
@@ -171,7 +172,8 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 | `test` | `go test ./... -run <TestName>`, then the full suite |
 | `race` | `go test -race ./... -run <TestName>` |
 | `lint` | `golangci-lint run`; if that is clean the failure is the file-size gate — `awk` over `*.go`, hard 1000 / 1500 for `_test.go` |
-| `harness` | the failing guard itself (`shellcheck`, `check-citations.sh`, a guard suite, `wc -c`) |
+| `harness` | the failing guard itself (`shellcheck`, `check-citations.sh`, a guard suite, `check-script-shape.sh`, `wc -c`) |
+| `comment-refs` | `make comment-refs`, or `go run ./cmd/commentrefs <file>...` for the reported files |
 | `actionlint` | `actionlint .github/workflows/<file>.yml` |
 | `other` | Pause; print log excerpt + classifier candidates; surface to user. |
 

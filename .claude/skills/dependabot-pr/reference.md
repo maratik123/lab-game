@@ -32,7 +32,7 @@ Body:
 1. **Spawn `/pr-ci-failed`** via the Skill Tool, passing the [delegation-prompt template](#pr-ci-failed-delegation-prompt-template) verbatim as the spawn arguments. The child writes into its own fallback progress file `ai-docs/ci-fixes/pr-<N>.progress.md` (KD-14: the parent does not pass a path override).
 2. **Wait for the child to return.** The child EXITs between Step 3 and Step 4 per the prompt directive; no fix has been applied to the workspace, no commit, no push (KD-8 satisfied).
 3. **Read the child's progress file** `ai-docs/ci-fixes/pr-<N>.progress.md`. Extract two inputs:
-   - **`**Class:**`** field (set by the child at Step 2). One of `fmt` / `build` / `tidy` / `test` / `race` / `lint` / `harness` / `actionlint` / `other`.
+   - **`**Class:**`** field (set by the child at Step 2). One of `fmt` / `build` / `tidy` / `test` / `race` / `lint` / `harness` / `comment-refs` / `actionlint` / `other`.
    - **`Step 3:` decisions-log bullet.** Records the reproducer outcome: "reproduced" or "NO REPRODUCE, surfaced to user". Treat `Step 3 — reproduced` lines as REPRODUCES; `Step 3 — NO REPRODUCE, surfaced to user` lines as NO-REPRODUCE.
 
    > **Exit-step caveat.** When `**Class:**` is `other`, the child pauses at Step 2 and never reaches Step 3. In that case the verdict-translation table maps `other` × (any reproducer outcome) → pause-for-user — so routing is robust to "Step 3 never ran". The parent reads the child's `**Class:**` field as the sole input for the `other` class.
@@ -98,7 +98,7 @@ The parent passes this prompt VERBATIM when spawning `/pr-ci-failed` from any `�
 
 | Class assigned at child Step 2 | Where the child stops |
 |---|---|
-| `fmt` / `build` / `tidy` / `test` / `race` / `lint` / `harness` / `actionlint` | Step 3 (reproducer runs; outcome recorded; EXIT before Step 4) |
+| `fmt` / `build` / `tidy` / `test` / `race` / `lint` / `harness` / `comment-refs` / `actionlint` | Step 3 (reproducer runs; outcome recorded; EXIT before Step 4) |
 | `other` | Step 2 (pauses and surfaces logs; never enters Step 3) |
 
 The parent's verdict-translation table accommodates both exit shapes — the `other` row ignores the reproducer-outcome column.

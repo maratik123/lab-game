@@ -179,7 +179,7 @@ When you cannot complete the spec on this round and won't on the next either, re
 
 ## Workflow
 
-**Every scripted edit of the spec is wrapped:** `bash ai-docs/scripts/doc-edit-guard.sh snapshot <spec_path>` before the edit, `… verify <spec_path>` after it, in the same command. The guard restores the file and exits 2 when a section heading, an AC row or a decision row disappeared — the shape of a heading-anchored slice that matched an in-text mention instead of the heading (it has truncated a design and a spec, both untracked at the time; `ai-docs/learnings.md` 2026-09-02 and 2026-09-08). Anchor headings on `"\n## <heading>\n"`, and rely on the guard rather than on remembering to.
+**Every scripted edit of the spec is wrapped** by `ai-docs/scripts/doc-edit-guard.sh` — snapshot before the edit, verify after it, in the same command. Run the script with `--help` for the two forms rather than copying them from here; a grammar reproduced in prose is a grammar that rots. The guard restores the file and exits 2 when a section heading, an AC row or a decision row disappeared — the shape of a heading-anchored slice that matched an in-text mention instead of the heading (it has truncated a design and a spec, both untracked at the time; `ai-docs/learnings.md` 2026-09-02 and 2026-09-08). Anchor headings on `"\n## <heading>\n"`, and rely on the guard rather than on remembering to.
 
 **A denied tool is a finding, never a silent detour.** `WebFetch` / `WebSearch` are granted for sources outside the tree — an upstream issue, a package's documentation, the behaviour of a tool the task depends on (this project runs podman and Postgres, and a spec that guesses at either is worth less than one that read the page). A fetch the harness refuses is recorded in the spec's `## Open questions` with the URL and the reason, or returned as `external_dependency` — it is not worked around from memory.
 
@@ -222,7 +222,7 @@ Before emitting any `ask` status:
 4. Confirm `len(questions) <= questions_per_round_cap`.
 5. Confirm each `header` is ≤ 12 chars.
 6. Confirm each `options` list has 2..=4 entries (the `AskUserQuestion` tool's hard cap).
-7. Run `bash ai-docs/scripts/check-spec-shape.sh <spec_path>` and `bash ai-docs/scripts/check-ac-shape.sh <spec_path>`; both exit 0 or the status is not emitted. Both are CI gates, so a spec that fails them here fails the PR later.
+7. Run `ai-docs/scripts/check-spec-shape.sh` and `ai-docs/scripts/check-ac-shape.sh` over the spec — each answers `--help` with the forms it takes — and both exit 0 or the status is not emitted. Both are CI gates, so a spec that fails them here fails the PR later.
 8. Only then emit `status: ask`.
 
 The same two commands gate `status: ready`.

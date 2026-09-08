@@ -57,7 +57,7 @@ For mechanical decisions:
 
 | If you see... | Action |
 |---|---|
-| A function carrying the `Unchecked` suffix whose doc comment does not name the guard that guarantees its precondition | **REPLACE** the comment with one that names the guarantor, or **DELETE** the unchecked variant |
+| A function carrying the `Unchecked` suffix whose doc comment does not name the guard that guarantees its precondition | **REPLACE** the comment with one that names the guarantor — describing it rather than writing `<pkg>.<Ident>` when the guarantor is in another package of this module, per the reference ban — or **DELETE** the unchecked variant |
 
 Left column lists conditions an editor or reviewer would recognise (visible
 markers, file paths, error messages). Right column lists the action verbatim.
