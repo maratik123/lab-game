@@ -7,8 +7,9 @@ import (
 	"time"
 )
 
-// TestObserve_collectsOneObservationPerExecutedTask is AC12: a success, a
-// guard no-op, a one-shot retry, a one-shot give-up, and a repeatedly
+// TestObserve_collectsOneObservationPerExecutedTask asserts that a
+// success, a guard no-op, a one-shot retry, a one-shot give-up, and a
+// repeatedly
 // failing recurrence each produce exactly one Observation, plus a
 // LoopObservation carrying a duration.
 func TestObserve_collectsOneObservationPerExecutedTask(t *testing.T) {
@@ -55,7 +56,7 @@ func TestObserve_collectsOneObservationPerExecutedTask(t *testing.T) {
 			t.Errorf("observation for %s: BatchSize = %d, want 3", o.Type, o.BatchSize)
 		}
 		// Positive, not merely non-negative: Lag is a real elapsed interval
-		// between run_at and the execution instant (design D3), so a zero
+		// between run_at and the execution instant, so a zero
 		// would mean the two instants came from the same read — the exact
 		// defect the clock discipline exists to prevent.
 		if o.Lag <= 0 {
@@ -166,7 +167,7 @@ func TestObserve_repeatedlyFailingRecurrence(t *testing.T) {
 }
 
 // TestObserve_nilObserver confirms the package's cycles run unchanged
-// with no Observer installed (AC13).
+// with no Observer installed.
 func TestObserve_nilObserver(t *testing.T) {
 	t.Parallel()
 
@@ -191,7 +192,7 @@ func TestObserve_nilObserver(t *testing.T) {
 	}
 }
 
-// TestObserve_nonDefaultTuning_changesObservedBehaviour is AC14: a
+// TestObserve_nonDefaultTuning_changesObservedBehaviour asserts that a
 // smaller claim limit bounds the batch, a smaller attempt cap gives up
 // sooner, a different backoff base changes the persisted delays, and a
 // short poll interval makes a freshly inserted task run within a bounded
@@ -247,7 +248,7 @@ func TestObserve_nonDefaultTuning_changesObservedBehaviour(t *testing.T) {
 	}
 }
 
-// TestRun_shortPollInterval_picksUpFreshlyInsertedTask is AC14's poll-
+// TestRun_shortPollInterval_picksUpFreshlyInsertedTask covers the poll-
 // interval half: with a short poll interval, Run picks up a task inserted
 // after Run has already started, within a bounded wait, and stops
 // cleanly when ctx is cancelled.

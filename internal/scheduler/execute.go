@@ -11,7 +11,7 @@ import (
 
 // setTimeoutsSQL sets the two transaction-local timeouts through
 // set_config(name, $1, true) rather than SET LOCAL name = $1, which is
-// not a parameterisable position (design D2 step 1).
+// not a parameterisable position.
 //
 // $1 is bound twice, deliberately: w.cfg.TaskTimeout drives both server-
 // side timeouts through the one knob, and context.WithTimeout below
@@ -38,18 +38,18 @@ type handlerResult struct {
 	handlerErr, releaseErr error
 }
 
-// executeOne runs id's whole per-task transaction (design D2's steps
-// 1-8, including the per-task execution deadline, design D11). batchSize
-// is the discovery cardinality of the cycle id came from (AC12's
+// executeOne runs id's whole per-task transaction, including the
+// per-task execution deadline. batchSize
+// is the discovery cardinality of the cycle id came from (via
 // Observation.BatchSize). An Observation is emitted after COMMIT
 // succeeds — never before, since an observation emitted before the
-// commit is a claim about work that may still roll back (design D2) —
+// commit is a claim about work that may still roll back —
 // except when the row was skipped at re-claim, which produces no
 // observation at all because nothing executed.
 //
 // The connection is acquired explicitly, rather than through
 // (*pgxpool.Pool).Begin, because a deadline breach must hijack it
-// (design D11) — an operation only pgxpool.Conn exposes.
+// — an operation only pgxpool.Conn exposes.
 func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error {
 	conn, err := w.pool.Acquire(ctx)
 	if err != nil {
@@ -90,9 +90,9 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 		return err
 	}
 
-	// The execution instant t (design D3): read once, before the handler
-	// runs. Its one job is AC12's lag; every future run_at is computed
-	// from the settlement instant instead (D7).
+	// The execution instant t: read once, before the handler
+	// runs. Its one job is the observed lag; every future run_at is
+	// computed from the settlement instant instead.
 	t, err := readSettlementInstant(ctx, tx)
 	if err != nil {
 		return fmt.Errorf("scheduler: read execution instant for task %d: %w", id, err)
@@ -116,8 +116,9 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 		return nil
 	}
 
-	// Layer 1 of D11: the handler runs on its own goroutine with a
-	// deadline-bearing context, handed the worker's own tx. The worker
+	// Layer 1 of a three-layer deadline defence: the handler runs on its
+	// own goroutine with a deadline-bearing context, handed the worker's
+	// own tx. The worker
 	// selects on either its result or the deadline (layer 3).
 	deadlineCtx, cancel := context.WithTimeout(ctx, w.cfg.TaskTimeout)
 	defer cancel()
@@ -136,7 +137,7 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 		// abandoned, not committed or rolled back — the row is still
 		// locked until the server terminates the backend (layer 2) or the
 		// watchdog below closes the hijacked connection once the orphaned
-		// handler goroutine returns. Design D7's deferred settlement
+		// handler goroutine returns. The deferred settlement
 		// closes the "attempt never counted" hole this would otherwise
 		// leave.
 		pconn := conn.Hijack()
@@ -145,7 +146,7 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 			id: id, runAt: task.RunAt, consecutiveFailures: task.ConsecutiveFailures,
 			recurrence: decl.Recurrence, reason: "deadline exceeded",
 		})
-		go func() { //nolint:gosec,contextcheck // G118/contextcheck: context.Background() is deliberate here — ctx (and deadlineCtx) may already be done by the time this fires, and closing the connection must still happen, since that is what finally releases the row's lock for a handler that ignores its own ctx (design D11)
+		go func() { //nolint:gosec,contextcheck // G118/contextcheck: context.Background() is deliberate here — ctx (and deadlineCtx) may already be done by the time this fires, and closing the connection must still happen, since that is what finally releases the row's lock for a handler that ignores its own ctx
 			<-resultCh // wait for the orphaned handler goroutine to return
 			_ = pconn.Close(context.Background())
 		}()
@@ -158,9 +159,9 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 }
 
 // settleAndAfter applies r's settlement and commits tx, then releases
-// conn. On a commit failure it defers the same settlement instead
-// (design D2 step 8, D7): the commit that would have written it never
-// happened, so the row is left exactly as due as it was, and only a
+// conn. On a commit failure it defers the same settlement instead: the
+// commit that would have written it never happened, so the row is left
+// exactly as due as it was, and only a
 // later drain can count the attempt. The caller has already marked its
 // own handled flag true; this function owns tx/conn from here on.
 func (w *Worker) settleAndAfter(
@@ -211,7 +212,7 @@ func (w *Worker) settleAndAfter(
 
 // runHandlerWithSavepoint runs handler on task inside tx under a raw-SQL
 // savepoint — never pgx.Tx.Begin's pseudo-nested transaction, which
-// cannot recover a failed release (design § Approach, D2 step 5). On
+// cannot recover a failed release. On
 // OutcomeDone it releases the savepoint; a release failure (a swallowed
 // database error inside the handler) is reported as releaseErr and the
 // subtransaction is then rolled back so the settlement statement can

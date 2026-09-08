@@ -23,7 +23,7 @@ func (h *alwaysFailHandler) Execute(context.Context, pgx.Tx, Task) (Outcome, err
 	return OutcomeFailed, h.err
 }
 
-// decodeFailHandler simulates AC26's "cannot decode its payload" case: it
+// decodeFailHandler simulates the "cannot decode its payload" case: it
 // always fails to json.Unmarshal the payload into an int and returns that
 // decode error, classified as an ordinary failure.
 type decodeFailHandler struct{}
@@ -105,8 +105,9 @@ func forceDue(t *testing.T, pool *pgxpool.Pool, id TaskID) {
 	}
 }
 
-// TestFailurePolicy_oneShotAttemptsGrowAndGiveUp is AC9: driven attempt
-// by attempt (each cycle preceded by making the row due), each persisted
+// TestFailurePolicy_oneShotAttemptsGrowAndGiveUp asserts that driven
+// attempt by attempt (each cycle preceded by making the row due), each
+// persisted
 // run_at falls within the exact backoff bracket computed around the
 // settlement instant, the exact attempt count at give-up equals the
 // configured cap, the state is terminal, and a subsequent discovery does
@@ -143,8 +144,8 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 			if failures != attempt {
 				t.Fatalf("attempt %d: consecutive_failures = %d, want %d", attempt, failures, attempt)
 			}
-			// The settlement instant s (settle.go's clock_timestamp() read,
-			// after the handler returned) satisfies before <= s <= after by
+			// The settlement instant s (the settlement code's clock_timestamp()
+			// read, after the handler returned) satisfies before <= s <= after by
 			// construction: all three are server clock reads, and before and
 			// after bracket the RunOnce call that reads s. run_at = s +
 			// backoff(attempt), so it must land in
@@ -153,15 +154,15 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 			// takes to execute.
 			//
 			// The bracket's delay is a LITERAL one-based ramp, not a call to
-			// backoff or to internal/backoff.Exponential (design D2, subtask
-			// 2's call-site gate): 200ms then 400ms is exactly what the
-			// shipped one-based backoff(attempt, 200ms, 1s) computes at
-			// attempts 1 and 2 -- verified green against the still-shipped
-			// backoff before backoff.go's ramp was ever re-pointed. Pinning
-			// it as a literal here is what lets this assertion catch an
-			// omitted one-based-to-zero-based translation at settle.go's own
-			// call site: cadence_test.go's table alone cannot, because it
-			// pins the shared function, not the argument settle.go passes it.
+			// the shared backoff package's ramp function: 200ms then 400ms is
+			// exactly what the shipped one-based backoff(attempt, 200ms, 1s)
+			// computes at attempts 1 and 2 -- verified green against the
+			// still-shipped backoff before the shared package's ramp was ever
+			// re-pointed. Pinning it as a literal here is what lets this
+			// assertion catch an omitted one-based-to-zero-based translation
+			// at the settlement code's own call site: a sibling table test
+			// alone cannot, because it pins the shared function, not the
+			// argument the settlement code passes it.
 			literalOneBasedRamp := map[int]time.Duration{
 				1: 200 * time.Millisecond,
 				2: 400 * time.Millisecond,
@@ -199,11 +200,12 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 	}
 }
 
-// TestFailurePolicy_nonDefaultFactorReachesTheCallSite is design D20's
+// TestFailurePolicy_nonDefaultFactorReachesTheCallSite is the
 // non-default-factor scenario for the inline one-shot settlement
-// (settle.go's deferredFailedStatement/settleFailed path): the only
+// (the deferredFailedStatement/settleFailed path): the only
 // instrument that discriminates a call site passing the configured
-// cfg.RetryFactor from one passing backoff.DefaultFactor, because the
+// cfg.RetryFactor from one passing the shared package's compiled-in
+// default, because the
 // literal one-based ramp above stays at the default and cannot see it.
 func TestFailurePolicy_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 	t.Parallel()
@@ -258,7 +260,7 @@ func TestFailurePolicy_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 // would make the bracket's lower bound (before + backoff) identical to
 // the value a regression anchoring run_at to task.RunAt produces, so the
 // assertion would be blind to exactly the defect it exists to catch --
-// the one readSettlementInstant's doc comment in settle.go warns about.
+// the one readSettlementInstant's own doc comment warns about.
 // Separating the two by a second is what makes that mutation land a full
 // second below the bound. A past run_at still satisfies discovery's
 // WHERE run_at <= now().
@@ -273,7 +275,7 @@ func forceDueAndCapture(t *testing.T, pool *pgxpool.Pool, id TaskID) time.Time {
 	return now
 }
 
-// TestFailurePolicy_decodeFailure is AC26.
+// TestFailurePolicy_decodeFailure covers the decode-failure case.
 func TestFailurePolicy_decodeFailure(t *testing.T) {
 	t.Parallel()
 
@@ -329,8 +331,9 @@ func TestFailurePolicy_decodeFailure(t *testing.T) {
 	}
 }
 
-// TestFailurePolicy_recurrenceNeverTerminal is AC32: a recurrence whose
-// handler fails more times than the one-shot cap stays pending, still
+// TestFailurePolicy_recurrenceNeverTerminal asserts that a recurrence
+// whose handler fails more times than the one-shot cap stays pending,
+// still
 // advances by its cadence, and never becomes terminal.
 func TestFailurePolicy_recurrenceNeverTerminal(t *testing.T) {
 	t.Parallel()
@@ -374,7 +377,7 @@ func TestFailurePolicy_recurrenceNeverTerminal(t *testing.T) {
 	}
 }
 
-// TestFailurePolicy_counterRisesAndResets is AC34: the counter rises
+// TestFailurePolicy_counterRisesAndResets asserts that the counter rises
 // across successive failures and returns to zero after a success, and
 // after a no-op.
 func TestFailurePolicy_counterRisesAndResets(t *testing.T) {
@@ -453,8 +456,9 @@ func TestFailurePolicy_counterRisesAndResets(t *testing.T) {
 	}
 }
 
-// TestFailurePolicy_undeclaredType_keepsComingDue is AC21's execution-time
-// half: an undeclared row's refusal repeats at the configured ceiling
+// TestFailurePolicy_undeclaredType_keepsComingDue covers the
+// execution-time half: an undeclared row's refusal repeats at the
+// configured ceiling
 // rather than stopping — driven more times than the one-shot cap, it
 // stays pending with its starting failure count untouched.
 func TestFailurePolicy_undeclaredType_keepsComingDue(t *testing.T) {

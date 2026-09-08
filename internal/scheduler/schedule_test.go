@@ -20,9 +20,10 @@ func testRegistry(tb testing.TB) *Registry {
 	return reg
 }
 
-// TestSchedule_payloadRoundTrip is AC24: a payload with a nested object
-// and a null value round-trips by value, never by raw bytes — jsonb
-// normalises key order, whitespace and duplicate keys (design D5), so a
+// TestSchedule_payloadRoundTrip asserts that a payload with a nested
+// object and a null value round-trips by value, never by raw bytes —
+// jsonb
+// normalises key order, whitespace and duplicate keys, so a
 // byte comparison would be asserting a property the storage type does
 // not have.
 func TestSchedule_payloadRoundTrip(t *testing.T) {
@@ -61,9 +62,9 @@ func TestSchedule_payloadRoundTrip(t *testing.T) {
 		t.Fatalf("decoded nested payload = %v, want %v", gotNested, wantNested)
 	}
 
-	// AC24's other half: the payload must survive the claim and reach the
-	// handler. Asserting only the stored row leaves claim.go free to hand
-	// every handler something else entirely.
+	// The other half: the payload must survive the claim and reach the
+	// handler. Asserting only the stored row leaves the claim code free to
+	// hand every handler something else entirely.
 	w, err := New(Options{Pool: pool, Registry: reg, Config: testConfig()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -144,9 +145,9 @@ func TestSchedule_negativeDelay_returnsErrInvalidDelay(t *testing.T) {
 	}
 }
 
-// TestSchedule_duplicateLiveIdentity_returnsErrDuplicateTask is AC29's
+// TestSchedule_duplicateLiveIdentity_returnsErrDuplicateTask covers the
 // live-duplicate direction. The database still refuses the second live
-// row (via ON CONFLICT ... DO NOTHING, design D9) — Schedule maps the
+// row (via ON CONFLICT ... DO NOTHING) — Schedule maps the
 // resulting zero-rows-returned to ErrDuplicateTask rather than letting a
 // raw 23505 abort the caller's transaction, so the transaction below
 // stays usable afterwards.
@@ -205,8 +206,8 @@ func TestSchedule_keylessOneShots_coexist(t *testing.T) {
 	}
 }
 
-// TestSchedule_reschedulingDeadIdentity_succeeds closes the round-1 trap
-// (design D5): a dead row of an identity must not block re-scheduling it.
+// TestSchedule_reschedulingDeadIdentity_succeeds asserts that a dead row
+// of an identity must not block re-scheduling it.
 func TestSchedule_reschedulingDeadIdentity_succeeds(t *testing.T) {
 	t.Parallel()
 

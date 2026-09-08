@@ -47,7 +47,7 @@ func (o *recordingObserver) Loops() []LoopObservation {
 func TestObserveUpdate_nilObserverIsNotCalled(t *testing.T) {
 	t.Parallel()
 
-	// A nil Observer must be checked, not called (design D12, AC19); if
+	// A nil Observer must be checked, not called; if
 	// observeUpdate dereferenced it, this call would panic.
 	observeUpdate(nil, Observation{Kind: KindMessage, Outcome: OutcomeHandled})
 }

@@ -8,16 +8,16 @@ import (
 
 // Kind identifies one Bot API update type — the exact tokens
 // GetUpdatesParams.AllowedUpdates and telego's own "Update types you want
-// your bot to receive" constants use (design D4). The zero Kind ("") is
+// your bot to receive" constants use. The zero Kind ("") is
 // never a real update type: it is what Derive returns for an update
-// matching no table row (unrouted, AC9).
+// matching no table row (unrouted).
 type Kind string
 
 // The Bot API's update types, mirroring telego's own constant block
-// exactly (methods.go's MessageUpdates .. ManagedBot, plus Subscription —
-// design D4). A drift check in guards_test.go (subtask 11) reflects over
-// telego.Update's exported pointer fields and asserts each one's json tag
-// is either a table row here or a named exemption.
+// exactly (its MessageUpdates .. ManagedBot, plus Subscription). A drift
+// check elsewhere in this package reflects over telego.Update's exported
+// pointer fields and asserts each one's json tag is either a table row
+// here or a named exemption.
 const (
 	KindMessage                 Kind = "message"
 	KindEditedMessage           Kind = "edited_message"
@@ -51,8 +51,8 @@ const (
 // that payload, and optional extractors for the update's own date and
 // its destination chat id — supplied per PAYLOAD TYPE, not per kind, so
 // every *telego.Message kind shares messageDate/messageChatID and both
-// *telego.ChatMemberUpdated kinds share chatMemberDate/chatMemberChatID
-// (design D4). date and chatID are nil for a kind whose payload declares
+// *telego.ChatMemberUpdated kinds share chatMemberDate/chatMemberChatID.
+// date and chatID are nil for a kind whose payload declares
 // neither.
 type kindRow struct {
 	kind    Kind
@@ -62,8 +62,7 @@ type kindRow struct {
 }
 
 // messageDate and messageChatID extract telego.Message's own Date and
-// Chat.ID fields — shared by every *telego.Message-payload kind (design
-// D13).
+// Chat.ID fields — shared by every *telego.Message-payload kind.
 func messageDate(m *telego.Message) (time.Time, bool) {
 	return time.Unix(m.Date, 0).UTC(), true
 }
@@ -74,7 +73,7 @@ func messageChatID(m *telego.Message) (int64, bool) {
 
 // chatMemberDate and chatMemberChatID extract telego.ChatMemberUpdated's
 // own Date and Chat.ID fields — shared by KindMyChatMember and
-// KindChatMember (design D13).
+// KindChatMember.
 func chatMemberDate(c *telego.ChatMemberUpdated) (time.Time, bool) {
 	return time.Unix(c.Date, 0).UTC(), true
 }
@@ -84,22 +83,21 @@ func chatMemberChatID(c *telego.ChatMemberUpdated) (int64, bool) {
 }
 
 // businessConnectionDate extracts telego.BusinessConnection's own Date
-// field — KindBusinessConnection's payload declares a Date but no Chat
-// (design D4/D13).
+// field — KindBusinessConnection's payload declares a Date but no Chat.
 func businessConnectionDate(b *telego.BusinessConnection) (time.Time, bool) {
 	return time.Unix(b.Date, 0).UTC(), true
 }
 
 // businessMessagesDeletedChatID extracts telego.BusinessMessagesDeleted's
 // own Chat.ID field — KindDeletedBusinessMessages's payload declares a
-// Chat but no Date (design D4/D13).
+// Chat but no Date.
 func businessMessagesDeletedChatID(b *telego.BusinessMessagesDeleted) (int64, bool) {
 	return b.Chat.ID, true
 }
 
 // messageReactionDate and messageReactionChatID extract
 // telego.MessageReactionUpdated's own Date and Chat.ID fields —
-// KindMessageReaction's payload declares both (design D4/D13).
+// KindMessageReaction's payload declares both.
 func messageReactionDate(m *telego.MessageReactionUpdated) (time.Time, bool) {
 	return time.Unix(m.Date, 0).UTC(), true
 }
@@ -110,7 +108,7 @@ func messageReactionChatID(m *telego.MessageReactionUpdated) (int64, bool) {
 
 // messageReactionCountDate and messageReactionCountChatID extract
 // telego.MessageReactionCountUpdated's own Date and Chat.ID fields —
-// KindMessageReactionCount's payload declares both (design D4/D13).
+// KindMessageReactionCount's payload declares both.
 func messageReactionCountDate(m *telego.MessageReactionCountUpdated) (time.Time, bool) {
 	return time.Unix(m.Date, 0).UTC(), true
 }
@@ -121,7 +119,7 @@ func messageReactionCountChatID(m *telego.MessageReactionCountUpdated) (int64, b
 
 // chatJoinRequestDate and chatJoinRequestChatID extract
 // telego.ChatJoinRequest's own Date and Chat.ID fields —
-// KindChatJoinRequest's payload declares both (design D4/D13).
+// KindChatJoinRequest's payload declares both.
 func chatJoinRequestDate(c *telego.ChatJoinRequest) (time.Time, bool) {
 	return time.Unix(c.Date, 0).UTC(), true
 }
@@ -131,22 +129,20 @@ func chatJoinRequestChatID(c *telego.ChatJoinRequest) (int64, bool) {
 }
 
 // chatBoostUpdatedChatID extracts telego.ChatBoostUpdated's own Chat.ID
-// field — KindChatBoost's payload declares a Chat but no Date (design
-// D4/D13).
+// field — KindChatBoost's payload declares a Chat but no Date.
 func chatBoostUpdatedChatID(c *telego.ChatBoostUpdated) (int64, bool) {
 	return c.Chat.ID, true
 }
 
 // chatBoostRemovedChatID extracts telego.ChatBoostRemoved's own Chat.ID
 // field — KindRemovedChatBoost's payload declares a Chat but no Date
-// (RemoveDate is a distinct field, not the update's own Date — design
-// D4/D13).
+// (RemoveDate is a distinct field, not the update's own Date).
 func chatBoostRemovedChatID(c *telego.ChatBoostRemoved) (int64, bool) {
 	return c.Chat.ID, true
 }
 
-// kindTable is the one explicit table D4 requires: production code, not
-// reflection. Every entry's present probe checks exactly the payload
+// kindTable is the one explicit table this package requires: production
+// code, not reflection. Every entry's present probe checks exactly the payload
 // field the row's json tag names.
 var kindTable = []kindRow{
 	{
@@ -224,7 +220,7 @@ var kindTable = []kindRow{
 	{
 		kind:    KindCallbackQuery,
 		present: func(u *telego.Update) bool { return u.CallbackQuery != nil },
-		// CallbackQuery declares no date field at all (design D13) — date
+		// CallbackQuery declares no date field at all — date
 		// stays nil.
 	},
 	{
@@ -296,7 +292,7 @@ func rowForKind(k Kind) (kindRow, bool) {
 }
 
 // knownKind reports whether k names a row of kindTable — the predicate
-// NewRouter refuses a route without (design D4).
+// NewRouter refuses a route without.
 func knownKind(k Kind) bool {
 	_, ok := rowForKind(k)
 	return ok
@@ -306,8 +302,7 @@ func knownKind(k Kind) bool {
 // matches, since exactly one of telego.Update's optional payload fields
 // is ever set on a real update. An update matching no row (a Bot API
 // update type this table has not yet learned, or a hand-built Update
-// with nothing set) derives the zero Kind — unrouted, never a panic
-// (design D4, AC9).
+// with nothing set) derives the zero Kind — unrouted, never a panic.
 func Derive(u *telego.Update) Kind {
 	for _, row := range kindTable {
 		if row.present(u) {
@@ -318,7 +313,7 @@ func Derive(u *telego.Update) Kind {
 }
 
 // Date reports u's own date, when its derived kind's payload declares
-// one (design D13). The boolean is false — never a zero time.Time — for
+// one. The boolean is false — never a zero time.Time — for
 // a kind whose payload declares no date, because a zero lag would be
 // indistinguishable from a healthy poll.
 func Date(u *telego.Update) (time.Time, bool) {
@@ -330,7 +325,7 @@ func Date(u *telego.Update) (time.Time, bool) {
 }
 
 // ChatID reports u's destination chat id, when its derived kind's
-// payload declares one (design D4).
+// payload declares one.
 func ChatID(u *telego.Update) (int64, bool) {
 	row, ok := rowForKind(Derive(u))
 	if !ok || row.chatID == nil {

@@ -4,7 +4,7 @@ import "fmt"
 
 // Recurrence pairs a cadence with the configuration key its period value
 // came from. It carries no instance-key field: a recurrence's instance
-// key is derived as its declared type's name (design D10) — Registry
+// key is derived as its declared type's name — Registry
 // admits one Declaration per type, so a second instance key for the same
 // recurrent type would key a declaration that cannot exist.
 type Recurrence struct {

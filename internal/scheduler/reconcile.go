@@ -6,21 +6,21 @@ import (
 	"time"
 )
 
-// reconcileSeedSQL is D10's seed: one statement per declared recurrence,
-// idempotent by the constraint rather than by a lock, so several workers
-// starting at once is safe by construction (AC33). $2, the instance key,
-// is the recurrence's type name — derived, not declared (D10) — which is
-// what puts a freshly seeded row inside scheduled_task_identity_key's
-// predicate.
+// reconcileSeedSQL is the seed statement: one statement per declared
+// recurrence, idempotent by the constraint rather than by a lock, so
+// several workers starting at once is safe by construction. $2, the
+// instance key, is the recurrence's type name — derived, not declared —
+// which is what puts a freshly seeded row inside
+// scheduled_task_identity_key's predicate.
 const reconcileSeedSQL = `
 	INSERT INTO scheduled_task (type, instance_key, payload, run_at)
 	VALUES ($1, $2, '{}'::jsonb, $3)
 	ON CONFLICT (type, instance_key) WHERE instance_key IS NOT NULL AND state = 'pending' DO NOTHING
 `
 
-// reconcileCorrectSQL is D10's correction: it leaves an in-flight or
-// imminent occurrence alone (the same FOR NO KEY UPDATE ... SKIP LOCKED
-// mode the claim takes, AC35), and fires only when the declaration's
+// reconcileCorrectSQL is the correction statement: it leaves an in-flight
+// or imminent occurrence alone (the same FOR NO KEY UPDATE ... SKIP
+// LOCKED mode the claim takes), and fires only when the declaration's
 // cadence now disagrees with a later run_at than it computes — i.e. the
 // cadence was shortened. A lengthened cadence leaves run_at <= $3, no
 // row matches, and the change is absorbed by one early occurrence.
@@ -36,7 +36,7 @@ const reconcileCorrectSQL = `
 `
 
 // Reconcile runs the seed and the correction for every declared
-// recurrence (design D10), and no third move: there is no revive branch
+// recurrence, and no third move: there is no revive branch
 // (a declared recurrence has no dead state to revive from) and no
 // collector for a type no longer declared (retiring a recurrence deletes
 // its row in the same change that drops its declaration). It is

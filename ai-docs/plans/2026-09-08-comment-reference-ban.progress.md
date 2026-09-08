@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** not run
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group A subtask 6 of 10 complete
-**last_passed_gate:** golangci-lint run (whole module); go test -race ./internal/tg/... ./internal/tgtest/...
+**current_step:** Step 8 — Group A subtask 7 of 10 complete
+**last_passed_gate:** golangci-lint run (whole module); go test -race ./internal/ingest/... ./internal/scheduler/...
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** start Group A subtask 7 — sweep `internal/ingest`, `internal/scheduler`.
+**Do this immediately:** start Group A subtask 8 — sweep the build/runtime gated files; give `coverage-ratchet.sh` the D9 `--help`.
 
 ## Subtasks
 
@@ -26,6 +26,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - [x] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
 - [x] 5. Sweep `internal/store` + migrations, `internal/testdb`
 - [x] 6. Sweep `internal/tg`, `internal/tgtest`
+- [x] 7. Sweep `internal/ingest`, `internal/scheduler`
 - [ ] 3. The command `cmd/commentrefs`: input modes, exit codes, report format
 - [ ] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
 - [ ] 5. Sweep `internal/store` + migrations, `internal/testdb`
@@ -60,6 +61,9 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 6**: `internal/tg` + `internal/tgtest` was the densest single subtask — roughly 380 report lines across 20 files, `limit.go` and `limit_test.go` alone carrying ~55 `decision-anchor: D9` citations from a design section that spelled out the limiter's whole mechanism inline. Handled with the same per-file read-then-python-batch-replace-then-reverify loop as subtasks 4–5, always re-running `go run ./cmd/commentrefs <file>` after each batch before moving to the next file — every batch matched on the first attempt except two (`internal/store/basis_test.go`, `internal/tg/caller.go`) where a copy-paste typo in the search string was caught immediately by the tool's own "string not found" error, never landing a wrong edit.
 - **Subtask 6**: many comments narrated a **historical defect** ("self-review round 5's coverage sweep", "finding 6", "R1-8") rather than citing a design decision — these aren't `decision-anchor` matches (no `D<N>`/`KD-<N>` token) but were still rewritten to drop the "round N finding N" framing, since a future round-number is exactly the kind of thing that stops meaning anything once the review that produced it is history. Kept: the substance of what regressed and why the test exists.
 - **Subtask 6**: `-race` was run in addition to the standard gate set for this subtask specifically (`go test -race ./internal/tg/... ./internal/tgtest/...`) since the package's own suite uses `testing/synctest` and a shared `net.Pipe`-backed fake server across goroutines — a comment-only sweep should not be able to introduce a race, but the design's own AGENTS.md rule makes `-race` a required gate for any change touching goroutines or shared state, and this package is exactly that shape.
+- **Subtask 7**: `internal/ingest` + `internal/scheduler` was the largest subtask by file count (43 files, ~370 initial report lines) but individually thinner per file than subtask 6 — mostly straightforward "(design DN)" parenthetical citations, handled with a first-pass regex strip (`\s*\(design D[0-9]+(?:, ?D[0-9]+)*\)`) across every file before the per-file manual read-and-patch loop, which cut the remaining hand-edited residue by roughly two-thirds.
+- **Subtask 7**: the regex-first strip left five stray `//.`/`// .` orphan comment lines (a citation that was the whole remainder of its sentence, same shape as subtask 4's `config/balance.go` finding) — caught by `golangci-lint run`'s `gocritic` `commentFormatting` check, not by the comment-reference gate itself (an orphaned marker with no banned token is not a finding). Fixed by re-flowing each sentence to end on the preceding line rather than leaving the bare marker.
+- **Subtask 7**: `go test -race ./internal/ingest/... ./internal/scheduler/...` was run for the same reason as subtask 6 — both packages run a worker loop with goroutines, a shared pending-settlement map, and (in ingest's case) a mutex-guarded cache — required by AGENTS.md for any change touching goroutines or shared state, even a comment-only one.
 
 ## Key discoveries (don't re-investigate)
 
@@ -115,3 +119,5 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `internal/testdb/testdb.go`, `internal/testdb/testdb_test.go` — comment sweep
 - `internal/tg/*.go` (all 17 files) — comment sweep
 - `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go` — comment sweep
+- `internal/ingest/*.go` (all 23 files) — comment sweep
+- `internal/scheduler/*.go` (all 22 files) — comment sweep

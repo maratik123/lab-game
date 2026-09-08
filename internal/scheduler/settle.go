@@ -13,17 +13,17 @@ import (
 	"github.com/maratik123/lab-game/internal/config"
 )
 
-// settle.go owns design D7 in full: the settlement statement for every
+// This file owns the settlement statement for every
 // outcome, the backoff and next-cadence instants computed from the
 // settlement instant s, and the pending-settlement set with its guarded,
-// non-blocking drain (design D2 step 0, D11). execute.go owns the cycle
+// non-blocking drain. The execution-cycle file owns the cycle
 // around it — re-claim, savepoint, handler call, deadline — and calls
 // into this file rather than issuing settlement statements of its own.
 
 // pendingSettlement is one task whose transaction died before it could
 // settle it: a deadline breach or a failed COMMIT. It carries everything
-// a later drain needs to recompute the same Failed row D7 would have
-// written inline: the run_at read at claim time (the drain's guard), the
+// a later drain needs to recompute the same Failed row settlement would
+// have written inline: the run_at read at claim time (the drain's guard), the
 // failure count before this attempt, and the recurrence (nil for a
 // one-shot).
 type pendingSettlement struct {
@@ -46,11 +46,10 @@ func (w *Worker) enqueuePending(p pendingSettlement) {
 }
 
 // drainPending issues the guarded, non-blocking deferred settlement for
-// every task in w's pending set, at the top of a cycle before discovery
-// (design D2 step 0). One settlement instant is read per drain and
+// every task in w's pending set, at the top of a cycle before discovery.
+// One settlement instant is read per drain and
 // shared by every id in it, so every deferred backoff or next-cadence
-// instant is measured from the moment the row is actually deferred
-// (design D7).
+// instant is measured from the moment the row is actually deferred.
 func (w *Worker) drainPending(ctx context.Context) error {
 	w.pendingMu.Lock()
 	items := make([]pendingSettlement, 0, len(w.pending))
@@ -81,11 +80,11 @@ func (w *Worker) drainPending(ctx context.Context) error {
 	return nil
 }
 
-// drainOneSQL is D7's guarded deferred-settlement statement: the
+// drainOneSQL is the guarded deferred-settlement statement: the
 // candidate CTE re-checks state, run_at (the guard) and takes the same
 // lock mode the claim does, so a row another worker has since finished
 // matches nothing and the UPDATE is a no-op rather than an attempt
-// counted against work that succeeded. setClause is one of D7's three
+// counted against work that succeeded. setClause is one of three
 // Failed rows, built by the caller.
 const drainOneCandidateSQL = `
 	WITH candidate AS (
@@ -128,8 +127,8 @@ func drainOne(ctx context.Context, pool *pgxpool.Pool, p pendingSettlement, s ti
 }
 
 // deferredFailedStatement builds the SQL and args for p's deferred
-// settlement — the same Failed row D7's table selects for an inline
-// attempt, wrapped in drainOneCandidateSQL's guard.
+// settlement — the same Failed row an inline attempt's own table
+// selects, wrapped in drainOneCandidateSQL's guard.
 func deferredFailedStatement(p pendingSettlement, s time.Time, cfg config.Scheduler) (string, []any) {
 	k := p.consecutiveFailures + 1
 
@@ -154,7 +153,7 @@ func deferredFailedStatement(p pendingSettlement, s time.Time, cfg config.Schedu
 	`, []any{int64(p.id), p.runAt, k, p.reason, next}
 }
 
-// readSettlementInstant reads the settlement instant s (design D3, D7):
+// readSettlementInstant reads the settlement instant s:
 // clock_timestamp() on tx, immediately before a settlement statement that
 // writes a run_at. Read after the handler has returned, so a backoff or
 // next-cadence instant is measured from now rather than from before the
@@ -167,8 +166,8 @@ func readSettlementInstant(ctx context.Context, tx pgx.Tx) (time.Time, error) {
 	return s, nil
 }
 
-// settleUnregistered settles a claimed row whose type has no Declaration
-// (design D7's last row): the row is never executed, so
+// settleUnregistered settles a claimed row whose type has no
+// Declaration: the row is never executed, so
 // consecutive_failures and state are untouched — it can never reach dead
 // — and run_at is pushed out by ceiling so the refusal recurs at a
 // bounded rate.
@@ -184,9 +183,9 @@ func settleUnregistered(ctx context.Context, tx pgx.Tx, id TaskID, ceiling time.
 	return nil
 }
 
-// settleOutcome writes task's settlement statement for outcome (design
-// D7's table), computing every future run_at from the settlement instant
-// s — never from the execution instant — per D3/D7.
+// settleOutcome writes task's settlement statement for outcome,
+// computing every future run_at from the settlement instant
+// s — never from the execution instant.
 func settleOutcome(ctx context.Context, tx pgx.Tx, task Task, decl Declaration, outcome Outcome, handlerErr error, cfg config.Scheduler) error {
 	switch outcome {
 	case OutcomeDone, OutcomeNoop:

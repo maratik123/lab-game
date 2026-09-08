@@ -4,7 +4,7 @@ import "time"
 
 // Cadence computes a recurrence's next occurrence given its previous
 // run_at (prev) and the instant now — both DB-supplied, never
-// time.Now (design D3). A function type rather than a fixed duration, so
+// time.Now. A function type rather than a fixed duration, so
 // a mechanic that needs a wall-clock anchor can supply its own without
 // touching this package.
 type Cadence func(prev, now time.Time) time.Time

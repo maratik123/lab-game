@@ -13,9 +13,9 @@ import (
 )
 
 // PlayerLookup reports whether a kind='player' owner row exists for a
-// telegram id — the single method Gate needs from a read (design D11),
+// telegram id — the single method Gate needs from a read,
 // declared here by the consumer so a test may substitute a stub carrying
-// a call counter (AC29, AC35) instead of a mock of internal/store's own
+// a call counter instead of a mock of the ledger package's own
 // row-scanning semantics.
 type PlayerLookup interface {
 	// PlayerExists reports whether a player owner row exists for
@@ -25,8 +25,8 @@ type PlayerLookup interface {
 
 // poolPlayerLookup implements PlayerLookup over a *pgxpool.Pool — the
 // gate's own connection, taken at wiring time rather than borrowed from
-// any in-flight transaction (design D18: a row a handler's own
-// uncommitted transaction wrote is not visible here, by design).
+// any in-flight transaction: a row a handler's own uncommitted
+// transaction wrote is not visible here, by design.
 type poolPlayerLookup struct {
 	pool *pgxpool.Pool
 }
@@ -36,21 +36,22 @@ func (p poolPlayerLookup) PlayerExists(ctx context.Context, telegramID int64) (b
 	return store.PlayerExists(ctx, p.pool, telegramID)
 }
 
-// Gate implements tg.Gate: the ALLOWED_CHAT_IDS allowlist plus the
-// player carve-out (design D10). ChatNone is always allowed; ChatUnknown
+// Gate implements the Telegram client's outbound Gate interface: the
+// ALLOWED_CHAT_IDS allowlist plus the
+// player carve-out. ChatNone is always allowed; ChatUnknown
 // is always refused — an unverifiable destination is exactly what an
 // allowlist exists to stop; a ChatKnown destination is allowed when its
 // Key parses as an int64 present in the allowlist, or when a
 // PlayerLookup reports a player owner row for it. The cache holds
 // positive results only, for the Gate's lifetime — nothing negative is
 // remembered, so a player who presses Start after a refusal is allowed
-// on the next attempt with no restart (AC35).
+// on the next attempt with no restart.
 type Gate struct {
 	allowed map[int64]struct{}
 	lookup  PlayerLookup
 
 	// mu guards cache: AllowCall sits on the outbound path, which is
-	// concurrent by construction (design D10). The critical section is a
+	// concurrent by construction. The critical section is a
 	// map lookup and, on a confirmed miss, one insert; the PlayerLookup
 	// call itself happens outside the lock, so a slow lookup never
 	// serialises other destinations.
@@ -71,17 +72,17 @@ func NewGate(allowedChatIDs []int64, lookup PlayerLookup) *Gate {
 	}
 }
 
-// NewPoolGate builds a Gate whose PlayerLookup reads pool directly —
-// design D17's wiring shape: gate, then client, then loop.
+// NewPoolGate builds a Gate whose PlayerLookup reads pool directly — the
+// wiring shape this package uses: gate, then client, then loop.
 func NewPoolGate(allowedChatIDs []int64, pool *pgxpool.Pool) *Gate {
 	return NewGate(allowedChatIDs, poolPlayerLookup{pool: pool})
 }
 
-// var _ tg.Gate = (*Gate)(nil) pins Gate to tg.Gate's contract at compile
-// time.
+// This pins Gate to the Telegram client's outbound Gate interface at
+// compile time.
 var _ tg.Gate = (*Gate)(nil)
 
-// AllowCall implements tg.Gate (design D10).
+// AllowCall implements the outbound Gate interface.
 func (g *Gate) AllowCall(ctx context.Context, call tg.Call) error {
 	switch call.Chat.Target {
 	case tg.ChatNone:
@@ -97,7 +98,7 @@ func (g *Gate) AllowCall(ctx context.Context, call tg.Call) error {
 
 // allowKnown implements the ChatKnown branch of AllowCall: parse key as
 // an int64, allow it outright when it is in the allowlist, then consult
-// the cache and finally PlayerLookup (design D10, D11).
+// the cache and finally PlayerLookup.
 func (g *Gate) allowKnown(ctx context.Context, key string) error {
 	id, err := strconv.ParseInt(key, 10, 64)
 	if err != nil {

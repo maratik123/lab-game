@@ -19,7 +19,7 @@ import (
 // writeAndFailHandler posts a trivial balanced batch under u's canonical
 // operation_id, then returns err unconditionally — the fixture that lets
 // a failure/retry scenario assert an attempt's writes do not survive its
-// rollback (design D24), rather than merely that the handler ran.
+// rollback, rather than merely that the handler ran.
 type writeAndFailHandler struct{ err error }
 
 func (h writeAndFailHandler) Handle(ctx context.Context, tx pgx.Tx, u Update) error {
@@ -33,7 +33,7 @@ func (h writeAndFailHandler) Handle(ctx context.Context, tx pgx.Tx, u Update) er
 	return h.err
 }
 
-// panickingHandler always panics — design D7/D10's fixture.
+// panickingHandler always panics — a fixture for the panic-recovery path.
 type panickingHandler struct{}
 
 func (panickingHandler) Handle(context.Context, pgx.Tx, Update) error {
@@ -41,7 +41,7 @@ func (panickingHandler) Handle(context.Context, pgx.Tx, Update) error {
 }
 
 // txClosingHandler rolls its own attempt's transaction back and returns
-// nil — R1-5's fixture for attempt.go's handlerErr==nil/advanceOffset
+// nil — a fixture for the handlerErr==nil/advanceOffset
 // failure branch: attemptOnce's subsequent advanceOffset call runs
 // against an already-closed tx and fails with pgx.ErrTxClosed.
 type txClosingHandler struct{}
@@ -53,7 +53,7 @@ func (txClosingHandler) Handle(ctx context.Context, tx pgx.Tx, _ Update) error {
 
 // deferredConstraintHandler returns nil having inserted two rows that
 // violate a UNIQUE ... DEFERRABLE INITIALLY DEFERRED constraint on a
-// temp table it creates itself — R1-5's fixture for attempt.go's
+// temp table it creates itself — a fixture for the
 // handlerErr==nil/Commit failure branch: the violation passes every
 // statement inside the transaction (the check is deferred) and is
 // caught only when tx.Commit runs the deferred check.
@@ -159,7 +159,7 @@ func TestLoop_panicIsRecoveredAndRetried(t *testing.T) {
 	l := newLoop(t, srv, pool, router, rec)
 
 	// The whole point: a panicking Handler must never bring down the test
-	// process (design D7).
+	// process.
 	if err := l.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce: %v", err)
 	}
@@ -288,15 +288,16 @@ func TestLoop_commitFailureReportsFailed(t *testing.T) {
 	}
 }
 
-// TestLoop_nonDefaultFactorReachesTheCallSite is design D20's
-// non-default-factor scenario for internal/ingest's between-attempt
-// delay (attempt.go's runAttempts): a base and factor chosen so the
+// TestLoop_nonDefaultFactorReachesTheCallSite is the
+// non-default-factor scenario for this package's between-attempt
+// delay (runAttempts): a base and factor chosen so the
 // summed delay at the configured factor is far above the summed delay
-// backoff.DefaultFactor would produce, asserted as a LOWER bound on
-// elapsed wall time so the case cannot flake on a slow machine — this
-// package's paths touch a real database and cannot run inside a
-// synctest bubble. Reds if runAttempts passes backoff.DefaultFactor
-// instead of l.cfg.RetryFactor; no shipped test does.
+// the shared package's compiled-in default factor would produce,
+// asserted as a LOWER bound on elapsed wall time so the case cannot
+// flake on a slow machine — this package's paths touch a real database
+// and cannot run inside a synctest bubble. Reds if runAttempts passes
+// the compiled-in default instead of l.cfg.RetryFactor; no shipped test
+// does.
 func TestLoop_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 	t.Parallel()
 	pool := newIngestPool(t)
@@ -329,8 +330,8 @@ func TestLoop_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 	}
 
 	// Delays at factor 5, base 20ms: 20ms + 100ms + 500ms = 620ms. At
-	// backoff.DefaultFactor (2) they would sum to 20ms + 40ms + 80ms =
-	// 140ms — well below the floor asserted here.
+	// the compiled-in default factor (2) they would sum to 20ms + 40ms +
+	// 80ms = 140ms — well below the floor asserted here.
 	start := time.Now()
 	if err := l.PollOnce(context.Background()); err != nil {
 		t.Fatalf("PollOnce: %v", err)
@@ -455,7 +456,7 @@ func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 	go func() { done <- l.Run(ctx) }()
 
 	// Let the first attempt fail and enter its backoff wait, then cancel
-	// mid-wait (design D25).
+	// mid-wait.
 	time.Sleep(80 * time.Millisecond)
 	cancelAt := time.Now()
 	cancel()

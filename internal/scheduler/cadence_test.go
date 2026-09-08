@@ -7,14 +7,14 @@ import (
 	"github.com/maratik123/lab-game/internal/backoff"
 )
 
-// TestBackoff_exactTable pins internal/scheduler's one-based
+// TestBackoff_exactTable pins this package's own one-based
 // failures -> delay mapping with no database, even though the arithmetic
-// itself moved to internal/backoff (design D2). The cases table, and
+// itself moved to the shared backoff package. The cases table, and
 // every expected duration, are byte-identical to the shipped ramp's own
 // table — only the call expression re-points, with the
 // one-based-failures-to-zero-based-attempt translation written into the
-// ARGUMENT (tc.failures-1), exactly as settle.go's own call sites
-// translate consecutive_failures.
+// ARGUMENT (tc.failures-1), exactly as the settlement code's own call
+// sites translate consecutive_failures.
 func TestBackoff_exactTable(t *testing.T) {
 	t.Parallel()
 

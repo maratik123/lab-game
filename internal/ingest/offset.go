@@ -11,11 +11,11 @@ import (
 
 // readOffset reads the singleton ingest_offset row's next_update_id — the
 // offset to TRANSMIT on the next getUpdates call, not the last update_id
-// seen (design D14). The migration seeds exactly one row, so a missing
+// seen. The migration seeds exactly one row, so a missing
 // row is an infrastructure error rather than a legitimate "no offset yet"
 // state.
 //
-// q is a store.Queryer rather than a pgx.Tx: the poll cycle reads the
+// q is a Queryer from the ledger package rather than a pgx.Tx: the poll cycle reads the
 // offset straight off the pool, with no transaction of its own, while a
 // caller that already holds a transaction may still pass it — both
 // satisfy the same single-method interface.
@@ -30,7 +30,7 @@ func readOffset(ctx context.Context, q store.Queryer) (int64, error) {
 // advanceOffset writes next as ingest_offset's next_update_id, guarded and
 // monotone: the UPDATE applies only when next exceeds the currently stored
 // value, so a re-run — a retried settlement, or two settlements racing —
-// can never move the offset backwards (design D5, D14). Callers pass the
+// can never move the offset backwards. Callers pass the
 // settled update's update_id + 1, computed once at the call site so this
 // function's own contract stays "write this exact value, if it is
 // forward".

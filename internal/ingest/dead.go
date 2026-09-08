@@ -8,17 +8,17 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// DeadUpdate is one give-up row, enumerated by DeadUpdates — the shape
-// scheduler.DeadTask already has (design D14). It carries no raw update
-// payload: the diagnostic surface is this projection, not a replay
-// mechanism.
+// DeadUpdate is one give-up row, enumerated by DeadUpdates — the same
+// shape this module's task-scheduler dead-task row already has. It
+// carries no raw update payload: the diagnostic surface is this
+// projection, not a replay mechanism.
 type DeadUpdate struct {
 	// UpdateID is the given-up update's own update_id.
 	UpdateID int64
 	// Kind is the update's derived Kind.
 	Kind Kind
 	// ChatID is the update's destination chat, when its kind's payload
-	// declares one (design D4, D13). Nil otherwise.
+	// declares one. Nil otherwise.
 	ChatID *int64
 	// ConsecutiveFailures is the attempt count at give-up.
 	ConsecutiveFailures int
@@ -29,7 +29,7 @@ type DeadUpdate struct {
 }
 
 // writeDeadUpdate inserts d as a new ingest_dead_update row inside tx —
-// the loop's own transaction for the give-up outcome (design D5, D14).
+// the loop's own transaction for the give-up outcome.
 func writeDeadUpdate(ctx context.Context, tx pgx.Tx, d DeadUpdate) error {
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO ingest_dead_update (update_id, kind, chat_id, consecutive_failures, last_error)
@@ -42,8 +42,9 @@ func writeDeadUpdate(ctx context.Context, tx pgx.Tx, d DeadUpdate) error {
 }
 
 // DeadUpdates returns up to limit give-up rows over tx, a caller-owned
-// transaction (AC37): it neither commits nor rolls back tx, mirroring
-// scheduler.DeadTasks' division of ownership. Rows are ordered by
+// transaction: it neither commits nor rolls back tx, mirroring this
+// module's task-scheduler dead-tasks reader's division of ownership.
+// Rows are ordered by
 // created_at then id, both ascending, so the result is deterministic even
 // when several rows share a created_at instant.
 func DeadUpdates(ctx context.Context, tx pgx.Tx, limit int) ([]DeadUpdate, error) {

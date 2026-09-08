@@ -2,7 +2,7 @@ package ingest
 
 import "time"
 
-// Outcome classifies one Observation (design D12). Every non-zero member
+// Outcome classifies one Observation. Every non-zero member
 // beyond OutcomeHandled is knowledge only this package's loop has —
 // nothing downstream can recover it from the database alone.
 type Outcome int
@@ -11,9 +11,10 @@ const (
 	// OutcomeHandled means the update's Handler ran and returned nil: its
 	// writes and the offset advance committed together.
 	OutcomeHandled Outcome = iota
-	// OutcomeDuplicate means the Handler's error chain matched
-	// store.ErrAlreadyPosted (design D8): the update's effects already
-	// exist from an earlier delivery, no retry attempt was consumed, and
+	// OutcomeDuplicate means the Handler's error chain matched the
+	// ledger package's ErrAlreadyPosted sentinel: the update's effects
+	// already exist from an earlier delivery, no retry attempt was
+	// consumed, and
 	// the offset still advanced.
 	OutcomeDuplicate
 	// OutcomeUnrouted means the update's derived Kind has no registered
@@ -32,7 +33,7 @@ const (
 	// it, the attempt's writes were rolled back, and — like OutcomeFailed
 	// — the update is retried unless this was the final attempt. Reported
 	// distinctly from OutcomeFailed so a recovered panic that a later
-	// attempt fixes is never erased (design D7, D12).
+	// attempt fixes is never erased.
 	OutcomePanic
 	// OutcomeGivenUp means every configured attempt failed or panicked:
 	// the update's identity was written to ingest_dead_update and the
@@ -42,8 +43,8 @@ const (
 
 // String renders o's name, for logs and test failure messages. An
 // out-of-range value renders "OutcomeUnknown(<n>)" — golangci-lint's
-// exhaustive linter is satisfied by this default clause (design
-// .golangci.yml's default-signifies-exhaustive).
+// exhaustive linter is satisfied by this default clause, since this
+// module's lint config sets default-signifies-exhaustive.
 func (o Outcome) String() string {
 	switch o {
 	case OutcomeHandled:
@@ -64,8 +65,8 @@ func (o Outcome) String() string {
 }
 
 // Observation is reported to an Observer once per handler call (attempt),
-// plus once for each attempt-less settlement — unrouted and given-up
-// (design D12): a single terminal observation per update would erase a
+// plus once for each attempt-less settlement — unrouted and given-up:
+// a single terminal observation per update would erase a
 // panic that a later attempt recovered from.
 type Observation struct {
 	// Kind is the update's derived Kind.
@@ -75,8 +76,8 @@ type Observation struct {
 	Attempt int
 	// Outcome classifies this observation.
 	Outcome Outcome
-	// Duration is how long this observation's own unit of work took
-	// (design D12): the h.Handle call itself for every attempt outcome
+	// Duration is how long this observation's own unit of work took:
+	// the h.Handle call itself for every attempt outcome
 	// (OutcomeHandled, OutcomeDuplicate, OutcomeFailed, OutcomePanic) —
 	// never the surrounding transaction plumbing (advanceOffset, Commit,
 	// Rollback), so a slow database has no bearing on this number. For
@@ -87,7 +88,7 @@ type Observation struct {
 	// transaction alone (the dead-update write and the offset advance).
 	Duration time.Duration
 	// Lag is the update's own date subtracted from the observation
-	// instant — meaningful only when LagKnown is true (design D13): a
+	// instant — meaningful only when LagKnown is true: a
 	// kind whose payload declares no date (e.g. KindCallbackQuery) leaves
 	// Lag at its zero value, which LagKnown distinguishes from a
 	// genuinely healthy zero lag.
@@ -102,22 +103,21 @@ type Observation struct {
 	Err error
 }
 
-// LoopObservation is reported to an Observer once per poll cycle (design
-// D12, D19).
+// LoopObservation is reported to an Observer once per poll cycle.
 type LoopObservation struct {
 	// Duration is the wall time the cycle took.
 	Duration time.Duration
 	// BatchSize is the number of updates the cycle's getUpdates call
 	// returned.
 	BatchSize int
-	// Err is the cycle's poll error, if any. Run does not stop on it
-	// (design D19); without this field the error would be silently
+	// Err is the cycle's poll error, if any. Run does not stop on it;
+	// without this field the error would be silently
 	// dropped, since this package has no logger.
 	Err error
 }
 
 // Observer receives this package's observations. A nil Observer is
-// checked, not called (design D12, AC19), so the loop compiles and its
+// checked, not called, so the loop compiles and its
 // tests pass with no implementation installed.
 type Observer interface {
 	// ObserveUpdate reports one Observation.

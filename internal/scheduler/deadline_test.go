@@ -13,7 +13,7 @@ import (
 	"github.com/maratik123/lab-game/internal/config"
 )
 
-// shortDeadlineConfig returns a config.Scheduler tuned for the deadline
+// shortDeadlineConfig returns a Scheduler config tuned for the deadline
 // tests: a short TaskTimeout so a breach happens quickly, and retry
 // values short enough that a give-up test need not wait long.
 func shortDeadlineConfig() config.Scheduler {
@@ -46,8 +46,9 @@ func (h *blockingHandler) Execute(_ context.Context, _ pgx.Tx, _ Task) (Outcome,
 	return OutcomeDone, nil
 }
 
-// ctxIgnoringHandler is D11's negative case: it never sees ctx's
-// cancellation, issuing short statements on a context of its own until
+// ctxIgnoringHandler is the deadline defence's negative case: it never
+// sees ctx's cancellation, issuing short statements on a context of its
+// own until
 // release is closed.
 type ctxIgnoringHandler struct {
 	release chan struct{}
@@ -67,7 +68,8 @@ func (h *ctxIgnoringHandler) Execute(_ context.Context, tx pgx.Tx, _ Task) (Outc
 // waitLockFree polls, without depending on any scheduler internals,
 // until id's row can be locked FOR NO KEY UPDATE SKIP LOCKED — i.e. the
 // abandoned transaction's connection has been closed and the server has
-// released its locks (design D11 layer 2, or the watchdog's close).
+// released its locks (the deadline defence's second layer, or the
+// watchdog's close).
 func waitLockFree(t *testing.T, pool *pgxpool.Pool, id TaskID, timeout time.Duration) {
 	t.Helper()
 	ctx := context.Background()
@@ -95,10 +97,10 @@ func waitLockFree(t *testing.T, pool *pgxpool.Pool, id TaskID, timeout time.Dura
 	t.Fatalf("row %d never became lock-free within %v", id, timeout)
 }
 
-// TestDeadline_blockedHandler_rowClaimableWithinBound is AC30: the worker
-// returns, the observation carries the deadline failure kind, and the
-// row becomes claimable again within the D11-derived bound (~2x the
-// configured deadline), not blocked forever.
+// TestDeadline_blockedHandler_rowClaimableWithinBound asserts that the
+// worker returns, the observation carries the deadline failure kind, and
+// the row becomes claimable again within the deadline defence's own
+// derived bound (~2x the configured deadline), not blocked forever.
 func TestDeadline_blockedHandler_rowClaimableWithinBound(t *testing.T) {
 	t.Parallel()
 
@@ -183,7 +185,7 @@ func TestDeadline_breachIsSettledNotMerelyAbandoned(t *testing.T) {
 	}
 }
 
-// TestDeadline_successiveBreaches_growingDelay is AC9 for the breach
+// TestDeadline_successiveBreaches_growingDelay covers the breach
 // class: driven attempt by attempt, each settled run_at falls within the
 // exact backoff bracket computed around the drain instant that wrote it.
 func TestDeadline_successiveBreaches_growingDelay(t *testing.T) {
@@ -247,17 +249,17 @@ func TestDeadline_successiveBreaches_growingDelay(t *testing.T) {
 		// Same before <= s <= after argument as
 		// TestFailurePolicy_oneShotAttemptsGrowAndGiveUp, anchored to the
 		// drain instant: the backoff base for this path is read inside
-		// drainPending (settle.go), strictly between drainInstant and
+		// drainPending, strictly between drainInstant and
 		// after.
 		//
 		// The bracket's delay is a LITERAL one-based ramp, not a call to
-		// backoff or to internal/backoff.Exponential (design D2, subtask
-		// 2's call-site gate): 200ms then 400ms is exactly what the shipped
-		// one-based backoff(attempt, 200ms, 500ms) computes at attempts 1
-		// and 2 -- verified green against the still-shipped backoff before
-		// backoff.go's ramp was ever re-pointed. Pinning it as a literal is
-		// what lets this assertion catch an omitted one-based-to-zero-based
-		// translation at settle.go's own drain-settlement call site.
+		// the shared backoff package's ramp function: 200ms then 400ms is
+		// exactly what the shipped one-based backoff(attempt, 200ms, 500ms)
+		// computes at attempts 1 and 2 -- verified green against the
+		// still-shipped backoff before the shared package's ramp was ever
+		// re-pointed. Pinning it as a literal is what lets this assertion
+		// catch an omitted one-based-to-zero-based translation at the
+		// settlement code's own drain-settlement call site.
 		literalOneBasedRamp := map[int]time.Duration{
 			1: 200 * time.Millisecond,
 			2: 400 * time.Millisecond,
@@ -273,11 +275,12 @@ func TestDeadline_successiveBreaches_growingDelay(t *testing.T) {
 	}
 }
 
-// TestDeadline_nonDefaultFactorReachesTheCallSite is design D20's
+// TestDeadline_nonDefaultFactorReachesTheCallSite is the
 // non-default-factor scenario for the deferred-drain settlement
-// (settle.go's deferredFailedStatement path via drainPending): the only
+// (deferredFailedStatement's path via drainPending): the only
 // instrument that discriminates a call site passing the configured
-// cfg.RetryFactor from one passing backoff.DefaultFactor — the literal
+// cfg.RetryFactor from one passing the shared package's compiled-in
+// default — the literal
 // one-based ramp above stays at the default and cannot see it.
 func TestDeadline_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 	t.Parallel()
@@ -445,8 +448,9 @@ func TestDeadline_oneShotGivesUpWithinCap(t *testing.T) {
 	}
 }
 
-// TestDeadline_recurrenceNeverGivesUp is AC32's breach half: a recurrence
-// whose handler always breaches never reaches a terminal state, staying
+// TestDeadline_recurrenceNeverGivesUp covers the recurrence breach case:
+// a recurrence whose handler always breaches never reaches a terminal
+// state, staying
 // pending and advancing by cadence, with a rising failure count.
 func TestDeadline_recurrenceNeverGivesUp(t *testing.T) {
 	t.Parallel()
@@ -497,8 +501,9 @@ func TestDeadline_recurrenceNeverGivesUp(t *testing.T) {
 	}
 }
 
-// TestDeadline_deferredGuard_rowAlreadyMoved is D7's guard: with the
-// breached row's run_at changed by another party before the drain runs
+// TestDeadline_deferredGuard_rowAlreadyMoved covers the deferred-drain
+// guard: with the breached row's run_at changed by another party before
+// the drain runs
 // (simulating a second worker having claimed and settled it), the drain
 // updates nothing and drops the id rather than counting an attempt
 // against work it did not do.
@@ -539,7 +544,7 @@ func TestDeadline_deferredGuard_rowAlreadyMoved(t *testing.T) {
 	}
 }
 
-// TestDeadline_drainDoesNotBlockOnLockedRow is D7: with a pending
+// TestDeadline_drainDoesNotBlockOnLockedRow asserts that with a pending
 // settlement's row still held by an open transaction, the drain's
 // statement returns having updated nothing and the cycle proceeds
 // without blocking; the id is retried once the lock is released. This
@@ -614,7 +619,7 @@ func TestDeadline_drainDoesNotBlockOnLockedRow(t *testing.T) {
 	}
 }
 
-// TestDeadline_neighboursSurvive is design D2: a cycle containing a task
+// TestDeadline_neighboursSurvive asserts that a cycle containing a task
 // that breaches and a task that succeeds leaves the successful task's
 // effects committed, because they were never in the same transaction.
 func TestDeadline_neighboursSurvive(t *testing.T) {
@@ -632,7 +637,7 @@ func TestDeadline_neighboursSurvive(t *testing.T) {
 	// is also the succeeding neighbour's budget, and the neighbour's own
 	// SAVEPOINT + INSERT + RELEASE was measured at 96-112ms under
 	// parallel -race load -- the same order as 100ms, which is what made
-	// this test flaky (issue #62). Do not change the shared
+	// this test flaky in the past. Do not change the shared
 	// shortDeadlineConfig() TaskTimeout -- other tests depend on its
 	// 100ms value.
 	cfg.TaskTimeout = time.Second
@@ -693,8 +698,9 @@ func findObservationByType(tasks []Observation, typ Type) (Observation, bool) {
 	return Observation{}, false
 }
 
-// TestDeadline_ctxIgnoringHandler_negativeCase is D11's residue: a
-// handler that never sees the deadline's cancellation and issues short
+// TestDeadline_ctxIgnoringHandler_negativeCase covers the deadline
+// defence's residue: a handler that never sees the deadline's
+// cancellation and issues short
 // statements on a context of its own. The worker still reports the
 // deadline failure kind and proceeds within the deadline; the row stays
 // locked while the handler keeps running, and becomes claimable once it
