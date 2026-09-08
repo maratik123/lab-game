@@ -129,6 +129,11 @@ jobs:
       # timing-dependent statements on a runner rather than on the author's
       # machine.
       - run: make cover-ratchet
+      # No other step above still reaches the per-package container path:
+      # test/test-race/cover-ratchet all provision or reuse one shared
+      # server. Without this step that path would be true only on the day
+      # it was checked, and unchecked forever after.
+      - run: make test-fallback
 
   lint:
     name: Lint
