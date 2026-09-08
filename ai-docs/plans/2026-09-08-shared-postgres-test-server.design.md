@@ -7,8 +7,9 @@
 **Round:** 4
 
 **Tag forms used below.** A fact about something that already exists carries
-`[measured <pin>:<path>[:<lines>] · <command> → <output>]`, where `<pin>` is `eef4c4e` for
-this repository and a module version for an external package. A claim about an artefact
+`[measured <pin>:<path>[:<lines>] · <command> → <output>]`, where `<pin>` is a commit of
+this repository — `eef4c4e` unless a tag names a later one, as the amended D8 does — and a
+module version for an external package. A claim about an artefact
 this task will create carries `[derived → <AC or test>]` and no coordinate, because there
 is nothing yet to coordinate to.
 
@@ -396,9 +397,22 @@ differs and whose drifting statements are timing-dependent `[derived → AC17]`.
 **D8 — the fallback gets a gate, because nothing else executes it any more.** D7 is the
 evidence: after this change no default gate runs the per-package container path, so AC3
 would be true on the day it was checked and unchecked forever after. `make test-fallback`
-runs the whole-module bare invocation with the DSN variable explicitly cleared, and CI's
-Test job runs it as a step. It is not part of `verify`, exactly as the coverage ratchet is
-not `[measured eef4c4e:Makefile:71-75 · sed -n '71,75p' Makefile → the cover-ratchet target is check-only and deliberately outside verify]` `[derived → AC3]`.
+runs the whole module the **bare** way — without the wrapper and without a DSN, the variable
+explicitly cleared — and CI's Test job runs it as a step. It is not part of `verify`, exactly
+as the coverage ratchet is not
+`[measured eef4c4e:Makefile:71-75 · sed -n '71,75p' Makefile → the cover-ratchet target is check-only and deliberately outside verify]` `[derived → AC3]`.
+
+**"Bare" describes the provisioning, not the flags: the target carries `-count=1`, and
+without it this gate cannot fail.** A cleared variable is not an absent one — it is a
+*stable* one, and a stable consulted environment variable is a stable cache key, so a second
+invocation is served from the test cache and returns green having started no container at
+all. That is the gate's own purpose defeated: it would report on the last run that really
+happened rather than test the path it exists to keep alive. Amended against the shipped
+target, which carries the flag and the reason
+`[measured 1a3ee3a:Makefile § test-fallback · grep -n -B 6 -A 3 '^test-fallback:' Makefile → "LAB_GAME_TEST_DSN= go test -count=1 ./...", above it the comment "`-count=1` is what makes that a gate rather than a report"]`
+`[measured 1a3ee3a · LAB_GAME_TEST_DSN= go test ./internal/testdb run twice → the first reports 6.382s, the second reports (cached) and starts no container]`.
+D12 states the same reasoning for the contention load run; this is its sibling, and the
+first version of this target overlooked it `[derived → AC3]`.
 
 **D9 — contention tolerance: every wall-clock constant is either an instrument or the
 subject, and they are treated oppositely.** The recorded trap is not retracted by this
@@ -566,7 +580,7 @@ STOP, not a pass — the project has run exactly this protocol before
 | 2 | Tests for the ceiling formula, its refusal path, the capacity probe and the binaries-constant manifest | `internal/testdb/server_test.go` | 1 |
 | 3 | `cmd/testpg`: the wrapper — decision order with D3a's per-path shortfall answers, locator read/write behind the capacity probe, `--up` (sized by the same terms) / `--down`, `--clients` / `--parallel` feeding D3's ceiling, the granted ceiling echoed to stderr, signal-aware teardown, non-zero-status passthrough, injectable provisioner seam | `cmd/testpg/main.go`, `cmd/testpg/run.go` | 1 |
 | 4 | Wrapper tests over the injected seam: no container is started by this package's own tests | `cmd/testpg/run_test.go` | 3 |
-| 5 | `Makefile`: route `test` and `test-race` through the wrapper; add `test-db-up` with its overridable client count, `test-db-down`, `test-fallback`, and `test-contention` with its `--clients`, the same pinned `-p` / `-parallel` for **both** its children, the matching `--parallel`, `-count=1` on the load run so it cannot be served from the test cache, and both logs under the scratch directory | `Makefile` | 3 |
+| 5 | `Makefile`: route `test` and `test-race` through the wrapper; add `test-db-up` with its overridable client count, `test-db-down`, `test-fallback` with `-count=1` so a repeat invocation is a gate and not a cached report, and `test-contention` with its `--clients`, the same pinned `-p` / `-parallel` for **both** its children, the matching `--parallel`, `-count=1` on the load run so it cannot be served from the test cache, and both logs under the scratch directory | `Makefile` | 3 |
 | 6 | Coverage ratchet: wrap the measurement command, after the skip decision; update the runtime advice | `.githooks/coverage-ratchet.sh` | 3 |
 | 7 | CI: add the fallback step to the Test job; verify every added artefact is already named in the change filter and record the comparison | `.github/workflows/ci.yml` | 5 |
 | 8 | Contention tolerance per D9: classify every wall-clock constant in the database-backed suites, widen the instruments **per test** rather than through the shared config values, move the remaining timing assertions onto database-clock brackets | `internal/scheduler/*_test.go`, `internal/ingest/*_test.go` | 5 |
@@ -753,8 +767,9 @@ Fixtures: the database-backed packages' own tests as the load generator, both ru
 to files under the scratch directory `[derived → AC15]`.
 
 **Fallback path — the whole module.**
-Location: the `test-fallback` target, run by CI's Test job. Entry point: the bare
-whole-module invocation with the DSN variable cleared. Scenario: it passes — **and the
+Location: the `test-fallback` target, run by CI's Test job. Entry point: the whole-module
+invocation taken the bare way — no wrapper, DSN cleared — with `-count=1`, without which a
+repeat run is served from the cache and observes nothing (D8). Scenario: it passes — **and the
 per-binary provisioning is observed, not inferred**: the runtime's container list across the
 run shows one postgres container per database-backed binary rather than the single one the
 wrapper's path produces. The observation matters because the target's pass alone is also
