@@ -27,7 +27,16 @@ SHELL := /bin/bash
 GO_MAX_LINES ?= 1000
 GO_MAX_TEST_LINES ?= 1500
 
-.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet comment-refs
+# CLIENTS sizes test-db-up's server for the number of whole-module test runs
+# it must admit AT THE SAME TIME; the default of 1 is a server for one gate
+# run at a time. CONTENTION_PARALLEL pins the parallelism test-contention's
+# two concurrent children share with the ceiling that sizes their server —
+# the ceiling arithmetic's product form is correct only while every client
+# shares one parallel value.
+CLIENTS ?= 1
+CONTENTION_PARALLEL ?= $(shell nproc 2>/dev/null || echo 4)
+
+.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet comment-refs test-db-up test-db-down test-fallback test-contention
 
 verify: fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs
 
@@ -47,11 +56,58 @@ file-limits:
 	find . -path ./.git -prune -o -path ./tmp -prune -o -name '*.go' -exec awk \
 	  '{n[FILENAME]++} END{rc=0; for (k in n) {lim=(k ~ /_test\.go$$/)?$(GO_MAX_TEST_LINES):$(GO_MAX_LINES); if (n[k]>lim) {printf "%s: %d lines exceeds hard limit %d\n", k, n[k], lim; rc=1}} exit rc}' {} +
 
+# Both route through the provisioning wrapper: it reuses an already-set DSN
+# or an already-running long-lived server (test-db-up) unchanged, and
+# otherwise provisions and removes its own sized, anonymous container —
+# a bare `go test` still starts one container per database-backed binary,
+# which is test-fallback's own gate.
 test:
-	go test ./...
+	go run ./cmd/testpg -- go test ./...
 
 test-race:
-	go test -race ./...
+	go run ./cmd/testpg -- go test -race ./...
+
+# Creates (or reuses) the long-lived shared server sized for CLIENTS
+# concurrent whole-module runs, and prints its DSN.
+test-db-up:
+	go run ./cmd/testpg --up --clients $(CLIENTS)
+
+# Removes only a server this project's own target started.
+test-db-down:
+	go run ./cmd/testpg --down
+
+# The fallback path's own gate: with the DSN variable explicitly cleared, a
+# bare whole-module test run still provisions one container per
+# database-backed test binary and passes, exercising the path every other
+# target here has stopped exercising.
+test-fallback:
+	LAB_GAME_TEST_DSN= go test ./...
+
+# Induces cross-package load against one shared server and requires the
+# whole-module race gate to stay green under it. One wrapper invocation
+# sizes a server for TWO clients at the SAME pinned parallelism (the
+# ceiling's product form is correct only while every client shares one
+# parallel value); its child backgrounds a load loop of the database-backed
+# packages' own tests (-count=1, so it cannot be served from the test
+# cache — a loop without it loads nothing past its first iteration) and
+# foregrounds the race gate, both logging to files under the ignored
+# scratch directory. The foreground's status is captured explicitly rather
+# than letting the shell's -e abort the script before the load loop is
+# killed; the wrapper itself never reads either log, and the exit status
+# crosses no pipe.
+test-contention:
+	mkdir -p tmp
+	go run ./cmd/testpg --clients 2 --parallel $(CONTENTION_PARALLEL) -- bash -c '\
+	  set -eu -o pipefail; \
+	  ( while true; do go test -count=1 -parallel $(CONTENTION_PARALLEL) ./internal/ingest/... ./internal/scheduler/... ./internal/store/... ./internal/testdb/...; done ) >tmp/test-contention-load.log 2>&1 & \
+	  load_pid=$$!; \
+	  fg_status=0; \
+	  go test -race -parallel $(CONTENTION_PARALLEL) ./... >tmp/test-contention-race.log 2>&1 || fg_status=$$?; \
+	  kill "$$load_pid" 2>/dev/null || true; \
+	  wait "$$load_pid" 2>/dev/null || true; \
+	  echo "test-contention: clients=2 parallel=$(CONTENTION_PARALLEL)"; \
+	  exit "$$fg_status" \
+	'
 
 # `git diff -- go.sum` exits 128 while the module has no dependencies and the
 # file therefore does not exist, so ask git about worktree state instead — that
