@@ -2,9 +2,11 @@
 
 **Issue:** #68
 **Date:** 2026-09-08
-**Revision:** round 2 — reconciled against the spec as amended at `/task` Step 7: KD-9's
-narrowing to this module's own packages, AC15's carve-out written into the criterion, and the new
-Scope item 11 / KD-18 / AC24 on CI's shellcheck coverage.
+**Revision:** round 3 — the YAML extractor's line numbers (D1a), the package survey for the four
+scanner grammars (D1b), the re-measured `mvdan.cc/sh/v3` footprint (D3), and the cross-group
+`--help` shape obligation (D9). Round 2 reconciled the design against the spec as amended at
+`/task` Step 7: KD-9's narrowing to this module's own packages, AC15's carve-out written into the
+criterion, and the new Scope item 11 / KD-18 / AC24 on CI's shellcheck coverage.
 
 ## Approach
 
@@ -42,7 +44,7 @@ that defeat a regex:
   `ast-index outline "cmd/bot/main_test.go"` → `validEnv [function]`]. AC5 exists because of exactly
   this.
 - Shell heredoc bodies in the harness suites carry `#`-leading lines holding banned tokens
-  [measured `72d5bf7:ai-docs/scripts/test-doc-edit-guard.sh:70-77` · `sed -n '60,90p' ai-docs/scripts/test-doc-edit-guard.sh` →
+  [measured `72d5bf7:ai-docs/scripts/test-doc-edit-guard.sh` · `sed -n '60,90p' ai-docs/scripts/test-doc-edit-guard.sh` →
   `## Open questions")            # lands on the KD-2 cell mention`, inside a `<<'PY'` heredoc]. A
   `#`-anchored scanner reports that line, and no sweep can silence it without rewriting a fixture,
   which AC15 forbids.
@@ -55,8 +57,70 @@ a parser, and both the Go one and the shell one are available:
 |---|---|---|
 | Go | `go/scanner` with `ScanComments` (stdlib) | reports only real comments; the `//` inside `"https://…"` and inside a raw string are not reported; a block comment arrives as one multi-line token [measured `72d5bf7` · `go/scanner` probe in a scratch module under `tmp/`, since removed → the doc comment, the trailing comment and the block comment, and nothing from either string literal] |
 | Shell | `mvdan.cc/sh/v3/syntax`, `KeepComments(true)` + `syntax.Walk` | heredoc bodies, `#` inside single and double quotes, `$#` and `${#a[@]}` are not reported; a trailing end-of-file comment is; the shebang **is** reported and therefore needs the KD-5 exemption [measured `72d5bf7` · same scratch module → only the shebang, the standalone comment, the trailing comment and the EOF comment] |
-| YAML | `go.yaml.in/yaml/v3` node comments (already a direct requirement) [measured `72d5bf7:go.mod` · `grep yaml go.mod` → `go.yaml.in/yaml/v3 v3.0.5`] | recovers exactly the YAML-level comment lines a lexical `#` scan finds in `.golangci.yml`, and reports nothing from `ci.yml`'s `filters: |` block scalar — which is precisely the KD-6 boundary [measured `72d5bf7` · yaml.v3 probe over `.github/workflows/ci.yml`, `config/balance.yaml`, `.golangci.yml`] |
-| SQL, `Makefile`, `.gitignore`, `.env.example` | small lexical scanners in the same package | the requirement here is a marker plus quoting — a scanner, not a grammar. **No package survey was run for this row's grammars**, so this is the design's weakest dependency call and the one to push on: it is argued from the shape of the requirement, not from an absence |
+| YAML | `go.yaml.in/yaml/v3` node comments (already a direct requirement) [measured `72d5bf7:go.mod` · `grep yaml go.mod` → `go.yaml.in/yaml/v3 v3.0.5`], **plus the D1a line reconciliation** | it decides *which* `#` runs are comments — the hard half. It reports nothing from `ci.yml`'s `filters: \|` block scalar or from a `#` inside a quoted scalar, which is precisely the KD-6 boundary [measured `a18467f` · yaml.v3 probe over the tracked `*.yml`/`*.yaml` set plus synthetic fixtures → the `#`-leading lines inside `ci.yml`'s `filters: \|` block and inside a fixture's block scalar absent from the node comments, present in a naive line scan]. It does **not** answer *where* the comment is — D1a does |
+| SQL, `Makefile`, `.gitignore`, `.env.example` | small lexical scanners in the same package, after the survey in D1b | for each of the four, every surveyed package's public API either discards comments entirely or cannot be reached from this module; the one package that does answer the question (SQL) costs cgo. D1b records what was evaluated, why each lost, and the escape hatch |
+
+**D1a — the YAML extractor reconciles its line numbers; it does not read them off the node.**
+`go.yaml.in/yaml/v3` never reports a comment's own line. A comment arrives as `HeadComment`,
+`LineComment` or `FootComment` on the **node it attaches to**, and only `LineComment` shares that
+node's line. Measured on this toolchain: a file header arrives as `HeadComment` on the node
+*below* it; a comment block above a mapping key arrives on that key's node; and a `FootComment`
+arrives on a node whose own line is *above* the comment, because that node is a mapping key whose
+subtree ends higher up
+[measured `a18467f` · yaml.v3 probe over the tracked `*.yml`/`*.yaml` set and synthetic
+fixtures → every reported `HeadComment` and `FootComment` sits on a node line that is not the
+comment's own; only `LineComment` shares it]. Taking `n.Line` as the finding's line would make
+AC4's report wrong on nearly every YAML comment in the tree, and a presence/absence-only test table
+cannot see it.
+
+The extractor therefore recovers each comment's real line by **matching the retained text back
+against the source**, nearest-first, in the direction the field name fixes:
+
+- `LineComment` → the finding is on `n.Line`; the extractor asserts the source line ends with the
+  returned text.
+- `HeadComment` → the block is the run of `K` consecutive lines (`K` = the lines of the returned
+  text) nearest **above** `n.Line` whose whitespace-trimmed content equals the returned lines, one
+  for one. It is not `n.Line - K`: yaml.v3 attaches a head comment across a blank line, contrary to
+  its own field doc, and `config/balance.yaml` is exactly that shape today.
+- `FootComment` → the same run, nearest **below** `n.Line`.
+- A comment that does not reconcile is an **instrument failure — exit 2** (D6), never a guess and
+  never a silent drop. That is what keeps a future yaml.v3 change from turning into wrong line
+  numbers instead of a red gate.
+
+Measured over the whole tracked YAML set plus the fixtures, this reconciles every comment yaml.v3
+reports, with no unreconciled case, and a naive `n.Line - K` offset does not
+[measured `a18467f` · reconciliation probe over every tracked `*.yml`/`*.yaml` →
+`UNRECONCILED: none` with the nearest-match search; the same probe with the offset rule →
+`HEAD unreconciled` on `config/balance.yaml`, whose header is separated from `world:` by a blank
+line]. The rejected alternative was to drop yaml.v3 and take both the text and the line from a
+lexical scan bounded by parser-derived block-scalar spans: `yaml.Node` carries `Line` and `Column`
+but **no end position**
+[measured `a18467f` · `go doc go.yaml.in/yaml/v3.Node` → the fields are `Kind, Style, Tag, Value,
+Anchor, Alias, Content, HeadComment, LineComment, FootComment, Line, Column`], so the span of a
+folded block scalar would itself have to be re-derived by hand — hand-rolling the one part of YAML
+the parser was chosen for.
+
+**D1b — the package survey for the scanner grammars.** `AGENTS.md` § *Dependency Versions*
+refuses "it's only 20 lines" and "better to write our own" as arguments, and sets the bar at a
+rejected-alternatives comparison naming the escape hatch (the model being KD-4's scheduler). Here it
+is; the conclusion is still hand-roll, but now it is argued from what the packages do.
+
+| Grammar | Evaluated | Why it lost |
+|---|---|---|
+| SQL | `github.com/pressly/goose/v3` — **already a direct dependency**, and the parser that reads these very migrations | Its SQL parser is an `internal/` package, unreachable from this module [measured `a18467f` · `find $(go env GOMODCACHE)/github.com/pressly/goose/v3@v3.27.3 -type d -name '*sqlparser*'` → `…/internal/sqlparser`]. Nothing in goose's public API returns comment positions |
+| SQL | `github.com/pganalyze/pg_query_go/v6` | **It answers the question exactly** — `Scan` returns `ScanToken{Start, End, Token}` and the token set carries `SQL_COMMENT` and `C_COMMENT` [measured `a18467f` · `grep -n 'SQL_COMMENT\|C_COMMENT' pg_query.pb.go` → `Token_SQL_COMMENT` and `Token_C_COMMENT` among the `Token` constants; `grep 'type ScanToken struct' -A 8` → the fields `Start int32`, `End int32`, `Token Token`]. It loses on cost, not capability: it is **cgo**, vendoring the Postgres C parser sources into the module [measured `a18467f` · `grep -rl 'import "C"' <module>` → `parser/parser.go`; `grep -rn '#cgo' <module>` → `#cgo CFLAGS: -Iinclude -Iinclude/postgres …` on that file]. Adopting it makes every build and every CI job that compiles this module depend on a C toolchain, to answer a two-marker lexical question about goose migrations. **This is the named escape hatch:** if the SQL scanner is ever wrong on a real migration, this is the drop-in, at that price |
+| SQL | `github.com/auxten/postgresql-parser` (pure Go, a CockroachDB fork) | Its public API is `Parse(sql) (Statements, error)`; the scanner discards `--` and `/* */`, and its `COMMENT` identifier is the SQL `COMMENT ON` keyword, not a lexical token [measured `a18467f` · `grep -hn '^func [A-Z]' pkg/sql/parser/parse.go` → `Parse`, `ParseOne`, `ParseQualifiedTableName`, … , none returning comments]. API cannot express the requirement |
+| SQL | `github.com/xwb1989/sqlparser` | No tagged release on the proxy, and a MySQL dialect [measured `a18467f` · `go list -m -versions github.com/xwb1989/sqlparser` → the module path alone, no versions] |
+| `.gitignore` | `github.com/go-git/go-git/v5` `plumbing/format/gitignore` | Its API is `ReadPatterns` / `ParsePattern` → `Pattern` values; comment lines are skipped and never returned, and no position travels with a pattern [measured `a18467f` · `grep -hn '^func [A-Z]\|^type [A-Z]' <pkg>/*.go` → `ReadPatterns`, `LoadGlobalPatterns`, `LoadSystemPatterns`, `NewMatcher`, `ParsePattern`, `Matcher`, `Pattern`, `MatchResult`]. API cannot express the requirement, and adopting it would pull go-git in for a question it does not answer |
+| `.gitignore` | `github.com/sabhiram/go-gitignore`, `github.com/denormal/go-gitignore` | No tagged release on the proxy for either [measured `a18467f` · `go list -m -versions <each>` → the module path alone, no versions]; both are matchers, with the same discards-comments API shape |
+| `Makefile` | `4d63.com/makefile`, `github.com/leighmcculloch/go-makefile` | No tagged release on the proxy for either [measured `a18467f` · `go list -m -versions <each>` → the module path alone, no versions], and both expose a target list rather than comment spans. API cannot express the requirement |
+| `.env.example` | `github.com/joho/godotenv` — **already a direct dependency**, and the parser that reads this very file (D14) | Its whole public API returns `map[string]string` and `error` [measured `a18467f` · `go doc github.com/joho/godotenv` → `Parse`, `Read`, `Unmarshal`, `UnmarshalBytes`, `Load`, `Overload`, `Marshal`, `Write`, `Exec`]; comments are consumed and discarded with no position. API cannot express the requirement. It nonetheless stays the **grammar of record**: the scanner's rule for where an unquoted value ends is taken from godotenv's own parser, because godotenv is what reads this file in this tree (§ Test Design) |
+
+Those scanners are therefore hand-rolled, and the argument is the one `AGENTS.md` admits — *the
+API cannot express the requirement* — for every grammar but SQL, where the argument is a named cost
+with a named escape hatch. Each scanner is one marker plus one quoting rule, each is exercised by
+its own table in § Test Design, and each is a case where the surveyed package would have had to be
+wrapped in a lexical scan anyway.
 
 **Rejected alternative — a bash guard beside the existing ones.** It matches the shape of every
 other gate in this repository and the spec's § *Conventions the gate inherits* names shell as what
@@ -90,12 +154,41 @@ The command form answers both.
 
 ### D3 — One new dependency: `mvdan.cc/sh/v3`
 
-Latest release `v3.14.1`, and it brings nothing else with it — a scratch module requiring it
-resolves to a `go.sum` naming only that module
-[measured · `go list -m -versions mvdan.cc/sh/v3` → `… v3.14.0 v3.14.1`; scratch module `go get mvdan.cc/sh/v3@v3.14.1` →
-`go: added mvdan.cc/sh/v3 v3.14.1`, its `go.sum` naming only `mvdan.cc/sh/v3`]. It is the parser
-behind `shfmt`, and it is what the requirement in D1 names. Added with `go get` then `go mod tidy`,
-never by hand-editing `go.mod`, per `AGENTS.md` § *Dependency Versions*.
+Latest release `v3.14.1`. It is the parser behind `shfmt`, and it is what the requirement in D1
+names. Added with `go get` then `go mod tidy`, never by hand-editing `go.mod`, per `AGENTS.md`
+§ *Dependency Versions*.
+
+**What it actually costs, measured with a real import rather than a bare `go get`.** Round 2 read
+`go get`'s own summary line and reported "a `go.sum` naming only that module"; that command, with
+nothing importing the package, records an `// indirect` requirement and answers a different question
+than the one asked. Re-measured on a scratch module pinned at this repo's `go` directive, importing
+`mvdan.cc/sh/v3/syntax` and tidied, the delta the implementor and the
+`go mod tidy && git diff --exit-code go.mod go.sum` gate will actually see is:
+
+- **`go.mod` gains the direct requirement and no transitive `// indirect` line** — the substance of
+  round 2's claim survives;
+- **`go.sum` gains full `h1:`/`go.mod` entries for the dependency's own test dependencies** —
+  `github.com/go-quicktest/qt`, `github.com/google/go-cmp`, `github.com/kr/pretty`,
+  `github.com/kr/text`, `github.com/rogpeppe/go-internal` — which `go mod tidy` keeps, because it
+  records what `go test all` needs;
+- **the `go` directive normalises from `go 1.26` to `go 1.26.0`**, because `mvdan.cc/sh/v3`'s own
+  `go.mod` declares `go 1.26.0`. This is not a `go get` artefact: the same command against an
+  unrelated module leaves `go 1.26` alone
+
+[measured `a18467f` · scratch module `module shprobe / go 1.26` importing `mvdan.cc/sh/v3/syntax`,
+`go get mvdan.cc/sh/v3@v3.14.1 && go mod tidy` → `go: upgraded go 1.26 => 1.26.0`,
+`go: added mvdan.cc/sh/v3 v3.14.1`; resulting `go.mod` → `go 1.26.0` plus
+`require mvdan.cc/sh/v3 v3.14.1` and nothing else; resulting `go.sum` → the modules named above beside
+`mvdan.cc/sh/v3`; control: the same `go get` for `github.com/google/go-cmp@v0.7.0` on an identical
+scratch module → `go 1.26` unchanged; `grep -m1 '^go ' <modcache>/…/v3.14.1.mod` → `go 1.26.0`].
+
+Two consequences the wiring must not be surprised by. The `go.mod`/`go.sum` diff of subtask 1 is not
+confined to the `require` line, and it is correct — a reviewer seeing the `go.sum` growth should not
+"clean it up". And CI's Go jobs read `go-version-file: go.mod`
+[measured `a18467f:.github/workflows/ci.yml` · `grep -n 'go-version-file' .github/workflows/ci.yml`
+→ `go-version-file: go.mod` on each `actions/setup-go@v7` step], so the directive change is the
+value those jobs resolve; `1.26.0` is a version this toolchain already satisfies
+[measured `a18467f` · `go version` → `go version go1.26.5-X:nodwarf5 linux/amd64`].
 
 ### D4 — What the machine gate decides, and what stays review-judged
 
@@ -170,7 +263,7 @@ reader is AC16's own territory: a bare "see such-and-such", and narration.
 Exit 0 = no finding. Exit 1 = at least one finding. Exit 2 = the gate could not run (an unreadable
 file, a parse error, no git worktree) — an instrument failure that must not read as a clean tree,
 the shape `check-citations.sh` already models for its own high-water mark
-[measured `72d5bf7:.claude/skills/ai-audit/scripts/check-citations.sh:51,63` ·
+[measured `72d5bf7:.claude/skills/ai-audit/scripts/check-citations.sh` ·
 `grep -n 'INSTRUMENT reading\|Instrument failure' .claude/skills/ai-audit/scripts/check-citations.sh` →
 `# The high-water mark is an INSTRUMENT reading.` and `Instrument failure, not a citation finding`].
 
@@ -178,7 +271,7 @@ the shape `check-citations.sh` already models for its own high-water mark
 if it does, the suppression is a specific `//nolint:gosec` with a stated reason, which is what
 `nolintlint`'s `require-specific` and `require-explanation` settings demand, and the config's only
 `gosec` exclusion is for test files
-[measured `4772d33:.golangci.yml:42-56` · `sed -n '39,57p' .golangci.yml` →
+[measured `4772d33:.golangci.yml` · `sed -n '39,57p' .golangci.yml` →
 `nolintlint: require-explanation: true, require-specific: true`, and `exclusions.rules` naming
 `gosec` only under `path: _test\.go`].
 
@@ -203,7 +296,7 @@ Go, shell, SQL, YAML, `Makefile`, `.gitignore`, `.env.example` and `.githooks/**
 **new job** gated on it that sets up Go and runs `make comment-refs` (AC3). Neither existing filter
 key covers the set: the `go` key does not name `**/*.sh`, the `harness` key does not name `**/*.go`,
 and **neither names `.githooks/**`**
-[measured `4772d33:.github/workflows/ci.yml:37-61` · `sed -n '37,61p' .github/workflows/ci.yml`].
+[measured `4772d33:.github/workflows/ci.yml` · `sed -n '37,61p' .github/workflows/ci.yml`].
 No skill's `allowed-tools` line needs editing for the new target — the grants are wildcard
 [measured `72d5bf7` · `grep -rno "Bash(make[^)]*)" .claude/skills/*/SKILL.md .claude/agents/*.md` →
 `Bash(make *)` in `task/SKILL.md`, `pr-ci-failed/SKILL.md`, `project-review/SKILL.md` and their siblings].
@@ -215,7 +308,7 @@ Today `.githooks/pre-commit` is a regular file that `exec`s the ratchet
 After the change the tracked entry is a symlink and the content lives in `pre-commit.sh`, which
 keeps resolving its own paths from the worktree root — the property the existing dispatch suite
 locks
-[measured `72d5bf7:ai-docs/scripts/test-precommit-dispatch.sh:25,119-122` · `cat -n ai-docs/scripts/test-precommit-dispatch.sh` →
+[measured `72d5bf7:ai-docs/scripts/test-precommit-dispatch.sh` · `cat -n ai-docs/scripts/test-precommit-dispatch.sh` →
 `[ -x .githooks/pre-commit ]` and `grep -q 'git rev-parse --show-toplevel' .githooks/pre-commit`].
 Both assertions survive a symlink, because `grep` and `[ -x ]` follow one.
 
@@ -238,7 +331,7 @@ contradict its own exception. The property replaces the position:
 - a script with no argument handling yet gains the `case` below, immediately after the `set` line;
 - a script that already parses an argument extends that existing site — `coverage-ratchet.sh` reads
   a mode there
-  [measured `4772d33:.githooks/coverage-ratchet.sh:60` · `grep -n '^mode=' .githooks/coverage-ratchet.sh`
+  [measured `4772d33:.githooks/coverage-ratchet.sh` · `grep -n '^mode=' .githooks/coverage-ratchet.sh`
   → `mode=${1:-raise}`], preceded only by constant assignments, which are not side effects.
 
 ```bash
@@ -258,10 +351,19 @@ esac
 printing the same `usage` to stderr and exiting non-zero. `doc-edit-guard.sh` needs this shape
 rather than a smaller edit, because its present `usage` reads its own comment block back out of the
 file — an implementation the sweep destroys
-[measured `72d5bf7:ai-docs/scripts/doc-edit-guard.sh:36` · `sed -n '1,45p' ai-docs/scripts/doc-edit-guard.sh` →
+[measured `72d5bf7:ai-docs/scripts/doc-edit-guard.sh` · `sed -n '1,45p' ai-docs/scripts/doc-edit-guard.sh` →
 `usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }`].
 
 The fixed line `  -h|--help) usage; exit 0 ;;` is the shape marker the checker of D10 greps for.
+
+**AC19 spans a group boundary, so the shape is pinned to an artefact rather than to a memory.**
+`coverage-ratchet.sh` takes this shape in subtask 8 (Group A, code change-type — `.githooks/**`);
+every other script takes it in subtask 12 (Group B, instructions/harness). Two implementors on two
+models writing "the same shape" from a description is how shapes drift. The obligation is therefore
+directional: **subtask 12 copies the block subtask 8 wrote, verbatim**, reading it out of the tree
+rather than out of this document, and subtask 12's completion condition includes that the marker
+line is byte-identical across every script that answers `--help`, `coverage-ratchet.sh` included.
+Subtask 13's checker then holds that forward for every later script `[derived → AC19]`.
 
 ### D10 — The `--help` membership set is derived twice, from two different trees
 
@@ -327,7 +429,7 @@ Where a sentence exists only to carry a removed reference, the sentence goes wit
 messages* these guard scripts print are not comments and are therefore untouched — a good deal of
 the rationale the sweep strips from `check-ac-shape.sh`'s header survives in the message it prints
 on a hit
-[measured `4772d33:ai-docs/scripts/check-ac-shape.sh:103-122` · `sed -n '100,122p' ai-docs/scripts/check-ac-shape.sh`
+[measured `4772d33:ai-docs/scripts/check-ac-shape.sh` · `sed -n '100,122p' ai-docs/scripts/check-ac-shape.sh`
 → the `MSG` heredoc printed to stderr, which names the learnings-log date and the spec-writer rule
 the header also names].
 
@@ -337,7 +439,7 @@ the header also names].
 other tracked entry cannot carry a comment
 [measured `72d5bf7` · `git ls-files config/` → `config/balance.yaml`, `config/world/.gitkeep`] — and
 its per-key documentation is largely a design-section pointer, in Russian
-[measured `72d5bf7:config/balance.yaml:1-75` · `cat -n config/balance.yaml`]. Every **leaf** key ends
+[measured `72d5bf7:config/balance.yaml` · `cat -n config/balance.yaml`]. Every **leaf** key ends
 up with English prose that says what the key controls and what changing it does, at the
 completeness `.env.example` reaches per variable; a group key gains prose when the group needs an
 introduction. The placeholder status of the numbers is a fact about the file and survives, restated
@@ -348,7 +450,7 @@ changes.
 
 Its per-variable prose already meets the bar. What goes is the header's package name, its test path,
 its markdown path and its issue number
-[measured `72d5bf7:.env.example:1-16` · `cat -n .env.example`], the per-key `design D10` / `D13` /
+[measured `72d5bf7:.env.example` · `cat -n .env.example`], the per-key `design D10` / `D13` /
 `D15` anchors, and the bare `internal/…` paths that head three of its sections. What stays, restated
 in its own words (KD-15), is the file's contract: a variable the configuration loader does not read
 does not belong here.
@@ -446,7 +548,7 @@ shape `AGENTS.md` § *Patterns* 2 names.
 
 The sandbox needs a Go toolchain. Locally there is one; CI's Harness-guards job sets none up — its
 steps run straight from the checkout
-[measured `4772d33:.github/workflows/ci.yml:141-153` · `sed -n '129,155p' .github/workflows/ci.yml` →
+[measured `4772d33:.github/workflows/ci.yml` · `sed -n '129,155p' .github/workflows/ci.yml` →
 the job's `steps:` begin with `uses: actions/checkout@v7` and the next entry is the shellcheck step].
 So the wiring subtask adds `actions/setup-go@v7` with `go-version-file: go.mod` to that job: a case
 that skips in CI is a case that does not run, and a job that did not run is not a passing job.
@@ -460,12 +562,12 @@ KD-18 leaves the shape to the design. Two were open; the design takes the second
   [measured `4772d33:Makefile` § shellcheck target · `sed -n '/^shellcheck:/,/^$/p' Makefile` →
   `find . -path ./.git -prune -o -path ./tmp -prune -o -name '*.sh' -exec shellcheck -s bash {} +`
   followed by `shellcheck -s bash .githooks/pre-commit`]. CI's own step reaches two directories
-  [measured `4772d33:.github/workflows/ci.yml:153` · `grep -n "find .claude ai-docs/scripts" .github/workflows/ci.yml`
+  [measured `4772d33:.github/workflows/ci.yml` · `grep -n "find .claude ai-docs/scripts" .github/workflows/ci.yml`
   → `find .claude ai-docs/scripts -name '*.sh' -print0 | xargs -0 -r shellcheck -s bash`].
 - **So the Harness-guards job runs `make shellcheck`** instead of carrying its own expression.
   Extending the CI expression would leave two spellings of one gate — the drift the `Makefile`'s own
   header names as the reason CI invokes sub-targets
-  [measured `4772d33:Makefile:1-15` · `sed -n '1,15p' Makefile` → "CI never runs `verify` — it
+  [measured `4772d33:Makefile` · `sed -n '1,15p' Makefile` → "CI never runs `verify` — it
   invokes the same sub-targets from its paths-filtered jobs, so a local run and a CI run cannot
   disagree about what any gate's command is"] — and the gap being closed is precisely what the second
   spelling caused.
@@ -482,14 +584,14 @@ KD-18 leaves the shape to the design. Two were open; the design takes the second
   a commit touching only that directory currently matches no filter and runs no job at all. `Makefile`
   joins it as well, because the job's command now lives in that file; a filter key may name a path
   that another key also names, as `.github/workflows/**` already is
-  [measured `4772d33:.github/workflows/ci.yml:37-61` · `sed -n '37,61p' .github/workflows/ci.yml` →
+  [measured `4772d33:.github/workflows/ci.yml` · `sed -n '37,61p' .github/workflows/ci.yml` →
   `.github/workflows/**` under both the `go` and the `workflows` keys].
 
 ## Decomposition
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | Comment extraction: the file-class router and one extractor per grammar (Go, shell, YAML, SQL, `Makefile`, `.gitignore`, `.env.example`), each returning marker-stripped text with a line number; add the `mvdan.cc/sh/v3` requirement via `go get` + `go mod tidy` | `internal/commentref/` (extractors + tests), `go.mod`, `go.sum` | — |
+| 1 | Comment extraction: the file-class router and one extractor per grammar (Go, shell, YAML, SQL, `Makefile`, `.gitignore`, `.env.example`), each returning marker-stripped text with a line number — the YAML one via the D1a reconciliation, since yaml.v3 reports the node's line and not the comment's; add the `mvdan.cc/sh/v3` requirement via `go get` + `go mod tidy`, expecting the `go.sum` growth and the `go`-directive normalisation D3 measures | `internal/commentref/` (extractors + tests), `go.mod`, `go.sum` | — |
 | 2 | The banned-class classifier (D4) and the exemption pass (D5), over extracted comments | `internal/commentref/` (classifier + tests) | 1 |
 | 3 | The command: the input modes and exit codes D6 names, the `<file>:<line>: <class>: <text>` report, a testable `run` with a thin `main` | `cmd/commentrefs/` | 2 |
 | 4 | Sweep `cmd/bot`, `internal/config`, `internal/backoff` to the gate's silence (D12) | `cmd/bot/*.go`, `internal/config/*.go`, `internal/backoff/*.go` | 3 |
@@ -500,7 +602,7 @@ KD-18 leaves the shape to the design. Two were open; the design takes the second
 | 9 | The two files that gain prose rather than lose it: `.env.example` strips its pointers and restates its file-level contract (D14); `config/balance.yaml` gets English self-contained prose per leaf key, values untouched (D13) | `.env.example`, `config/balance.yaml` | 3 |
 | 10 | Landing one of the wiring (D7): `Makefile` gains the `comment-refs` target — **not** yet a `verify` prerequisite; `.githooks/pre-commit` becomes a symlink to a new `.githooks/pre-commit.sh` dispatching gate-then-ratchet with the D16 invocation and skip conditions | `Makefile`, `.githooks/pre-commit`, `.githooks/pre-commit.sh` | 4–9 |
 | 11 | Rewrite `ai-docs/doc-convention.md` to the new rule (D15, AC13) | `ai-docs/doc-convention.md` | 10 |
-| 12 | Sweep the harness shell scripts to the gate's silence; move usage prose behind the D9 `--help` | `ai-docs/scripts/*.sh`, `.claude/skills/*/scripts/*.sh` | 10 |
+| 12 | Sweep the harness shell scripts to the gate's silence; move usage prose behind the D9 `--help`, **copying the block subtask 8 wrote verbatim out of the tree** — completion includes the marker line being byte-identical across every script that answers `--help`, `coverage-ratchet.sh` included (D9) | `ai-docs/scripts/*.sh`, `.claude/skills/*/scripts/*.sh` | 10 |
 | 13 | The script-shape checker and its regression suite (D10, AC8); extend the dispatch suite with the symlink case and the D16 dispatch cases | `ai-docs/scripts/check-script-shape.sh`, `ai-docs/scripts/test-script-shape.sh`, `ai-docs/scripts/test-precommit-dispatch.sh` | 12 |
 | 14 | Propagate the rule text across the instruction surface and the hook messages, per D15 and the `grep -rni` sweep; AC22's grammar sites; the tool-hierarchy and propagation-group rows for the new gate, job, checker and suite; rewrite the #68 body to the reformulated rule (AC23) | `AGENTS.md`, `ai-docs/*.md`, `.claude/agents/*.md`, `.claude/skills/**/*.md`, `.claude/settings.json`, issue #68 | 11, 12, 13 |
 | 15 | Landing two of the wiring (D7, D17): `verify` gains `comment-refs`; the CI filter key and the `comment-refs` job; the Harness-guards job runs `make shellcheck`, gains `actions/setup-go@v7`, gains the new checker's step and the new suite's line; `.githooks/**` and `Makefile` join the `harness` filter; the `Makefile`'s `pre-commit` special case and its shellcheck carve-out note go | `Makefile`, `.github/workflows/ci.yml` | 14 |
@@ -598,7 +700,14 @@ count.
   false negative — the failure mode `AGENTS.md` § *Patterns 2* names, where a clean instrument reads
   as a clean subject. Mitigation: the extraction tests carry a fixture per comment position (head,
   line, foot, between mappings, after the last node, inside and after a block scalar), each asserted
-  present or absent by name — `[derived → the YAML extraction cases in § Test Design]`.
+  present or absent **and, when present, at an exact line** —
+  `[derived → the YAML extraction cases in § Test Design]`.
+- The sibling of that risk, and the one round 2 missed: a YAML comment reported at the **wrong
+  line**. yaml.v3 reports the node's line, not the comment's, so a report can be confidently wrong
+  rather than absent, and a presence-only test table passes either way (D1a). Mitigation: the
+  reconciliation is a nearest-match search over the source text with a mismatch escalating to
+  exit 2, and the extraction cases assert exact lines including the three shapes an offset rule
+  gets wrong — `[derived → the YAML extraction cases in § Test Design]`.
 - `mvdan.cc/sh/v3` fails to parse a script that `bash` accepts, and the gate exits 2 on a file it
   cannot read. Mitigation: exit 2 is an instrument failure by design (D6), not a pass; the extraction
   suite parses every tracked `*.sh` of the tree and asserts no parse error —
@@ -621,7 +730,7 @@ count.
 - `gosec` refuses the `git` subprocess in `--staged` mode. Mitigation: fixed argument vector, no
   shell; if the finding stands, a specific `//nolint:gosec` with a reason, which is what the lint
   config requires
-  [measured `4772d33:.golangci.yml:42-44` · `sed -n '39,57p' .golangci.yml` → `nolintlint: require-explanation: true, require-specific: true`].
+  [measured `4772d33:.golangci.yml` · `sed -n '39,57p' .golangci.yml` → `nolintlint: require-explanation: true, require-specific: true`].
 - The coverage ratchet blocks the commit because the new package arrived under-covered. Mitigation:
   D2 keeps `main` thin and the logic in `internal/commentref`, and the subtasks are TDD'd — the
   legitimate exits from a ratchet block are stated in `AGENTS.md` § *Build & Test*, and `--no-verify`
@@ -652,6 +761,14 @@ Scenarios, one table per grammar, each case a source snippet as a Go string lite
 - YAML: head, line and foot comments; a comment between two mappings; a comment after the document's
   last node; a `#` inside a quoted scalar; `#`-leading lines inside a `|` block scalar asserted
   **absent**; a comment on the line introducing the block scalar asserted **present**.
+  **Every YAML case asserts the exact line, not presence alone** — the whole D1a reconciliation is
+  invisible to a by-name table, which is the green-instrument shape one heading over from where this
+  design's own YAML risk row was looking. Cases present because a rule reading `n.Line` or
+  `n.Line - K` off the node would get them wrong: a multi-line file header separated from its node
+  by a **blank line** (the `config/balance.yaml` shape); a head comment whose node sits below it;
+  and a foot comment whose node is a mapping **key** whose subtree ends above the comment. A further
+  case asserts that a comment which cannot be reconciled surfaces as **exit 2**, not as a guessed
+  line and not as a silent drop.
 - SQL: `--` at line start and mid-line; `--` inside a single-quoted string; a `/* */` block; a goose
   annotation.
 - `Makefile`: line-start and mid-line `#`; a `#` in a recipe line.
