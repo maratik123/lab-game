@@ -85,7 +85,7 @@ func TestGuard_NoPanicLogFatalOrOsExit(t *testing.T) {
 	walkIngestSource(t, func(path string, content []byte) {
 		for _, f := range forbidden {
 			if strings.Contains(string(content), f) {
-				t.Errorf("%s contains %q — production code must never panic/Fatal/Exit", path, f)
+				t.Errorf("%s contains %q — production code must never panic/Fatal/Exit (design D7)", path, f)
 			}
 		}
 	})
@@ -98,7 +98,7 @@ func TestGuard_NoMetricsLibraryImport(t *testing.T) {
 	t.Parallel()
 	walkIngestSource(t, func(path string, content []byte) {
 		if strings.Contains(string(content), "prometheus/client_golang") {
-			t.Errorf("%s imports a metrics registry — this package must expose only the Observer interface", path)
+			t.Errorf("%s imports a metrics registry — internal/ingest must expose only the Observer interface", path)
 		}
 	})
 }
@@ -160,7 +160,7 @@ func TestGuard_TelegoUpdateFieldsMatchKindTable(t *testing.T) {
 		}
 		seenTags[tagName] = true
 		if !knownKind(Kind(tagName)) {
-			t.Errorf("telego.Update.%s (json tag %q) has no kindTable row — a Bot API update type the kind table has not learned", f.Name, tagName)
+			t.Errorf("telego.Update.%s (json tag %q) has no kindTable row — a Bot API update type kind.go has not learned (design D4)", f.Name, tagName)
 			continue
 		}
 
@@ -177,10 +177,10 @@ func TestGuard_TelegoUpdateFieldsMatchKindTable(t *testing.T) {
 			wantDate = false
 		}
 		if wantDate && row.date == nil {
-			t.Errorf("kindTable row %q: payload %s declares a Date field but the row's date extractor is nil", tagName, payload)
+			t.Errorf("kindTable row %q: payload %s declares a Date field but the row's date extractor is nil (design D4)", tagName, payload)
 		}
 		if !wantDate && row.date != nil {
-			t.Errorf("kindTable row %q: payload %s declares no Date field but the row supplies a date extractor", tagName, payload)
+			t.Errorf("kindTable row %q: payload %s declares no Date field but the row supplies a date extractor (design D4)", tagName, payload)
 		}
 
 		wantChat := false
@@ -188,10 +188,10 @@ func TestGuard_TelegoUpdateFieldsMatchKindTable(t *testing.T) {
 			wantChat = true
 		}
 		if wantChat && row.chatID == nil {
-			t.Errorf("kindTable row %q: payload %s declares a non-pointer Chat field but the row's chatID extractor is nil", tagName, payload)
+			t.Errorf("kindTable row %q: payload %s declares a non-pointer Chat field but the row's chatID extractor is nil (design D4)", tagName, payload)
 		}
 		if !wantChat && row.chatID != nil {
-			t.Errorf("kindTable row %q: payload %s declares no non-pointer Chat field but the row supplies a chatID extractor", tagName, payload)
+			t.Errorf("kindTable row %q: payload %s declares no non-pointer Chat field but the row supplies a chatID extractor (design D4)", tagName, payload)
 		}
 	}
 
@@ -243,7 +243,7 @@ func TestGuard_NoTransactionEscapesTheHandlerContract(t *testing.T) {
 			}
 			for _, res := range fn.Type.Results.List {
 				if pgxTxOrConnType(res.Type) {
-					t.Errorf("%s: exported func/method %s returns a pgx.Tx/pgx.Conn — a Handler must only ever receive the loop's own transaction as a parameter", path, fn.Name.Name)
+					t.Errorf("%s: exported func/method %s returns a pgx.Tx/pgx.Conn — a Handler must only ever receive the loop's own transaction as a parameter (AC8)", path, fn.Name.Name)
 				}
 			}
 		}
@@ -263,7 +263,7 @@ func TestGuard_NoTransactionEscapesTheHandlerContract(t *testing.T) {
 				}
 				for _, name := range field.Names {
 					if name.IsExported() {
-						t.Errorf("%s: exported type %s has exported field %s of type pgx.Tx/pgx.Conn — a Handler must only ever receive the loop's own transaction as a parameter", path, ts.Name.Name, name.Name)
+						t.Errorf("%s: exported type %s has exported field %s of type pgx.Tx/pgx.Conn — a Handler must only ever receive the loop's own transaction as a parameter (AC8)", path, ts.Name.Name, name.Name)
 					}
 				}
 			}
@@ -299,10 +299,10 @@ func TestGuard_NoOwnBotAPIPath(t *testing.T) {
 	botConstruction := regexp.MustCompile(`telego\.NewBot\(|&?telego\.Bot\{|&?http\.Client\{`)
 	walkIngestSource(t, func(path string, content []byte) {
 		if strings.Contains(string(content), "telegoapi") {
-			t.Errorf("%s imports/references telegoapi directly — the Bot API is reached only through the Telegram client's own API()", path)
+			t.Errorf("%s imports/references telegoapi directly — the Bot API is reached only through tg.Client.API() (AC38)", path)
 		}
 		if m := botConstruction.FindString(string(content)); m != "" {
-			t.Errorf("%s references %s — this package must not construct its own *telego.Bot or *http.Client", path, m)
+			t.Errorf("%s references %s — this package must not construct its own *telego.Bot or *http.Client (AC38)", path, m)
 		}
 	})
 }
@@ -369,7 +369,7 @@ func TestGuard_CtxFirstAndNoRidingContext(t *testing.T) {
 					return true
 				}
 				if node.Sel.Name == "Context" || node.Sel.Name == "WithContext" {
-					t.Errorf("%s: selector .%s — the riding context on a polled update is always context.Background() and must never be read or set", path, node.Sel.Name)
+					t.Errorf("%s: selector .%s — the riding context on a polled update is always context.Background() and must never be read or set (design D9)", path, node.Sel.Name)
 				}
 			}
 			return true
@@ -389,7 +389,7 @@ func TestGuard_CtxFirstAndNoRidingContext(t *testing.T) {
 			}
 			params := fn.Type.Params.List
 			if len(params) == 0 || !isContextContextType(params[0].Type) {
-				t.Errorf("%s: exported method/func %s does not take ctx context.Context first, and is not in ctxFirstExemptions", path, qualified)
+				t.Errorf("%s: exported method/func %s does not take ctx context.Context first, and is not in ctxFirstExemptions (design D9, AC2)", path, qualified)
 			}
 		}
 	}

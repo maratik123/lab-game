@@ -99,7 +99,7 @@ func TestGuard_NoMetricsRegistryImportInTG(t *testing.T) {
 			t.Fatalf("ReadFile(%s): %v", e.Name(), err)
 		}
 		if strings.Contains(string(content), "prometheus/client_golang") {
-			t.Errorf("%s imports a metrics registry — this package must expose only the Observer interface", e.Name())
+			t.Errorf("%s imports a metrics registry — internal/tg must expose only the Observer interface", e.Name())
 		}
 	}
 }
@@ -130,7 +130,7 @@ func TestGuard_NoRetryOrRateLimitLiteralAtCallSite(t *testing.T) {
 			t.Fatalf("ReadFile(%s): %v", e.Name(), err)
 		}
 		for _, m := range pattern.FindAllString(string(content), -1) {
-			t.Errorf("%s contains a literal duration %q — retry/rate-limit values must come from the Transport configuration", e.Name(), m)
+			t.Errorf("%s contains a literal duration %q — retry/rate-limit values must come from config.Transport", e.Name(), m)
 		}
 	}
 }
@@ -151,7 +151,7 @@ func TestGuard_NoTelegoBotConstructionOutsideTG(t *testing.T) {
 			return
 		}
 		if m := pattern.FindString(string(content)); m != "" {
-			t.Errorf("%s references %s outside this package — only this package may construct or reconfigure a *telego.Bot", path, m)
+			t.Errorf("%s references %s outside internal/tg — only this package may construct or reconfigure a *telego.Bot", path, m)
 		}
 	})
 }
@@ -183,7 +183,7 @@ func TestGuard_BaseURLOnlyInConstructor(t *testing.T) {
 			t.Fatalf("ReadFile(%s): %v", e.Name(), err)
 		}
 		if strings.Contains(string(content), "BaseURL") {
-			t.Errorf("%s references BaseURL — only the client constructor should", e.Name())
+			t.Errorf("%s references BaseURL — only client.go should (AC15)", e.Name())
 		}
 	}
 }
@@ -202,7 +202,7 @@ func TestGuard_TokenExposureSitesAreTheAcceptedOnes(t *testing.T) {
 	pattern := regexp.MustCompile(`\.Token\(\)|\.FileDownloadURL\(`)
 	walkGoFiles(t, root, func(path string, content []byte) {
 		for _, m := range pattern.FindAllString(string(content), -1) {
-			t.Logf("%s: accepted token-exposure site %s", path, m)
+			t.Logf("%s: accepted token-exposure site %s (design D4)", path, m)
 		}
 	})
 	// No assertion beyond "this compiles and runs" — the test's value is

@@ -174,7 +174,7 @@ func TestGate_uncommittedOwnerRowIsInvisible(t *testing.T) {
 	// Not committed yet — refused.
 	callErr := g.AllowCall(ctx, tg.Call{Chat: tg.ChatRef{Key: "9001", Target: tg.ChatKnown}})
 	if !errors.Is(callErr, ErrChatRefused) {
-		t.Fatalf("AllowCall before commit = %v, want it to wrap ErrChatRefused (the row is not yet visible)", callErr)
+		t.Fatalf("AllowCall before commit = %v, want it to wrap ErrChatRefused (design D18: the row is not yet visible)", callErr)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

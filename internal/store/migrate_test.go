@@ -380,7 +380,7 @@ func TestMigrate_eventShape(t *testing.T) {
 	want := []string{"chat_id", "depth", "id", "maze_id", "payload", "player_id", "ts", "type"}
 	sort.Strings(want)
 	if !slices.Equal(cols, want) {
-		t.Fatalf("event columns = %v, want %v", cols, want)
+		t.Fatalf("event columns = %v, want %v (AC1)", cols, want)
 	}
 
 	// Nullability: only type, payload and ts are NOT NULL.
