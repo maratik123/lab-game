@@ -5,9 +5,9 @@ import "os"
 // resolveWorldPath validates LAB_GAME_WORLD_PATH: present, non-empty, and
 // naming a target that opens and closes cleanly (existence and
 // readability) — nothing inside it is read. The package declares no type
-// describing the world set's interior (AC15); the caller gets back the
-// path string only, so the loader constrains neither a file nor a
-// directory target for issue #28.
+// describing the world set's interior; the caller gets back the path
+// string only, so the loader constrains neither a file nor a directory
+// target.
 func resolveWorldPath(lookup Lookup) (string, error) {
 	val, ok := lookup(envWorldPath)
 	if !ok {

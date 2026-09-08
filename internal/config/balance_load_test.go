@@ -13,8 +13,8 @@ import (
 )
 
 // validBalanceYAML is the known-good baseline every negative test case
-// mutates (design § Test Design, subtask 1): one documented change per case,
-// rather than a hand-typed near-miss with no relation to the others.
+// mutates: one documented change per case, rather than a hand-typed
+// near-miss with no relation to the others.
 const validBalanceYAML = `world:
   chunk:
     cols: 16
@@ -117,8 +117,8 @@ func validBalance() *Balance {
 // assertBalanceEqual walks got and want field-wise, comparing every
 // decimal.Decimal with decimal.Decimal.Equal and everything else with ==.
 // decimal.Decimal is a *big.Int plus an exponent, so neither == nor
-// reflect.DeepEqual is a numeric comparison (design § Test Design, subtask
-// 6) — this helper is written once here and reused by subtask 6.
+// reflect.DeepEqual is a numeric comparison — this helper is written once
+// here and reused elsewhere in this suite.
 func assertBalanceEqual(t *testing.T, got, want *Balance) {
 	t.Helper()
 	compareBalanceValue(t, "Balance", reflect.ValueOf(*got), reflect.ValueOf(*want))
@@ -192,7 +192,7 @@ func TestLoadBalance_NullValue(t *testing.T) {
 // check is the only thing rejecting them. TestLoadBalance_NullValue above
 // uses raid.stamina.cap, whose "> 0" predicate would reject the decoded zero
 // on its own — deleting the tag guard leaves that test green while a real
-// balance key silently defaults (design D6 row 1).
+// balance key silently defaults.
 func TestLoadBalance_NullValue_ZeroAdmittingKeys(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -346,10 +346,10 @@ func TestLoadBalance_SyntaxError(t *testing.T) {
 	}
 }
 
-// TestLoadBalance_EmptyDocumentReportsEveryPathMissing is AC6's own case,
-// written as three distinct inputs because they are not the same node shape
-// (design D6): a walk normalising at the document node would accept "{}" as
-// populated and never report the missing paths.
+// TestLoadBalance_EmptyDocumentReportsEveryPathMissing covers the "every
+// path missing" report as three distinct inputs because they are not the
+// same node shape: a walk normalising at the document node would accept
+// "{}" as populated and never report the missing paths.
 func TestLoadBalance_EmptyDocumentReportsEveryPathMissing(t *testing.T) {
 	t.Parallel()
 	schema := balanceSchema(&Balance{})

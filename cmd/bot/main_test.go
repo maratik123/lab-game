@@ -11,8 +11,8 @@ import (
 )
 
 // repoRootPath resolves rel against the repository root, derived from this
-// test file's own location (cmd/bot is exactly two directories below the
-// root) rather than os.Getwd, matching internal/config's own helper.
+// test file's own location — two directories below the root — rather than
+// os.Getwd, matching this module's own config-loading test helpers.
 func repoRootPath(t *testing.T, rel string) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -31,7 +31,7 @@ func mapLookup(m map[string]string) config.Lookup {
 }
 
 // validEnv returns a fresh, fully valid environment, pointing the balance
-// and world paths at the repository's own tracked config/ artefacts.
+// and world paths at the repository's own tracked configuration artefacts.
 func validEnv(t *testing.T) map[string]string {
 	t.Helper()
 	return map[string]string{

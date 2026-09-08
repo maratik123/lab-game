@@ -5,7 +5,7 @@
 //
 //   - the process environment supplies secrets (the bot token, the
 //     database DSN), runtime settings (the Bot API base URL, the allowed
-//     chat ids, and internal/tg's optional-with-default retry and
+//     chat ids, and the Telegram client's optional-with-default retry and
 //     rate-limit tuning), and the balance-file and world-set file-system
 //     paths;
 //   - the balance YAML file (LAB_GAME_BALANCE_PATH) supplies every game

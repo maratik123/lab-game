@@ -1,10 +1,8 @@
-// Package backoff implements the exponential ramp `internal/tg`,
-// `internal/scheduler` and `internal/ingest` each adopt (design D2, D20,
-// issue #22): a delay that grows geometrically from a base by a
-// configurable factor, clamped at a ceiling, over a zero-based attempt
-// index. Every adopter keeps its own retry loop and its own jitter
-// policy — this package owns only the arithmetic, never a timer, a
-// context, or a wait.
+// Package backoff implements the exponential ramp its adopters share: a
+// delay that grows geometrically from a base by a configurable factor,
+// clamped at a ceiling, over a zero-based attempt index. Every adopter
+// keeps its own retry loop and its own jitter policy — this package owns
+// only the arithmetic, never a timer, a context, or a wait.
 //
 // Contract, over every attempt (including negative ones, clamped to
 // zero), every base and ceiling — not only the positive ones the
@@ -39,9 +37,9 @@
 //     every attempt.
 //
 // None of these out-of-domain rows is reachable through any shipped
-// adopter's own constructor, or through internal/config's validation —
-// they are decided here so an implementor of a future adopter does not
-// have to guess.
+// adopter's own constructor, or through any adopter's own configuration
+// validation — they are decided here so an implementor of a future
+// adopter does not have to guess.
 //
 // A legal factor is finite and strictly greater than 1 — see
 // ValidFactor — and DefaultFactor is the value that reproduces the
@@ -49,8 +47,7 @@
 // configurable, exactly, for a base below 2^53 nanoseconds (about 104
 // days); above that bound the float64 arithmetic this package now uses
 // and the formerly shipped integer doubling diverge by a few
-// nanoseconds at most, bounded and still clamped by the ceiling (design
-// D20).
+// nanoseconds at most, bounded and still clamped by the ceiling.
 package backoff
 
 import (
@@ -60,7 +57,7 @@ import (
 
 // DefaultFactor is the exponential ramp's compiled-in growth factor: the
 // value Exponential and EqualJitter used before the growth factor became
-// configurable (design D20). It reproduces the shipped doubling ramp
+// configurable. It reproduces the shipped doubling ramp
 // exactly, and every adopter's config default is this constant rather
 // than a re-typed literal, so the default and the shared boundary cannot
 // drift apart.
@@ -68,9 +65,9 @@ const DefaultFactor = 2
 
 // ValidFactor reports whether factor is a legal exponential growth
 // factor: finite and strictly greater than 1. This is the single
-// definition of that boundary — every adopter's constructor and
-// internal/config's reader call it rather than each restating the
-// boundary themselves (design D20).
+// definition of that boundary — every adopter's constructor and its own
+// configuration reader call it rather than each restating the boundary
+// themselves.
 func ValidFactor(factor float64) bool {
 	return !math.IsNaN(factor) && !math.IsInf(factor, 0) && factor > 1
 }
@@ -103,7 +100,8 @@ func Exponential(attempt int, base, ceiling time.Duration, factor float64) time.
 // equal-jitter draw: half the delay, plus a further draw of up to that
 // same half, scaled by jitter() in [0, 1). Bounded within
 // [Exponential(...)/2, Exponential(...)) for a jitter in [0, 1) — the
-// same formula internal/tg's retry loop used before this package existed.
+// same formula this package's first adopter's retry loop used before
+// this package existed.
 func EqualJitter(attempt int, base, ceiling time.Duration, factor float64, jitter func() float64) time.Duration {
 	d := Exponential(attempt, base, ceiling, factor)
 	half := d / 2
