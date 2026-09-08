@@ -121,6 +121,30 @@ returned **nothing** on every probe except the bare-invocation one below.
 - `ai-docs/domain-invariants.md` — "provisioning" is Grafana's.
 - `ai-docs/context.md` line 44 (the *Gates* bullet) — states the gate list and the pre-commit dispatcher, both unchanged. Not a claim about how a gate reaches a database.
 - `.githooks/coverage-ratchet.sh` header's test-cache paragraph — states that the measurement keeps the cache and bounds a *replayed* draw. Both still true; what changed is how often a replay happens, and that claim lived in `AGENTS.md`, which is a member and was corrected.
+**The declared sync group was checked too, and it is a different obligation from D10's.**
+`ai-docs/propagation-groups.md` carries a row *"A gate command (adding, removing, or
+renaming one) → `AGENTS.md` § Build & Test AND every skill's `allowed-tools` line that
+grants it AND `.claude/skills/task/reference.md` § Gate checklist"*, and this change adds
+four gate commands, so the row fires. Resolved by reading each half rather than by
+assuming:
+
+- `AGENTS.md` § *Build & Test* — **updated** (subtask 12).
+- Every skill's `allowed-tools` line — **no edit needed, verified rather than assumed.**
+  Every skill that runs gates grants `Bash(make *)`, a wildcard, and `.claude/settings.json`
+  grants the same; nothing anywhere enumerates `make` targets, so the four new ones are
+  already permitted. (`ai-audit`, `interview`, `pr-merged`, `triage` and `verify-change`
+  grant no `make` at all, and none of them runs these gates.)
+- `.claude/skills/task/reference.md` § *Gate checklist* and § *Step 9 — verify list (full)*
+  — **checked, no edit made, and the reason is a precedent rather than a judgement call.**
+  Both enumerate the gates `make verify` discharges plus `make file-limits` and
+  `make comment-refs`; `make cover-ratchet` — a mandatory pre-commit gate that is
+  deliberately outside `verify` — appears on neither. `make test-fallback` and
+  `make test-contention` are outside `verify` for the same stated reason (D8), so listing
+  them would put a whole-module fallback run and a contention probe into every future
+  `/task` Step 9. This task's own use of them is Step 9's per-AC sweep (item 12), which is
+  where a task-specific instrument belongs. **Adding them permanently is a scope decision
+  for the owner, not for this group**, and it is flagged rather than taken.
+
 - Every harness instruction file spelling a bare `go test ./...` (`.claude/**`, `ai-docs/claude-tools-hierarchy.md`, `ai-docs/templates/progress-format.md`, and `AGENTS.md`'s own command block) — **stated exclusion 2.** The bare invocation still works and is the designed fallback (AC3), so none of them states a falsehood. Sweeping them onto `make test` is a real ergonomics gap and is a follow-up, not absorbed here.
 
 ## Decisions log
@@ -136,6 +160,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8 (Group B)**: the falsified half of KD-20's *Consequence* clause was rewritten in place, not appended to. `ai-docs/key-decisions.md` is a live decision record, not an append-only log, and D10 asks for the wrong version of the invariant to stop standing; the correction names both propositions so the difference between them survives, which a silent replacement would not.
 - **Step 8 (Group B)**: the bare `go test ./...` lines in `AGENTS.md`'s command block were LEFT as they are, deliberately. D10's second stated exclusion covers exactly those sites, and rewriting the ones in this file while leaving the identical commands across `.claude/**` would have created the divergence the exclusion exists to avoid.
 - **Step 8 (Group B)**: FOLLOW-UP FOR STEP 12, needs routing — the design records "sweeping the harness instruction files that spell a bare `go test ./...` onto `make test`" as a deferred ergonomics item, but the finalised spec's `## Deferred` section does not carry a row for it, so Step 12's parse of that section will not see it. It is recorded here instead of hand-appended to `ai-docs/deferred/_inbox.jsonl`, which only Step 12 and `/triage` may write.
+- **Step 8 (Group B)**: `ai-docs/propagation-groups.md`'s gate-command row fires on this change and was discharged by reading both halves — the `allowed-tools` half needs no edit (every gate-running skill and `settings.json` grant `Bash(make *)`, a wildcard; nothing enumerates targets), and the Step-9 verify list was checked and left alone on `make cover-ratchet`'s precedent. Adding the two new outside-`verify` gates to every future `/task` Step 9 is a scope decision for the owner; it is flagged in the sweep section, not taken here.
 - **Step 8 (Group B)**: this file had NO `## Files touched` heading when Group B opened it — the orchestrator's Group A repair commit truncated its own decision line mid-sentence at that heading's text and lost the heading with it, so the file list had been living inside the Decisions log. The heading is restored here; the truncated line above is left byte-identical, because the Decisions log is append-only and its content is not Group B's to rewrite.
 
 ## Files touched
