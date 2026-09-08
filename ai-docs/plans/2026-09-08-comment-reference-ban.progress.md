@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** PASS
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group B subtask 12 of 14 complete
-**last_passed_gate:** `make comment-refs` SILENT over the whole tracked tree; `make shellcheck`; all thirteen guard regression suites; the three standalone checkers
+**current_step:** Step 8 — Group B subtask 13 of 14 complete
+**last_passed_gate:** `make comment-refs` silent; `make shellcheck`; all fourteen guard regression suites (the new one included); the four standalone checkers; two dispatcher mutants each caught and reverted
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** start Group B subtask 13 — the script-shape checker `ai-docs/scripts/check-script-shape.sh` and its suite `ai-docs/scripts/test-script-shape.sh`; extend `ai-docs/scripts/test-precommit-dispatch.sh` with the symlink case and the dispatch cases.
+**Do this immediately:** start Group B subtask 14 — propagate the rule text across the instruction surface and the hook messages, per the design's D15 and the `grep -rni` sweep; the AC22 grammar sites; the tool-hierarchy and propagation-group rows for the new gate, job, checker and suite; rewrite the #68 body.
 
 ## Subtasks
 
@@ -32,7 +32,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - [x] 10. Wiring landing one: `comment-refs` target; `pre-commit` symlink + dispatcher
 - [x] 11. Rewrite `ai-docs/doc-convention.md` to the new rule
 - [x] 12. Sweep the harness shell scripts; usage prose behind `--help`, block copied verbatim
-- [ ] 13. The script-shape checker and its suite; extend the dispatch suite
+- [x] 13. The script-shape checker and its suite; extend the dispatch suite
 - [ ] 14. Propagate the rule text across the instruction surface and the hook messages
 - [ ] 15. Wiring landing two: `verify` prerequisite; the CI job; Harness-guards runs `make shellcheck`
 
@@ -78,6 +78,14 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 12 — what the sweep deleted, deliberately**: the `tmp/`-directory rationale in the gate-log guard's header, the coordinate-drift narrative in the citation guard (kept as behaviour, lost as a coordinate), the pull-request and issue numbers behind several guards' "why it is a gate" paragraphs, and every design-section pointer. Where a whole clause existed only to carry a pointer it went with it. Nothing was relocated to a markdown page and nothing was reworded into a still-outward pointer — the owner's decided cost, recorded in the design's risk row.
 - **Subtask 12 — a script's printed failure message is not a comment and was not touched**: `check-ac-shape.sh`'s `MSG` heredoc still names the spec-writing rule and the corrections-log date, which is where a good deal of the rationale the header lost still lives. The gate agrees: it reported no finding inside a heredoc in any script, which is also independent evidence that the shell extractor's heredoc handling behaves as the design predicted.
 - **Subtask 12 — behaviour preservation was measured, not assumed**: every one of the thirteen guard regression suites CI runs was executed after its own script's edit and after the whole sweep, plus the three standalone checkers over the live tree, plus `--help` on each of the 19 carriers and `make shellcheck`. The two pure-sweep scripts (`check-citations.sh`, `cleanup-progress.sh`) were additionally diffed for non-comment lines — there are none, which is what AC15 asks of a file whose only reason to appear in the diff is the sweep.
+
+- **Subtask 13 — the checker's four rules**: (1) a script's help dispatch must be exactly one line and byte-identical to the marker, (2) nothing may run before it — walked with `awk` rather than grepped, since the question is what *precedes* the dispatch and only a scan answers that; comments, a `set` line, function definitions and assignments without a command substitution are allowed, anything else is a finding, (3) the flag must exit 0 and print a non-empty block, run dynamically and safe to run precisely because rule 2 held first, and (4) a tracked file beginning with a shebang is named with the shell extension or is a symbolic link to one that is.
+- **Subtask 13 — what counts as a "help dispatch"**, so the checker does not report a script that merely mentions the flag: a case arm anchored at the start of its line, or a conditional naming the **long** form. The short form alone was deliberately dropped from the conditional branch — `if [ -h "$f" ]` is a file test and spells it the same way, and a checker that false-positived on symlink tests would be turned off rather than fixed. Verified against the live corpus: the two `--help` occurrences in the piped-gate suite (a fixture payload and the hook's own carve-out pattern) are correctly not dispatches.
+- **Subtask 13 — the checker was seen to go RED on the real corpus, not only on its fixtures**: replayed against the task's base tree (`git archive f1bc60f` into a scratch repository), it reports `.githooks/pre-commit begins with a shebang but is neither named with the shell extension nor a link to one that is` and exits 1 — the one file this task converted to a symlink. That is the pre-change control the harness's own pattern asks for, and it is stronger evidence than the sandbox fixtures that rule 4 is load-bearing.
+- **Subtask 13 — the dispatch suite's new cases were mutation-tested, both directions**: with the dispatcher's whole gate block deleted, the suite reports five failures including `gate-refuses` and `gate-argv`; with the staged-path filter widened to every path, it reports exactly one — `gate-skip-nothing-gated`, the never-invoked case. Each mutant was applied to a `cp` backup and reverted, with `git diff --name-only` confirming the restore. Without those two runs the new cases would be a green instrument.
+- **Subtask 13 — the stub records its own argument vector** rather than the suite asserting the invocation from the dispatcher's source: `gate-marker.txt` must read `--staged` after a refusing run and must not exist after a skipping one, so the "gate ran over the staged set" claim comes from the run and not from a grep of the file that makes it.
+- **Subtask 13 — the two new scripts answer no `--help`, deliberately.** AC17 and AC18 are derived from the pre-sweep tree, and a file that did not exist there carried no usage prose; adding a flag would be the permissive reading of AC18's "no script that carried no usage prose answers `--help`". The restrictive reading is taken, which is also what subtask 10 did for the new dispatcher. Neither new script takes an argument, so nothing is left undocumented.
+- **Subtask 13 — one `shellcheck` suppression**: the checker's failure message prints the dispatch block as advice, and the block contains the parameter-expansion form literally, which trips SC2016. Suppressed with the specific code and a stated reason. The advice interpolates the same `marker` variable the assertion compares against, so the printed shape cannot drift from the enforced one.
 
 - **Step 8 Group A**: the orchestrator re-ran build, vet, test, lint and the new gate against the returned tree rather than accepting the group's summary. All green; `make comment-refs` reports only harness `*.sh` findings, which subtask 12 owns, and `SKIP .githooks/pre-commit` confirms the GO-note-1 symlink branch works.
 
@@ -149,6 +157,9 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `Makefile` — new `comment-refs` target (not a `verify` prerequisite yet)
 - `.githooks/pre-commit` — now a symlink to `.githooks/pre-commit.sh`
 - `ai-docs/scripts/*.sh` (all 15) — comment sweep; 15 of them gain the D9 `--help`
+- `ai-docs/scripts/check-script-shape.sh` — new: the four shape rules over the tracked tree
+- `ai-docs/scripts/test-script-shape.sh` — new: its regression suite, one sandbox per defect plus the all-conforming instrument check
+- `ai-docs/scripts/test-precommit-dispatch.sh` — extended: the symlink case and the four gate-dispatch cases on the stub seam
 - `.claude/skills/ai-audit/scripts/check-citations.sh` — comment sweep only (owes no `--help`)
 - `.claude/skills/ai-audit/scripts/test-check-citations.sh`, `.claude/skills/task/scripts/append-task-run.sh`, `.claude/skills/task/scripts/test-append-task-run.sh` — comment sweep + the D9 `--help`
 - `.claude/skills/pr-merged/scripts/cleanup-progress.sh` — comment sweep only (owes no `--help`)
