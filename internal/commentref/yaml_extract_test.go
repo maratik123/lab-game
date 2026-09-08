@@ -150,3 +150,49 @@ func TestExtractYAML_EveryDocumentOfAStream(t *testing.T) {
 		}
 	}
 }
+
+// TestExtractYAML_NodelessDocument asserts that a document holding no node
+// still yields its comments. The parser reports end-of-stream for such a
+// span, so a decoder loop alone returns clean and the gate fails open.
+func TestExtractYAML_NodelessDocument(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		src  string
+		want []Comment
+	}{
+		{
+			name: "whole file is one comment",
+			src:  "# alone\n",
+			want: []Comment{{Line: 1, Text: "alone"}},
+		},
+		{
+			name: "comment-only document between two others",
+			src:  "a: 1\n---\n# middle\n---\nb: 2\n",
+			want: []Comment{{Line: 3, Text: "middle"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ExtractYAML([]byte(tc.src))
+			if err != nil {
+				t.Fatalf("ExtractYAML() error = %v, want nil", err)
+			}
+			assertComments(t, got, tc.want)
+		})
+	}
+}
+
+// TestExtractYAML_CommentBeforeFirstMarker asserts that a comment written
+// above the first document marker is reported at its own line. The parser
+// hands it back as the following document's head comment, whose lines are
+// not contiguous with that document's own, so reconciling against the whole
+// source turns a legal file into an instrument failure.
+func TestExtractYAML_CommentBeforeFirstMarker(t *testing.T) {
+	t.Parallel()
+	got, err := ExtractYAML([]byte("# above\n---\n# below\na: 1\n"))
+	if err != nil {
+		t.Fatalf("ExtractYAML() error = %v, want nil", err)
+	}
+	assertComments(t, got, []Comment{{Line: 1, Text: "above"}, {Line: 3, Text: "below"}})
+}

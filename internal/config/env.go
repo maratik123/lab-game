@@ -59,7 +59,7 @@ func EnvKeys() []string {
 // envValues holds the environment layer's validated results: the two
 // secrets as plain strings (Load wraps them in Secret) and the parsed Bot
 // API base URL and chat-id list. The balance-file and world-set paths are
-// validated by their own dedicated readers, not by loadEnv (see envKeys).
+// validated by their own dedicated readers, not by loadEnv.
 type envValues struct {
 	BotToken       string
 	DSN            string

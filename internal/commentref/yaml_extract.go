@@ -1,7 +1,6 @@
 package commentref
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -27,10 +26,70 @@ func ExtractYAML(src []byte) ([]Comment, error) {
 		return nil, nil
 	}
 
-	lines := strings.Split(string(src), "\n")
+	var out []Comment
+	for _, span := range splitYAMLDocuments(strings.Split(string(src), "\n")) {
+		cs, err := extractYAMLDocument(span)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, cs...)
+	}
+	return out, nil
+}
+
+// yamlDocSpan is one document of a stream together with the 0-based index
+// of its first line in the whole source, so a comment reconciled inside the
+// span can be reported at its real line.
+type yamlDocSpan struct {
+	offset int
+	lines  []string
+}
+
+// splitYAMLDocuments cuts the source at the document markers that may only
+// appear unindented, so each document reconciles against its own lines. A
+// comment written before the first marker is attached by the parser to the
+// following document, and its lines are not contiguous with that document's
+// own — reconciling against the whole source therefore fails on a legal file.
+func splitYAMLDocuments(lines []string) []yamlDocSpan {
+	var spans []yamlDocSpan
+	start := 0
+	for i, l := range lines {
+		if i > start && isYAMLDocMarker(l) {
+			spans = append(spans, yamlDocSpan{offset: start, lines: lines[start:i]})
+			start = i
+		}
+	}
+	return append(spans, yamlDocSpan{offset: start, lines: lines[start:]})
+}
+
+// isYAMLDocMarker reports whether the line is an unindented document start
+// or end marker.
+func isYAMLDocMarker(l string) bool {
+	t := strings.TrimRight(l, " \t\r")
+	return t == "---" || t == "..." || strings.HasPrefix(t, "--- ")
+}
+
+// extractYAMLDocument returns the comments of one document. A span the
+// parser yields no node for cannot contain a block scalar, because a block
+// scalar needs a key to hang from, so every marker line in it is a comment
+// and is read directly rather than reported as an instrument failure.
+func extractYAMLDocument(span yamlDocSpan) ([]Comment, error) {
+	text := strings.Join(span.lines, "\n")
+	if strings.TrimSpace(text) == "" {
+		return nil, nil
+	}
+
+	var doc yaml.Node
+	err := yaml.NewDecoder(strings.NewReader(text)).Decode(&doc)
+	switch {
+	case errors.Is(err, io.EOF):
+		return extractYAMLNodeless(span), nil
+	case err != nil:
+		return nil, fmt.Errorf("yaml source: %w", err)
+	}
+
 	var out []Comment
 	var walkErr error
-
 	var walk func(n *yaml.Node)
 	walk = func(n *yaml.Node) {
 		if n == nil || walkErr != nil {
@@ -47,12 +106,14 @@ func ExtractYAML(src []byte) ([]Comment, error) {
 			if block.text == "" {
 				continue
 			}
-			cs, err := reconcileYAMLComment(block.pos, n.Line, block.text, lines)
+			cs, err := reconcileYAMLComment(block.pos, n.Line, block.text, span.lines)
 			if err != nil {
 				walkErr = err
 				return
 			}
-			out = append(out, cs...)
+			for _, c := range cs {
+				out = append(out, Comment{Line: c.Line + span.offset, Text: c.Text})
+			}
 		}
 		for _, c := range n.Content {
 			walk(c)
@@ -61,21 +122,23 @@ func ExtractYAML(src []byte) ([]Comment, error) {
 			}
 		}
 	}
-	dec := yaml.NewDecoder(bytes.NewReader(src))
-	for {
-		var doc yaml.Node
-		if err := dec.Decode(&doc); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return nil, fmt.Errorf("yaml source: %w", err)
-		}
-		walk(&doc)
-		if walkErr != nil {
-			return nil, walkErr
-		}
+	walk(&doc)
+	if walkErr != nil {
+		return nil, walkErr
 	}
 	return out, nil
+}
+
+// extractYAMLNodeless reads the comments of a span holding no node.
+func extractYAMLNodeless(span yamlDocSpan) []Comment {
+	var out []Comment
+	for i, l := range span.lines {
+		t := strings.TrimSpace(l)
+		if strings.HasPrefix(t, "#") {
+			out = append(out, Comment{Line: span.offset + i + 1, Text: stripYAMLMarker(t)})
+		}
+	}
+	return out
 }
 
 // yamlCommentPos names which of a node's three comment fields is being
