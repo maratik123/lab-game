@@ -10,19 +10,21 @@ _Updated: 2026-09-08 21:00_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 8 — Group A not yet started (subtask 0 of 13)
-**last_passed_gate:** `go build ./...` | 2026-09-08T20:59:14Z | 943efed1e0c8c7fa1ee406b8c23b1e2632e8f500
+**current_step:** Step 8 — Group A subtask 2 of 9 complete
+**last_passed_gate:** `go build ./...`, `go vet ./...`, `golangci-lint run`, `golangci-lint fmt -d` (clean), `make comment-refs`, `go test ./internal/testdb/...` (LAB_GAME_TEST_DSN pointed at a session-local shared container) | pending commit
 **entry_args:** 67
 
 ## Next action
 
-**Do this immediately:** start Group A, subtask 1 — create `internal/testdb/server.go` with the exported provisioning API (`ServerOptions`, `StartServer`, `Server.DSN`, `Server.Stop`, the capacity `Probe`, the DSN env-var name, the shared container name), the ceiling formula with its `clients` term, its constants and its refusal above `ceilingMax`; then re-express `Main`'s container branch over it in `internal/testdb/testdb.go` with behaviour preserved.
+**Do this immediately:** Group A, subtask 3 — `cmd/testpg`: the wrapper (`cmd/testpg/main.go`, `cmd/testpg/run.go`). Decision order per D1/D3a: caller DSN present → run unchanged, report a capacity shortfall; else locator (D4, `internal/testdb.SharedContainerName` + a DSN file under `tmp/`) probed for reachability and capacity, falling through on either failure; else an anonymous container sized by `internal/testdb.Ceiling(--clients, --parallel)`. `--up`/`--down` for the long-lived server (same ceiling terms, default `--clients=1`, reaper disabled via `TESTCONTAINERS_RYUK_DISABLED`, `WithReuseByName`). Signal-aware teardown (child runs under the signal context; teardown under a fresh background context). Non-zero child → non-zero wrapper status (branch on zero/non-zero, never the value — go run does not propagate exit codes). Injectable provisioner seam so subtask 4's tests start no container. `main.go` stays a single `os.Exit(run(...))` statement per the project's other commands.
 
 ## Subtasks
 
 Design: `ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md`. Group A = 1–9 (code, `code-writer`, sonnet/medium pinned). Group B = 10–13 (instructions/harness, `general-purpose`, model inherited).
 
-- [ ] 1. `internal/testdb`: provisioning API in a new file; `Main`'s container branch re-expressed over it  ← CURRENT
+- [x] 1. `internal/testdb`: provisioning API in a new file; `Main`'s container branch re-expressed over it — commit e09e79f. Coverage ratchet lowered 91.66% → 90.30% in the same commit (D7: regime shift + new uncovered StartServer/Probe/Ceiling code). NOTE: this subtask's commit did not include the `.progress.md` update (missed the "stage with the subtask commit" step) — caught up in subtask 2's commit instead.
+- [x] 2. Tests for the ceiling formula, its refusal path, the capacity probe, the binaries manifest — `internal/testdb/server_test.go`, external-package tests reusing the existing `TestMain`. All green against a session-local shared server.
+- [ ] 3. `cmd/testpg`: the wrapper — decision order, D3a per-path shortfall answers, locator, `--up`/`--down`, `--clients`/`--parallel`, signal-aware teardown, status passthrough, injectable seam  ← CURRENT
 - [ ] 2. Tests for the ceiling formula, its refusal path, the capacity probe, the binaries manifest
 - [ ] 3. `cmd/testpg`: the wrapper — decision order, D3a per-path shortfall answers, locator, `--up`/`--down`, `--clients`/`--parallel`, signal-aware teardown, status passthrough, injectable seam
 - [ ] 4. Wrapper tests over the injected seam
