@@ -4,7 +4,7 @@
 **Spec:** `ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md`
 **Branch:** `perf/2026-09-08-shared-postgres-test-server`
 **Date:** 2026-09-08
-**Round:** 1
+**Round:** 3
 
 **Tag forms used below.** A fact about something that already exists carries
 `[measured <pin>:<path>[:<lines>] · <command> → <output>]`, where `<pin>` is `eef4c4e` for
@@ -173,19 +173,20 @@ terms scale with the host's CPU count and with how many test runs share the serv
 constant sized for one host and one run is wrong on another:
 
 ```
-ceiling = clients × binaries × parallel × (schemaMaxConns + 1) + slack,
-          clamped to [imageDefaultCeiling, ceilingMax]
+ceiling = clients × binaries × parallel × (schemaMaxConns + 1) + slack
+          floored at imageDefaultCeiling; ABOVE ceilingMax the wrapper refuses to start
 ```
 
 | Term | What it is | Source |
 |---|---|---|
-| `clients` | whole-module test runs this one server must serve **at the same time**. Every gate target passes one; the contention probe is the only target that deliberately runs two at once and passes its own value | `[derived → AC5, AC10, and D12's recipe]` |
+| `clients` | whole-module test runs this one server must serve **at the same time**, *all of them at the same `parallel`* — the product form is only correct under that condition, which D12 is required to hold. Every gate target passes one; the contention probe is the only target that runs two at once | `[derived → AC5, AC10, and D12's recipe]` |
 | `schemaMaxConns` | the cap `testdb.Schema` sets on every per-test pool | `[measured eef4c4e:internal/testdb/testdb.go:164-172 · sed -n '164,172p' internal/testdb/testdb.go → schemaMaxConns = 4, commented as 16 parallel subtests × 4 against max_connections = 100]` |
 | `parallel` | tests running simultaneously inside one binary | `[measured eef4c4e · go help testflag → "By default, -parallel is set to the value of GOMAXPROCS"]` — obtained as described below, not assumed |
 | `binaries` | database-backed test binaries that can run at once; bounded above by `go test -p` | `[measured eef4c4e · go help build → "-p n … the number of programs, such as build commands or test binaries, that can be run in parallel. The default is GOMAXPROCS"]` and `[measured eef4c4e · grep -rn 'testdb.Main' --include='*.go' . → the TestMain of internal/store, internal/scheduler, internal/ingest and internal/testdb, plus the Fatalf text inside testdb.go itself]` |
 | `+ 1` per running test | `Schema`'s transient admin pool and its cleanup dropper pool, one connection each | `[measured eef4c4e:internal/testdb/testdb.go:189-236 · sed -n '189,236p' internal/testdb/testdb.go → Schema opens an admin pool to CREATE SCHEMA and a dropper pool in tb.Cleanup, both closed immediately]` |
 | `slack` | the server's own reserved slots, plus the one test that raises its pool cap above `schemaMaxConns` | `[measured docker.io/library/postgres:18, session-local probe · psql -At -c "select name||'='||setting from pg_settings where name in ('superuser_reserved_connections','reserved_connections')" → superuser_reserved_connections=3, reserved_connections=0]` and `[measured eef4c4e:internal/store/post_race_test.go:73-75 · sed -n '73,75p' internal/store/post_race_test.go → const workers int32 = 8; cfg.MaxConns = workers]` |
 | `imageDefaultCeiling` | the image's own `max_connections`, the floor below which computing a smaller number would *reduce* what the server already offers | `[measured eef4c4e:internal/testdb/testdb.go:164-172 · sed -n '164,172p' internal/testdb/testdb.go → the per-pool cap's own comment records max_connections = 100 as the image ceiling it was sized against]` |
+| `ceilingMax` | the largest ceiling this project will ask a container to start with. **1000**, and it is measured rather than guessed | `[measured docker.io/library/postgres:18 · podman run with this project's tmpfs and fsync settings plus -c max_connections=1000, then psql -At -c "show max_connections" → 1000; the server starts and serves on those settings]` |
 
 **How `parallel` is obtained, and why it is not simply read.** The wrapper's default is
 `runtime.GOMAXPROCS(0)`, which is correct only while the child runs at the toolchain's
@@ -197,18 +198,23 @@ the matching value** — D12's probe is the target that does `[derived → AC5]`
 `binaries` is a named constant in `internal/testdb` whose doc comment states that it
 counts the test binaries provisioning a database through this package, and subtask 2's
 manifest test keeps it honest against the tree rather than against memory `[derived → AC5]`.
-`slack` is **32** and `ceilingMax` is **500**: the first covers the reserved slots and the
-raised-cap test with room, the second bounds what a many-core host can ask a container's
-shared memory for.
+`slack` is **32**: it covers the reserved slots and the raised-cap test with room.
 
-**The bound is load-bearing, not decoration.** It is the number the server is actually
-started with, so a population that exceeds it does not degrade gracefully: it fails with a
-named condition, which D12 turns into a discriminator rather than a mystery. That is why
-every target that changes the population gets a term rather than an exemption, and why the
-rule when the clamp binds is to **bound the population** — fewer clients, a lower
-`-parallel` passed to both the child and the wrapper — and never to raise the ceiling past
-what a container's shared memory should be asked for. D12 wires that rule into the probe's
-recipe instead of leaving it as prose here.
+**The bound is load-bearing, not decoration, and the two ends of it behave differently.**
+The ceiling is the number the server is actually started with, so a population that exceeds
+it does not degrade gracefully — it fails with the named condition D12 scans for. The
+**floor** is a clamp: computing something smaller than the image's own default would only
+throw capacity away, so the floor is applied silently. The **top is not a clamp**: silently
+granting less than the formula asks for is how a host quietly runs a population its server
+cannot admit, so above `ceilingMax` **the wrapper refuses to start**, before provisioning
+anything, printing the computed value, the terms it came from, and the flags to lower
+(`--parallel`, `--clients`, and the child's own `-parallel`) `[derived → AC5]`. That
+refusal is what makes the bound enforceable at *every* target rather than only where a
+recipe remembered to pin something — `make test` and `make test-race` pin nothing
+`[measured eef4c4e:Makefile:50-54 · sed -n '50,54p' Makefile → test is go test ./... and test-race is go test -race ./..., neither passing -p or -parallel]`,
+and with `ceilingMax` measured at 1000 the refusal reaches them only on a host far larger
+than any this project runs on today (§ Open questions records where that boundary falls and
+what to do at it).
 
 The ceiling reaches the server as a command argument: the
 postgres module sets the container command and then applies caller options, and the
@@ -269,18 +275,40 @@ commit.** Under the shared path `internal/testdb`'s own binary takes the DSN bra
 its container-provisioning statements stop being executed by its own tests — and coverage
 is attributed per package from that package's own tests
 `[measured eef4c4e:.githooks/coverage-ratchet.sh:10-13 · sed -n '10,13p' .githooks/coverage-ratchet.sh → "each package covered by ITS OWN tests — the Go default … -coverpkg is deliberately not used"]`.
-The shift is small, systematic, and consumes most of the band the tolerance exists to
-absorb. It does **not** make the mark fall past the tolerance, so nothing blocks today; what
-it leaves is a margin narrower than the run-to-run drift the tolerance was sized for
-`[measured eef4c4e · go test -count=1 -covermode=atomic -coverprofile ./... run in both regimes, totals summed from the profile with awk → the shared regime's total is lower, it still holds against the recorded mark inside the tolerance, and every block that differs is in internal/testdb's container branch]`
+That shift alone consumes most of the band the tolerance exists to absorb
+`[measured eef4c4e · go test -count=1 -covermode=atomic -coverprofile ./... run in both regimes, totals summed from the profile with awk → the shared regime's total is lower, and every block that differs is in internal/testdb's container branch]`
 `[measured eef4c4e:.githooks/coverage-ratchet.sh:61 · sed -n '61p' .githooks/coverage-ratchet.sh → TOLERANCE_PP=0.60 is the whole band]`.
-Left alone, ordinary commits start blocking as soon as an unlucky draw lands. So the
-recorded value is re-centred on a value **measured on the final tree** — the implementor
-takes it with `-count=1` in the shared regime, and no figure is carried here to copy — with
-the reason in the commit message, which is one of the two exits the workspace rules
-sanction. Because the shift holds inside the tolerance rather than blocking, the re-centre
-does not have to share a commit with the code that caused it, which is what lets it sit in
-its own group (§ Handoff plan). Re-measure in the CI environment too: the runner's core
+**And the shift is not the whole story: this task also adds code, and the design
+deliberately leaves part of it unexercised by the measuring regime.** `StartServer` and the
+container branch it now carries are the statements the shared regime stops running; the
+wrapper's own tests drive an injected seam rather than a runtime, so the production side of
+that seam is not covered either; and a `main` function is uncovered here exactly as the
+existing commands' are. New statements at a coverage rate below the recorded mark pull the
+total **down**, and only a small number of them fit inside what the tolerance still has.
+The honest planning assumption is therefore the opposite of the comfortable one: **assume
+the ratchet blocks on the first commit that lands this code.**
+
+Two consequences, both binding:
+
+- **The re-centre is not a separate step and cannot live in another commit.** When the
+  ratchet blocks, the sanctioned exits are to cover what the change added or to lower the
+  recorded value **in the same commit**, with the reason in the message. So the obligation
+  rides on *every* code subtask that moves coverage: run the gate, and if it blocks, lower
+  `ai-docs/coverage-ratchet.txt` in that same commit and say why. The hook stages that file
+  itself, and on a *rise* it rewrites it with no action needed at all
+  `[measured eef4c4e:.githooks/coverage-ratchet.sh:145-186 · sed -n '145,186p' .githooks/coverage-ratchet.sh → the ratchet file is written and git add-ed by the script on initialise and on ROSE; FELL blocks and lists the uncovered functions]`.
+  There is no `ai-docs/**` subtask for it and no cross-group dependency `[derived → AC17]`.
+- **The design keeps the uncovered surface small rather than budgeting for it.** The
+  container recipe `StartServer` exposes is composition over what `internal/testdb` already
+  had, not new logic; every decision that can be tested without a runtime lives behind the
+  seam where subtask 4 covers it; `Reachable` is covered cheaply in both directions against
+  the server the run already has; the ceiling arithmetic is pure and covered; and
+  `cmd/testpg`'s `main` stays a single statement delegating to the covered `run`, the shape
+  the existing commands use `[derived → the § Test Design entries for subtasks 2 and 4]`.
+
+No figure is carried here to copy: the implementor measures on the final tree with
+`-count=1` in the shared regime, and re-measures in the CI environment, whose core count
+differs and whose drifting statements are timing-dependent `[derived → AC17]`. Re-measure in the CI environment too: the runner's core
 count differs, and the tolerance's drifting statements are timing-dependent `[derived → AC17]`.
 
 **D8 — the fallback gets a gate, because nothing else executes it any more.** D7 is the
@@ -390,25 +418,40 @@ must branch on zero versus non-zero rather than on the value, because go run doe
 surface the child's own code (D1), and pipes nothing `[derived → AC15]`.
 
 **This is the one target that serves more than one test run at once, so it is the one
-target that passes `--clients` above one.** Two runs against one server is two client
-populations, and D3's formula has a term for exactly that. On a host where two clients push
-the formula past `ceilingMax`, the clamp binds and the granted ceiling sits *below* the
-formula's worst case — and the rule is then D3's, wired in here rather than left as prose:
-the probe **bounds the population instead of raising the ceiling**. The load run is pinned
-to small explicit `-p` and `-parallel` values, the same `--parallel` is passed to the
-wrapper so the ceiling is computed against what the children will actually do, and the
-target echoes the granted ceiling and both pinned values into the log, so the arithmetic a
+target that passes `--clients` above one — and its two clients run at the SAME
+parallelism.** D3's product form multiplies one `parallel` by the client count, so it is
+correct only while every client uses that value; two clients at different parallelism is a
+sum, not a product, and would compute a ceiling that funds neither. So the probe names the
+foreground gate's parallelism rather than leaving it to the toolchain: **both** the
+foreground race gate and the background load run receive the same explicit `-parallel`, and
+that same value is passed to the wrapper as `--parallel`. Unpinned, both would run at
+`GOMAXPROCS` and the product form would still hold — pinning exists for the case where D3's
+refusal fires, and then it is applied to **both** children or not at all. The target echoes
+the granted ceiling, the client count and the pinned value into the log, so the arithmetic a
 run relied on is readable after the fact `[derived → AC5, AC10]`.
 
 **A connection-exhaustion red is not a contention red, and the probe establishes which
-before anything is recorded.** Exhaustion announces itself: Postgres refuses the connection
-with `FATAL: sorry, too many clients already`, SQLSTATE `53300`. So the discharge step is
-mechanical — both captured logs are scanned for that class, and a run whose logs carry it
-is an **instrument failure, not a finding**: the ceiling or the pinned parallelism is
-corrected and the run repeated. Such a red is not eligible to satisfy AC11 and such a green
-is not eligible to satisfy AC10. Without this step the "demonstrated able to fail" evidence
-would certify an instrument that may be failing for the wrong reason, which is the
-§ Patterns 2 failure the spec invoked in the first place `[derived → AC10, AC11]`.
+before anything is recorded.** Exhaustion announces itself in the log the gate already
+writes, in the project's own client's rendering
+`[measured eef4c4e · LAB_GAME_TEST_DSN pointed at a postgres:18 server started with -c max_connections=3 -c superuser_reserved_connections=0, then go test -count=1 ./internal/store → "testdb: create schema …: failed to connect to …: server error: FATAL: sorry, too many clients already (SQLSTATE 53300)"]`.
+So the scan is a literal, not a class: the target greps both captured logs for
+**`sorry, too many clients already`** and for **`SQLSTATE 53300`**, either of which is
+sufficient — two spellings because the server's message and the SQLSTATE reach the log
+through different renderings, and a client that prints one may not print the other.
+
+The scan has **three** outcomes, and the third is the one that stops a pass being recorded
+that the instrument never earned:
+
+| Foreground gate | Scan finds the literal | Outcome |
+|---|---|---|
+| red | yes | **instrument failure, not a finding.** The ceiling or the pinned parallelism is corrected and the run repeated; this red cannot satisfy AC11 |
+| red | no | a contention red — eligible to satisfy AC11's demonstration |
+| green | — | **inconclusive as evidence about contention.** A run with no failure at all says nothing about whether the instrument could have detected one; only a run that has been shown able to go red licenses reading a later green as AC10 |
+
+Without this step the "demonstrated able to fail" evidence would certify an instrument that
+may be failing for the wrong reason, and an empty scan over a green run would be recorded as
+a clean result — the § Patterns 2 failure the spec invoked in the first place
+`[derived → AC10, AC11]`.
 
 **The probe is an instrument until it has gone red.** Before any green result is recorded,
 one instrument budget D9 widened is reverted over a `cp` backup, `make test-contention` is
@@ -430,11 +473,19 @@ STOP, not a pass — the project has run exactly this protocol before
 | 7 | CI: add the fallback step to the Test job; verify every added artefact is already named in the change filter and record the comparison | `.github/workflows/ci.yml` | 5 |
 | 8 | Contention tolerance per D9: classify every wall-clock constant in the database-backed suites, widen the instruments **per test** rather than through the shared config values, move the remaining timing assertions onto database-clock brackets | `internal/scheduler/*_test.go`, `internal/ingest/*_test.go` | 5 |
 | 9 | The AC11 demonstration: revert one widened instrument over a `cp` backup, require `make test-contention` RED, scan both logs for the connection-exhaustion class and reject the run if it is there, restore, record the RED before any green | `internal/scheduler/*_test.go` (restored) | 8 |
-| 10 | Re-centre the coverage ratchet: measure on the final tree in the shared regime, record with the reason in the commit message | `ai-docs/coverage-ratchet.txt` | 8 |
-| 11 | `ai-docs/key-decisions.md`: KD-20 amendment — the shared configuration's connection arithmetic, and the corrected consequence clause about who may import `internal/testdb` | `ai-docs/key-decisions.md` | 10 |
-| 12 | `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres*: the provisioning story, both paths | `ai-docs/go-test-conventions.md` | 10 |
-| 13 | `AGENTS.md` § *Build & Test*: the new targets, and the coverage-ratchet table's container-runtime row | `AGENTS.md` | 10 |
-| 14 | The propagation sweep of D10's class over the whole live tree, with the two stated exclusions | live `*.md` the sweep finds | 11, 12, 13 |
+| 10 | `ai-docs/key-decisions.md`: KD-20 amendment — the shared configuration's connection arithmetic, and the corrected consequence clause about who may import `internal/testdb` | `ai-docs/key-decisions.md` | 9 |
+| 11 | `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres*: the provisioning story, both paths | `ai-docs/go-test-conventions.md` | 9 |
+| 12 | `AGENTS.md` § *Build & Test*: the new targets, and the coverage-ratchet table's container-runtime row | `AGENTS.md` | 9 |
+| 13 | The propagation sweep of D10's class over the whole live tree, with the two stated exclusions | live `*.md` the sweep finds | 10, 11, 12 |
+
+**The coverage ratchet is not a row in this table, and that is deliberate (D7).** Its
+recorded value moves inside whichever code commit moves coverage: the implementor runs the
+gate before each of subtasks 1–9's commits and, when it blocks, lowers
+`ai-docs/coverage-ratchet.txt` **in that same commit** with the reason in the message — the
+sanctioned exit. On a rise the hook rewrites and stages the file with no action at all. A
+separate subtask for it would put a workspace same-commit obligation in a different commit
+from the code that triggers it, and — since the file is `ai-docs/**` — in a different group
+as well.
 
 ## Handoff plan
 
@@ -448,12 +499,11 @@ a change-type switch, or a dependency-forced boundary. The terminal group's size
 The classes are the harness's and are not restated here. The files of this change that fall
 in **neither** enumerated class — `Makefile`, `.githooks/**` and `.github/workflows/**` —
 are grouped with the code, because they are executable build plumbing rather than
-instructions an agent reads. Nothing that *is* enumerated is reclassified:
-`ai-docs/coverage-ratchet.txt` is `ai-docs/**` and therefore instructions/harness, so
-subtask 10 sits in Group B rather than beside the code that moves the number. That is safe
-because the coverage shift holds inside the tolerance rather than blocking (D7), so Group
-A's own commits pass and the same-commit rule — which binds only when the ratchet
-**blocks** — does not reach subtask 10. Same-change-type subtasks are clustered into the
+instructions an agent reads. Nothing that *is* enumerated is reclassified, and the one file
+that would have forced the question — `ai-docs/coverage-ratchet.txt` — is no longer a
+subtask at all: D7 makes its movement an obligation *inside* whichever code commit moves
+coverage, which is where the workspace's same-commit rule already puts it. So no group
+holds both change-types and no grouping heuristic has to be argued against an axiom. Same-change-type subtasks are clustered into the
 **fewest groups possible**, bounded by the size cap, by dependency order and by
 homogeneity; naive interleaving is the least-desirable fallback and is not used here. The
 default maximum is **4** groups per task, and more than 4 is surfaced to the user for
@@ -464,14 +514,17 @@ approval; this design defines **2**.
 - **Group A** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent,
   1M-token window — subtasks 1–9 (code change-type: `*.go`, plus the build plumbing
   `Makefile`, `.githooks/**` and `.github/workflows/**`). Nine subtasks, inside the size cap.
+  This group carries the task's judgment density — classifying *every* wall-clock constant
+  (D9) and running the revert-first RED protocol (D12) — so those two decisions are written
+  prescriptively rather than left to the implementor's taste, and must stay that way.
 - **Handoff after Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
   § Compaction recovery (re-entry). The parent `/task` resumes in Group B with fresh context.
 - **Group B** — model `inherit` (the orchestrator's), effort inherited from the
   orchestrator (typically xHigh) — NOT pinned — via the `general-purpose` subagent with no
-  inline `model=` override, 1M-token window — subtasks 10–14 (instructions/harness
-  change-type: `ai-docs/**`, `AGENTS.md`). Terminal group, within the `1..=10` range.
-  Subtask 10 depends on subtask 8, which Group A completes first, so dependency order holds
-  across the boundary.
+  inline `model=` override, 1M-token window — subtasks 10–13 (instructions/harness
+  change-type: `ai-docs/**`, `AGENTS.md`). Terminal group, within the `1..=10` range. Every
+  subtask in it depends on subtask 9, which Group A completes first, so dependency order
+  holds across the boundary.
 
 Marker-to-implementor routing is applied at spawn: a **code** group routes to
 `subagent_type="code-writer"`, whose model and effort are frontmatter-pinned, with no
@@ -482,10 +535,11 @@ regardless of any group marker — only the code group's implementor is pinned b
 
 ## Risks
 
-- **The coverage regime shifts and the ratchet's remaining band is narrower than the
-  drift it was sized for**, so ordinary commits start blocking on an unlucky draw.
-  Mitigation: D7 re-centres the recorded mark on a value measured on the final tree, with a
-  stated reason; no figure is carried in this document to copy — `[measured eef4c4e · go test -count=1 -covermode=atomic -coverprofile ./... run in both regimes → the shared regime's total is lower and still holds inside the tolerance, so nothing blocks today and the margin is what shrinks]`.
+- **The ratchet blocks a code commit** — expected, not a surprise: the regime shift already
+  consumes most of the band and this task adds statements the measuring regime does not
+  execute. Mitigation: D7 makes the re-centre an obligation inside the blocking commit
+  rather than a later step, and keeps the uncovered surface small by construction —
+  `[measured eef4c4e · go test -count=1 -covermode=atomic -coverprofile ./... run in both regimes → the shared regime's total is lower, and every block that differs is in internal/testdb's container branch]` and `[derived → AC17]`.
 - **The contention probe exhausts the server's connections and its red is read as
   contention**, certifying an instrument that failed for the wrong reason. Mitigation:
   D3's `clients` term, D12's pinned load parallelism passed to both the child and the
@@ -504,9 +558,15 @@ regardless of any group marker — only the code group's implementor is pinned b
   package starts provisioning a database and nobody updates the constant. Mitigation:
   subtask 2's manifest test, which derives the term from the tree and fails by name —
   `[derived → AC5 and the manifest test in § Test Design]`.
-- **The ceiling formula is over-sized on a many-core host** and the container's shared
-  memory refuses it. Mitigation: the clamp at `ceilingMax`, and the stated rule that the
-  answer past the clamp is a lower `-parallel`, never a higher ceiling — `[derived → AC5]`.
+- **The ceiling formula outgrows what a container should be asked to start with**, on a
+  host with far more cores than any this project runs on. Mitigation: `ceilingMax` is
+  measured rather than guessed, and above it the wrapper **refuses to start** and names the
+  flags to lower, so the boundary is loud at the moment of provisioning instead of arriving
+  later as a connection failure mid-run — `[derived → AC5]`.
+- **The probe's two clients run at different parallelism**, which would make D3's product
+  form compute a ceiling that funds neither. Mitigation: D12 requires both children to take
+  the same explicit `-parallel` and the wrapper to receive that same value — pinned for
+  both or pinned for neither — `[derived → AC5, AC10]`.
 - **An interrupted run leaves a container behind.** Mitigation: D1's signal-aware teardown
   under a fresh context, with the reaper as the net for an outright kill, because the
   ad-hoc container carries this session's reap label — `[measured testcontainers-go@v0.44.0:internal/core/labels.go:36-49 · sed -n '36,49p' internal/core/labels.go → LabelReap is added when the reaper is enabled]` and `[derived → AC4]`.
@@ -541,9 +601,16 @@ Every claim below is about a test that does not exist yet, so every tag here is 
 **Ceiling arithmetic — `internal/testdb`.**
 Location: `internal/testdb/testdb_test.go`, beside the code. Entry point: the exported
 ceiling function. Scenarios: a small parallelism and a large one produce the formula's
-value; the clamp binds at the top and returns `ceilingMax`; the clamp binds at the bottom
-and never returns less than the image default. No database, no container — the function is
-arithmetic `[derived → AC5]`.
+value; the floor binds and it never returns less than the image default; a client count and
+parallelism whose product exceeds `ceilingMax` is reported as a refusal rather than
+silently reduced. No database, no container — the function is arithmetic `[derived → AC5]`.
+
+**Reachability probe — `internal/testdb`.**
+Location: the same file. Entry point: the exported probe. Scenarios: the server the run is
+already using answers, so the probe returns no error; a DSN naming a port nothing listens on
+returns one; a syntactically invalid DSN returns one without dialling. Costs no container —
+it uses the server the suite already has, which is the point of putting the probe here
+rather than in the wrapper `[derived → AC4]`.
 
 **Binaries-constant manifest — `internal/testdb`.**
 Location: the same file. Entry point: the constant. Scenario: the set of packages whose
@@ -583,12 +650,19 @@ Location: the `test-fallback` target, run by CI's Test job. Entry point: the bar
 whole-module invocation with the DSN variable cleared. Scenario: it passes, and each
 database-backed binary provisions its own container as before `[derived → AC3]`.
 
-**What is verified by running rather than by a test.** AC1's "no test binary starts a
-container of its own" is a property of a run, and the recipe is to watch the runtime's
-container list across `make test` and see **one postgres container plus the Ryuk reaper**
-— the reaper is there by D1's own design — and **no per-binary postgres container**
-`[derived → AC1]`. AC13's landing place and AC14's agreement are read in the diff
-`[derived → AC13, AC14]`.
+**What is verified by running rather than by a test.** Each of these is a property of a
+run, not of an assertion, so each gets a recipe rather than a test function:
+
+- **AC1** — watch the runtime's container list across `make test` and see **one postgres
+  container plus the Ryuk reaper** (the reaper is there by D1's own design) and **no
+  per-binary postgres container** `[derived → AC1]`.
+- **AC7** — stage a commit whose only file is documentation, run the hook, and observe that
+  the runtime's container list does not change at all: the ratchet's skip decision is
+  reached before any provisioning `[derived → AC7]`.
+- **AC6** — stage a commit that touches a `.go` file, run the hook, and observe one postgres
+  container plus the reaper appearing for the ratchet's own measurement and going away
+  after it, with the measurement's log naming the shared DSN `[derived → AC6]`.
+- **AC13** and **AC14** are read in the diff `[derived → AC13, AC14]`.
 
 ## Open questions
 
@@ -598,7 +672,10 @@ container list across `make test` and see **one postgres container plus the Ryuk
   invocation by AC3's own design, so the dominant workflow keeps paying for containers
   until they are swept. Recorded as a follow-up for `/task` Step 12's deferred inbox rather
   than absorbed here, because widening scope needs an ask, not a notification.
-- **Whether `slack` and `ceilingMax` survive a many-core host.** Both are decisions made
-  against this development machine and a GitHub-hosted runner; a host far outside that
-  range should re-derive them, and the clamp's stated rule (lower `-parallel`, never
-  raise the ceiling) is the answer that does not need re-deriving.
+- **What to do on the host where D3's refusal fires.** The hazard is discharged rather than
+  merely named: above `ceilingMax` the wrapper refuses to start and names the flags to
+  lower, so nothing runs under-provisioned. What is left open is which answer that host
+  should take — pin `-parallel` in the gate recipes and pass the matching `--parallel`, or
+  re-measure what the container tolerates and raise `ceilingMax` — and that is a decision
+  for the machine it happens on, with the measurement recipe in `ceilingMax`'s own source
+  tag. `slack` is in the same position: a decision, re-derivable by the same route.
