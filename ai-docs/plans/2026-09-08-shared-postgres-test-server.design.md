@@ -136,10 +136,15 @@ is routed through a pipe `[derived → AC15]`. No gate in this design reads the 
 D12's recipe is explicitly forbidden to — and the "exit status N" line landing inside the
 ratchet's captured log is documented rather than removed; where an exact code ever had to
 survive, the wrapper would be built once into the scratch directory instead of run through
-go run. The wrapper never reads a gate's output and never summarises it. Interrupt handling: the wrapper installs a signal context for
-interrupt and terminate, and performs container teardown under a *fresh* background
-context with the package's existing terminate timeout, so a cancelled run still tears
-down `[derived → AC4]`. If the wrapper itself is killed outright, the reaper removes the
+go run. The wrapper never reads a gate's output and never summarises it. Interrupt handling has two halves, and naming only the teardown half would leave the
+race it exists to prevent. **The child runs under the signal context**, so an interrupt
+cancels the gate itself and the wrapper waits for it to exit before touching the container;
+teardown then runs under a *fresh* background context with the package's existing terminate
+timeout, so a cancelled run still tears down `[derived → AC4]`. Both halves are needed
+because only one of them is free: in a terminal the child is in the wrapper's process group
+and receives the signal anyway, but a `kill -INT` addressed to the wrapper alone does not
+reach it — and that is exactly the path where teardown would otherwise race a gate still
+holding connections. If the wrapper itself is killed outright, the reaper removes the
 container, because the ad-hoc container is created with the reaper enabled and therefore
 carries this session's labels
 `[measured testcontainers-go@v0.44.0:internal/core/labels.go:36-49 · sed -n '36,49p' internal/core/labels.go → LabelReap is added when the reaper is enabled]`.
@@ -164,7 +169,12 @@ server's own `max_connections` on it, so one round trip answers both "does it an
 value — same image, same tmpfs, same wait strategy, same retry, same terminate timeout,
 same image-default connection ceiling, so the fallback path is unchanged in effect
 `[derived → AC3, and the fallback gate D8 adds]`. `ServerOptions` carries a container
-name (empty means anonymous) and a connection ceiling (zero means the image default).
+name (empty means anonymous) and a connection ceiling (zero means the image default). **The
+provisioning API lands in its own file**, `internal/testdb/server.go`, rather than growing
+the existing one: this project's doc-comment density plus the API above would take that file
+toward the soft size band, and provisioning is a coherent unit that reads better beside
+`Main` than inside it
+`[measured eef4c4e:internal/testdb/testdb.go · wc -l < internal/testdb/testdb.go → 236, against a 500-line soft band and a 1000-line gated limit]`.
 Every new exported item takes a doc comment beginning with its own name and the package
 keeps its package comment, because `revive`'s `exported` and `package-comments` rules are
 enabled `[measured eef4c4e:.golangci.yml:45-48 · sed -n '45,48p' .golangci.yml → revive rules exported and package-comments]`.
@@ -240,6 +250,17 @@ to a shortfall differs by path, because the wrapper's authority differs by path:
 | the discovered locator (step 2) | **fall through to the anonymous container**, with a message | the locator is this change's own convention and the wrapper has an alternative, so an under-sized long-lived server is simply not used — the same shape as the existing unreachable-locator rule (D4) |
 | a server this invocation started (step 3) | cannot arise | the ceiling is the one this wrapper asked for, and above `ceilingMax` it refused before provisioning anything |
 
+**And when step 3 cannot provision at all** — no reachable container runtime — the wrapper
+exits non-zero **without running the child**, saying that it could not start a server and
+naming the runtime error it got. No route here can produce a false green: `testdb.Main`
+would refuse too, and the gate would fail either way `[measured eef4c4e:internal/testdb/testdb.go:96-99 · sed -n '96,99p' internal/testdb/testdb.go → Main prints "testdb: starting %s: %v" and returns 1 rather than skipping]`.
+What is at stake is the message. Letting the child run would turn one runtime failure into
+every database-backed package failing in parallel with its own wait-strategy timeout — the
+shape the recorded trap describes as every database-backed package failing at once with a
+message that "describe[s] the host, not the tree"
+`[measured eef4c4e:ai-docs/context-status.md:162 · grep -n 'describe the host, not the tree' ai-docs/context-status.md → the RAID-scrub entry, where every database-backed package fails on the container wait strategy]`.
+One failure that names its cause is the whole point of provisioning centrally `[derived → AC1]`.
+
 **What the read does not cover, stated rather than left to be discovered:** `max_connections`
 is the server's *total*, not its *free* capacity. A server large enough but already busy with
 another run's population passes this check and can still exhaust. That residue is deliberately
@@ -313,7 +334,7 @@ a commit that stages nothing coverage-moving still starts nothing `[derived → 
 existing redirect to a log file under the scratch directory is preserved verbatim, so the
 gate's exit status still goes nowhere near a pipe `[derived → AC15]`. The script's advice
 for a container-runtime failure names only the environment variable today
-`[measured eef4c4e:.githooks/coverage-ratchet.sh:118-119 · sed -n '118,119p' .githooks/coverage-ratchet.sh → "If this is a container-runtime failure rather than a test failure, point the / suite at a running server: export LAB_GAME_TEST_DSN=postgres://..."]`;
+`[measured eef4c4e:.githooks/coverage-ratchet.sh:116-117 · sed -n '116,117p' .githooks/coverage-ratchet.sh → "If this is a container-runtime failure rather than a test failure, point the / suite at a running server: export LAB_GAME_TEST_DSN=postgres://..."]`;
 it gains the bring-up target as the first suggestion `[derived → AC14]`.
 
 **D7 — the coverage regime shifts, and the recorded mark is re-centred in the same
@@ -350,7 +371,23 @@ Two consequences, both binding:
   seam where subtask 4 covers it; `Probe` is covered cheaply in every direction against the
   server the run already has; the ceiling arithmetic is pure and covered; and
   `cmd/testpg`'s `main` stays a single statement delegating to the covered `run`, the shape
-  the existing commands use `[derived → the § Test Design entries for subtasks 2 and 4]`.
+  the existing commands already use
+  `[measured eef4c4e:cmd/bot/main.go:19-21,cmd/commentrefs/main.go:8-10 · grep -n -A 2 '^func main' cmd/bot/main.go cmd/commentrefs/main.go → each main is one os.Exit(run(…)) statement]`
+  `[derived → the § Test Design entries for subtasks 2 and 4]`.
+
+**One more consequence, and it depends on which provisioning path the run took.** The
+ad-hoc container takes an ephemeral host port, so its DSN differs on every wrapper
+invocation — and `testdb.Main` consults that variable, which puts it in the cache key. The
+database-backed packages are therefore a **cache miss on every run** under the ad-hoc path,
+the ratchet's own measurement included
+`[measured eef4c4e · go help test → tests that consult environment variables "only match future runs in which the files and environment variables are unchanged"; -coverprofile is itself a cacheable flag]`
+`[measured eef4c4e:.githooks/coverage-ratchet.sh:112 · sed -n '112p' .githooks/coverage-ratchet.sh → the measurement is a plain go test -covermode=atomic -coverprofile ./... with no -count]`.
+That cuts two ways: the timing-dependent statements the tolerance exists for are **re-drawn
+every commit** rather than replayed, which makes the band matter more, not less; and under
+`--up`'s reused named container the DSN is stable and the replay behaviour returns — a second
+reason the D4 pair earns its place. The workspace's own description of the ratchet states the
+replay behaviour unconditionally today, so it is a member of D10's propagation class
+`[derived → AC14]`.
 
 No figure is carried here to copy: the implementor measures on the final tree with
 `-count=1` in the shared regime, and re-measures in the CI environment, whose core count
@@ -419,8 +456,10 @@ lists are recorded rather than only the conclusion
 **Members** — each states something this diff falsifies: `ai-docs/key-decisions.md` § KD-20
 (the provisioning story and the importer clause, which is also where AC13's arithmetic
 lands); `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres*;
-`AGENTS.md` § *Build & Test* (the target list and the coverage-ratchet table's
-container-runtime row); `.githooks/coverage-ratchet.sh`'s runtime advice; and
+`AGENTS.md` § *Build & Test* (the target list, the coverage-ratchet table's
+container-runtime row, and the sentence stating that the measurement replays a cached profile
+at an unchanged commit, which holds only while the DSN is stable — D7
+`[measured eef4c4e:AGENTS.md:96-97 · sed -n '96,97p' AGENTS.md → "the measurement runs with the Go test cache on, so a re-run at an unchanged commit replays the previous profile instead of drawing again"]`); `.githooks/coverage-ratchet.sh`'s runtime advice; and
 `ai-docs/context.md`, whose layout paragraph describes `internal/testdb` as PostgreSQL
 provisioning **for package tests**
 `[measured eef4c4e:ai-docs/context.md:27 · grep -n 'LAB_GAME_TEST_DSN' ai-docs/context.md → "internal/testdb — PostgreSQL provisioning for package tests (a postgres:18 container or LAB_GAME_TEST_DSN, one schema per test)"]`
@@ -455,7 +494,16 @@ starts a load run in the background against the provisioned server and runs the 
 over the whole module in the foreground, both logging to files under the scratch directory,
 killing the load run afterwards and exiting on the foreground gate's status. The load is
 the database-backed packages' own tests repeated — cross-package load by construction,
-needing no second implementation of "work that hits Postgres". The recipe's shell must
+needing no second implementation of "work that hits Postgres". **The load run carries
+`-count=1`**, and that is not decoration: `go test` replays a cached result whenever the
+binary, the cacheable flags and the consulted environment variables all match, and both
+children of one wrapper invocation see the same DSN, so a load loop without it would exert
+load on its first iteration and hit the cache on every one after — an instrument that cannot
+load anything
+`[measured eef4c4e · go help test → the cacheable flag set is -benchtime, -coverprofile, -cpu, -failfast, -fullpath, -list, -outputdir, -parallel, -run, -short, -skip, -timeout and -v; "the idiomatic way to disable test caching explicitly is to use -count=1"; tests that consult environment variables "only match future runs in which the files and environment variables are unchanged"]`.
+D12's revert-first protocol would catch a load-less probe anyway — it comes back green at the
+revert step, which is defined as a STOP — but a backstop is not a reason to ship a broken
+instrument `[derived → AC10, AC11]`. The recipe's shell must
 capture the foreground status explicitly rather than letting the `-e` flag the Makefile
 sets abort it
 `[measured eef4c4e:Makefile:15-17 · sed -n '15,17p' Makefile → SHELL := /bin/bash with .SHELLFLAGS := -eu -o pipefail -c]`,
@@ -514,18 +562,18 @@ STOP, not a pass — the project has run exactly this protocol before
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | `internal/testdb`: exported provisioning API (`ServerOptions`, `StartServer`, `Server.DSN`, `Server.Stop`, the capacity `Probe`, the DSN env-var name, the shared container name), the ceiling formula with its `clients` term, its constants and its refusal above `ceilingMax`; `Main`'s container branch re-expressed over it with behaviour preserved | `internal/testdb/testdb.go` | — |
-| 2 | Tests for the ceiling formula and the binaries-constant manifest | `internal/testdb/testdb_test.go` | 1 |
+| 1 | `internal/testdb`: exported provisioning API (`ServerOptions`, `StartServer`, `Server.DSN`, `Server.Stop`, the capacity `Probe`, the DSN env-var name, the shared container name), the ceiling formula with its `clients` term, its constants and its refusal above `ceilingMax` — in a **new file** beside the existing one; `Main`'s container branch re-expressed over it with behaviour preserved | `internal/testdb/server.go`, `internal/testdb/testdb.go` | — |
+| 2 | Tests for the ceiling formula, its refusal path, the capacity probe and the binaries-constant manifest | `internal/testdb/server_test.go` | 1 |
 | 3 | `cmd/testpg`: the wrapper — decision order with D3a's per-path shortfall answers, locator read/write behind the capacity probe, `--up` (sized by the same terms) / `--down`, `--clients` / `--parallel` feeding D3's ceiling, the granted ceiling echoed to stderr, signal-aware teardown, non-zero-status passthrough, injectable provisioner seam | `cmd/testpg/main.go`, `cmd/testpg/run.go` | 1 |
 | 4 | Wrapper tests over the injected seam: no container is started by this package's own tests | `cmd/testpg/run_test.go` | 3 |
-| 5 | `Makefile`: route `test` and `test-race` through the wrapper; add `test-db-up` with its overridable client count, `test-db-down`, `test-fallback`, and `test-contention` with its `--clients`, the same pinned `-p` / `-parallel` for **both** its children, the matching `--parallel`, and both logs under the scratch directory | `Makefile` | 3 |
+| 5 | `Makefile`: route `test` and `test-race` through the wrapper; add `test-db-up` with its overridable client count, `test-db-down`, `test-fallback`, and `test-contention` with its `--clients`, the same pinned `-p` / `-parallel` for **both** its children, the matching `--parallel`, `-count=1` on the load run so it cannot be served from the test cache, and both logs under the scratch directory | `Makefile` | 3 |
 | 6 | Coverage ratchet: wrap the measurement command, after the skip decision; update the runtime advice | `.githooks/coverage-ratchet.sh` | 3 |
 | 7 | CI: add the fallback step to the Test job; verify every added artefact is already named in the change filter and record the comparison | `.github/workflows/ci.yml` | 5 |
 | 8 | Contention tolerance per D9: classify every wall-clock constant in the database-backed suites, widen the instruments **per test** rather than through the shared config values, move the remaining timing assertions onto database-clock brackets | `internal/scheduler/*_test.go`, `internal/ingest/*_test.go` | 5 |
 | 9 | The AC11 demonstration: revert one widened instrument over a `cp` backup, require `make test-contention` RED, scan both logs for the connection-exhaustion class and reject the run if it is there, restore, record the RED before any green | `internal/scheduler/*_test.go` (restored) | 8 |
 | 10 | `ai-docs/key-decisions.md`: KD-20 amendment — the shared configuration's connection arithmetic, and the corrected consequence clause about who may import `internal/testdb` | `ai-docs/key-decisions.md` | 9 |
 | 11 | `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres*: the provisioning story, both paths | `ai-docs/go-test-conventions.md` | 9 |
-| 12 | `AGENTS.md` § *Build & Test*: the new targets, and the coverage-ratchet table's container-runtime row | `AGENTS.md` | 9 |
+| 12 | `AGENTS.md` § *Build & Test*: the new targets, the coverage-ratchet table's container-runtime row, and the cache-replay sentence, which now holds only on a stable DSN (D7) | `AGENTS.md` | 9 |
 | 13 | The propagation sweep of D10's class over the whole live tree, with the two stated exclusions | live `*.md` the sweep finds | 10, 11, 12 |
 
 **The coverage ratchet is not a row in this table, and that is deliberate (D7).** Its
@@ -651,11 +699,9 @@ regardless of any group marker — only the code group's implementor is pinned b
 
 ## Test Design
 
-Every claim below is about a test that does not exist yet, so every tag here is `[derived → …]`.
-
 **Ceiling arithmetic — `internal/testdb`.**
-Location: `internal/testdb/testdb_test.go`, beside the code. Entry point: the exported
-ceiling function. Scenarios: a small parallelism and a large one produce the formula's
+Location: `internal/testdb/server_test.go`, beside the code it covers. Entry point: the
+exported ceiling function. Scenarios: a small parallelism and a large one produce the formula's
 value; the floor binds and it never returns less than the image default; a client count and
 parallelism whose product exceeds `ceilingMax` is reported as a refusal rather than
 silently reduced. No database, no container — the function is arithmetic `[derived → AC5]`.
@@ -671,8 +717,9 @@ the wrapper `[derived → AC4, AC5]`.
 **Binaries-constant manifest — `internal/testdb`.**
 Location: the same file. Entry point: the constant. Scenario: the set of packages whose
 test files call `testdb.Main` is derived from the tree and compared with the constant,
-failing **by name in both directions** — the shape the configuration manifest test in this
-repository already uses, so a new database-backed package cannot silently under-size the
+failing **by name in both directions** — the shape this repository's configuration manifest
+test already uses
+`[measured eef4c4e:internal/config/disjoint_test.go:90 · grep -n 'func TestEnvExample_MatchesLoaderAndEnvKeys' internal/config/disjoint_test.go → the set-equality test between .env.example's keys, the loader's consulted set and EnvKeys()]`, so a new database-backed package cannot silently under-size the
 ceiling. Fixture: the module's own file tree; no database `[derived → AC5]`.
 
 **Wrapper decision order — `cmd/testpg`.**
@@ -707,8 +754,12 @@ to files under the scratch directory `[derived → AC15]`.
 
 **Fallback path — the whole module.**
 Location: the `test-fallback` target, run by CI's Test job. Entry point: the bare
-whole-module invocation with the DSN variable cleared. Scenario: it passes, and each
-database-backed binary provisions its own container as before `[derived → AC3]`.
+whole-module invocation with the DSN variable cleared. Scenario: it passes — **and the
+per-binary provisioning is observed, not inferred**: the runtime's container list across the
+run shows one postgres container per database-backed binary rather than the single one the
+wrapper's path produces. The observation matters because the target's pass alone is also
+consistent with the packages having quietly found a server some other way, and the whole
+point of the fallback is *which* path ran `[derived → AC3]`.
 
 **What is verified by running rather than by a test.** Each of these is a property of a
 run, not of an assertion, so each gets a recipe rather than a test function:
