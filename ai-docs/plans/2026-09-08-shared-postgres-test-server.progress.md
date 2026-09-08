@@ -10,13 +10,13 @@ _Updated: 2026-09-08 21:41_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 8 — Group B, subtask 10 of 13 committed
-**last_passed_gate:** `make comment-refs && bash ai-docs/scripts/check-ac-shape.sh && bash ai-docs/scripts/check-spec-shape.sh && bash ai-docs/scripts/check-script-shape.sh && bash .claude/skills/ai-audit/scripts/check-citations.sh && CI's relative-markdown-link check re-run locally` | 2026-09-08T21:41Z | 56857fb314b73e180f9c9132ccd4e0c488b8b994
+**current_step:** Step 8 — Group B, subtask 11 of 13 committed
+**last_passed_gate:** `make comment-refs && bash ai-docs/scripts/check-ac-shape.sh && bash ai-docs/scripts/check-spec-shape.sh && bash ai-docs/scripts/check-script-shape.sh && bash .claude/skills/ai-audit/scripts/check-citations.sh && CI's relative-markdown-link check re-run locally` | 2026-09-08T21:41Z | 5422b6d
 **entry_args:** 67
 
 ## Next action
 
-**Do this immediately:** subtask 10 is committed. Continue Group B with subtask 11 — `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres*: the provisioning story, both paths.
+**Do this immediately:** subtask 11 is committed. Continue Group B with subtask 12 — `AGENTS.md` § *Build & Test*: the new targets, the coverage-ratchet table's container-runtime row, and the cache-replay sentence (D7: it now holds only on a stable DSN).
 
 ## AC11 demonstration RED, recorded before any green (subtask 9, committed as 0f54e39)
 
@@ -75,7 +75,7 @@ Design: `ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md`. Group 
 - [x] 8. Contention tolerance per D9 — see "Group A note" below for the full list of what changed and why each was classified instrument vs. subject.
 - [x] 9. The AC11 demonstration — see the dedicated section above. RED recorded (a genuine assertion failure, exhaustion-scan clean) before the restore and the GREEN re-run. Group A is now COMPLETE.
 - [x] 10. `ai-docs/key-decisions.md`: KD-20 amendment — connection arithmetic + corrected consequence clause. Written as an `*Amended by #67 …*` clause on the existing entry, following KD-27's and KD-31's own precedent, and in prose rather than a table or a fenced block, because the file has neither anywhere. The falsified *Consequence* clause was rewritten in place rather than appended to: the invariant it always meant (`go list -deps ./cmd/bot` free of `testcontainers` — re-measured: 0 matches for `cmd/bot`, 10 for `cmd/testpg`) is kept and the wrong version of it ("only `_test.go` files import `internal/testdb`") is named as no longer true, so a later reader does not read `cmd/testpg` as a violation.
-- [ ] 11. `ai-docs/go-test-conventions.md`: the provisioning story, both paths
+- [x] 11. `ai-docs/go-test-conventions.md`: the provisioning story, both paths. The one Postgres bullet became six: what `internal/testdb` provisions (unchanged), how a gate reaches it (the wrapper's decision order, and that the ratchet takes the same route after its skip decision), what keeping a server across runs buys (including why a stable DSN is what restores the test cache's replay), that the fallback path is still real and has its own gate, D9's instrument-vs-subject rule for wall-clock constants with the widen-per-test corollary, and `make test-contention` as the probe that establishes membership — with D12's exhaustion-literal scan named, so a red run is classified before it is believed.
 - [ ] 12. `AGENTS.md` § Build & Test: new targets, container-runtime row, the cache-replay sentence
 - [ ] 13. The propagation sweep of D10's class over the live tree, with the two stated exclusions
 
@@ -98,4 +98,5 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `.github/workflows/ci.yml` - `test-fallback` step added to the Test job
 - `ai-docs/coverage-ratchet.txt` - re-centred per commit, net 91.66 -> 89.44
 - `internal/scheduler/*_test.go` (deadline, failure, observe, reconcile, schedule, worker) - D9 instrument/subject retiming for cross-package contention
+- `ai-docs/go-test-conventions.md` - § *Postgres is tested against Postgres*: the shared path, the long-lived pair, the fallback's own gate, D9's contention rule and the D12 probe
 - `ai-docs/key-decisions.md` - KD-20's amendment clause: the decision order, the bring-up/take-down pair, `Ceiling`'s formula term by term with each term's value, the floor/refusal asymmetry, and the two stated residues; the *Consequence* clause corrected to the import-graph invariant
