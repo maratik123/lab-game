@@ -55,13 +55,13 @@ jobs:
               # root *.gate.log must NOT be ignored, tmp/*.gate.log must be.
               # Without this line a .gitignore-only commit matches no filter,
               # every job's `if:` is false, and the assertion that would catch
-              # a re-added rule never runs. "A job that did not run is not a
-              # passing job" (AGENTS.md § Build & Test).
+              # a re-added rule never runs. A job that did not run is not a
+              # passing job.
               - '.gitignore'
               # A commit touching only the pre-commit dispatcher or the
               # coverage-ratchet script must still run the shellcheck gate
-              # over it — no other key names `.githooks/**`, and the target
-              # `make shellcheck` now runs from lives in `Makefile`.
+              # over it — no other key names the hooks directory, and the
+              # target that sweep now runs from is named here too.
               - '.githooks/**'
               - 'Makefile'
             workflows:
