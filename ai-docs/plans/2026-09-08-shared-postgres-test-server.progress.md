@@ -10,8 +10,8 @@ _Updated: 2026-09-08 22:07_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 8 — Group B complete (subtasks 1-13 of 13 committed); next is Step 9 verify
-**last_passed_gate:** `make comment-refs && bash ai-docs/scripts/check-ac-shape.sh && bash ai-docs/scripts/check-spec-shape.sh && bash ai-docs/scripts/check-script-shape.sh && bash .claude/skills/ai-audit/scripts/check-citations.sh && CI's relative-markdown-link check re-run locally` | 2026-09-08T22:07Z | 59686b38fbaeae01afdd1335bfda0fc4257eb58e
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** `make verify` | 2026-09-08T22:30Z | e09ab8613b456c5dc2e833d94f58eee86eda5bbd
 **entry_args:** 67
 
 ## Next action
@@ -165,6 +165,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 - **Step 8**: the truncated decision line above is the orchestrator's own defect, not the delegate's — the Group A repair script anchored on the bare substring `## Files touched`, and the line it had just inserted contained that text, so `index()` matched the in-text mention instead of the heading and cut the file there. It destroyed `## Key discoveries`, `## AC Status` and `## Review register`; all three are restored here from `git show 0f54e39`, and the truncated line is left byte-identical because this log is append-only. This is the exact failure `ai-docs/scripts/doc-edit-guard.sh` exists to catch, and the edit was made without it.
 - **Step 8**: Group B's two flagged items are carried to the orchestrator rather than decided by the delegate — the harness-wide `go test ./...` sweep (routing at Step 12) and whether `test-fallback` / `test-contention` join every future Step-9 verify list (an owner scope decision, deliberately not taken).
+- **Step 9**: every AC was measured with the orchestrator's own command rather than accepted from a delegate return. AC1 evidence is the verify log's two postgres containers (one per gate invocation, not per package binary); AC2 and the locator path each left the container count unchanged; AC4 was measured against a real `--up`/`--down` round trip that left the owner's own long-lived container untouched; AC10's green was accepted only because the exhaustion scan came back clean in both logs.
+- **Step 9**: AC3's gate was defective and the AC was not. `make test-fallback` carried no `-count=1`, so a second invocation was served entirely from the test cache and returned green having started no container — the target D8 introduces precisely so AC3 cannot go stale. The tree itself was fine: the honest run provisioned one container per database-backed binary. Owner approved the flag; the fix is 1a3ee3a and D8 was amended to match, with the owner exempting the amendment's re-review for this instance. Found because the per-AC sweep re-ran the gate instead of reading its last recorded result.
+- **Step 9**: no panic or log.Fatal was added on any production path, so the panic index needs no row; the change moves no balance and adds no mechanic, so the domain-invariant sweep is a no-op.
 ## Key discoveries (don't re-investigate)
 
 - `testdb.Main` returns `m.Run()` before touching testcontainers when `LAB_GAME_TEST_DSN` is set, so no test needs to change to reach a shared server.
@@ -180,24 +183,24 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
-| AC10 | NOT_TESTED |
-| AC11 | NOT_TESTED |
-| AC12 | NOT_TESTED |
-| AC13 | NOT_TESTED |
-| AC14 | NOT_TESTED |
-| AC15 | NOT_TESTED |
-| AC16 | NOT_TESTED |
-| AC17 | NOT_TESTED |
-| AC18 | NOT_TESTED |
+| AC1 | PASS |
+| AC2 | PASS |
+| AC3 | PASS |
+| AC4 | PASS |
+| AC5 | PASS |
+| AC6 | PASS |
+| AC7 | PASS |
+| AC8 | PASS |
+| AC9 | PASS |
+| AC10 | PASS |
+| AC11 | PASS |
+| AC12 | PASS |
+| AC13 | PASS |
+| AC14 | PASS |
+| AC15 | PASS |
+| AC16 | PASS |
+| AC17 | PASS (make verify) — CI half pending at Step 12 |
+| AC18 | PASS |
 
 ## Review register
 
