@@ -10,7 +10,7 @@ _Updated: 2026-09-08 22:07_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** `make verify` | 2026-09-08T22:30Z | e09ab8613b456c5dc2e833d94f58eee86eda5bbd
 **entry_args:** 67
 
@@ -168,6 +168,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 9**: every AC was measured with the orchestrator's own command rather than accepted from a delegate return. AC1 evidence is the verify log's two postgres containers (one per gate invocation, not per package binary); AC2 and the locator path each left the container count unchanged; AC4 was measured against a real `--up`/`--down` round trip that left the owner's own long-lived container untouched; AC10's green was accepted only because the exhaustion scan came back clean in both logs.
 - **Step 9**: AC3's gate was defective and the AC was not. `make test-fallback` carried no `-count=1`, so a second invocation was served entirely from the test cache and returned green having started no container — the target D8 introduces precisely so AC3 cannot go stale. The tree itself was fine: the honest run provisioned one container per database-backed binary. Owner approved the flag; the fix is 1a3ee3a and D8 was amended to match, with the owner exempting the amendment's re-review for this instance. Found because the per-AC sweep re-ran the gate instead of reading its last recorded result.
 - **Step 9**: no panic or log.Fatal was added on any production path, so the panic index needs no row; the change moves no balance and adds no mechanic, so the domain-invariant sweep is a no-op.
+- **Step 9.5**: `ai-docs/context.md` was left as Group B's sweep left it. Its layout paragraph already carries the summary fact (one server per run, the per-binary path surviving as the fallback), and repeating it in the Gates bullet would create two copies to keep in step. No open question in that file is resolved by this change - the ones it names live in the design corpus and are untouched.
+- **Step 9.5**: no repository-root user-facing document states anything this diff falsifies; there is no README, and the Russian design corpus's one testcontainers sentence stays true because the fallback path still uses them and the shared server is itself a container.
+- **Step 9.5**: the only name this diff removes from the tree is the unexported DSN env constant, exported under a new name; a case-insensitive sweep finds it only in plan documents, where it is either history or a pinned citation of the pre-change state.
 ## Key discoveries (don't re-investigate)
 
 - `testdb.Main` returns `m.Run()` before touching testcontainers when `LAB_GAME_TEST_DSN` is set, so no test needs to change to reach a shared server.
