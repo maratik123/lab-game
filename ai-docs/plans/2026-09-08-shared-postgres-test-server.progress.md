@@ -10,7 +10,7 @@ _Updated: 2026-09-08 22:07_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 8 — Group B COMPLETE (subtasks 10-13 of 13 committed)
+**current_step:** Step 8 — Group B complete (subtasks 1-13 of 13 committed); next is Step 9 verify
 **last_passed_gate:** `make comment-refs && bash ai-docs/scripts/check-ac-shape.sh && bash ai-docs/scripts/check-spec-shape.sh && bash ai-docs/scripts/check-script-shape.sh && bash .claude/skills/ai-audit/scripts/check-citations.sh && CI's relative-markdown-link check re-run locally` | 2026-09-08T22:07Z | 59686b38fbaeae01afdd1335bfda0fc4257eb58e
 **entry_args:** 67
 
@@ -162,6 +162,47 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8 (Group B)**: FOLLOW-UP FOR STEP 12, needs routing — the design records "sweeping the harness instruction files that spell a bare `go test ./...` onto `make test`" as a deferred ergonomics item, but the finalised spec's `## Deferred` section does not carry a row for it, so Step 12's parse of that section will not see it. It is recorded here instead of hand-appended to `ai-docs/deferred/_inbox.jsonl`, which only Step 12 and `/triage` may write.
 - **Step 8 (Group B)**: `ai-docs/propagation-groups.md`'s gate-command row fires on this change and was discharged by reading both halves — the `allowed-tools` half needs no edit (every gate-running skill and `settings.json` grant `Bash(make *)`, a wildcard; nothing enumerates targets), and the Step-9 verify list was checked and left alone on `make cover-ratchet`'s precedent. Adding the two new outside-`verify` gates to every future `/task` Step 9 is a scope decision for the owner; it is flagged in the sweep section, not taken here.
 - **Step 8 (Group B)**: this file had NO `## Files touched` heading when Group B opened it — the orchestrator's Group A repair commit truncated its own decision line mid-sentence at that heading's text and lost the heading with it, so the file list had been living inside the Decisions log. The heading is restored here; the truncated line above is left byte-identical, because the Decisions log is append-only and its content is not Group B's to rewrite.
+
+- **Step 8**: the truncated decision line above is the orchestrator's own defect, not the delegate's — the Group A repair script anchored on the bare substring `## Files touched`, and the line it had just inserted contained that text, so `index()` matched the in-text mention instead of the heading and cut the file there. It destroyed `## Key discoveries`, `## AC Status` and `## Review register`; all three are restored here from `git show 0f54e39`, and the truncated line is left byte-identical because this log is append-only. This is the exact failure `ai-docs/scripts/doc-edit-guard.sh` exists to catch, and the edit was made without it.
+- **Step 8**: Group B's two flagged items are carried to the orchestrator rather than decided by the delegate — the harness-wide `go test ./...` sweep (routing at Step 12) and whether `test-fallback` / `test-contention` join every future Step-9 verify list (an owner scope decision, deliberately not taken).
+## Key discoveries (don't re-investigate)
+
+- `testdb.Main` returns `m.Run()` before touching testcontainers when `LAB_GAME_TEST_DSN` is set, so no test needs to change to reach a shared server.
+- Four packages call `testdb.Main`: `internal/ingest`, `internal/scheduler`, `internal/store`, `internal/testdb`. That is D3's `binaries` term.
+- `go run` does not propagate the child's exact exit code: `os.Exit(7)` under `go run` yields exit 1 with `exit status 7` on stderr; the built binary yields 7. Branch on zero-vs-non-zero, never on the value.
+- testcontainers v0.44.0 parses exposed ports with `network.ParsePortRange`, which has no `host:container` form — a fixed host port would need `HostConfigModifier` and promote `moby/moby/api` to a direct requirement. Rejected.
+- The ratchet's headroom is thin: the shared regime measures below the container regime, and the recorded mark sits close to the floor. Assume the ratchet blocks on the first commit landing this code and lower it in that same commit with the reason.
+- Connection exhaustion is `FATAL: sorry, too many clients already (SQLSTATE 53300)` — the project's own client renders both spellings on one line.
+- No gate enforces KD-20's "imported only from `_test.go` files" clause; `cmd/testpg` importing `internal/testdb` breaks no check, only the prose that subtask 10 owns.
+- Ephemeral host ports mean the shared DSN differs per wrapper invocation, so the database-backed packages are a test-cache miss on every ad-hoc run — including the ratchet's own measurement. Stable again under `--up`'s named container.
+
+## AC Status
+
+| AC | Status |
+|----|--------|
+| AC1 | NOT_TESTED |
+| AC2 | NOT_TESTED |
+| AC3 | NOT_TESTED |
+| AC4 | NOT_TESTED |
+| AC5 | NOT_TESTED |
+| AC6 | NOT_TESTED |
+| AC7 | NOT_TESTED |
+| AC8 | NOT_TESTED |
+| AC9 | NOT_TESTED |
+| AC10 | NOT_TESTED |
+| AC11 | NOT_TESTED |
+| AC12 | NOT_TESTED |
+| AC13 | NOT_TESTED |
+| AC14 | NOT_TESTED |
+| AC15 | NOT_TESTED |
+| AC16 | NOT_TESTED |
+| AC17 | NOT_TESTED |
+| AC18 | NOT_TESTED |
+
+## Review register
+
+| id | raised | severity | status | verifying command |
+|----|--------|----------|--------|-------------------|
 
 ## Files touched
 
