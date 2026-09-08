@@ -8,8 +8,8 @@ _Updated: 2026-09-08 09:41_
 **Last build:** PASS
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group B complete (subtasks 11-14), verified by the orchestrator; Group C (subtask 15) next
-**last_passed_gate:** make comment-refs; make shellcheck; golangci-lint run; go test ./... | 2026-09-08T11:34:03Z | 7485c40
+**current_step:** Step 8 — Group C (subtask 15) complete; task-level implementation done, Step 9 (Verify) next
+**last_passed_gate:** make verify (fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs) | actionlint .github/workflows/ci.yml
 **entry_args:** 68
 
 ## Next action
@@ -34,7 +34,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - [x] 12. Sweep the harness shell scripts; usage prose behind `--help`, block copied verbatim
 - [x] 13. The script-shape checker and its suite; extend the dispatch suite
 - [x] 14. Propagate the rule text across the instruction surface and the hook messages
-- [ ] 15. Wiring landing two: `verify` prerequisite; the CI job; Harness-guards runs `make shellcheck`
+- [x] 15. Wiring landing two: `verify` prerequisite; the CI job; Harness-guards runs `make shellcheck`
 
 ## Decisions log
 
@@ -98,6 +98,12 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Step 8 Group A**: the orchestrator re-ran build, vet, test, lint and the new gate against the returned tree rather than accepting the group's summary. All green; `make comment-refs` reports only harness `*.sh` findings, which subtask 12 owns, and `SKIP .githooks/pre-commit` confirms the GO-note-1 symlink branch works.
 
 - **Step 8 Group B**: the orchestrator re-verified the group rather than accepting its summary — `make comment-refs` is silent over the whole tracked tree, `make shellcheck` green, build and all 11 test packages green, and the `-h|--help` dispatch line collapses to exactly one byte sequence across all 19 carriers (AC19).
+
+- **Subtask 15 (Group C, terminal)**: `Makefile`'s `verify` target gained `comment-refs`; its header's two-gate carve-out shrank to the one that remains true (`actionlint`), since `shellcheck` now runs through `make` on both sides. The `shellcheck` recipe's second line (`shellcheck -s bash .githooks/pre-commit`) was dropped — after subtask 10's symlink, `find -name '*.sh'` already reaches the content through the tracked `pre-commit.sh`, so the line was a re-check of a file already checked, exactly as D17 predicted.
+- **Subtask 15**: `.github/workflows/ci.yml` gained a `commentrefs` filter key listing every path class the gate covers (`**/*.go`, `**/*.sh`, `**/*.sql`, `**/*.yml`, `**/*.yaml`, `.gitignore`, `.env.example`, `Makefile`, `.githooks/**` — copied verbatim from the set already written ahead of the tree in `ai-docs/claude-tools-hierarchy.md` § CI and `.claude/skills/task/reference.md` item 9a) and a new `Comment references` job gated on it that sets up Go and runs `make comment-refs`. `.githooks/**` and `Makefile` were added to the existing `harness` filter key, closing AC24: before this subtask a commit touching only `.githooks/**` matched no filter key and ran no job at all — verified by reading the pre-edit filter block, not merely by the design's own claim.
+- **Subtask 15**: the Harness-guards job's inline `find .claude ai-docs/scripts -name '*.sh' | xargs shellcheck` step was replaced by `make shellcheck` (the design's own stated reason: two spellings of one gate is the drift `Makefile`'s header names as why CI invokes sub-targets at all). The job gained `actions/setup-go@v7` — it runs no Go today, per the design's own note — and a new `script shape` step running `ai-docs/scripts/check-script-shape.sh` plus a `test-script-shape.sh` line in the guard-regression-suites step, wiring the D10/subtask-13 checker pair into CI for the first time.
+- **Subtask 15 — verification, not assumption**: `go run ./cmd/commentrefs Makefile .github/workflows/ci.yml` exits 0 against the two edited files themselves. `actionlint .github/workflows/ci.yml` is clean. A full `make verify` (capturing to `tmp/verify.log`, never piped) exits 0, and the log's tail shows `go run ./cmd/commentrefs` as the last command run — direct evidence the wiring order (comment-refs last in the `verify` prerequisite list) actually executes, not just that the target exists. No `.sh` file changed in this subtask, so `shellcheck` on a changed script does not apply; `.github/workflows/ci.yml` is the only changed workflow file and it passed `actionlint`.
+- **Subtask 15 — the three forward-written claims are now true, not deleted**: `ai-docs/code-style.md` § Linter posture's "the harness `shellcheck` sweep included" now matches the Harness-guards job's `make shellcheck` step; `ai-docs/claude-tools-hierarchy.md` § CI's `Comment references` job row now matches a real job in `ci.yml`; `.claude/skills/task/reference.md` item 9a's `make comment-refs` now runs as part of `make verify` per its own text ("Running `make verify` discharges items 1–8, 9 and this one together").
 
 ## Key discoveries (don't re-investigate)
 
@@ -167,7 +173,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `.githooks/coverage-ratchet.sh` — comment sweep + the D9 `--help` shape (`usage()`, the `-h|--help` case)
 - `.env.example` — header + per-key comment sweep, no key/value change
 - `config/balance.yaml` — every design-section pointer replaced with self-contained English prose read from that section, no value change
-- `Makefile` — new `comment-refs` target (not a `verify` prerequisite yet)
+- `Makefile` — new `comment-refs` target, now a `verify` prerequisite (subtask 15); `shellcheck` target's redundant second line dropped; header carve-out narrowed to `actionlint` only
 - `.githooks/pre-commit` — now a symlink to `.githooks/pre-commit.sh`
 - `ai-docs/scripts/*.sh` (all 15) — comment sweep; 15 of them gain the D9 `--help`
 - `ai-docs/scripts/check-script-shape.sh` — new: the four shape rules over the tracked tree
@@ -190,3 +196,4 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `.claude/skills/pr-merged/scripts/cleanup-progress.sh` — comment sweep only (owes no `--help`)
 - `ai-docs/doc-convention.md` — DOC-4 inverted to the ban; § Scope widened to the gated set; DOC-1/2/3/5/6 substantively unchanged
 - `.githooks/pre-commit.sh` — new file: the dispatcher (comment-reference gate over `--staged`, then the coverage ratchet), with D16's three named skip conditions
+- `.github/workflows/ci.yml` — new `commentrefs` filter key + `Comment references` job (`make comment-refs`); `.githooks/**` and `Makefile` added to the `harness` filter key (AC24); Harness-guards job: inline shellcheck step replaced by `make shellcheck`, gains `actions/setup-go@v7`, gains a `check-script-shape.sh` step and a `test-script-shape.sh` regression-suite line

@@ -5,11 +5,9 @@
 # invokes the same sub-targets from its paths-filtered jobs, so a local run and a
 # CI run cannot disagree about what any gate's command is.
 #
-# Two gates CI reaches by another route, deliberately:
+# One gate CI reaches by another route, deliberately:
 #   * actionlint — CI uses `reviewdog/action-actionlint@v1`, because the binary is
 #     not preinstalled on `ubuntu-latest`. `make actionlint` is the local path.
-#   * shellcheck over the harness scripts — the Harness-guards job keeps its inline step,
-#     so the harness guards stay outside this file.
 #
 # No recipe swallows a failure: SHELL/.SHELLFLAGS below put `pipefail` in force for
 # every recipe, and no recipe absorbs a non-zero exit status.
@@ -31,7 +29,7 @@ GO_MAX_TEST_LINES ?= 1500
 
 .PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet comment-refs
 
-verify: fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck
+verify: fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs
 
 fmt-check:
 	golangci-lint fmt -d
@@ -69,7 +67,6 @@ actionlint:
 
 shellcheck:
 	find . -path ./.git -prune -o -path ./tmp -prune -o -name '*.sh' -exec shellcheck -s bash {} +
-	shellcheck -s bash .githooks/pre-commit
 
 # Check-only: never writes the ratchet file, never stages. The pre-commit hook
 # runs the same script in raise mode. Not part of `verify` — it re-runs the
@@ -77,8 +74,7 @@ shellcheck:
 cover-ratchet:
 	.githooks/coverage-ratchet.sh --check
 
-# The comment reference gate, over the whole tracked gated set. Not yet part
-# of `verify`: every tracked shell script still carries a comment this gate
-# would flag, and that sweep lands in a later group of this same task.
+# The comment reference gate, over the whole tracked gated set: no comment in
+# a gated file carries an outward reference.
 comment-refs:
 	go run ./cmd/commentrefs
