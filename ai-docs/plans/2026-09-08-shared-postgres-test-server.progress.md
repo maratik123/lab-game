@@ -10,13 +10,13 @@ _Updated: 2026-09-08 21:41_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 8 — Group B, subtask 12 of 13 committed
-**last_passed_gate:** `make comment-refs && bash ai-docs/scripts/check-ac-shape.sh && bash ai-docs/scripts/check-spec-shape.sh && bash ai-docs/scripts/check-script-shape.sh && bash .claude/skills/ai-audit/scripts/check-citations.sh && CI's relative-markdown-link check re-run locally` | 2026-09-08T21:41Z | 7097976
+**current_step:** Step 8 — Group B COMPLETE (subtasks 10-13 of 13 committed)
+**last_passed_gate:** `make comment-refs && bash ai-docs/scripts/check-ac-shape.sh && bash ai-docs/scripts/check-spec-shape.sh && bash ai-docs/scripts/check-script-shape.sh && bash .claude/skills/ai-audit/scripts/check-citations.sh && CI's relative-markdown-link check re-run locally` | 2026-09-08T21:41Z | 47f526d
 **entry_args:** 67
 
 ## Next action
 
-**Do this immediately:** subtask 12 is committed. Finish Group B with subtask 13 — the D10 propagation sweep over the live tree, with the two stated exclusions, recording BOTH lists (members and returned-but-not-members).
+**Do this immediately:** Group B is complete and all 13 subtasks are committed. The orchestrator resumes /task at Step 9 (Verify) — the per-AC sweep, then Step 9.5's `ai-docs/context-status.md` entry, which is also where D10's superseding of the exclusive-database-access trap entry lands (the trap entry itself is never edited: that file is append-only by its own header). One follow-up needs routing at Step 12 — see the Decisions log's last line.
 
 ## AC11 demonstration RED, recorded before any green (subtask 9, committed as 0f54e39)
 
@@ -77,7 +77,51 @@ Design: `ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md`. Group 
 - [x] 10. `ai-docs/key-decisions.md`: KD-20 amendment — connection arithmetic + corrected consequence clause. Written as an `*Amended by #67 …*` clause on the existing entry, following KD-27's and KD-31's own precedent, and in prose rather than a table or a fenced block, because the file has neither anywhere. The falsified *Consequence* clause was rewritten in place rather than appended to: the invariant it always meant (`go list -deps ./cmd/bot` free of `testcontainers` — re-measured: 0 matches for `cmd/bot`, 10 for `cmd/testpg`) is kept and the wrong version of it ("only `_test.go` files import `internal/testdb`") is named as no longer true, so a later reader does not read `cmd/testpg` as a violation.
 - [x] 11. `ai-docs/go-test-conventions.md`: the provisioning story, both paths. The one Postgres bullet became six: what `internal/testdb` provisions (unchanged), how a gate reaches it (the wrapper's decision order, and that the ratchet takes the same route after its skip decision), what keeping a server across runs buys (including why a stable DSN is what restores the test cache's replay), that the fallback path is still real and has its own gate, D9's instrument-vs-subject rule for wall-clock constants with the widen-per-test corollary, and `make test-contention` as the probe that establishes membership — with D12's exhaustion-literal scan named, so a red run is classified before it is believed.
 - [x] 12. `AGENTS.md` § Build & Test: new targets, container-runtime row, the cache-replay sentence. Four edits. The six `make` targets joined the command block and a callout under it states the routing; the ratchet table's *Suite not green* row now names `make test-db-up` first, matching the script's own advice (which subtask 6 had already changed, leaving the table the last site saying otherwise); the cache-replay sentence became conditional on a stable DSN, naming why (`testdb.Main` consults `LAB_GAME_TEST_DSN`, so the anonymous container's fresh port is a cache miss every commit and the drifting statements are re-drawn rather than replayed). The bare `go test ./...` / `go test -race ./...` lines were deliberately LEFT — D10 excludes the bare-invocation sites, the invocation still works, and rewriting them here would have desynchronised `AGENTS.md` from the `.claude/**` files that spell the same commands.
-- [ ] 13. The propagation sweep of D10's class over the live tree, with the two stated exclusions
+- [x] 13. The propagation sweep of D10's class over the live tree, with the two stated exclusions — both lists recorded in the dedicated section below; the one remaining member, `ai-docs/context.md`'s layout paragraph, was edited in this subtask's commit.
+
+## D10 propagation sweep — both lists (subtask 13)
+
+The class is `AGENTS.md` § *Propagation Rule* step 4's: every LIVE site whose claim this
+diff falsifies. The sweep returns more files than the class has members, so both lists are
+here rather than only the conclusion.
+
+**Instrument check before the verdict.** The design's own recipe
+(`grep -rni 'LAB_GAME_TEST_DSN\|testcontainers\|container per'` over `*.md` / `*.sh` /
+`*.yml` / `*.json`, with `ai-docs/plans` and `tmp` excluded) was re-run against the tree and
+returned the same nine paths the design recorded — so the recipe still reaches its corpus
+rather than reporting clean because it matched nothing. It was then broadened, because one
+pattern's silence is a claim about the pattern: a second pass over `LAB_GAME_TEST` /
+`testcontainer` / `container per` / `per-package container` / `shared server` /
+`shared postgres` / `test server` / `testdb`, a third over `postgres:18` / `schema per test`,
+a fourth over `ryuk` / `reaper` / `max_connections` / `provision` / `exclusive database
+access`, and a fifth over the ratchet's own vocabulary (`replays the previous profile` /
+`cached profile` / `test cache` / `Container runtime missing` / `coverage is not
+measurable`). A `grep -rli testcontainers` control returned five files, so the sweep's
+instrument was seen non-empty before any "no further members" was recorded. `.claude/**`
+returned **nothing** on every probe except the bare-invocation one below.
+
+**Members — each stated something this diff falsifies, and each is now corrected:**
+
+| Site | What was false | Fixed in |
+|---|---|---|
+| `ai-docs/key-decisions.md` § KD-20 | the per-binary provisioning story; the *Consequence* clause claiming only `_test.go` files import `internal/testdb` | subtask 10 |
+| `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres* | one provisioning route and no contention rule | subtask 11 |
+| `AGENTS.md` § *Build & Test* | the target list; the ratchet table's container-runtime row; the unconditional cache-replay sentence | subtask 12 |
+| `.githooks/coverage-ratchet.sh` runtime advice | named only the DSN variable | subtask 6 (Group A) |
+| `ai-docs/context.md` layout paragraph | `internal/testdb` described as provisioning "for package tests", implying no non-test importer | subtask 13 |
+
+**Returned but NOT members — the reason recorded so the next reader does not re-derive it:**
+
+- `ai-docs/dependency-versions.md` — matches on `testcontainers-go` used as an *example* inside the dependency-reason rule. Says nothing about how the suite reaches a database.
+- `ai-docs/scripts/test-ac-shape.sh` — matches inside a gate fixture's payload string, where the text is the thing under test. Editing it would edit the fixture, not a claim.
+- `docs/DESIGN.md` — one line in the Russian design corpus's testing note (`go test -race` over testcontainers, still true) plus an unrelated Grafana-provisioning line. DECISIONS, not redesigned here.
+- `ai-docs/context-status.md` — **stated exclusion 1.** Append-only by its own header; the exclusive-database-access trap entry is superseded by the entry Step 9.5 writes, never edited.
+- `ai-docs/learnings.md` — append-only history surface, which the Propagation Rule's own step 4 leaves untouched. Its `postgres:18` match is the probes-run-in-a-container rule, a different subject.
+- `ai-docs/harness-gaps.md` — matches only on the branch name `perf/2026-09-07-testdb-container-speedup` inside an observation, and on the ratchet named as escaping a different hook's starvation. No claim of this class.
+- `ai-docs/domain-invariants.md` — "provisioning" is Grafana's.
+- `ai-docs/context.md` line 44 (the *Gates* bullet) — states the gate list and the pre-commit dispatcher, both unchanged. Not a claim about how a gate reaches a database.
+- `.githooks/coverage-ratchet.sh` header's test-cache paragraph — states that the measurement keeps the cache and bounds a *replayed* draw. Both still true; what changed is how often a replay happens, and that claim lived in `AGENTS.md`, which is a member and was corrected.
+- Every harness instruction file spelling a bare `go test ./...` (`.claude/**`, `ai-docs/claude-tools-hierarchy.md`, `ai-docs/templates/progress-format.md`, and `AGENTS.md`'s own command block) — **stated exclusion 2.** The bare invocation still works and is the designed fallback (AC3), so none of them states a falsehood. Sweeping them onto `make test` is a real ergonomics gap and is a follow-up, not absorbed here.
 
 ## Decisions log
 
@@ -87,6 +131,14 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8**: the coverage ratchet is deliberately not a subtask — D7 makes its movement an obligation inside whichever code commit moves coverage, which is where the workspace same-commit rule already puts it.
 - **Step 8**: Group A's ratchet movements are per-commit and each names its reason: 91.66 -> 90.30 (regime shift plus new uncovered provisioning code), 90.30 -> 91.10 (rise, hook-recorded), 91.10 -> 86.02 (a wholly new uncovered package), 86.02 -> 89.44 (rise). Net 91.66 -> 89.44; the orchestrator re-ran `make cover-ratchet` and the tree measures 89.23, holding inside the 0.60 pp tolerance with about 0.39 pp of headroom.
 - **Step 8**: the orchestrator repaired this file at the Group A boundary - the delegate left duplicate unchecked rows for subtasks 2-9, a `last_passed_gate` reading "pending final subtask-9 commit" after that commit had landed, and an empty `## Files touched
+
+- **Step 8 (Group B)**: KD-20 is amended in place rather than replaced by a new KD — the spec's own key-decisions table offers either, and an amendment clause keeps the never-skip rule and the retired-local-instance rule (both explicitly out of scope) attached to the entry a reader already knows, following KD-27's and KD-31's `*Amended by #NN …*` precedent. The arithmetic is prose, not a table or a fenced block, because `ai-docs/key-decisions.md` contains neither anywhere.
+- **Step 8 (Group B)**: the falsified half of KD-20's *Consequence* clause was rewritten in place, not appended to. `ai-docs/key-decisions.md` is a live decision record, not an append-only log, and D10 asks for the wrong version of the invariant to stop standing; the correction names both propositions so the difference between them survives, which a silent replacement would not.
+- **Step 8 (Group B)**: the bare `go test ./...` lines in `AGENTS.md`'s command block were LEFT as they are, deliberately. D10's second stated exclusion covers exactly those sites, and rewriting the ones in this file while leaving the identical commands across `.claude/**` would have created the divergence the exclusion exists to avoid.
+- **Step 8 (Group B)**: FOLLOW-UP FOR STEP 12, needs routing — the design records "sweeping the harness instruction files that spell a bare `go test ./...` onto `make test`" as a deferred ergonomics item, but the finalised spec's `## Deferred` section does not carry a row for it, so Step 12's parse of that section will not see it. It is recorded here instead of hand-appended to `ai-docs/deferred/_inbox.jsonl`, which only Step 12 and `/triage` may write.
+- **Step 8 (Group B)**: this file had NO `## Files touched` heading when Group B opened it — the orchestrator's Group A repair commit truncated its own decision line mid-sentence at that heading's text and lost the heading with it, so the file list had been living inside the Decisions log. The heading is restored here; the truncated line above is left byte-identical, because the Decisions log is append-only and its content is not Group B's to rewrite.
+
+## Files touched
 
 - `internal/testdb/server.go` (new) - exported provisioning API, `Ceiling` formula, capacity `Probe`, `Binaries` manifest constant
 - `internal/testdb/server_test.go` (new) - ceiling table tests, refusal path, probe against a live server, binaries manifest
@@ -98,6 +150,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `.github/workflows/ci.yml` - `test-fallback` step added to the Test job
 - `ai-docs/coverage-ratchet.txt` - re-centred per commit, net 91.66 -> 89.44
 - `internal/scheduler/*_test.go` (deadline, failure, observe, reconcile, schedule, worker) - D9 instrument/subject retiming for cross-package contention
+- `ai-docs/context.md` - the layout paragraph's `internal/testdb` clause: provisioning for the whole suite, exported as an API `cmd/testpg` imports as well as the `_test.go` files
 - `AGENTS.md` - § *Build & Test*: the six new targets plus the routing callout, the ratchet table's container-runtime row, and the cache-replay sentence made conditional on a stable DSN
 - `ai-docs/go-test-conventions.md` - § *Postgres is tested against Postgres*: the shared path, the long-lived pair, the fallback's own gate, D9's contention rule and the D12 probe
 - `ai-docs/key-decisions.md` - KD-20's amendment clause: the decision order, the bring-up/take-down pair, `Ceiling`'s formula term by term with each term's value, the floor/refusal asymmetry, and the two stated residues; the *Consequence* clause corrected to the import-graph invariant
