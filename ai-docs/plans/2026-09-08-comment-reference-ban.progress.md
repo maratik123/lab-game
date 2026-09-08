@@ -8,19 +8,19 @@ _Updated: 2026-09-08 09:41_
 **Last build:** not run
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — starting Group A (subtasks 1–10)
-**last_passed_gate:** not run
+**current_step:** Step 8 — Group A subtask 1 of 10 complete
+**last_passed_gate:** golangci-lint run (internal/commentref)
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** start Group A subtask 1 — build `internal/commentref/`'s file-class router and the per-grammar extractors, per design D1, D1a, D1b and D6.
+**Do this immediately:** start Group A subtask 2 — the banned-class classifier (D4) and the exemption pass (D5), over extracted comments.
 
 ## Subtasks
 
 Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-writer`) · **B** = 11–14 (instructions/harness, `inherit`/`general-purpose`) · **C** = 15 (code, `sonnet`/`code-writer`, terminal).
 
-- [ ] 1. Comment extraction: file-class router + one extractor per grammar; add `mvdan.cc/sh/v3`  ← CURRENT
+- [x] 1. Comment extraction: file-class router + one extractor per grammar; add `mvdan.cc/sh/v3`
 - [ ] 2. The banned-class classifier (D4) and the exemption pass (D5)
 - [ ] 3. The command `cmd/commentrefs`: input modes, exit codes, report format
 - [ ] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
@@ -40,6 +40,9 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 
 - **Step 7**: design-review reached GO on round 3 of a cap of 3; its five GO notes were folded into the design at f1bc60f before Step 8 opened.
 - **Step 7**: three reviewer findings were spec-amending rather than design-internal; the owner settled all three and the spec was amended at e0e99a1 (KD-9 narrowed to this module, AC15's carve-out made explicit, Scope item 11 + KD-18 + AC24 added).
+- **Subtask 1**: `go get mvdan.cc/sh/v3@v3.14.1 && go mod tidy` reproduced exactly the design's D3 prediction in this tree — `go.mod` gains only the direct requirement, the `go` directive normalises `1.26` → `1.26.0`, and `go.sum` grows with the dependency's own test-dep checksums.
+- **Subtask 1**: `go.yaml.in/yaml/v3`'s reported `Text` field keeps the leading `#` marker (measured with a scratch probe over synthetic YAML), unlike `mvdan.cc/sh/v3/syntax`'s `Comment.Text`, which already has its `#` stripped — the two extractors' marker-stripping therefore differ in what they start from, and both are exercised by their own extraction tests.
+- **Subtask 1**: the YAML extractor's exempt-empty-file path (`ExtractYAML` returns `nil, nil` for an all-whitespace source) was added because `yaml.Unmarshal` on an empty document does not populate a document node to walk; no fixture file in the gated set is empty today, so this is defensive rather than load-bearing yet.
 
 ## Key discoveries (don't re-investigate)
 
@@ -85,3 +88,5 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 
 ## Files touched
 
+- `go.mod`, `go.sum` — `mvdan.cc/sh/v3` added
+- `internal/commentref/` — new package: `commentref.go` (the `Comment` type), `go_extract.go`, `shell_extract.go`, `yaml_extract.go`, `sql_extract.go`, `makefile_extract.go`, `gitignore_extract.go`, `envexample_extract.go`, `router.go`, plus a `_test.go` beside each and `testhelpers_test.go`
