@@ -2,8 +2,12 @@
 
 **Issue:** #68
 **Date:** 2026-09-08
-**Revision:** round 4 — the round-3 GO notes folded in, each re-measured rather than transcribed:
-the `.githooks/**` router branch (D6, subtask 1, § Test Design), the duplication argument for the
+**Revision:** round 5 — a Design Amendment raised at `/task` Step 11, and nothing else: the
+owner's implementation-time ruling that the YAML extractor reads a single plain document and refuses
+every other stream shape is written into § D1a, § D6, § Test Design, § Risks and subtask 1's row. No
+other decision is reopened. Round 4 — the round-3 GO notes folded in, each re-measured rather than
+transcribed: the `.githooks/**` router branch (D6, subtask 1, § Test Design), the duplication
+argument for the
 per-script `--help` block (D9), the pin on D8's `cp -r` probe, the source the `config/**` prose is
 written from (D13), and D3's CI evidence re-answered on the channel the question is actually about.
 Round 3 settled the YAML extractor's line numbers (D1a), the package survey for the four
@@ -61,16 +65,54 @@ a parser, and both the Go one and the shell one are available:
 |---|---|---|
 | Go | `go/scanner` with `ScanComments` (stdlib) | reports only real comments; the `//` inside `"https://…"` and inside a raw string are not reported; a block comment arrives as one multi-line token [measured `72d5bf7` · `go/scanner` probe in a scratch module under `tmp/`, since removed → the doc comment, the trailing comment and the block comment, and nothing from either string literal] |
 | Shell | `mvdan.cc/sh/v3/syntax`, `KeepComments(true)` + `syntax.Walk` | heredoc bodies, `#` inside single and double quotes, `$#` and `${#a[@]}` are not reported; a trailing end-of-file comment is; the shebang **is** reported and therefore needs the KD-5 exemption [measured `72d5bf7` · same scratch module → only the shebang, the standalone comment, the trailing comment and the EOF comment] |
-| YAML | `go.yaml.in/yaml/v3` node comments (already a direct requirement) [measured `72d5bf7:go.mod` · `grep yaml go.mod` → `go.yaml.in/yaml/v3 v3.0.5`], **plus the D1a line reconciliation** | it decides *which* `#` runs are comments — the hard half. It reports nothing from `ci.yml`'s `filters: \|` block scalar or from a `#` inside a quoted scalar, which is precisely the KD-6 boundary [measured `a18467f` · yaml.v3 probe over the tracked `*.yml`/`*.yaml` set plus synthetic fixtures → the `#`-leading lines inside `ci.yml`'s `filters: \|` block and inside a fixture's block scalar absent from the node comments, present in a naive line scan]. It does **not** answer *where* the comment is — D1a does |
+| YAML | `go.yaml.in/yaml/v3` node comments (already a direct requirement) [measured `72d5bf7:go.mod` · `grep yaml go.mod` → `go.yaml.in/yaml/v3 v3.0.5`], **plus D1a's accepted source shape and line reconciliation** | it decides *which* `#` runs are comments — the hard half. It reports nothing from `ci.yml`'s `filters: \|` block scalar or from a `#` inside a quoted scalar, which is precisely the KD-6 boundary [measured `a18467f` · yaml.v3 probe over the tracked `*.yml`/`*.yaml` set plus synthetic fixtures → the `#`-leading lines inside `ci.yml`'s `filters: \|` block and inside a fixture's block scalar absent from the node comments, present in a naive line scan]. It does **not** answer *where* the comment is — D1a does |
 | SQL, `Makefile`, `.gitignore`, `.env.example` | small lexical scanners in the same package, after the survey in D1b | for each of the four, every surveyed package's public API either discards comments entirely or cannot be reached from this module; the one package that does answer the question (SQL) costs cgo. D1b records what was evaluated, why each lost, and the escape hatch |
 
-**D1a — the YAML extractor reconciles its line numbers; it does not read them off the node.**
-`go.yaml.in/yaml/v3` never reports a comment's own line. A comment arrives as `HeadComment`,
-`LineComment` or `FootComment` on the **node it attaches to**, and only `LineComment` shares that
-node's line. Measured on this toolchain: a file header arrives as `HeadComment` on the node
-*below* it; a comment block above a mapping key arrives on that key's node; and a `FootComment`
-arrives on a node whose own line is *above* the comment, because that node is a mapping key whose
-subtree ends higher up
+**D1a — the YAML extractor reads one plain document, and reconciles that document's line numbers
+rather than reading them off the node.** Two rules, applied in that order.
+
+**The accepted source shape, decided before anything is decoded.** The extractor reads a source that
+is a **single plain document**: no unindented document marker (`---`, `...`) and no directive (a line
+whose first token begins `%`). Every other stream shape is refused by a **named sentinel error**
+before the decoder is reached, naming the offending line and its leading token, and the command turns
+that refusal into exit 2 (D6). The marker is recognised as the line's **first whitespace-separated
+token at column zero** — never by the separator that follows it, which YAML allows to be a space or a
+tab and which the extractor therefore does not enumerate. A marker may appear only unindented, so a
+column-zero match cannot be block-scalar content. A source the parser yields no node for is read
+directly, line by line: such a source holds no key, therefore no block scalar, so every `#`-leading
+line in it is a comment and there is no node walk to do
+`[derived → the YAML refusal cases in § Test Design]`.
+
+**Why the contract narrows instead of the grammar growing.** The alternative is a hand-written YAML
+document grammar living inside this gate, and every attempt to enumerate that grammar shipped a fresh
+hole in the guard's primary case — deciding which `#` runs in a YAML file are comments. A decoder
+loop missed a document the parser yields no node for; the hand-split that replaced it missed `...`,
+`--- <content>` and `%YAML`; the token check that replaced *that* missed a tab after the marker,
+reopening the silent partial read the whole exercise was closing. The owner's ruling at `/task`
+Step 11 was **fail-closed**: stop extending the enumeration, narrow what the extractor promises.
+Narrowing deletes the grammar rather than lengthening it — an extractor that never sees a second
+document never has to decide where the first one ends — and it converts every shape outside the
+promise from a silent partial read into a loud refusal, which is the direction D1a already takes for
+a comment that does not reconcile.
+
+**What the narrowing costs, and where the escape is.** A legal, readable, parseable YAML file that
+carries a marker or a directive — a `---`-headed workflow, a `docker-compose` file — turns
+`make comment-refs`, and with it `verify` and the CI job, **red with an instrument failure rather
+than a finding**, the moment it joins the gated set. What bounds the cost is that the refusal is
+legible where it fires, since it names the line and the token, and that this paragraph is the second
+place to look. The escapes, both deliberate: keep such a file a single plain document, or widen the
+extractor back — which means re-introducing the document-boundary handling this narrowing removed,
+with a case per marker form **and per separator**, and is a design decision rather than a Step-9 fix.
+Nothing in the tree is affected today: no tracked YAML carries an unindented marker or a directive
+[measured `8371fb4` · `git ls-files '*.yml' '*.yaml' | xargs grep -nE '^(---|\.\.\.|%)'` → no output,
+over a non-empty file list].
+
+**The line reconciliation.** `go.yaml.in/yaml/v3` never reports a comment's own line. A comment
+arrives as `HeadComment`, `LineComment` or `FootComment` on the **node it attaches to**, and only
+`LineComment` shares that node's line. Measured on this toolchain: a file header arrives as
+`HeadComment` on the node *below* it; a comment block above a mapping key arrives on that key's
+node; and a `FootComment` arrives on a node whose own line is *above* the comment, because that
+node is a mapping key whose subtree ends higher up
 [measured `a18467f` · yaml.v3 probe over the tracked `*.yml`/`*.yaml` set and synthetic
 fixtures → every reported `HeadComment` and `FootComment` sits on a node line that is not the
 comment's own; only `LineComment` shares it]. Taking `n.Line` as the finding's line would make
@@ -278,9 +320,16 @@ reader is AC16's own territory: a bare "see such-and-such", and narration.
   blob**, not from the worktree, so a partial stage is judged as it will be committed;
 - explicit paths — read from the worktree, for a targeted local run.
 
-Exit 0 = no finding. Exit 1 = at least one finding. Exit 2 = the gate could not run (an unreadable
-file, a parse error, no git worktree) — an instrument failure that must not read as a clean tree,
-the shape `check-citations.sh` already models for its own high-water mark
+Exit 0 = no finding. Exit 1 = at least one finding. Exit 2 = the gate could not **decide** the
+file — an unreadable file, a parse error, no git worktree, a `.githooks/**` member the router cannot
+classify (below), **or a source whose shape an extractor's contract excludes**, of which the one
+class today is a YAML source that is not a single plain document (D1a). That last cause is why the
+exit is stated as *could not decide* rather than *could not read*: a file can be readable, parseable
+and inside a worktree and still sit outside what its extractor promises to place comments in, and
+the fail-closed ruling behind D1a puts that case here rather than in exit 0 — where it would be a
+gated file passing clean with its comments never looked at. Every cause is an instrument failure
+that must not read as a clean tree, the shape `check-citations.sh` already models for its own
+high-water mark
 [measured `72d5bf7:.claude/skills/ai-audit/scripts/check-citations.sh` ·
 `grep -n 'INSTRUMENT reading\|Instrument failure' .claude/skills/ai-audit/scripts/check-citations.sh` →
 `# The high-water mark is an INSTRUMENT reading.` and `Instrument failure, not a citation finding`].
@@ -640,7 +689,7 @@ project already documents for its own commands
 already takes for a missing toolchain: no staged path of the gated set; no `go.mod` at the worktree
 root; no `go` on `$PATH`. A skip prints its reason and returns 0. A gate that ran returns its own
 status, and the dispatcher exits with it *before* reaching the ratchet — exit 2 (instrument failure,
-D6) refuses the commit exactly as exit 1 does, because an instrument that could not run is not a
+D6) refuses the commit exactly as exit 1 does, because an instrument that could not decide is not a
 clean tree.
 
 **The seam.** The dispatch suite's sandbox becomes a repository that satisfies the first two
@@ -703,7 +752,7 @@ KD-18 leaves the shape to the design. Two were open; the design takes the second
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | Comment extraction: the file-class router and one extractor per grammar (Go, shell, YAML, SQL, `Makefile`, `.gitignore`, `.env.example`), each returning marker-stripped text with a line number — the YAML one via the D1a reconciliation, since yaml.v3 reports the node's line and not the comment's; the router keys `.githooks/**` on content per D6, since that class alone is not extension-keyed — `.sh`-or-shebang to the shell extractor, a symlink entry skipped with the skip reported, anything else exit 2; add the `mvdan.cc/sh/v3` requirement via `go get` + `go mod tidy`, expecting the `go.sum` growth and the `go`-directive normalisation D3 measures | `internal/commentref/` (extractors + tests), `go.mod`, `go.sum` | — |
+| 1 | Comment extraction: the file-class router and one extractor per grammar (Go, shell, YAML, SQL, `Makefile`, `.gitignore`, `.env.example`), each returning marker-stripped text with a line number — the YAML one refusing any source that is not a single plain document and reconciling the rest, both per D1a, since yaml.v3 reports the node's line and not the comment's; the router keys `.githooks/**` on content per D6, since that class alone is not extension-keyed — `.sh`-or-shebang to the shell extractor, a symlink entry skipped with the skip reported, anything else exit 2; add the `mvdan.cc/sh/v3` requirement via `go get` + `go mod tidy`, expecting the `go.sum` growth and the `go`-directive normalisation D3 measures | `internal/commentref/` (extractors + tests), `go.mod`, `go.sum` | — |
 | 2 | The banned-class classifier (D4) and the exemption pass (D5), over extracted comments | `internal/commentref/` (classifier + tests) | 1 |
 | 3 | The command: the input modes and exit codes D6 names, the `<file>:<line>: <class>: <text>` report, a testable `run` with a thin `main` | `cmd/commentrefs/` | 2 |
 | 4 | Sweep `cmd/bot`, `internal/config`, `internal/backoff` to the gate's silence (D12) | `cmd/bot/*.go`, `internal/config/*.go`, `internal/backoff/*.go` | 3 |
@@ -820,6 +869,13 @@ count.
   reconciliation is a nearest-match search over the source text with a mismatch escalating to
   exit 2, and the extraction cases assert exact lines including the three shapes an offset rule
   gets wrong — `[derived → the YAML extraction cases in § Test Design]`.
+- The YAML narrowing (D1a) turns a legal file into a red gate: a `---`-headed or directive-carrying
+  YAML source joining the gated set later exits 2, so `verify` and the CI job go red over a file
+  whose content is fine. This is the owner's fail-closed ruling and its accepted cost, not a defect.
+  What bounds it: the refusal names the line and the token where it fires, D1a states both escapes,
+  and no tracked YAML carries either shape today
+  [measured `8371fb4` · `git ls-files '*.yml' '*.yaml' | xargs grep -nE '^(---|\.\.\.|%)'` → no
+  output, over a non-empty file list].
 - `mvdan.cc/sh/v3` fails to parse a script that `bash` accepts, and the gate exits 2 on a file it
   cannot read. Mitigation: exit 2 is an instrument failure by design (D6), not a pass; the extraction
   suite parses every tracked `*.sh` of the tree and asserts no parse error —
@@ -881,6 +937,18 @@ Scenarios, one table per grammar, each case a source snippet as a Go string lite
   and a foot comment whose node is a mapping **key** whose subtree ends above the comment. A further
   case asserts that a comment which cannot be reconciled surfaces as **exit 2**, not as a guessed
   line and not as a silent drop.
+  A second YAML table covers the accepted source shape of D1a, and it is where the refusal is proven
+  rather than assumed: an unindented `---` alone, `---` carrying content, `---` and `...` each
+  followed by a comment separated **by a space and by a tab**, a bare `...`, a `%YAML` directive, and
+  a comment standing above the first marker — each asserted to fail with the **named sentinel**,
+  never to return a partial read of the stream. The separator pair is that table's instrument check:
+  a refusal keyed on the separator instead of on the token passes every space form and drops every
+  tab form, so the two must be asserted side by side. Cases carrying a banned reference beyond the
+  marker are what tell a refusal apart from a silent pass, since a partial read returns exactly those
+  clean. One further case takes the other branch of D1a: a source the parser yields no node for —
+  comments alone, and comments with blank lines between them — asserted to report every `#` line at
+  its own line rather than nothing, because a nodeless branch returning nothing is invisible to every
+  other case in the table.
 - SQL: `--` at line start and mid-line; `--` inside a single-quoted string; a `/* */` block; a goose
   annotation.
 - `Makefile`: line-start and mid-line `#`; a `#` in a recipe line.
