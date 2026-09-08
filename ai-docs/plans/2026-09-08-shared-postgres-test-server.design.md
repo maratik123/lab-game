@@ -4,7 +4,7 @@
 **Spec:** `ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md`
 **Branch:** `perf/2026-09-08-shared-postgres-test-server`
 **Date:** 2026-09-08
-**Round:** 3
+**Round:** 4
 
 **Tag forms used below.** A fact about something that already exists carries
 `[measured <pin>:<path>[:<lines>] · <command> → <output>]`, where `<pin>` is `eef4c4e` for
