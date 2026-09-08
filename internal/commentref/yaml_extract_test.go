@@ -124,37 +124,40 @@ func TestExtractYAML_ParseError(t *testing.T) {
 	}
 }
 
-// TestExtractYAML_EveryDocumentOfAStream asserts that a comment in the
-// second or later document of a multi-document stream is reported with its
-// own source line. Decoding only the first document returns no comment and
-// no error, so the gate would fail open on such a file.
-func TestExtractYAML_EveryDocumentOfAStream(t *testing.T) {
+// TestExtractYAML_RefusesAStreamItCannotPlace asserts that a source
+// carrying a document marker or a directive is refused rather than read.
+// The extractor reads one plain document; every other shape moves a
+// comment's line away from where the parser reports it, and a guard that
+// guesses a line is worse than one that stops.
+func TestExtractYAML_RefusesAStreamItCannotPlace(t *testing.T) {
 	t.Parallel()
-	src := "# first\na: 1\n---\n# second\nb: 2\n---\n# third\nc: 3\n"
-	got, err := ExtractYAML([]byte(src))
-	if err != nil {
-		t.Fatalf("ExtractYAML() error = %v, want nil", err)
-	}
-	want := []Comment{
-		{Line: 1, Text: "first"},
-		{Line: 4, Text: "second"},
-		{Line: 7, Text: "third"},
-	}
-	if len(got) != len(want) {
-		t.Fatalf("ExtractYAML() returned %d comments, want %d: %+v", len(got), len(want), got)
-	}
-	for i, w := range want {
-		if got[i].Line != w.Line || got[i].Text != w.Text {
-			t.Errorf("comment %d = {Line:%d Text:%q}, want {Line:%d Text:%q}",
-				i, got[i].Line, got[i].Text, w.Line, w.Text)
-		}
+	for _, tc := range []struct {
+		name string
+		src  string
+	}{
+		{name: "document start", src: "a: 1\n---\nb: 2\n"},
+		{name: "document start carrying a comment", src: "a: 1\n--- # ref\nb: 2\n"},
+		{name: "document start with content", src: "a: 1\n--- b\n"},
+		{name: "document end", src: "a: 1\n...\n"},
+		{name: "document end carrying a comment", src: "a: 1\n... # ref\n"},
+		{name: "comment above the first marker", src: "# above\n---\na: 1\n"},
+		{name: "yaml directive", src: "%YAML 1.1\n---\na: 1\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ExtractYAML([]byte(tc.src))
+			if !errors.Is(err, ErrYAMLUnsupportedStream) {
+				t.Fatalf("ExtractYAML() error = %v, want ErrYAMLUnsupportedStream (got %d comments)", err, len(got))
+			}
+		})
 	}
 }
 
-// TestExtractYAML_NodelessDocument asserts that a document holding no node
-// still yields its comments. The parser reports end-of-stream for such a
-// span, so a decoder loop alone returns clean and the gate fails open.
-func TestExtractYAML_NodelessDocument(t *testing.T) {
+// TestExtractYAML_NodelessSource asserts that a source the parser yields no
+// node for still reports its comments. The parser returns an empty node and
+// no error for such a source, so reading the node alone reports nothing and
+// the gate passes a file it never looked at.
+func TestExtractYAML_NodelessSource(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name string
@@ -167,9 +170,9 @@ func TestExtractYAML_NodelessDocument(t *testing.T) {
 			want: []Comment{{Line: 1, Text: "alone"}},
 		},
 		{
-			name: "comment-only document between two others",
-			src:  "a: 1\n---\n# middle\n---\nb: 2\n",
-			want: []Comment{{Line: 3, Text: "middle"}},
+			name: "several comments and blank lines",
+			src:  "# one\n\n#   two\n",
+			want: []Comment{{Line: 1, Text: "one"}, {Line: 3, Text: "  two"}},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -181,18 +184,4 @@ func TestExtractYAML_NodelessDocument(t *testing.T) {
 			assertComments(t, got, tc.want)
 		})
 	}
-}
-
-// TestExtractYAML_CommentBeforeFirstMarker asserts that a comment written
-// above the first document marker is reported at its own line. The parser
-// hands it back as the following document's head comment, whose lines are
-// not contiguous with that document's own, so reconciling against the whole
-// source turns a legal file into an instrument failure.
-func TestExtractYAML_CommentBeforeFirstMarker(t *testing.T) {
-	t.Parallel()
-	got, err := ExtractYAML([]byte("# above\n---\n# below\na: 1\n"))
-	if err != nil {
-		t.Fatalf("ExtractYAML() error = %v, want nil", err)
-	}
-	assertComments(t, got, []Comment{{Line: 1, Text: "above"}, {Line: 3, Text: "below"}})
 }

@@ -51,17 +51,17 @@ jobs:
               - 'ai-docs/**'
               - 'AGENTS.md'
               - 'CLAUDE.md'
-              # The gate-log-path suite asserts about the entry below: a
-              # root gate log must NOT be ignored, one under the scratch
-              # directory must be. Without the entry a commit touching only
-              # that file matches no filter, every job's `if:` is false, and
+              # The gate-log-path suite asserts about the content of the
+              # entry below: a root gate log must NOT be ignored, one under
+              # the scratch directory must be. Without the entry here, a
+              # commit touching only that file does not reach this job, and
               # the assertion that would catch a re-added rule never runs. A
               # job that did not run is not a passing job.
               - '.gitignore'
               # A commit touching only the pre-commit dispatcher or the
-              # coverage-ratchet script must still run the shellcheck gate
-              # over it — no other key names the hooks directory, and the
-              # target that sweep now runs from is named here too.
+              # coverage-ratchet script must still reach the shellcheck gate,
+              # which this job is the only one to run; the target that sweep
+              # runs from is named here too, for the same reason.
               - '.githooks/**'
               - 'Makefile'
             workflows:

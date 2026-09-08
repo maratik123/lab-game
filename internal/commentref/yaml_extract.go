@@ -3,7 +3,6 @@ package commentref
 import (
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	yaml "go.yaml.in/yaml/v3"
@@ -15,77 +14,36 @@ import (
 // silently wrong line is worse than a refusal to run.
 var ErrYAMLCommentUnreconciled = errors.New("yaml comment did not reconcile to a source line")
 
-// ExtractYAML returns every comment in a YAML file, across every document
-// of the stream. The underlying parser
-// reports a comment on the node it attaches to, and only a same-line
-// comment shares that node's own line; a comment written above or below its
-// node is recovered by matching the retained text back against the source,
-// nearest match first, never by a fixed offset from the node's line.
+// ErrYAMLUnsupportedStream reports a YAML source carrying a document
+// marker or a directive. The extractor reads a single plain document; the
+// gate refuses anything else rather than reporting a file it cannot place
+// comments in, because a guard that guesses is worse than one that stops.
+var ErrYAMLUnsupportedStream = errors.New("yaml source is not a single plain document")
+
+// ExtractYAML returns every comment in a YAML file holding one plain
+// document, and refuses any other stream shape with ErrYAMLUnsupportedStream.
+// The underlying parser reports a comment on the node it attaches to, and
+// only a same-line comment shares that node's own line; a comment written
+// above or below its node is recovered by matching the retained text back
+// against the source, nearest match first, never by a fixed offset from the
+// node's line. A source the parser yields no node for holds no key, so it
+// holds no block scalar, and its comments are read directly.
 func ExtractYAML(src []byte) ([]Comment, error) {
 	if len(strings.TrimSpace(string(src))) == 0 {
 		return nil, nil
 	}
 
-	var out []Comment
-	for _, span := range splitYAMLDocuments(strings.Split(string(src), "\n")) {
-		cs, err := extractYAMLDocument(span)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, cs...)
-	}
-	return out, nil
-}
-
-// yamlDocSpan is one document of a stream together with the 0-based index
-// of its first line in the whole source, so a comment reconciled inside the
-// span can be reported at its real line.
-type yamlDocSpan struct {
-	offset int
-	lines  []string
-}
-
-// splitYAMLDocuments cuts the source at the document markers that may only
-// appear unindented, so each document reconciles against its own lines. A
-// comment written before the first marker is attached by the parser to the
-// following document, and its lines are not contiguous with that document's
-// own — reconciling against the whole source therefore fails on a legal file.
-func splitYAMLDocuments(lines []string) []yamlDocSpan {
-	var spans []yamlDocSpan
-	start := 0
-	for i, l := range lines {
-		if i > start && isYAMLDocMarker(l) {
-			spans = append(spans, yamlDocSpan{offset: start, lines: lines[start:i]})
-			start = i
-		}
-	}
-	return append(spans, yamlDocSpan{offset: start, lines: lines[start:]})
-}
-
-// isYAMLDocMarker reports whether the line is an unindented document start
-// or end marker.
-func isYAMLDocMarker(l string) bool {
-	t := strings.TrimRight(l, " \t\r")
-	return t == "---" || t == "..." || strings.HasPrefix(t, "--- ")
-}
-
-// extractYAMLDocument returns the comments of one document. A span the
-// parser yields no node for cannot contain a block scalar, because a block
-// scalar needs a key to hang from, so every marker line in it is a comment
-// and is read directly rather than reported as an instrument failure.
-func extractYAMLDocument(span yamlDocSpan) ([]Comment, error) {
-	text := strings.Join(span.lines, "\n")
-	if strings.TrimSpace(text) == "" {
-		return nil, nil
+	lines := strings.Split(string(src), "\n")
+	if n, marker := findYAMLStreamMarker(lines); n > 0 {
+		return nil, fmt.Errorf("%w: line %d begins %q", ErrYAMLUnsupportedStream, n, marker)
 	}
 
 	var doc yaml.Node
-	err := yaml.NewDecoder(strings.NewReader(text)).Decode(&doc)
-	switch {
-	case errors.Is(err, io.EOF):
-		return extractYAMLNodeless(span), nil
-	case err != nil:
+	if err := yaml.Unmarshal(src, &doc); err != nil {
 		return nil, fmt.Errorf("yaml source: %w", err)
+	}
+	if doc.Kind == 0 {
+		return extractYAMLNodeless(lines), nil
 	}
 
 	var out []Comment
@@ -106,14 +64,12 @@ func extractYAMLDocument(span yamlDocSpan) ([]Comment, error) {
 			if block.text == "" {
 				continue
 			}
-			cs, err := reconcileYAMLComment(block.pos, n.Line, block.text, span.lines)
+			cs, err := reconcileYAMLComment(block.pos, n.Line, block.text, lines)
 			if err != nil {
 				walkErr = err
 				return
 			}
-			for _, c := range cs {
-				out = append(out, Comment{Line: c.Line + span.offset, Text: c.Text})
-			}
+			out = append(out, cs...)
 		}
 		for _, c := range n.Content {
 			walk(c)
@@ -129,13 +85,31 @@ func extractYAMLDocument(span yamlDocSpan) ([]Comment, error) {
 	return out, nil
 }
 
-// extractYAMLNodeless reads the comments of a span holding no node.
-func extractYAMLNodeless(span yamlDocSpan) []Comment {
+// findYAMLStreamMarker returns the 1-based line number and the leading text
+// of the first unindented document marker or directive, or zero when the
+// source is a single plain document. A marker may only appear unindented, so
+// a column-zero match cannot be block-scalar content.
+func findYAMLStreamMarker(lines []string) (int, string) {
+	for i, l := range lines {
+		t := strings.TrimRight(l, " \t\r")
+		switch {
+		case t == "---" || t == "..." || strings.HasPrefix(t, "--- ") || strings.HasPrefix(t, "... "):
+			return i + 1, strings.SplitN(t, " ", 2)[0]
+		case strings.HasPrefix(t, "%"):
+			return i + 1, strings.SplitN(t, " ", 2)[0]
+		}
+	}
+	return 0, ""
+}
+
+// extractYAMLNodeless reads the comments of a source the parser yields no
+// node for. Such a source holds no key, so it holds no block scalar, and
+// every marker line in it is a comment.
+func extractYAMLNodeless(lines []string) []Comment {
 	var out []Comment
-	for i, l := range span.lines {
-		t := strings.TrimSpace(l)
-		if strings.HasPrefix(t, "#") {
-			out = append(out, Comment{Line: span.offset + i + 1, Text: stripYAMLMarker(t)})
+	for i, l := range lines {
+		if t := strings.TrimSpace(l); strings.HasPrefix(t, "#") {
+			out = append(out, Comment{Line: i + 1, Text: stripYAMLMarker(t)})
 		}
 	}
 	return out
