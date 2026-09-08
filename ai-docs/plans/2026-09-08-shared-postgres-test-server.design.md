@@ -28,10 +28,13 @@ That something is a **wrapper command**, `cmd/testpg`, invoked as
 `go run ./cmd/testpg -- <the gate command>` `[derived → AC1]`. Its decision order:
 
 1. The DSN variable is already set in the calling environment → run the child unchanged,
-   provision nothing, remove nothing `[derived → AC2]`.
+   provision nothing, remove nothing `[derived → AC2]`. The server's capacity is still read
+   and compared against D3's computed need, and a shortfall is **reported**, not fatal (D3a).
 2. Otherwise, a **long-lived server this project's own targets started** is looked up
-   through the locator D4 defines; if it answers, the child runs against it and it is
-   left running afterwards `[derived → AC4's found-not-started clause]`.
+   through the locator D4 defines; if it answers **and its capacity admits D3's computed
+   need**, the child runs against it and it is left running afterwards
+   `[derived → AC4's found-not-started clause]`. A server that answers but is too small is
+   not used — the wrapper falls through to step 3 (D3a).
 3. Otherwise, an **anonymous** container is started with the ceiling D3 computes, the
    child runs against it, and it is removed on a passing run, on a failing gate and on
    an interrupted run `[derived → AC1, AC4]`.
@@ -56,10 +59,10 @@ Three properties decide it, and only this shape has all three.
   through a CLI. The permission list grants `Bash(podman *)` and names no `docker` entry
   `[measured eef4c4e:.claude/settings.json · jq -r '.permissions.allow[]' .claude/settings.json → Bash(go *), Bash(make *), Bash(psql *), Bash(podman *); no docker entry]`,
   and this machine's runtime is rootless podman reached over a socket
-  `[measured eef4c4e · podman info --format '{{.Version.Version}}' → 5.8.2, with DOCKER_HOST naming the rootless podman socket]`,
-  which the CI runner's is not. A target that shelled out to a runtime CLI would have to
-  pick a binary name and would pick a name that is right on one host and absent on the
-  other. testcontainers-go picks no name at all: it talks to the socket.
+  `[measured eef4c4e · podman info --format '{{.Version.Version}}' → 5.8.2, with DOCKER_HOST naming the rootless podman socket]`.
+  A target that shelled out to a runtime CLI would have to pick a binary name, and a name is
+  not a portable way to reach a container runtime. testcontainers-go picks no name at all:
+  it talks to the socket.
 - **It is callable from outside `make`.** The pre-commit hook execs the coverage-ratchet
   script directly
   `[measured eef4c4e:.githooks/pre-commit.sh:46 · sed -n '46p' .githooks/pre-commit.sh → exec "$root/.githooks/coverage-ratchet.sh"]`,
@@ -153,7 +156,10 @@ wait strategy and the start retry
 `[measured eef4c4e:internal/testdb/testdb.go:24-162 · sed -n '24,162p' internal/testdb/testdb.go → the Image constant, the tmpfs mount with its PGDATA override, the database/user/password constants, BasicWaitStrategies, and retryRun around postgres.Run]`;
 a second copy in `cmd/testpg` would be the duplication the project's own rule refuses. So `internal/testdb` gains an exported
 `StartServer(ctx, ServerOptions) (*Server, error)` with `DSN` and `Stop`, an exported
-`Reachable(ctx, dsn) error` probe, an exported name for the DSN environment variable, and
+`Probe(ctx, dsn) (maxConns int, err error)` — a **capacity** probe, not merely a
+reachability one: it opens the connection it would have opened anyway and reads the
+server's own `max_connections` on it, so one round trip answers both "does it answer" and
+"can it admit this run" (D3a) — an exported name for the DSN environment variable, and
 `Main`'s container branch is re-expressed in terms of `StartServer` with an empty options
 value — same image, same tmpfs, same wait strategy, same retry, same terminate timeout,
 same image-default connection ceiling, so the fallback path is unchanged in effect
@@ -209,12 +215,38 @@ granting less than the formula asks for is how a host quietly runs a population 
 cannot admit, so above `ceilingMax` **the wrapper refuses to start**, before provisioning
 anything, printing the computed value, the terms it came from, and the flags to lower
 (`--parallel`, `--clients`, and the child's own `-parallel`) `[derived → AC5]`. That
-refusal is what makes the bound enforceable at *every* target rather than only where a
-recipe remembered to pin something — `make test` and `make test-race` pin nothing
+refusal reaches every target that *starts* a server, rather than only the ones whose recipe
+remembered to pin something — `make test` and `make test-race` pin nothing
 `[measured eef4c4e:Makefile:50-54 · sed -n '50,54p' Makefile → test is go test ./... and test-race is go test -race ./..., neither passing -p or -parallel]`,
 and with `ceilingMax` measured at 1000 the refusal reaches them only on a host far larger
 than any this project runs on today (§ Open questions records where that boundary falls and
-what to do at it).
+what to do at it). **It does not, by itself, reach the paths that do not start a server**,
+and those are the everyday ones — which is what D3a is for.
+
+**D3a — the bound on a server this wrapper did not size.** D1's steps 1 and 2 hand the run a
+server whose ceiling nobody here chose: a caller's own, or a long-lived one `--up` sized for
+some other client count. Checking only that such a server *answers* would leave the whole
+arithmetic above governing the one path that is hardest to reach in ordinary use, and would
+walk the common path into the exact `FATAL: sorry, too many clients already` that D12
+classes as an instrument failure and that the recorded trap describes as looking like a
+defect in whatever changed last
+`[measured eef4c4e:ai-docs/context-status.md:161 · grep -n 'assumes exclusive database access' ai-docs/context-status.md → "The failure looks like a defect in whatever changed last; it is contention. Check which provisioning path the run used before believing it."]`
+— the misdiagnosis this task exists to remove. So the probe reads capacity, and the answer
+to a shortfall differs by path, because the wrapper's authority differs by path:
+
+| Path | On a shortfall | Why |
+|---|---|---|
+| the caller's own DSN (step 1) | **report it and run**, naming the server's ceiling, the computed need, and the terms it came from | AC2's contract is that the gates execute against the server the caller named, so refusing would make the documented hand-in unusable. Exhaustion is already loud when it happens — what was missing was the diagnosis, and the report is that |
+| the discovered locator (step 2) | **fall through to the anonymous container**, with a message | the locator is this change's own convention and the wrapper has an alternative, so an under-sized long-lived server is simply not used — the same shape as the existing unreachable-locator rule (D4) |
+| a server this invocation started (step 3) | cannot arise | the ceiling is the one this wrapper asked for, and above `ceilingMax` it refused before provisioning anything |
+
+**What the read does not cover, stated rather than left to be discovered:** `max_connections`
+is the server's *total*, not its *free* capacity. A server large enough but already busy with
+another run's population passes this check and can still exhaust. That residue is deliberately
+not closed with a point-in-time free-slot count, which would be racy and would make one gate's
+start depend on another gate's phase; it is closed by **sizing** — `--up` takes the same
+`--clients` term (D4), so a developer who intends concurrent runs brings up a server sized for
+them `[derived → AC5]`.
 
 The ceiling reaches the server as a command argument: the
 postgres module sets the container command and then applies caller options, and the
@@ -231,32 +263,46 @@ developer can keep one across commits is the design's call" — while fixing the
 makes either shape safe: remove only a server this invocation started, never one it found.
 **The pair exists, and that is settled here rather than left open**: the delegation is the
 spec's own, so taking it amends nothing. The locator is a pair —
-a **container name** constant in `internal/testdb`, and a **DSN file** written under the
-ignored scratch directory `[measured eef4c4e:.gitignore · cat .gitignore § Scratch → /tmp/ is the one ignored scratch directory every gate log and throwaway probe is written to]`.
+a **container name** constant in `internal/testdb`, and a **DSN file** written in the
+repository's own ignored scratch directory, `tmp/`
+`[measured eef4c4e:.gitignore · cat .gitignore § Scratch → the anchored pattern for the repository-root tmp/ directory, "the one ignored scratch directory" every gate log and throwaway probe is written to]`.
 `--up` creates the named container (reusing one already under that name), writes the DSN
-file and prints the DSN; `--down` removes the container and the file. The wrapper's
-default mode reads the file, **probes the DSN before trusting it**, and falls through to
-its own anonymous container when the probe fails — so a file left behind by a reboot or by
-another worktree's `--down` degrades into the ad-hoc path with a message, never into a run
-against nothing `[derived → AC4]`. `--up` runs with the reaper disabled, which is what
+file and prints the DSN. **It sizes with the same terms a run does**: it takes `--clients`
+and `--parallel` and computes D3's ceiling from them, defaulting to **one** client — so a
+plain `make test-db-up` provisions a server for one gate run at a time, and a developer who
+intends to run two at once passes the client count, which the target exposes as an
+overridable variable `[derived → AC5]`. `--down` removes the container and the file. The
+wrapper's default mode reads the file, **probes the DSN before trusting it — for capacity as
+well as for reachability** — and falls through to its own anonymous container when either
+check fails, so a file left behind by a reboot or by another worktree's `--down`, and a
+server sized for fewer clients than this run needs, both degrade into the ad-hoc path with a
+message rather than into a run against nothing or against too little
+`[derived → AC4, AC5]`. `--up` runs with the reaper disabled, which is what
 lets its container outlive the process that created it; a container created that way
 carries no reap label and a foreign session id, so no reaper will ever remove it and
 `--down` is its only remover
 `[measured testcontainers-go@v0.44.0:reaper.go:557-566 · sed -n '557,566p' reaper.go → the handshake filter is core.DefaultLabels(r.SessionID)]`.
 That is exactly the spec's "a container this project's own target started is not the
-reaper's to remove". **Why the pair earns its place:** the environment variable alone
-cannot carry a server across an agent's tool calls, because shell state does not persist
-between them, and the pre-commit path — in scope by the owner's round-1 answer — runs in
-whatever environment git hands it. Without the locator the whole coverage-ratchet path
-pays a container start on every commit that stages Go.
+reaper's to remove". **Why the pair earns its place:** the pre-commit path is in scope by the
+owner's round-1 answer, and it runs in whatever environment git hands it rather than one a
+developer exported into — so without a locator on disk the whole coverage-ratchet path pays a
+container start on every commit that stages Go
+`[measured eef4c4e:.githooks/pre-commit.sh:46 · sed -n '46p' .githooks/pre-commit.sh → the hook execs the ratchet script directly, with no make target and no exported environment of its own]`.
 
-**D5 — the ad-hoc container is anonymous, and that is what makes concurrent runs safe.**
-The wrapper never creates the *named* container; only `--up` does. So the only container
-the wrapper can remove is one no other run can have found, and two gate runs at the same
-time either both discover the long-lived server (and share it — schemas are already
-uniquely named per test `[measured eef4c4e:internal/testdb/testdb.go:189-236 · sed -n '189,236p' internal/testdb/testdb.go → Schema creates t_<unix-nanos>_<counter> and drops it in tb.Cleanup]`)
-or each start their own. Neither run can pull a server out from under the other
-`[derived → AC4]`.
+**D5 — the ad-hoc container is anonymous, which makes concurrent runs safe in ownership;
+capacity is a separate question with a separate answer.** The wrapper never creates the
+*named* container; only `--up` does. So the only container the wrapper can remove is one no
+other run can have found, and two gate runs at the same time either both discover the
+long-lived server or each start their own. Neither run can pull a server out from under the
+other, and neither can collide with the other's data — schemas are uniquely named per test
+`[measured eef4c4e:internal/testdb/testdb.go:189-236 · sed -n '189,236p' internal/testdb/testdb.go → Schema creates t_<unix-nanos>_<counter> and drops it in tb.Cleanup]` `[derived → AC4]`.
+
+**That is ownership and naming, and it is not capacity.** Schema uniqueness says nothing
+about connections, and each run's capacity check (D3a) sizes against *its own* population and
+cannot see the other run's. So sharing a discovered server between concurrent runs is safe
+only when the server was **sized** for them — which is why `--up` takes a client count (D4),
+and why a run needing more than the discovered server admits falls through to its own
+container instead of joining `[derived → AC5]`.
 
 **D6 — the coverage-ratchet path, and where the provisioning goes in it.** The script
 skips silently when nothing coverage-moving is staged, and the measurement runs after that
@@ -267,7 +313,7 @@ a commit that stages nothing coverage-moving still starts nothing `[derived → 
 existing redirect to a log file under the scratch directory is preserved verbatim, so the
 gate's exit status still goes nowhere near a pipe `[derived → AC15]`. The script's advice
 for a container-runtime failure names only the environment variable today
-`[measured eef4c4e:.githooks/coverage-ratchet.sh:116-118 · sed -n '116,118p' .githooks/coverage-ratchet.sh → "point the suite at a running server: export LAB_GAME_TEST_DSN=postgres://..."]`;
+`[measured eef4c4e:.githooks/coverage-ratchet.sh:118-119 · sed -n '118,119p' .githooks/coverage-ratchet.sh → "If this is a container-runtime failure rather than a test failure, point the / suite at a running server: export LAB_GAME_TEST_DSN=postgres://..."]`;
 it gains the bring-up target as the first suggestion `[derived → AC14]`.
 
 **D7 — the coverage regime shifts, and the recorded mark is re-centred in the same
@@ -301,15 +347,14 @@ Two consequences, both binding:
 - **The design keeps the uncovered surface small rather than budgeting for it.** The
   container recipe `StartServer` exposes is composition over what `internal/testdb` already
   had, not new logic; every decision that can be tested without a runtime lives behind the
-  seam where subtask 4 covers it; `Reachable` is covered cheaply in both directions against
-  the server the run already has; the ceiling arithmetic is pure and covered; and
+  seam where subtask 4 covers it; `Probe` is covered cheaply in every direction against the
+  server the run already has; the ceiling arithmetic is pure and covered; and
   `cmd/testpg`'s `main` stays a single statement delegating to the covered `run`, the shape
   the existing commands use `[derived → the § Test Design entries for subtasks 2 and 4]`.
 
 No figure is carried here to copy: the implementor measures on the final tree with
 `-count=1` in the shared regime, and re-measures in the CI environment, whose core count
-differs and whose drifting statements are timing-dependent `[derived → AC17]`. Re-measure in the CI environment too: the runner's core
-count differs, and the tolerance's drifting statements are timing-dependent `[derived → AC17]`.
+differs and whose drifting statements are timing-dependent `[derived → AC17]`.
 
 **D8 — the fallback gets a gate, because nothing else executes it any more.** D7 is the
 evidence: after this change no default gate runs the per-package container path, so AC3
@@ -340,24 +385,24 @@ The rule the fixes follow:
   asserts that reconciliation seeded exactly one row before the first cycle; it simply
   stops asserting that the database answered inside half a second while other packages
   hammered the same server.
-**One constant is both, and that decides how it is widened.** `cfg.TaskTimeout` is not
-only a Go-side context deadline: the worker re-applies it server-side as
-`statement_timeout` and `idle_in_transaction_session_timeout` for the task's transaction
-`[measured eef4c4e:internal/scheduler/execute.go:33,75 · sed -n '33p;75p' internal/scheduler/execute.go → setTimeoutsSQL sets both from one bound parameter, and the parameter is w.cfg.TaskTimeout in milliseconds]`,
-which is exactly the `statement_timeout` failure the trap entry records. For the worker and
-observation suites it is an **instrument** — it must not fire — while for the deadline suite
-it is the **subject**, because those tests exist to observe it firing. So the widening is
-**per test**, never an edit to the shared `testConfig()` or to `shortDeadlineConfig()`: a
-test that must not breach raises its own copy, and the deadline suite's values are left
-exactly as they are. Blunting the deadline suite to buy tolerance elsewhere would be the
-"widen until it asserts nothing" this rule exists to refuse `[derived → AC10, AC12]`.
-
 - **The subject** is the property under test — a backoff bracket, a deadline breach. It is
   kept exact, and its reference instants are read from the **database clock around the
   operation**, so the bracket widens with the load instead of the assertion failing. The
   shipped model is already in the tree
   `[measured eef4c4e:internal/scheduler/deadline_test.go § TestDeadline_successiveBreaches_growingDelay · sed -n '268,274p' internal/scheduler/deadline_test.go → run_at is required within [drainInstant+want, after+want], both instants read with clock_timestamp() around the drain]`,
   and it is the shape every remaining timing assertion is moved to.
+- **One constant is both, and that decides how it is widened.** `cfg.TaskTimeout` is not
+  only a Go-side context deadline: the worker re-applies it server-side as
+  `statement_timeout` and `idle_in_transaction_session_timeout` for the task's transaction
+  `[measured eef4c4e:internal/scheduler/execute.go:33,75 · sed -n '33p;75p' internal/scheduler/execute.go → setTimeoutsSQL sets both from one bound parameter, and the parameter is w.cfg.TaskTimeout in milliseconds]`,
+  which is exactly the `statement_timeout` failure the trap entry records. For the worker
+  and observation suites it is an **instrument** — it must not fire — while for the deadline
+  suite it is the **subject**, because those tests exist to observe it firing. So the
+  widening is **per test**, never an edit to the shared `testConfig()` or to
+  `shortDeadlineConfig()`: a test that must not breach raises its own copy, and the deadline
+  suite's values are left exactly as they are. Blunting the deadline suite to buy tolerance
+  elsewhere would be the "widen until it asserts nothing" this rule exists to refuse
+  `[derived → AC10, AC12]`.
 
 Neither route is "widen until it asserts nothing", and neither is "serialise the binaries",
 which would give back the speedup without making any test more honest. **Membership is
@@ -419,7 +464,12 @@ surface the child's own code (D1), and pipes nothing `[derived → AC15]`.
 
 **This is the one target that serves more than one test run at once, so it is the one
 target that passes `--clients` above one — and its two clients run at the SAME
-parallelism.** D3's product form multiplies one `parallel` by the client count, so it is
+parallelism.** It is also the target most exposed to D3a: a developer with `make test-db-up`
+running has a server sized for one client, and silently reusing it would leave the
+`--clients 2` ceiling applied to nothing. The capacity check is what prevents that — the
+probe finds the long-lived server too small for two clients and the wrapper falls through to
+an anonymous container sized for them, so the probe's own arithmetic reaches the server it
+actually runs against `[derived → AC5, AC10]`. D3's product form multiplies one `parallel` by the client count, so it is
 correct only while every client uses that value; two clients at different parallelism is a
 sum, not a product, and would compute a ceiling that funds neither. So the probe names the
 foreground gate's parallelism rather than leaving it to the toolchain: **both** the
@@ -464,11 +514,11 @@ STOP, not a pass — the project has run exactly this protocol before
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | `internal/testdb`: exported provisioning API (`ServerOptions`, `StartServer`, `Server.DSN`, `Server.Stop`, `Reachable`, the DSN env-var name, the shared container name), the ceiling formula and its constants; `Main`'s container branch re-expressed over it with behaviour preserved | `internal/testdb/testdb.go` | — |
+| 1 | `internal/testdb`: exported provisioning API (`ServerOptions`, `StartServer`, `Server.DSN`, `Server.Stop`, the capacity `Probe`, the DSN env-var name, the shared container name), the ceiling formula with its `clients` term, its constants and its refusal above `ceilingMax`; `Main`'s container branch re-expressed over it with behaviour preserved | `internal/testdb/testdb.go` | — |
 | 2 | Tests for the ceiling formula and the binaries-constant manifest | `internal/testdb/testdb_test.go` | 1 |
-| 3 | `cmd/testpg`: the wrapper — decision order, locator read/write with the reachability probe, `--up` / `--down`, `--clients` / `--parallel` feeding D3's ceiling, the granted ceiling echoed to stderr, signal-aware teardown, non-zero-status passthrough, injectable provisioner seam | `cmd/testpg/main.go`, `cmd/testpg/run.go` | 1 |
+| 3 | `cmd/testpg`: the wrapper — decision order with D3a's per-path shortfall answers, locator read/write behind the capacity probe, `--up` (sized by the same terms) / `--down`, `--clients` / `--parallel` feeding D3's ceiling, the granted ceiling echoed to stderr, signal-aware teardown, non-zero-status passthrough, injectable provisioner seam | `cmd/testpg/main.go`, `cmd/testpg/run.go` | 1 |
 | 4 | Wrapper tests over the injected seam: no container is started by this package's own tests | `cmd/testpg/run_test.go` | 3 |
-| 5 | `Makefile`: route `test` and `test-race` through the wrapper; add `test-db-up`, `test-db-down`, `test-fallback`, and `test-contention` with its `--clients`, its pinned load `-p` / `-parallel`, the matching `--parallel`, and both logs under the scratch directory | `Makefile` | 3 |
+| 5 | `Makefile`: route `test` and `test-race` through the wrapper; add `test-db-up` with its overridable client count, `test-db-down`, `test-fallback`, and `test-contention` with its `--clients`, the same pinned `-p` / `-parallel` for **both** its children, the matching `--parallel`, and both logs under the scratch directory | `Makefile` | 3 |
 | 6 | Coverage ratchet: wrap the measurement command, after the skip decision; update the runtime advice | `.githooks/coverage-ratchet.sh` | 3 |
 | 7 | CI: add the fallback step to the Test job; verify every added artefact is already named in the change filter and record the comparison | `.github/workflows/ci.yml` | 5 |
 | 8 | Contention tolerance per D9: classify every wall-clock constant in the database-backed suites, widen the instruments **per test** rather than through the shared config values, move the remaining timing assertions onto database-clock brackets | `internal/scheduler/*_test.go`, `internal/ingest/*_test.go` | 5 |
@@ -563,6 +613,11 @@ regardless of any group marker — only the code group's implementor is pinned b
   measured rather than guessed, and above it the wrapper **refuses to start** and names the
   flags to lower, so the boundary is loud at the moment of provisioning instead of arriving
   later as a connection failure mid-run — `[derived → AC5]`.
+- **A server passes the capacity check and still exhausts**, because the check reads the
+  server's total ceiling rather than its free capacity and another run's population is
+  already occupying part of it. Accepted and stated in D3a rather than closed with a racy
+  free-slot count; the answer is to size `--up` for the client count actually intended, and
+  D12's scan classifies the failure correctly if it happens anyway — `[derived → AC5, AC10]`.
 - **The probe's two clients run at different parallelism**, which would make D3's product
   form compute a ceiling that funds neither. Mitigation: D12 requires both children to take
   the same explicit `-parallel` and the wrapper to receive that same value — pinned for
@@ -605,12 +660,13 @@ value; the floor binds and it never returns less than the image default; a clien
 parallelism whose product exceeds `ceilingMax` is reported as a refusal rather than
 silently reduced. No database, no container — the function is arithmetic `[derived → AC5]`.
 
-**Reachability probe — `internal/testdb`.**
+**Capacity probe — `internal/testdb`.**
 Location: the same file. Entry point: the exported probe. Scenarios: the server the run is
-already using answers, so the probe returns no error; a DSN naming a port nothing listens on
-returns one; a syntactically invalid DSN returns one without dialling. Costs no container —
-it uses the server the suite already has, which is the point of putting the probe here
-rather than in the wrapper `[derived → AC4]`.
+already using answers and the probe returns its `max_connections`, matching what the same
+setting reads as over an ordinary query; a DSN naming a port nothing listens on returns an
+error; a syntactically invalid DSN returns one without dialling. Costs no container — it uses
+the server the suite already has, which is the point of putting the probe here rather than in
+the wrapper `[derived → AC4, AC5]`.
 
 **Binaries-constant manifest — `internal/testdb`.**
 Location: the same file. Entry point: the constant. Scenario: the set of packages whose
@@ -627,8 +683,12 @@ calling environment → the seam is never called and the child sees that same DS
 `[derived → AC2]`; no variable and no locator → the seam is called, its stop function runs
 on a passing child, on a failing child, and after a delivered interrupt `[derived → AC4]`;
 a locator naming an unreachable server → it is ignored, the seam is called, and the
-message says so `[derived → AC4]`; a locator naming a reachable server → the seam is
-**not** called and no stop runs, which is the "found, not started" clause `[derived → AC4]`;
+message says so `[derived → AC4]`; a locator naming a reachable server whose capacity admits the run → the seam is **not**
+called and no stop runs, which is the "found, not started" clause `[derived → AC4]`; a
+locator naming a reachable server whose capacity does **not** admit the run → the seam **is**
+called, so an under-sized long-lived server is never silently joined `[derived → AC5]`; a
+caller-supplied DSN whose capacity does not admit the run → the seam is still not called, the
+run proceeds, and the shortfall is reported `[derived → AC2, AC5]`;
 a non-zero child yields a non-zero wrapper status `[derived → AC15]`; and the ceiling handed
 to the seam is D3's formula evaluated over the `--clients` and `--parallel` the caller
 passed, with the clamp binding at both ends `[derived → AC5]`. Fixtures:
@@ -662,6 +722,26 @@ run, not of an assertion, so each gets a recipe rather than a test function:
 - **AC6** — stage a commit that touches a `.go` file, run the hook, and observe one postgres
   container plus the reaper appearing for the ratchet's own measurement and going away
   after it, with the measurement's log naming the shared DSN `[derived → AC6]`.
+- **AC8** — read the workflow in the diff: it declares no service container, and the Test
+  job's steps invoke the same sub-targets a local run invokes `[derived → AC8]`.
+- **AC15** — read the diff for a gate whose exit status crosses a pipe: every gate this
+  change adds or edits redirects to a file under `tmp/` and is read from there. The
+  workspace's own `PreToolUse` guard refuses the shape independently, so this is a review
+  read rather than a command `[derived → AC15]`.
+- **AC16** — `make shellcheck` over every tracked script, `bash ai-docs/scripts/check-script-shape.sh`
+  for the help-flag shape and the shebang-extension pairing — the gate CI's Harness-guards
+  job runs
+  `[measured eef4c4e:.github/workflows/ci.yml:220-221 · sed -n '220,221p' .github/workflows/ci.yml → the step "every script's --help dispatch shape; shebang-extension pairing" runs bash ai-docs/scripts/check-script-shape.sh]`
+  — and `make comment-refs` for the outward-reference ban. The one script this change edits
+  already answers the help flag in the fixed shape, and the edit lands in the measurement
+  command far below that dispatch, so the shape is preserved rather than re-established
+  `[measured eef4c4e:.githooks/coverage-ratchet.sh:65-67 · sed -n '65,67p' .githooks/coverage-ratchet.sh → the case arm "-h|--help) usage; exit 0 ;;" with nothing before it but constants]` `[derived → AC16]`.
+- **AC17** — `make verify` on the branch, then every CI job the change's paths reach, read
+  on the pull request rather than inferred from the absence of red `[derived → AC17]`.
+- **AC18** — read the diff for a locator naming a developer's own instance: the only
+  locators this change defines are the container-name constant and the DSN file under
+  `tmp/`, and no committed file names a host and port of an existing local server
+  `[derived → AC18]`.
 - **AC13** and **AC14** are read in the diff `[derived → AC13, AC14]`.
 
 ## Open questions
