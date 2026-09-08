@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** PASS
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group A complete (subtasks 1-10), verified by the orchestrator; Group B next
-**last_passed_gate:** golangci-lint run | 2026-09-08T10:54:43Z | fc38ee4
+**current_step:** Step 8 — Group B subtask 11 of 14 complete
+**last_passed_gate:** the CI relative-markdown-link check (clean); `make comment-refs` unchanged (markdown is outside the gated set)
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** hand off to `/context-reset` per the design's Handoff plan — Group A (subtasks 1–10) is complete. Parent `/task` resumes in Group B (subtasks 11–14, instructions/harness, `inherit`/`general-purpose`) with fresh context.
+**Do this immediately:** start Group B subtask 12 — sweep the harness shell scripts to the gate's silence and move usage prose behind `--help`, copying the block subtask 8 wrote into `.githooks/coverage-ratchet.sh` verbatim out of the tree.
 
 ## Subtasks
 
@@ -30,15 +30,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - [x] 8. Sweep the build/runtime gated files; `coverage-ratchet.sh` gains the D9 `--help`
 - [x] 9. `.env.example` restated; `config/balance.yaml` gains English self-contained prose
 - [x] 10. Wiring landing one: `comment-refs` target; `pre-commit` symlink + dispatcher
-- [ ] 3. The command `cmd/commentrefs`: input modes, exit codes, report format
-- [ ] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
-- [ ] 5. Sweep `internal/store` + migrations, `internal/testdb`
-- [ ] 6. Sweep `internal/tg`, `internal/tgtest`
-- [ ] 7. Sweep `internal/ingest`, `internal/scheduler`
-- [ ] 8. Sweep the build/runtime gated files; `coverage-ratchet.sh` gains the D9 `--help`
-- [ ] 9. `.env.example` restated; `config/balance.yaml` gains English self-contained prose
-- [ ] 10. Wiring landing one: `comment-refs` target; `pre-commit` symlink + dispatcher
-- [ ] 11. Rewrite `ai-docs/doc-convention.md` to the new rule
+- [x] 11. Rewrite `ai-docs/doc-convention.md` to the new rule
 - [ ] 12. Sweep the harness shell scripts; usage prose behind `--help`, block copied verbatim
 - [ ] 13. The script-shape checker and its suite; extend the dispatch suite
 - [ ] 14. Propagate the rule text across the instruction surface and the hook messages
@@ -73,6 +65,11 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 9**: no numeric value in either `.env.example` or `config/balance.yaml` changed — verified by grepping the diff for `key: value` / `LAB_GAME_*=` lines and confirming zero matches, not merely by intent. `go test ./internal/config/...` staying green (including the disjointness test between `.env.example`'s key set, the loader's actually-consulted set, and the loader's own declared set, and the balance-schema round-trip test) is independent confirmation that the schema and the example environment still agree.
 - **Subtask 10 — the group's own completion condition**: since no permanent regression suite exists yet for the dispatcher (that lands in Group B's subtask 13), the design requires the dispatcher be exercised directly in a scratch repository and the probe recorded here. Built five scratch repos (`git init`, `core.hooksPath .githooks`, a real `git commit`) and drove each of D16's cases through a real commit: (1) nothing gated staged → `pre-commit: no staged path of the comment-reference gated set; gate skipped`, commit succeeds, falls through to the ratchet; (2) a staged `.go` file carrying `AC6` in a comment → the gate's own finding line printed, commit refused (exit 1); (3) a staged clean gated `.go` file → no gate output, falls through to a normal ratchet run, commit succeeds; (4) `go.mod` removed from the scratch worktree → `pre-commit: no go.mod at the worktree root; comment-reference gate skipped` printed correctly (the ratchet's own subsequent failure in that same broken worktree is expected collateral of removing `go.mod`, not a dispatcher defect); (5) `PATH` narrowed to a minimal binary set excluding `go` → `pre-commit: go not on PATH; comment-reference gate skipped` printed, and the ratchet's own identical skip fired right after it, commit succeeds. All five match the design's named behaviour exactly. Also re-ran the existing `ai-docs/scripts/test-precommit-dispatch.sh` suite unchanged against the new symlink shape — still green, confirming its `[ -x .githooks/pre-commit ]` and `grep -q 'git rev-parse --show-toplevel' .githooks/pre-commit` assertions survive a symlink target exactly as the design predicted.
 - **Subtask 10**: `make comment-refs` (the new target) was run once by hand against the whole tracked tree to confirm it invokes correctly — it exits non-zero today (found ~170 report lines, all in not-yet-swept harness scripts under `ai-docs/scripts/` and `.claude/skills/`), which is expected and does not block anything: the target is deliberately NOT added to `verify`'s prerequisite list yet, per the design's two-landing split — that wiring is subtask 15, after Group B's harness sweep.
+
+- **Subtask 11**: `ai-docs/doc-convention.md` keeps DOC-1, DOC-2, DOC-3, DOC-5 and DOC-6 as they stood; DOC-4 inverts wholesale from "cite the design section" into the ban, and the section carries the banned-class table, the exemptions, the record of which two halves are review-judged and why, the record that workflow `run:` blocks and `.claude/settings.json` hook bodies obey the rule ungated, the `config/**` positive documentation requirement, and the usage-prose-behind-`--help` rule. The § Scope section was widened, because the file's opening sentence claimed it covered Go doc comments only while DOC-4 now governs every comment of the gated set; leaving that unwidened would have been the exact stale-claim shape the ban exists to stop.
+- **Subtask 11**: DOC-3's two symbol-naming bullets were left byte-identical (the spec keeps them under KD-9) and a closing sentence was added tying them to DOC-4's same-package carve-out, so a reader arriving at DOC-3 first does not read it as contradicting the ban.
+- **Subtask 11 gates**: the file is markdown and therefore outside the gated set, so `make comment-refs` is not the applicable gate; the CI relative-markdown-link check was run over the whole tree instead (clean), which is what the new `go-api-naming.md` link needed.
+- **Progress-file hygiene**: the `## Subtasks` list carried a stale duplicate block of unchecked rows 3–10 left over from Group A's edits, directly contradicting the checked rows above them. Removed — a progress file whose own checklist asserts both states of the same subtask is worse than no checklist.
 
 - **Step 8 Group A**: the orchestrator re-ran build, vet, test, lint and the new gate against the returned tree rather than accepting the group's summary. All green; `make comment-refs` reports only harness `*.sh` findings, which subtask 12 owns, and `SKIP .githooks/pre-commit` confirms the GO-note-1 symlink branch works.
 
@@ -140,4 +137,5 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `config/balance.yaml` — every design-section pointer replaced with self-contained English prose read from that section, no value change
 - `Makefile` — new `comment-refs` target (not a `verify` prerequisite yet)
 - `.githooks/pre-commit` — now a symlink to `.githooks/pre-commit.sh`
+- `ai-docs/doc-convention.md` — DOC-4 inverted to the ban; § Scope widened to the gated set; DOC-1/2/3/5/6 substantively unchanged
 - `.githooks/pre-commit.sh` — new file: the dispatcher (comment-reference gate over `--staged`, then the coverage ratchet), with D16's three named skip conditions
