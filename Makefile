@@ -77,11 +77,14 @@ test-db-down:
 	go run ./cmd/testpg --down
 
 # The fallback path's own gate: with the DSN variable explicitly cleared, a
-# bare whole-module test run still provisions one container per
-# database-backed test binary and passes, exercising the path every other
-# target here has stopped exercising.
+# whole-module test run still provisions one container per database-backed
+# test binary and passes, exercising the path every other target here has
+# stopped exercising. `-count=1` is what makes that a gate rather than a
+# report: the cleared variable is a stable cache key, so without it a second
+# invocation is served entirely from the test cache and returns green having
+# started no container at all — measured, not feared.
 test-fallback:
-	LAB_GAME_TEST_DSN= go test ./...
+	LAB_GAME_TEST_DSN= go test -count=1 ./...
 
 # Induces cross-package load against one shared server and requires the
 # whole-module race gate to stay green under it. One wrapper invocation
