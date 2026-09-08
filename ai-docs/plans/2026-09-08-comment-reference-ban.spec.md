@@ -110,7 +110,202 @@ still. The two must not be conflated.
 | KD-12 — English or Russian in the rewritten `config/balance.yaml` prose? | English. `AGENTS.md` reserves Russian for `docs/**` and for conversation; `config/**` is neither, and the file currently carries Russian comments [source: 76a7b41:config/balance.yaml · `grep -nP '[\x{0400}-\x{04FF}]' config/balance.yaml`]. |
 | KD-13 — how is "no implementation narration" verified? | By review, against the diff. The owner ruled out a machine check (answer 5), so the criterion is a stated condition over the tree that a reviewer judges (AC16) — not an unverified aspiration, and not a gate. |
 | KD-14 — are trailing and inline comments in scope? | **Yes.** A comment is a comment wherever its marker sits on the line, and a gate anchored to line-start would pass a violation silently — the failure shape `AGENTS.md` § Build & Test names. The `exhaustive` entry in `.golangci.yml` carries a design-section reference in exactly that position [source: 76a7b41:.golangci.yml · `grep -nE '^[^#]*#.*§' .golangci.yml`]. The gate must therefore recognise a comment marker anywhere on the line while not mistaking one inside a Go or SQL string literal for a comment. |
-| KD-15 — does `.env.example`'s header warning survive? | Yes, restated without its pointers. The header carries two distinct things: pointers (a package name, a test path, a markdown path, an issue number) and a **contract about the file** — that a variable the config loader does not read must not be added here. Answer 6 discards the fact a *reference* carried; this is not one. It survives also because the owner made this file the completeness model for `config/**`, and a model that dropped its own key invariant would teach the wrong thing. Recorded in `## Open questions
+| KD-15 — does `.env.example`'s header warning survive? | Yes, restated without its pointers. The header carries two distinct things: pointers (a package name, a test path, a markdown path, an issue number) and a **contract about the file** — that a variable the config loader does not read must not be added here. Answer 6 discards the fact a *reference* carried; this is not one. It survives also because the owner made this file the completeness model for `config/**`, and a model that dropped its own key invariant would teach the wrong thing. Listed under open questions as revisitable. |
+| KD-16 — which scripts owe a `--help`, and does `check-citations.sh`? | Every tracked `*.sh` carrying usage prose owes one; thirteen do. The three that carry none owe nothing, and the judgement the owner left open resolves **no**: `check-citations.sh` takes no arguments at all, so the line the ban strips — *"Also runnable standalone"* plus its own path — states no invocation grammar, only a path. Nothing is left undocumented; the argument-site measurement behind that is in § Usage prose becomes `--help`. The other two are covered too: `cleanup-progress.sh` documents its one parameter in prose that names nothing outward and so survives the ban, and `append-task-run.sh` already prints a usage string at runtime when invoked wrongly. |
+| KD-17 — what shape does `--help` take? | The design chooses one shape and applies it to all thirteen, because there is no precedent in the tree to copy (see § Usage prose becomes `--help`). The condition the shape must meet: the flag prints the invocation grammar the `# Usage:` prose used to carry, and exits 0. `coverage-ratchet.sh` already parses `--check`, so it has an argument-handling site to extend rather than introduce. |
+
+## Technical constraints
+
+### Banned reference classes
+
+Settled in full. A comment names nothing outside itself (owner, round 2: *"ничего наружу"*):
+
+| Banned class | Example in the tree |
+|---|---|
+| A reference to a place in a file that carries no revision — a line number, with or without its path | a bare `<file>:<line>` locator |
+| A path to a markdown file | `docs/DESIGN.md §2.2.4`, `ai-docs/go-test-conventions.md` |
+| A spec or design acceptance-criterion id | `AC6`, `AC9` |
+| A symbol outside the comment's own package, or any symbol not part of the contract | `GetUpdatesParams.Limit` in `.env.example` |
+| A key-decision anchor | `// (design D4, D9). A non-nil return means ctx was cancelled mid-attempt` |
+| A design-section number written without its file | `DESIGN §3.5`, `§16.5` |
+| An issue or pull-request number outside the `TODO(#…)` form | `# lab-game balance constants (issue #18, …)` |
+| A repository path carrying neither a line number nor a revision | `# Usage: bash .claude/skills/ai-audit/scripts/test-check-citations.sh` |
+| A URL | none occurs in the gated set today |
+
+Four exemptions, each already settled and none of them widened by *"ничего наружу"*:
+
+- **The comment's own subject** (KD-4) — `revive` mandates the name-first opening.
+- **A same-package symbol that *is* the contract** (KD-9) — a returned sentinel error, the
+  guarantor of a precondition. `config.Load`'s doc comment, which names `ErrMissing`,
+  `ErrInvalidValue`, `ErrUnknownKey` and `ErrUnreadable`, all of package `internal/config`,
+  survives as written [source: 76a7b41 · `ast-index outline "internal/config/config.go"`].
+- **A machine-read directive** (KD-5), its human reason text excepted.
+- **The `TODO(#<issue>)` form** (KD-10) — the issue number is exempt *in that form only*. A
+  bare issue number elsewhere in a comment stays banned.
+
+A reference from one key of a config file to a sibling key of the same file — `.env.example`'s
+*"strictly below LAB_GAME_TG_ATTEMPT_TIMEOUT"* — is not outward and is part of the key's
+contract, so it stays. It is named here because it looks like a reference and a sweeper will
+ask.
+
+**KD-9 is not overturned by *"ничего наружу"***. That answer settled the five classes the
+question put to the owner — key-decision anchor, section number, issue number, bare path, URL.
+The same-package contract symbol was settled the round before with its own carve-out, and a
+later reader must not collapse the two.
+
+### Usage prose becomes `--help`
+
+The bare-path class removes a guard script's `# Usage:` line, which names the script's own
+path. The owner's substitution is that the information becomes executable: *"guard-скрипты
+обязаны вместо usage иметь `--help`, а если usage отсутствует, то и `--help` не нужен"*. A
+renamed script's `--help` still works; its `# Usage:` line silently lies.
+
+Thirteen of the sixteen tracked `*.sh` files carry usage prose and therefore owe a `--help`;
+two of those write it as a block heading with the content on following lines rather than as one
+line [source: a386fe7 · `git ls-files '*.sh' | xargs grep -l '^#.*Usage:'` and `grep -n -A4 '^# Usage:' .claude/skills/ai-audit/scripts/check-ac-shape.sh`].
+
+**No script in the tree answers `--help` today, so there is no shape to copy.** The one script
+that mentions `--help` uses it as fixture data and as a carve-out pattern it asserts survives in
+a hook body; invoked with the flag it ignores it and runs its whole suite
+[source: a386fe7 · `bash .claude/skills/ai-audit/scripts/test-piped-gate-guard.sh --help`, which
+prints `piped-gate guard: all fixtures behave as specified` and exits 0]. The design therefore
+chooses one shape and applies it to all thirteen (KD-17).
+
+The three scripts carrying no usage prose owe nothing, and none of them is left undocumented by
+that (KD-16). `check-citations.sh` references no positional parameter, no `$@`, no `$#` and no
+`shift`, so it takes no arguments and has no invocation grammar to relocate; `append-task-run.sh`
+has ten such sites and already prints a usage string at runtime on a wrong call
+[source: a386fe7 · `git ls-files '*.sh' | xargs grep -cE '\$\{?[1-9]|"\$@"|\$#|shift'`].
+
+This annotation sits in prose, not in a table cell, for the reason recorded under § Banned
+reference classes: a markdown cell forces `\|` escaping, and in an extended regular expression
+`\|` is a literal pipe rather than alternation, so the escaped form reports "no arguments" for
+every script — including one with ten argument sites. The wrong answer arrives looking like a
+clean one.
+
+### The symlink is measured, not assumed
+
+On git 2.55.0 with `core.hooksPath = .githooks`, a real `git commit` runs a `pre-commit` that
+is a symlink to a sibling `.sh` file, and a non-zero exit from it still refuses the commit.
+Both directions were exercised in a scratch repository; git records the symlink as mode
+`120000` [source: 76a7b41 · scratch repository, `git init` + `ln -s pre-commit.sh .githooks/pre-commit` + `git commit`, marker asserted present on the success path and the commit asserted refused on the failure path].
+
+### Known members of the propagation class
+
+Not a bound on the class (Scope item 8) — the sites already identified:
+
+- `ai-docs/doc-convention.md` § DOC-4 — Design citations: mandates exactly what the ban
+  forbids. § DOC-5 — What not to write and § DOC-3 — Contract sections stand unchanged, under
+  KD-10 and KD-9 respectively.
+- `ai-docs/go-api-naming.md` § The `…Unchecked` AXIOM: stands unchanged under KD-9.
+- `AGENTS.md` — § API Naming restates that AXIOM; § Code Style's Documentation bullet; the
+  panic-justification rule in § Go Test Conventions; Boundary rule 2's file list.
+- `.golangci.yml` — comments on the `exhaustive` and `revive` entries carry references, one of
+  them trailing (KD-14).
+- `Makefile` — the `shellcheck` target special-cases `.githooks/pre-commit` on its own line
+  because the file has no `.sh` extension; the symlink makes that line redundant or a
+  deliberate double-check [source: 76a7b41:Makefile § shellcheck target · `sed -n '/^shellcheck:/,/^$/p' Makefile`].
+- `.github/workflows/ci.yml` — the `paths-filter` block, whose own comment warns that a gate
+  not named there silently stops running; a new gate needs its filter entry and its job.
+- `.claude/skills/task/scripts/test-precommit-dispatch.sh` — the regression suite for the hook
+  whose shape Scope item 6 changes.
+- `.claude/settings.json` — the `--no-verify` guard and the panic gate mention the hook and the
+  doc-comment justification.
+- Every skill or agent file that documents how a guard script is invoked, since Scope item 9
+  moves that grammar behind `--help`.
+- Harness surfaces that instruct an agent to write or check a doc comment.
+
+### Conventions the gate inherits
+
+- Every gate this project owns is reachable through `Makefile` and is invoked by CI from the
+  same target, so a local run and a CI run cannot disagree about the command.
+- Guard scripts in this repository are shell, live beside a regression suite that CI runs, and
+  are covered by `make shellcheck`. `AGENTS.md` requires tests for any file with ~50+ lines of
+  substantial logic.
+- The gate is itself a file of the gated set, so it must satisfy the rule it enforces. The
+  guard scripts already in the tree explain themselves by naming the acceptance criterion they
+  lock, which is the style the new gate cannot use.
+
+## Source conflicts
+
+Each quotation below was read at `76a7b41` and is located by its document section, not by a
+line number.
+
+1. **Issue #68's persisted body vs. the owner's reformulation.** The body says: *"Every comment
+   in `.go`, `.sh` and `.sql` goes, **including the doc comments the linter currently
+   demands**"*, and prescribes dropping `revive` and deleting `ai-docs/doc-convention.md`. The
+   owner's message of 2026-09-08 says: *"давай переформулируем issue: doc-комменты оставляем,
+   но они не должны иметь ссылок…"* **Resolution:** the reformulation governs; the owner chose
+   it explicitly and asked for the issue to be reformulated. Scope item 10 rewrites the body
+   [source: 76a7b41:ai-docs/plans/2026-09-08-comment-reference-ban.spec.md.state.md § gh_issue · `sed -n '/^  body: |/,/^  comments:/p' ai-docs/plans/2026-09-08-comment-reference-ban.spec.md.state.md`].
+
+2. **`ai-docs/doc-convention.md` § DOC-4 — Design citations vs. the ban.** The section says:
+   *"Anything implementing a designed mechanic cites its section, so a reader can find the
+   reasoning without hunting"*, and closes: *"Cite the section number, never a line number: the
+   design document is edited, and `§2.2.4` survives what `:118` does not."* The convention
+   mandates the citation the ban forbids — and justifies it with the same rot argument the ban
+   uses, having already ruled out the unanchored line reference for that reason.
+   **Resolution:** the ban governs; § DOC-4 inverts. The `§`-form does not survive either:
+   KD-10 bans the design-section number written without its file
+   [source: 76a7b41:ai-docs/doc-convention.md § DOC-4 — Design citations · `sed -n '/^## DOC-4/,/^## DOC-5/p' ai-docs/doc-convention.md`].
+
+3. **`ai-docs/doc-convention.md` § DOC-5 — What not to write vs. the issue-number class.** The
+   section says: *"No `TODO` without an issue reference: `// TODO(#<issue>): …`. A `TODO`
+   without an owner is a lie about future work."* **Resolution:** § DOC-5 stands unchanged. The
+   owner's round-2 answer bans the issue-number class but exempts the `TODO(#<issue>)` form
+   specifically, so a `TODO` keeps its owner. No `TODO(#` occurs in the gated set today, so
+   nothing in the sweep turns on it
+   [source: 76a7b41 · `git ls-files '*.go' '*.sh' '*.sql' '*.yml' '*.yaml' '.gitignore' '.env.example' 'Makefile' | xargs grep -l 'TODO(#'`]
+   [source: 76a7b41:ai-docs/doc-convention.md § DOC-5 — What not to write · `sed -n '/^## DOC-5/,/^## DOC-6/p' ai-docs/doc-convention.md`].
+
+4. **The symbol ban vs. two contracts that mandate naming a symbol — resolved in round 1.**
+   `ai-docs/go-api-naming.md` § The `…Unchecked` AXIOM requires that *"its doc comment MUST
+   state (a) the precondition, and (b) who guarantees it"*, and rules a variant *"whose doc
+   comment does not name the guarantor"* to be **Wrong** — *"the comment is the contract"*.
+   `ai-docs/doc-convention.md` § DOC-3 — Contract sections requires that *"A function returning
+   a sentinel error names it"*. **Resolution:** the owner's round-1 answer carves out the
+   same-package symbol that *is* the contract, so both sections stand unchanged (KD-9)
+   [source: 76a7b41:ai-docs/go-api-naming.md § The `…Unchecked` AXIOM · `sed -n '/^## The/,/^## Naming/p' ai-docs/go-api-naming.md`;
+   76a7b41:ai-docs/doc-convention.md § DOC-3 — Contract sections · `sed -n '/^## DOC-3/,/^## DOC-4/p' ai-docs/doc-convention.md`].
+
+5. **Round 0 answer 6 vs. the mid-round-1 constraint.** Answer 6, asked with
+   `config/balance.yaml` as the named example: *"просто теряем, не жалко"*. The later message:
+   *"Документацию в balance.yaml сделать самодостаточной и такой же полной, как в почищенном
+   `.env.example` (это правило пропагируется на всю директорию config и все вложенные в нее
+   директории)"*. **Resolution:** the owner narrowed his own earlier answer. Answer 6 governs
+   everywhere outside `config/**`; inside it the outward reference still goes, but the file
+   gains self-contained prose. Scope items 2 and 3, extended to `.env.example`'s file-level
+   contract by KD-15.
+
+## Acceptance Criteria
+
+| # | Criterion |
+|---|-----------|
+| AC1 | No comment in a file of the gated set carries a reference of a banned class, wherever the comment marker sits on its line, except for the four exemptions listed under § Banned reference classes. |
+| AC2 | Staging a gated file whose comment carries a banned reference causes the pre-commit check to refuse the commit; staging a compliant one does not. |
+| AC3 | The CI gate refuses a tree in which a gated file's comment carries a banned reference, and the workflow's path filter names every path class the gate covers, so the gate's job runs for a change to any of them. |
+| AC4 | The gate reports the offending file, the line, and which banned class matched. |
+| AC5 | The gate does not treat a comment marker occurring inside a Go or SQL string literal as a comment. |
+| AC6 | The gate's own script and fixtures satisfy the rule the gate enforces. |
+| AC7 | `.githooks/pre-commit` is a symbolic link whose target is a `.sh` file in the same directory, recorded in the index as a symlink; a real `git commit` still reaches the gates it dispatches to, and a non-zero exit from one of them still refuses the commit. |
+| AC8 | Every tracked file beginning with a `#!` shebang either ends in `.sh` or is a symbolic link to a file that does. |
+| AC9 | `make verify` is green and reaches the new gate; `golangci-lint run` is green with `revive`'s `exported` and `package-comments` rules still enabled. |
+| AC10 | No doc comment demanded by `revive`'s `exported` or `package-comments` rules was removed: every exported item and every package still carries one. |
+| AC11 | Every key of every comment-bearing file under `config/` and its nested directories carries prose that describes the key without pointing outward, and that prose is in English. |
+| AC12 | `.env.example` documents each variable with self-contained prose, carries no outward pointer, and still states which variables do not belong in the file; its key set still matches the loader's consulted key set exactly, in both directions. |
+| AC13 | The doc-style document states the rule, names the banned classes and the exemptions, records that the narration half is review-judged, and records that shell in workflow `run:` blocks and in `.claude/settings.json` hook bodies obeys the rule without a machine gate. |
+| AC14 | No instruction file still mandates a comment reference of a banned class. History surfaces — `ai-docs/learnings.md`, `ai-docs/harness-gaps.md`, `ai-docs/plans/**` — keep whatever they say. |
+| AC15 | Behaviour is unchanged: outside `config/**`, `.env.example` and the scripts that gain `--help`, every line removed or rewritten in the diff is a comment line, and no statement, key, or value moves. |
+| AC16 | No comment surviving the sweep narrates what the code does step by step or how it is implemented; each states what the thing is, its call contract, or what the linter requires. Judged in review against the diff — the owner ruled out a machine check for this dimension (KD-13). |
+| AC17 | Every tracked `*.sh` file that carried usage prose answers `--help` by printing the invocation grammar that prose carried, and exits 0. |
+| AC18 | No tracked `*.sh` file that carried no usage prose answers `--help`, and none acquired argument handling it did not have. |
+| AC19 | The `--help` handling is the same shape in every script that has it. |
+| AC20 | No comment in any of those scripts still carries usage prose or the script's own path. |
+| AC21 | Every script that gained `--help` still performs its original job unchanged when invoked without it, and `make shellcheck` is clean. |
+| AC22 | Every instruction-file site that told a reader how to invoke one of those scripts now points at `--help` or is removed. |
+| AC23 | The #68 body states the reformulated rule and no longer prescribes deleting doc comments or dropping `revive`. |
+
+## Open questions
 
 - **Enforcement of the `config/**` documentation requirement** (KD-8). Defaulted to
   review-only. A mechanical form exists — every leaf key carries a non-empty comment above it —
