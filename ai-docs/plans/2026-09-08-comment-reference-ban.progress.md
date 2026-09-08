@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** PASS
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group C (subtask 15) complete; task-level implementation done, Step 9 (Verify) next
-**last_passed_gate:** make verify (fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs) | actionlint .github/workflows/ci.yml
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** make verify (fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs) | 2026-09-08T14:33:37Z | 478f6e9
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** spawn Group C (subtask 15, the `verify` prerequisite and the CI job) via `code-writer`; it must make the three forward-written claims below true.
+**Do this immediately:** Step 9.5 — append the context-status entry with the literal `#TBD-at-Step-12` locator, then Step 10 self-review.
 
 ## Subtasks
 
@@ -105,6 +105,10 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 15 — verification, not assumption**: `go run ./cmd/commentrefs Makefile .github/workflows/ci.yml` exits 0 against the two edited files themselves. `actionlint .github/workflows/ci.yml` is clean. A full `make verify` (capturing to `tmp/verify.log`, never piped) exits 0, and the log's tail shows `go run ./cmd/commentrefs` as the last command run — direct evidence the wiring order (comment-refs last in the `verify` prerequisite list) actually executes, not just that the target exists. No `.sh` file changed in this subtask, so `shellcheck` on a changed script does not apply; `.github/workflows/ci.yml` is the only changed workflow file and it passed `actionlint`.
 - **Subtask 15 — the three forward-written claims are now true, not deleted**: `ai-docs/code-style.md` § Linter posture's "the harness `shellcheck` sweep included" now matches the Harness-guards job's `make shellcheck` step; `ai-docs/claude-tools-hierarchy.md` § CI's `Comment references` job row now matches a real job in `ci.yml`; `.claude/skills/task/reference.md` item 9a's `make comment-refs` now runs as part of `make verify` per its own text ("Running `make verify` discharges items 1–8, 9 and this one together").
 
+- **Step 9**: `make verify` green in full. The per-AC sweep found one real defect the gates could not: the sweep had rewritten 20 Go test-message string literals, which AC5 places outside the ban and which moved statements in sweep-only files, breaking AC15. Reverted on the owner's ruling at 478f6e9; the five trailing-comment edits in the same files were kept, because a comment is a comment wherever its marker sits (KD-14).
+- **Step 9**: two apparent defects were my own instrument, not the tree — `check-script-shape.sh` holds the help-marker as data rather than as a dispatch arm, so a naive grep counted it as a non-conforming carrier, and the design had replaced `test-script-help.sh` with the shape checker in a later round. Re-scanned against real dispatch arms: 19 carriers, all answering with a grammar and exit 0.
+- **Step 9**: no new production panic site, so `ai-docs/panic-index.md` is untouched; the domain-invariant sweep over the diff's added lines is empty, and no numeric value moved in `config/balance.yaml`.
+
 ## Key discoveries (don't re-investigate)
 
 - `go.yaml.in/yaml/v3` never reports a comment's own line — it reports the attached node's line, and it attaches across a blank line contrary to its own field doc. D1a's nearest-match reconciliation, with `UNRECONCILED ⇒ exit 2`, is the answer; an offset rule is measurably wrong on `config/balance.yaml`.
@@ -125,30 +129,30 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
-| AC10 | NOT_TESTED |
-| AC11 | NOT_TESTED |
-| AC12 | NOT_TESTED |
-| AC13 | NOT_TESTED |
-| AC14 | NOT_TESTED |
-| AC15 | NOT_TESTED |
-| AC16 | NOT_TESTED |
-| AC17 | NOT_TESTED |
-| AC18 | NOT_TESTED |
-| AC19 | NOT_TESTED |
-| AC20 | NOT_TESTED |
-| AC21 | NOT_TESTED |
-| AC22 | NOT_TESTED |
-| AC23 | NOT_TESTED |
-| AC24 | NOT_TESTED |
+| AC1 | PASS |
+| AC2 | PASS |
+| AC3 | PASS |
+| AC4 | PASS |
+| AC5 | PASS |
+| AC6 | PASS |
+| AC7 | PASS |
+| AC8 | PASS |
+| AC9 | PASS |
+| AC10 | PASS |
+| AC11 | PASS |
+| AC12 | PASS |
+| AC13 | PASS |
+| AC14 | PASS |
+| AC15 | PASS |
+| AC16 | PASS |
+| AC17 | PASS |
+| AC18 | PASS |
+| AC19 | PASS |
+| AC20 | PASS |
+| AC21 | PASS |
+| AC22 | PASS |
+| AC23 | PASS |
+| AC24 | PASS |
 
 ## Review register
 
