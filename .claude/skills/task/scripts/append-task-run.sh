@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Append one task-run telemetry record to ai-docs/metrics/task-runs.jsonl.
+# Append one task-run telemetry record to the task-run corpus.
 #
 # WHAT THIS IS FOR
 #   /task Step 12 sub-step 5a is the SINGLE writer of the task-run corpus. This
@@ -13,12 +13,6 @@
 #   sub-step so the append reaches the PR diff. Nothing else writes this file —
 #   not /pr-commented, not /pr-ci-failed, not /main-ci-failed, not
 #   /project-review, not /bugfix.
-#
-# USAGE
-#   .claude/skills/task/scripts/append-task-run.sh <progress-file> [<target-jsonl>]
-#
-#   <target-jsonl> defaults to ai-docs/metrics/task-runs.jsonl and exists so the
-#   fixture test can point the append at a sandbox.
 #
 # EXIT CODES — a PARSE PROBLEM IS NEVER AN ERROR
 #   0  appended, full OR degraded (degraded records carry "incomplete": true)
@@ -39,8 +33,8 @@
 #     file after this record is written.
 #   - The `## Decisions log`. Not parsed in v1, so spec churn during
 #     implementation and reopened subtasks are invisible here.
-#   The full list, written as open questions, is on ai-docs/task-run-schema.md
-#   § "What this log does NOT measure". That page is the schema's home; this
+#   The full list, written as open questions, is on the schema page under
+#   "What this log does NOT measure". That page is the schema's home; this
 #   header does not restate the field table.
 #
 # COUNTING UNITS — see the schema page before comparing two records. `findings`,
@@ -53,6 +47,20 @@
 # coupling clause that binds the field to it.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  append-task-run.sh <progress-file> [<target-jsonl>]
+
+  <target-jsonl> defaults to the task-run corpus and exists so the fixture
+  test can point the append at a sandbox.
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 CORPUS_DEFAULT="ai-docs/metrics/task-runs.jsonl"
 
@@ -72,9 +80,8 @@ degrade() { incomplete=true; }
 rec_date=$(date -u +%F)
 branch=$(git branch --show-current 2>/dev/null)
 # Detached HEAD, or not a git work tree, yields "". `branch` is
-# fallback-required and consumers key the last-line-wins dedup on it (schema
-# page § Append-only + last-line-wins), so a silently empty key is worse than
-# a flagged one.
+# fallback-required and consumers key the last-line-wins dedup on it, so a
+# silently empty key is worse than a flagged one.
 [ -n "$branch" ] || degrade
 
 spec_base=$(basename "$pf")

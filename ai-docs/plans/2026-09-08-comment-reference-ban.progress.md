@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** PASS
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group B subtask 11 of 14 complete
-**last_passed_gate:** the CI relative-markdown-link check (clean); `make comment-refs` unchanged (markdown is outside the gated set)
+**current_step:** Step 8 — Group B subtask 12 of 14 complete
+**last_passed_gate:** `make comment-refs` SILENT over the whole tracked tree; `make shellcheck`; all thirteen guard regression suites; the three standalone checkers
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** start Group B subtask 12 — sweep the harness shell scripts to the gate's silence and move usage prose behind `--help`, copying the block subtask 8 wrote into `.githooks/coverage-ratchet.sh` verbatim out of the tree.
+**Do this immediately:** start Group B subtask 13 — the script-shape checker `ai-docs/scripts/check-script-shape.sh` and its suite `ai-docs/scripts/test-script-shape.sh`; extend `ai-docs/scripts/test-precommit-dispatch.sh` with the symlink case and the dispatch cases.
 
 ## Subtasks
 
@@ -31,7 +31,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - [x] 9. `.env.example` restated; `config/balance.yaml` gains English self-contained prose
 - [x] 10. Wiring landing one: `comment-refs` target; `pre-commit` symlink + dispatcher
 - [x] 11. Rewrite `ai-docs/doc-convention.md` to the new rule
-- [ ] 12. Sweep the harness shell scripts; usage prose behind `--help`, block copied verbatim
+- [x] 12. Sweep the harness shell scripts; usage prose behind `--help`, block copied verbatim
 - [ ] 13. The script-shape checker and its suite; extend the dispatch suite
 - [ ] 14. Propagate the rule text across the instruction surface and the hook messages
 - [ ] 15. Wiring landing two: `verify` prerequisite; the CI job; Harness-guards runs `make shellcheck`
@@ -71,6 +71,14 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 11 gates**: the file is markdown and therefore outside the gated set, so `make comment-refs` is not the applicable gate; the CI relative-markdown-link check was run over the whole tree instead (clean), which is what the new `go-api-naming.md` link needed.
 - **Progress-file hygiene**: the `## Subtasks` list carried a stale duplicate block of unchecked rows 3–10 left over from Group A's edits, directly contradicting the checked rows above them. Removed — a progress file whose own checklist asserts both states of the same subtask is worse than no checklist.
 
+- **Subtask 12 — the membership set, derived and argued**: the set owing `--help` was derived at the task's `base_commit` (f1bc60f, before any sweep touched a comment) with a **case-insensitive** scan for a usage-introducing comment, and the case-insensitivity is load-bearing: `append-task-run.sh` heads its block `# USAGE`, and a case-sensitive sweep reports it as owing nothing. Result: 19 scripts owe the flag (18 here plus `coverage-ratchet.sh` from subtask 8); three do not — `check-citations.sh` (the spec resolves it explicitly to no), `cleanup-progress.sh` (no usage comment at all; it already prints its grammar at runtime on a wrong call, which is the spec's own complement criterion), and the new `pre-commit.sh`.
+- **Subtask 12 — how the ambiguous case was settled**: a one-line `# Usage: bash <path>` on a suite that takes no arguments could be read either way — as usage prose (owes a flag) or as "only a path, no invocation grammar" (the reasoning the spec uses to exempt `check-citations.sh`). Read as **owes**, on the owner's own framing (*"if usage is absent, `--help` isn't needed either"* — usage is not absent here, it is spelled `Usage:`) and on the substitution's stated rationale (*"a renamed script's `--help` still works; its `# Usage:` line silently lies"*), which is exactly about a line naming the script's own path. `check-citations.sh` stays exempt because its line is not a usage line — it is a "runnable standalone" note inside a sentence about the CI surface, which is the single case the spec names.
+- **Subtask 12 — the block is copied, not authored**: a helper read the `usage()` template and the dispatch `case` out of `.githooks/coverage-ratchet.sh` by regex at insertion time and substituted only the grammar lines, so no script's shape was retyped. Verified after the fact rather than assumed: `git ls-files '*.sh' | xargs grep -c '^  -h|--help) usage; exit 0 ;;$'` reports exactly 19 carriers, and `sort -u | cat -A` over every `-h|--help` line in the tracked tree collapses to the single byte sequence `  -h|--help) usage; exit 0 ;;$`.
+- **Subtask 12 — the one script that needed more than an insertion**: `doc-edit-guard.sh`'s `usage()` read its own comment block back out of the file (`sed -n '2,32p' "$0"`), which the sweep destroys, and it exited 1 unconditionally. It now carries the same heredoc shape as every other script, prints to stdout and exits 0 for `--help`, and its two wrong-call sites became `usage >&2; exit 1` so the refusal direction is unchanged. Its suite's "usage errors exit 1" case still passes.
+- **Subtask 12 — what the sweep deleted, deliberately**: the `tmp/`-directory rationale in the gate-log guard's header, the coordinate-drift narrative in the citation guard (kept as behaviour, lost as a coordinate), the pull-request and issue numbers behind several guards' "why it is a gate" paragraphs, and every design-section pointer. Where a whole clause existed only to carry a pointer it went with it. Nothing was relocated to a markdown page and nothing was reworded into a still-outward pointer — the owner's decided cost, recorded in the design's risk row.
+- **Subtask 12 — a script's printed failure message is not a comment and was not touched**: `check-ac-shape.sh`'s `MSG` heredoc still names the spec-writing rule and the corrections-log date, which is where a good deal of the rationale the header lost still lives. The gate agrees: it reported no finding inside a heredoc in any script, which is also independent evidence that the shell extractor's heredoc handling behaves as the design predicted.
+- **Subtask 12 — behaviour preservation was measured, not assumed**: every one of the thirteen guard regression suites CI runs was executed after its own script's edit and after the whole sweep, plus the three standalone checkers over the live tree, plus `--help` on each of the 19 carriers and `make shellcheck`. The two pure-sweep scripts (`check-citations.sh`, `cleanup-progress.sh`) were additionally diffed for non-comment lines — there are none, which is what AC15 asks of a file whose only reason to appear in the diff is the sweep.
+
 - **Step 8 Group A**: the orchestrator re-ran build, vet, test, lint and the new gate against the returned tree rather than accepting the group's summary. All green; `make comment-refs` reports only harness `*.sh` findings, which subtask 12 owns, and `SKIP .githooks/pre-commit` confirms the GO-note-1 symlink branch works.
 
 ## Key discoveries (don't re-investigate)
@@ -80,6 +88,9 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `pg_query_go/v6` can answer the SQL comment-span question but costs cgo; it is the named escape hatch, not a rejected-on-capability alternative.
 - Adding `mvdan.cc/sh/v3` grows `go.sum` by its own test-dep checksums and normalises the `go` directive `1.26` → `1.26.0`, because that dependency's own `go.mod` declares `1.26.0`.
 - No script in this corpus resolves its own location — every one that resolves anything resolves the repo root via `git rev-parse --show-toplevel`. That is why `--help` is copied per script rather than sourced from a library.
+
+- The `--help` membership criterion must be applied **case-insensitively**: one script heads its block `# USAGE`, not `# Usage:`, and a case-sensitive derivation silently puts it in the complement.
+- Three tracked `*.sh` legitimately answer nothing to `--help` and must stay that way: `check-citations.sh`, `cleanup-progress.sh`, `.githooks/pre-commit.sh`. Passing `--help` to the first two simply runs them, which is the pre-existing behaviour the spec measured and is what AC18 asks for.
 
 - The gate's report names the matched fragment, not the whole reference: `scripts/test-*.sh` is reported as `repo-path: .sh`, because the `*` ends the path match. The file, line and class are all correct, so AC4 holds; the fragment is a readability question for self-review, not a classification defect.
 
@@ -137,5 +148,9 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `config/balance.yaml` — every design-section pointer replaced with self-contained English prose read from that section, no value change
 - `Makefile` — new `comment-refs` target (not a `verify` prerequisite yet)
 - `.githooks/pre-commit` — now a symlink to `.githooks/pre-commit.sh`
+- `ai-docs/scripts/*.sh` (all 15) — comment sweep; 15 of them gain the D9 `--help`
+- `.claude/skills/ai-audit/scripts/check-citations.sh` — comment sweep only (owes no `--help`)
+- `.claude/skills/ai-audit/scripts/test-check-citations.sh`, `.claude/skills/task/scripts/append-task-run.sh`, `.claude/skills/task/scripts/test-append-task-run.sh` — comment sweep + the D9 `--help`
+- `.claude/skills/pr-merged/scripts/cleanup-progress.sh` — comment sweep only (owes no `--help`)
 - `ai-docs/doc-convention.md` — DOC-4 inverted to the ban; § Scope widened to the gated set; DOC-1/2/3/5/6 substantively unchanged
 - `.githooks/pre-commit.sh` — new file: the dispatcher (comment-reference gate over `--staged`, then the coverage ratchet), with D16's three named skip conditions

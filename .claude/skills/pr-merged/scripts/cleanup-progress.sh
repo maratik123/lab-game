@@ -1,35 +1,30 @@
 #!/usr/bin/env bash
 #
-# Delete the local progress files belonging to the merged branch passed as $1.
+# Delete the local progress files belonging to the merged branch passed as the
+# first argument.
 #
-# Run by `/pr-merged` skill (.claude/skills/pr-merged/SKILL.md, step 3) after
-# `git checkout main && git pull`, before `git branch -d <previous-branch>`.
+# Run by the /pr-merged flow, after `git checkout main && git pull` and before
+# `git branch -d <previous-branch>`.
 #
-# Derivation (PR linkage):
-#   1. `gh pr list --state merged --head <branch>` -> merged PR number
-#   2. Delete ai-docs/pr-comments/pr-<PR_NUM>.progress.md (the fallback path
-#      used by /pr-commented for PRs not produced by /task)
-#   3. Delete ai-docs/ci-fixes/pr-<PR_NUM>.progress.md (the fallback path
-#      used by /pr-ci-failed for PRs not produced by /task)
-#   4. `rmdir ai-docs/pr-comments ai-docs/ci-fixes`
-#      -- opportunistic cleanup; non-fatal if the directories still have
-#      unrelated files or do not exist.
+# Derivation (pull-request linkage):
+#   1. `gh pr list --state merged --head <branch>` -> merged number
+#   2. Delete the /pr-commented fallback progress file for that number (the
+#      path used for pull requests not produced by /task)
+#   3. Delete the /pr-ci-failed fallback progress file for that number
+#   4. `rmdir` both fallback directories -- opportunistic cleanup; non-fatal
+#      if they still have unrelated files or do not exist.
 #
 # WHAT THIS SCRIPT NO LONGER DELETES, and why:
-#   The /task progress file, the /interview `.state.md` sibling and the
+#   The /task progress file, the /interview state sibling and the
 #   /main-ci-failed per-run progress file are each COMMITTED while their
 #   flow runs and RETIRED by that flow into an ignored directory as the
-#   last commit before its PR (/task Step 12 sub-step 9a ->
-#   ai-docs/plans/ignored/; /main-ci-failed Step 7 sub-step 1a ->
-#   ai-docs/main-ci/ignored/). Retiring already achieves everything the
-#   deletion here was for: the files are out of the PR diff, out of the
-#   repo, and out of the `ls ai-docs/plans/*.progress.md`,
-#   `ls ai-docs/plans/*.spec.md.state.md` and `ls ai-docs/main-ci/*.progress.md`
-#   probes that would otherwise mis-route the next run. What is left is the
-#   only on-disk copy of a record that took hours to produce, so this script
-#   leaves it alone. The spec/issue derivation the deletion needed
-#   (Closes #N -> Tracked in: #N -> spec-base) and the `**Tracked in run:**`
-#   secondary probe both went with it.
+#   last commit before its pull request. Retiring already achieves everything
+#   the deletion here was for: the files are out of the diff, out of the
+#   repo, and out of the directory listings that would otherwise mis-route the
+#   next run. What is left is the only on-disk copy of a record that took
+#   hours to produce, so this script leaves it alone. The spec-and-issue
+#   derivation the deletion needed, and the secondary run-tracking probe,
+#   both went with it.
 #
 # Failure modes (all exit 0 -- workflow step 4 proceeds regardless):
 # - `PR_NUM` empty (branch merged outside `gh`, or PR is closed-not-merged):
@@ -39,9 +34,8 @@
 #   idempotent re-runs are safe).
 # - rmdir failing on non-empty directory is expected and ignored.
 #
-# Deferred-task plan files (ai-docs/plans/deferred/) are intentionally NOT
-# touched -- deferral is its own workflow and a deferred task has no merged
-# PR to drive cleanup.
+# Deferred-task plan files are intentionally NOT touched -- deferral is its own
+# workflow and a deferred task has no merged pull request to drive cleanup.
 
 set -uo pipefail
 

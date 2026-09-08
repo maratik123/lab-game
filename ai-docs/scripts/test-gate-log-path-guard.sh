@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Regression suite for the PreToolUse gate-log-path guard in .claude/settings.json.
+# Regression suite for the PreToolUse gate-log-path hook guard.
 #
 # The guard refuses a gate whose output is redirected to a BARE FILENAME, which
 # lands in the repository root. `*.gate.log` is gitignored, so such a file is
 # invisible to `git status` and to every tree-clean probe the flows run: 60 of
 # them had accumulated in the root by 2026-09-05, under names each run invented
-# (a.gate.log, m1.gate.log, f1verify.gate.log, s9actionlint.gate.log). AGENTS.md
-# § Build & Test had named exactly one filename the whole time — the text held
-# for none of them, which is why the path is now a gate.
+# (a.gate.log, m1.gate.log, f1verify.gate.log, s9actionlint.gate.log). The rule
+# text had named exactly one filename the whole time — it held for none of
+# them, which is why the path is now a gate.
 #
 # The rule is deliberately a SHAPE, not a path list: any target containing a
 # slash passes (tmp/x.log, /dev/null, a scratchpad path, ../x). Only a bare filename
@@ -19,10 +19,20 @@
 #
 # Verdict convention: the body exits 2 to block a tool call.
 #
-# Usage: bash ai-docs/scripts/test-gate-log-path-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-gate-log-path-guard.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1

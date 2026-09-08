@@ -11,10 +11,20 @@
 # exemption. Both directions are asserted -- a regex that matches everything
 # satisfies the first half alone.
 #
-# Usage: bash ai-docs/scripts/test-spec-shape.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-spec-shape.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1

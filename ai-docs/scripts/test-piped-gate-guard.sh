@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Regression suite for the PreToolUse piped-gate guard in .claude/settings.json.
+# Regression suite for the PreToolUse piped-gate hook guard.
 #
 # The guard blocks a gate piped into tail/head without pipefail, because bash
 # reports the LAST pipeline stage's exit status and a RED gate then records as
-# green. AGENTS.md § Build & Test advertises that hook as the enforcement for
-# the whole class, so a silent narrowing of its alternation is a live
+# green. The project rule text advertises that hook as the enforcement for the
+# whole class, so a silent narrowing of its alternation is a live
 # instruction-file claim going false.
 #
 # Anti-drift: this suite runs the LIVE hook body, extracted with jq and
@@ -20,15 +20,25 @@
 # head is BLOCKED. `make` is matched as a class, not by target enumeration,
 # because an anchored enumeration binds only when a target name follows `make`
 # immediately: five leaking shapes put a flag in between, and bare `make` names
-# no target at all. Every target in this project's Makefile is a gate (KD-16). A
-# dry run executes nothing, so the cost is a loud refusal rather than a green
+# no target at all. Every target this project's build entry point offers is a
+# gate. A dry run executes nothing, so the cost is a loud refusal rather than a green
 # record of a red gate. It is a fixture below so that a later "fix" which
 # quietly un-blocks it fails this suite.
 #
-# Usage: bash ai-docs/scripts/test-piped-gate-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-piped-gate-guard.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1
@@ -59,9 +69,9 @@ check() {
   fi
 }
 
-# verdict<TAB>command. BLOCK rows are AC21 plus the AC23 known false positive;
-# ALLOW rows are AC22. Both directions are required: AC21 alone is satisfied by
-# a regex that matches everything.
+# verdict<TAB>command. BLOCK rows are the must-block class plus the known false
+# positive; ALLOW rows are the must-allow class. Both directions are required:
+# the block half alone is satisfied by a regex that matches everything.
 while IFS=$'\t' read -r want cmd; do
   case "${want:-}" in ''|'#'*) continue ;; esac
   check "$want" "$cmd"
@@ -98,7 +108,7 @@ ALLOW	echo makezero | tail -1
 ALLOW	make verify
 FIXTURES
 
-# Both carve-outs must survive byte-for-byte (AC23).
+# Both carve-outs must survive byte-for-byte.
 for carveout in '(^|[[:space:]])(--help|-h)([[:space:]]|$)' \
                 '(^|[;&|[:space:]])set[[:space:]]+-o[[:space:]]+pipefail'; do
   grep -qF -- "$carveout" <<<"$body" && continue

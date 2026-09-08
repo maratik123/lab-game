@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression suite for .githooks/pre-commit — the dispatch and its path
+# Regression suite for the pre-commit hook — the dispatch and its path
 # resolution, not the ratchet's arithmetic.
 #
 # THE QUESTION THIS ANSWERS. The hook used to `exec` a bare relative path and
@@ -7,18 +7,28 @@
 # working tree first. That promise holds — measured from the repository root,
 # from a subdirectory, under `git -C` from outside the repo, and inside a
 # linked worktree and its subdirectories — but it is invisible at the call
-# site, and a reviewer asked exactly the right question about it (PR #55). The
-# hook now resolves the path itself; this suite is what keeps it that way.
+# site, and a reviewer asked exactly the right question about it. The hook now
+# resolves the path itself; this suite is what keeps it that way.
 #
 # It builds a throwaway repository with no Go in it, so the ratchet takes its
 # "nothing that can move coverage is staged" exit and the whole suite runs in
 # well under a second. What is exercised is the dispatch: the hook is found,
 # it finds its script, and it does not fail on a path.
 #
-# Usage: bash ai-docs/scripts/test-precommit-dispatch.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-precommit-dispatch.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1
@@ -95,7 +105,8 @@ fi
 # either way with nothing coverage-moving staged. So drive the same repository
 # with the ratchet script REMOVED: git must then refuse the commit, because the
 # dispatcher cannot exec what is not there. If this case passes too, none of
-# the cases above measured anything (AGENTS.md § Patterns 2).
+# the cases above measured anything: a green instrument is a claim about the
+# instrument.
 control="$sandbox/control"
 mkdir -p "$control/deep"
 cp -r "$repo_root/.githooks" "$control/.githooks"

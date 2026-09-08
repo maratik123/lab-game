@@ -7,36 +7,42 @@
 # `## Test Design`, which both recent designs already carry and which
 # `self-review` already reads.
 #
-# WHY IT IS A GATE AND NOT A SENTENCE. `spec-writer.md` Rule 9/PROC-3 has said
-# "an AC is DECLARATIVE … it states a condition over the tree" since before any
-# of this. Measured across the four merged specs in ai-docs/plans/done/ as of
-# 8fae04a: 1 of 19 rows carried a test prescription (2026-09-02), then 0 of 17,
-# then 10 of 33, then 12 of 36 — 5% to 33% in three runs.
+# WHY IT IS A GATE AND NOT A SENTENCE. The spec-writing rule has said "an AC is
+# DECLARATIVE … it states a condition over the tree" since before any of this.
+# Measured across the four merged specs as of 8fae04a: 1 of 19 rows carried a
+# test prescription (2026-09-02), then 0 of 17, then 10 of 33, then 12 of 36 —
+# 5% to 33% in three runs.
 #
 # WHAT IT COSTS TO LEAVE IT. When the AC names the test, the test's EXISTENCE
 # becomes the criterion, and existence is exactly what a cosmetic test
-# satisfies. ai-docs/learnings.md 2026-09-04 records five such tests on one run
-# — each passing on the shipped code AND on the mutant, each named as an AC's
+# satisfies. Five such tests were recorded on one run — each passing on the
+# shipped code AND on the mutant, each named as an acceptance criterion's
 # verifier, one of them written in an earlier fix round for that very property.
-# That entry escalated nowhere; this is where it escalates.
 #
-# WHY A SUBSTRING GATE IS SOUND HERE, given spec-writer.md's own box rejecting
-# lexical gates for semantic distinctions: the box's bar is a phrase that occurs
-# essentially only in its forbidden sense. Measured over every spec in
-# ai-docs/plans/done/ at 8fae04a — 142 AC rows: 24 hits, every one a
-# prescription, zero false positives. The lower-case alternative was measured
-# separately before it was added: it contributes exactly one row (transport
-# AC31), and that row is a prescription too.
-#
-# Usage:
-#   check-ac-shape.sh                 check the AC rows this branch added or
-#                                     changed, against the merge base with main
-#   check-ac-shape.sh <file>...       audit the named specs in full
+# WHY A SUBSTRING GATE IS SOUND HERE, given the standing rule that rejects
+# lexical gates for semantic distinctions: its bar is a phrase that occurs
+# essentially only in its forbidden sense. Measured over every merged spec at
+# 8fae04a — 142 acceptance rows: 24 hits, every one a prescription, zero false
+# positives. The lower-case alternative was measured separately before it was
+# added: it contributes exactly one row, and that row is a prescription too.
 #
 # Exit 0 = no prescription in any checked AC table (or nothing to check).
 # Exit 1 = at least one row prescribes a test.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  check-ac-shape.sh                 check the AC rows this branch added or
+                                    changed, against the merge base with main
+  check-ac-shape.sh <file>...       audit the named specs in full
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || {
   printf 'check-ac-shape: not a git work tree; skipped\n' >&2; exit 0; }
@@ -83,10 +89,10 @@ else
   # Default: only the rows this branch ADDED or CHANGED.
   #
   # Scanning whole files would re-litigate every AC written before the gate
-  # existed, and it would fire on a PR that edits an old done/ spec for an
-  # unrelated propagation reason — a routine shape here, since AGENTS.md
-  # § Propagation Rule makes such edits mandatory. A row nobody touched is not
-  # this branch's to answer for.
+  # existed, and it would fire on a PR that edits an old merged spec for an
+  # unrelated propagation reason — a routine shape here, since the propagation
+  # rule makes such edits mandatory. A row nobody touched is not this branch's
+  # to answer for.
   base=$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null)
   if [ -z "$base" ]; then
     printf 'check-ac-shape: no merge base with main; skipped\n' >&2

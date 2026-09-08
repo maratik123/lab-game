@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test for check-citations.sh.
+# Regression test for the citation-namespace guard.
 #
 # Locks ONE invariant: check (2)'s format-spec exclusion must identify the
 # excluded text by its CONTENT, not by its line number.
@@ -10,10 +10,20 @@
 # below is what distinguishes a real fix from a re-pin — it shifts the row and
 # requires the guard to still find it.
 #
-# Usage: bash .claude/skills/ai-audit/scripts/test-check-citations.sh
 # Exit 0 = all cases pass. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-check-citations.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1
@@ -59,8 +69,8 @@ echo "== test-check-citations =="
 echo
 
 # --- Case 1: the guard is green on the pristine tree -------------------------
-# Failed before the fix: the exclusion was pinned to corrections-log.md:47
-# while the format-spec example it means to exclude had drifted to :49.
+# Failed before the fix: the exclusion was pinned to a line number while the
+# format-spec example it means to exclude had drifted two lines down.
 run_guard
 report "case 1: green on pristine tree" "$?" 0
 
@@ -97,7 +107,7 @@ cp "$backup" "$target"
 # Guards against over-correcting case 1 into a blanket skip of the whole file.
 #
 # The fixture date is ASSEMBLED AT RUNTIME, never written as a literal. This
-# file lives under .claude/, which check-citations.sh scans — a literal
+# file sits inside the instruction surface the guard scans — a literal
 # out-of-range date here would make the guard flag its own test as a bad
 # citation. Excluding this path in the guard was the alternative and was
 # rejected: a path is another pinned identifier, and a rename would break it

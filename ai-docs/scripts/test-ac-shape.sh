@@ -6,10 +6,20 @@
 # essentially only in its prescriptive sense — so the fixtures below carry the
 # near misses that would make that claim false if the pattern widened.
 #
-# Usage: bash ai-docs/scripts/test-ac-shape.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  test-ac-shape.sh    run the whole suite; it takes no arguments
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root" || exit 1
@@ -44,8 +54,8 @@ check FAIL exercises          'The fake server can produce a 429. Tests exercise
 check FAIL semicolon          'Emission from one key is steady; a test releasing many calls at once asserts the spacing.'
 
 # --- must PASS: conditions, including the near misses ------------------------
-# "test T exists and passes" is the declarative form spec-writer.md Rule 9 names
-# as legal, and it must survive: it states a condition over the tree.
+# "test T exists and passes" is the declarative form the spec-writing rule
+# names as legal, and it must survive: it states a condition over the tree.
 check PASS names-a-test-file  'The package exports RunOnce, and internal/scheduler/worker_test.go exists and passes.'
 check PASS testdb-condition   'Every database-touching test in this change runs against a real PostgreSQL server through internal/testdb, each in its own schema.'
 check PASS latest-noun        'The claim is a batch bounded by the configured limit, and rows claimed by another open transaction are skipped rather than waited on.'
