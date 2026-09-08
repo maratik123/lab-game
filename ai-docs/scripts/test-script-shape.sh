@@ -11,6 +11,11 @@
 # tree, which is the property that makes it hold for a file added later without
 # anyone editing a list.
 #
+# THE DISPATCH ARM IS ASSEMBLED AT RUNTIME, never written out here. This file is
+# itself a tracked script the checker scans, and a fixture spelled literally
+# would be read as this file's own dispatch — five of them, in three shapes.
+# The citation guard's suite assembles its fixture date for the same reason.
+#
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail
@@ -23,6 +28,13 @@ checker="$repo_root/ai-docs/scripts/check-script-shape.sh"
 failures=0
 sandbox=$(mktemp -d)
 trap 'rm -rf "$sandbox"' EXIT
+
+conforming_arm='-h|--help'
+divergent_arm='--help'
+
+# dispatch <arm> — the case block a fixture ends its preamble with.
+# shellcheck disable=SC2016  # the fixture's own parameter form, not this shell's
+dispatch() { printf 'case "${1:-}" in\n  %s) usage; exit 0 ;;\nesac\n' "$1"; }
 
 # A sandbox holding only conforming files. Every case starts from this.
 seed() {
@@ -42,12 +54,10 @@ Usage:
 USAGE
 }
 
-case "${1:-}" in
-  -h|--help) usage; exit 0 ;;
-esac
-
-echo body
 SH
+  dispatch "$conforming_arm" >> "$d/good.sh"
+  printf '\necho body\n' >> "$d/good.sh"
+
   cat > "$d/silent.sh" <<'SH'
 #!/usr/bin/env bash
 set -uo pipefail
@@ -99,12 +109,9 @@ set -uo pipefail
 
 usage() { echo "Usage: odd.sh"; }
 
-case "${1:-}" in
-  --help) usage; exit 0 ;;
-esac
-
-echo body
 SH
+dispatch "$divergent_arm" >> "$d/odd.sh"
+printf '\necho body\n' >> "$d/odd.sh"
 chmod +x "$d/odd.sh"
 git -C "$d" add odd.sh
 expect_flagged "different-shape" "$d" "odd.sh"
@@ -124,12 +131,10 @@ USAGE
 
 root=$(git rev-parse --show-toplevel)
 
-case "${1:-}" in
-  -h|--help) usage; exit 0 ;;
-esac
-
-echo "$root"
 SH
+dispatch "$conforming_arm" >> "$d/late.sh"
+# shellcheck disable=SC2016  # the fixture's own variable, not this shell's
+printf '\necho "$root"\n' >> "$d/late.sh"
 chmod +x "$d/late.sh"
 git -C "$d" add late.sh
 expect_flagged "runs-before-help" "$d" "late.sh"
@@ -148,12 +153,9 @@ USAGE
   exit 3
 }
 
-case "${1:-}" in
-  -h|--help) usage; exit 0 ;;
-esac
-
-echo body
 SH
+dispatch "$conforming_arm" >> "$d/rc.sh"
+printf '\necho body\n' >> "$d/rc.sh"
 chmod +x "$d/rc.sh"
 git -C "$d" add rc.sh
 expect_flagged "non-zero-help" "$d" "rc.sh"
@@ -166,12 +168,9 @@ set -uo pipefail
 
 usage() { :; }
 
-case "${1:-}" in
-  -h|--help) usage; exit 0 ;;
-esac
-
-echo body
 SH
+dispatch "$conforming_arm" >> "$d/mute.sh"
+printf '\necho body\n' >> "$d/mute.sh"
 chmod +x "$d/mute.sh"
 git -C "$d" add mute.sh
 expect_flagged "empty-help" "$d" "mute.sh"
