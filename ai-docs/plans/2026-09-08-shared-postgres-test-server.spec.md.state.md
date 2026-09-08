@@ -52,7 +52,16 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: a17d60505b5d24c8d
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "The pre-commit hook execs .githooks/coverage-ratchet.sh directly, outside make, so every commit staging Go or SQL runs the whole suite under coverage on the per-package container path. Does the shared server cover that path too?"
+    answer: "In scope — the coverage-ratchet / pre-commit path is provisioned the same way, so a commit staging Go pays the shared-server cost. The change widens into .githooks/, and the provisioning has to be callable from outside make."
+  - round: 1
+    question: "Who owns the shared server in CI? The Makefile header states that CI invokes the same sub-targets precisely so a local run and a CI run cannot disagree about what any gate's command is - and CI's Test job runs three suite-executing steps (test, race, cover-ratchet) with no services: block today."
+    answer: "Makefile both sides — one target starts/reuses and removes the container locally and on the runner; ci.yml gains no services block. Keeps the stated invariant exactly."
+  - round: 1
+    question: "ai-docs/context-status.md records that pointing every package at one shared server made go test -race ./... fail roughly half the time in four internal/scheduler tests. Nine consecutive -count=1 race runs on today's tree against a max_connections=300 shared server were all green, but that entry predates the tmpfs change and the backoff refactor of those tests. What should the spec require?"
+    answer: "Fix the tests — shared server is the default for both gates; any test that proves contention-sensitive is made contention-tolerant in this task, including up to the four timing-sensitive scheduler tests."
 ```
