@@ -8,20 +8,20 @@ _Updated: 2026-09-08 09:41_
 **Last build:** not run
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group A subtask 1 of 10 complete
+**current_step:** Step 8 — Group A subtask 2 of 10 complete
 **last_passed_gate:** golangci-lint run (internal/commentref)
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** start Group A subtask 2 — the banned-class classifier (D4) and the exemption pass (D5), over extracted comments.
+**Do this immediately:** start Group A subtask 3 — the command `cmd/commentrefs`: input modes, exit codes, report format.
 
 ## Subtasks
 
 Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-writer`) · **B** = 11–14 (instructions/harness, `inherit`/`general-purpose`) · **C** = 15 (code, `sonnet`/`code-writer`, terminal).
 
 - [x] 1. Comment extraction: file-class router + one extractor per grammar; add `mvdan.cc/sh/v3`
-- [ ] 2. The banned-class classifier (D4) and the exemption pass (D5)
+- [x] 2. The banned-class classifier (D4) and the exemption pass (D5)
 - [ ] 3. The command `cmd/commentrefs`: input modes, exit codes, report format
 - [ ] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
 - [ ] 5. Sweep `internal/store` + migrations, `internal/testdb`
@@ -43,6 +43,8 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 1**: `go get mvdan.cc/sh/v3@v3.14.1 && go mod tidy` reproduced exactly the design's D3 prediction in this tree — `go.mod` gains only the direct requirement, the `go` directive normalises `1.26` → `1.26.0`, and `go.sum` grows with the dependency's own test-dep checksums.
 - **Subtask 1**: `go.yaml.in/yaml/v3`'s reported `Text` field keeps the leading `#` marker (measured with a scratch probe over synthetic YAML), unlike `mvdan.cc/sh/v3/syntax`'s `Comment.Text`, which already has its `#` stripped — the two extractors' marker-stripping therefore differ in what they start from, and both are exercised by their own extraction tests.
 - **Subtask 1**: the YAML extractor's exempt-empty-file path (`ExtractYAML` returns `nil, nil` for an all-whitespace source) was added because `yaml.Unmarshal` on an empty document does not populate a document node to walk; no fixture file in the gated set is empty today, so this is defensive rather than load-bearing yet.
+- **Subtask 2**: `Classify` strips a trailing `_test` from `ownPackage` itself, rather than requiring the caller to do it, so the contract is exercised directly by this subtask's own tests rather than deferred to subtask 3's wiring.
+- **Subtask 2**: classification runs sequentially over one working copy of the comment text, blanking each matched span (with same-length spaces) before the next, narrower-precedence class runs — this stops a URL's own `://` and digits from also being reported as a `locator`, without disturbing the byte positions later classes scan.
 
 ## Key discoveries (don't re-investigate)
 
@@ -89,4 +91,4 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 ## Files touched
 
 - `go.mod`, `go.sum` — `mvdan.cc/sh/v3` added
-- `internal/commentref/` — new package: `commentref.go` (the `Comment` type), `go_extract.go`, `shell_extract.go`, `yaml_extract.go`, `sql_extract.go`, `makefile_extract.go`, `gitignore_extract.go`, `envexample_extract.go`, `router.go`, plus a `_test.go` beside each and `testhelpers_test.go`
+- `internal/commentref/` — new package: `commentref.go` (the `Comment` type), `go_extract.go`, `shell_extract.go`, `yaml_extract.go`, `sql_extract.go`, `makefile_extract.go`, `gitignore_extract.go`, `envexample_extract.go`, `router.go`, `classify.go` (the `Class`/`Finding` types and `Classify`), plus a `_test.go` beside each and `testhelpers_test.go`
