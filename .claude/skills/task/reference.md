@@ -80,7 +80,8 @@ If a Step 7 design-review GO verdict surfaces a `note` / `minor` / recommendatio
 ## RECON (unverified claims)
 READ: <files opened + commands run>
 NOT READ: <what was not opened, or the sampling rule used>
-<findings as claims — no verdicts, no instructions, no reading directives>
+<findings as claims — no verdicts, no instructions, no reading directives, NO FIGURES: a count, a size, a line total or a percentage is dropped, not carried — the writer re-derives every number it is handed (spec-writer.md Rule 8), so a figure in RECON buys a round of re-measurement and then a spec that stores it (measured 2026-09-08: ~20 figures in, 31 tool calls of re-measuring before the first spec line, a `### Sizing` section out). Legal claim shapes: a path exists / is tracked / is ignored; a config key is set to a value; a rule text says X (quoted); a tool is / is not installed; a file class exists ("shebang files without .sh: one, `.githooks/pre-commit`" names the member, not the count)>
+ISSUE BODY SUPERSEDED: <yes | no — `yes` when TASK reframes what the persisted issue body says; the interview then asks the owner whether to update the issue before spawning (interview/SKILL.md Step 1)>
 ## DELTA
 <every constraint present in this hand-off but absent from TASK, one line each, with its source — or the literal line `DELTA: none`>
 ```

@@ -187,8 +187,13 @@ jobs:
           bash .claude/skills/ai-audit/scripts/test-ac-shape.sh
           bash .claude/skills/ai-audit/scripts/test-review-register.sh
           bash .claude/skills/task/scripts/test-precommit-dispatch.sh
+          bash .claude/skills/ai-audit/scripts/test-instruction-edit-guard.sh
+          bash .claude/skills/task/scripts/test-doc-edit-guard.sh
+          bash .claude/skills/ai-audit/scripts/test-spec-shape.sh
       - name: acceptance criteria state conditions, not tests
         run: bash .claude/skills/ai-audit/scripts/check-ac-shape.sh
+      - name: specs locate by commit or symbol and store no tally
+        run: bash .claude/skills/ai-audit/scripts/check-spec-shape.sh
       - name: relative markdown links resolve
         run: |
           set -euo pipefail
