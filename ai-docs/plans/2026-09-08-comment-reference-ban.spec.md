@@ -48,7 +48,8 @@ still. They must not be conflated.
    [source: 76a7b41:.env.example · `cat -n .env.example`].
 5. **The machine gate.** A pre-commit check and a CI gate refuse a banned reference in a gated
    file. The gate catches references, never verbosity or narration (owner, round 0 answer 5);
-   the narration half of item 1 is a review judgement (KD-13).
+   the narration half of item 1 is a review judgement (KD-13), and so is the bare unqualified name
+   that no lexical rule separates from prose (§ Banned reference classes).
 6. **`.githooks/pre-commit` becomes a symlink** to a `.sh` file in the same directory (owner,
    round 0 answer 4). It is the only tracked file that carries a `#!` shebang and does not end
    in `.sh` [source: 76a7b41 · `git ls-files | while read f; do head -c2 "$f" | grep -q '#!' && case "$f" in *.sh) ;; *) echo "$f";; esac; done`].
@@ -67,6 +68,20 @@ still. They must not be conflated.
 10. **The #68 body is rewritten** to state the reformulated rule ("давай переформулируем issue"
    — owner). A body that still prescribes deleting doc comments would mislead every later
    reader of the tracking issue.
+11. **CI shellchecks every script it is documented to shellcheck.** `AGENTS.md` § Build & Test
+   describes the Harness-guards job as running "shellcheck on every script and hook body"
+   [source: fa9279f:AGENTS.md § Build & Test · `grep -n 'Harness guards' AGENTS.md`]. The job
+   shellchecks what its own `find` expression reaches, and that expression names two harness
+   directories, neither of them `.githooks/`, so no script under `.githooks/` is shellchecked by
+   CI at all
+   [source: fa9279f:.github/workflows/ci.yml § job `harness`, step "shellcheck every harness script" · `sed -n '/name: shellcheck every harness script/,/^      - name:/p' .github/workflows/ci.yml`];
+   the `harness` path filter does not name that directory either, so a commit whose only changed
+   paths are under `.githooks/**` matches no filter and runs no job at all. CI never invokes the
+   `Makefile` shellcheck target, which does reach the directory
+   [source: fa9279f:.github/workflows/ci.yml § its `run: make …` steps · `grep -n 'run: make ' .github/workflows/ci.yml`].
+   This task adds a script under `.githooks/` (item 6) and puts `.githooks/**` in the gated set
+   (KD-1), which makes the gap load-bearing, so the gap is closed here (owner, 2026-09-08:
+   *«В скоуп — починить здесь»*).
 
 ## Out of scope
 
@@ -92,6 +107,7 @@ still. They must not be conflated.
 |---|---|---|
 | Machine-checking the positive `config/**` documentation requirement (every leaf key carries prose) | The owner stated the requirement, not an enforcement mode; adding a second gate unasked is scope widening (KD-8) | Yes, if the requirement is seen to rot |
 | Machine-checking the narration half of the rule | Ruled out by the owner (answer 5); the criterion is review-judged (KD-13, AC16) | No |
+| Machine-checking a bare unqualified name used as a pointer ("see such-and-such") | No lexical rule separates it from ordinary prose or from the same-package contract symbol the KD-9 carve-out keeps; the owner settled the gated symbol class as the package-qualified form (KD-9). Review-judged under AC16 | No |
 
 ## Key decisions
 
@@ -105,7 +121,7 @@ still. They must not be conflated.
 | KD-6 — what happens to comments inside YAML block scalars (`run: \|`, `filters: \|`)? | Cleaned by the same rules, not machine-gated. The gate covers YAML-level comments. Mechanical reading of the owner's round 0 answer 3. |
 | KD-7 — where does the fact in a deleted reference go? | Nowhere, outside `config/**` and `.env.example` (answer 6). Inside those, it is replaced by self-contained prose (Scope items 3 and 4). |
 | KD-8 — is the `config/**` documentation requirement gated? | No. Stated in the doc-style document and checked in review, consistent with the answered posture that the gate catches references and not quality. Recorded in `## Deferred`. |
-| KD-9 — does the symbol ban cut into the call contract? | **Settled (round 1): own package only.** A symbol may be named when it *is* the contract — a returned sentinel error, the guarantor of a precondition — and only from the comment's own package. "See such-and-such" and any cross-package symbol are banned. `ai-docs/doc-convention.md` § DOC-3 and `ai-docs/go-api-naming.md` § The `…Unchecked` AXIOM survive unchanged. |
+| KD-9 — does the symbol ban cut into the call contract? | **Settled (round 1); narrowed by the owner on 2026-09-08: this module only** (*«Только свой модуль — гейтим»*). A symbol may be named when it *is* the contract — a returned sentinel error, the guarantor of a precondition — and only from the comment's own package. What is banned is a **package-qualified symbol of this Go module** named outside the comment's own package. A qualified symbol of the standard library or of a third-party module is not a reference for this rule: the ban's reason is rot, and a name that does not move when this tree is edited does not rot — `time.Duration`, `errors.Is`, `context.Context` stay as written. "See such-and-such" written as a bare unqualified name is outside the class too, for the reason given under § Banned reference classes, and is refused in review instead (AC16). `ai-docs/doc-convention.md` § DOC-3 and `ai-docs/go-api-naming.md` § The `…Unchecked` AXIOM survive unchanged. |
 | KD-10 — which remaining classes count as a banned reference? | **Settled (round 2): all of them — "ничего наружу".** The key-decision anchor, the design-section number written without its file, the issue or pull-request number, the bare repository path and the URL are all banned, with an exemption for the `TODO(#<issue>)` form, which keeps its issue number. |
 | KD-11 — does `ai-docs/doc-convention.md` survive? | Yes, rewritten. Doc comments survive, so their convention needs a live carrier; § DOC-4 inverts; § DOC-5 stands unchanged, its `TODO(#<issue>)` requirement exempted by KD-10; § DOC-3 stands per KD-9. |
 | KD-12 — English or Russian in the rewritten `config/balance.yaml` prose? | English. `AGENTS.md` reserves Russian for `docs/**` and for conversation; `config/**` is neither, and the file currently carries Russian comments [source: 76a7b41:config/balance.yaml · `grep -nP '[\x{0400}-\x{04FF}]' config/balance.yaml`]. |
@@ -114,19 +130,22 @@ still. They must not be conflated.
 | KD-15 — does `.env.example`'s header warning survive? | Yes, restated without its pointers. The header carries pointers — a package name, a test path, a markdown path, an issue number — and, separately, a **contract about the file** — that a variable the config loader does not read must not be added here. Answer 6 discards the fact a *reference* carried; this is not one. It survives also because the owner made this file the completeness model for `config/**`, and a model that dropped its own key invariant would teach the wrong thing. Listed under open questions as revisitable. |
 | KD-16 — which scripts owe a `--help`, and does `check-citations.sh`? | Every tracked `*.sh` whose comments carry usage prose owes one; its complement owes nothing. The judgement the owner left open resolves **no**: `check-citations.sh` references no positional parameter, no `$@`, no `$#` and no `shift`, so the line the ban strips — *"Also runnable standalone"* plus its own path — states no invocation grammar, only a path, and nothing is left undocumented. The membership criterion, and the conditions under which a script in the complement is nonetheless documented, are in § Usage prose becomes `--help`. |
 | KD-17 — what shape does `--help` take? | The design chooses one shape and applies it to every script in that set, because there is no precedent in the tree to copy (see § Usage prose becomes `--help`). The condition the shape must meet: the flag prints the invocation grammar the `# Usage:` prose used to carry, and exits 0. `coverage-ratchet.sh` already parses `--check`, so it has an argument-handling site to extend rather than introduce. |
+| KD-18 — why is the CI shellcheck gap this task's to close? | Because this task creates a script under `.githooks/` (Scope item 6; Scope item 11 records what CI does not reach today) and puts `.githooks/**` in the gated set (KD-1): a directory CI does not reach becomes load-bearing here, and a guard whose CI coverage is absent is a gate that silently does not run. Settled by the owner on 2026-09-08: *«В скоуп — починить здесь»*. Which shape the fix takes — extending the job's `find` expression, or having CI invoke the `Makefile` target that already reaches every script — is the design's choice. |
 
 ## Technical constraints
 
 ### Banned reference classes
 
-Settled in full. A comment names nothing outside itself (owner, round 2: *"ничего наружу"*):
+Settled. A comment names nothing outside itself that moves when this tree moves (owner, round 2:
+*"ничего наружу"*, narrowed for the symbol class on 2026-09-08 to this module's own packages —
+KD-9):
 
 | Banned class | Example in the tree |
 |---|---|
 | A reference to a place in a file that carries no revision — a line number, with or without its path | a bare `<file>:<line>` locator |
 | A path to a markdown file | `docs/DESIGN.md §2.2.4`, `ai-docs/go-test-conventions.md` |
 | A spec or design acceptance-criterion id | `AC6`, `AC9` |
-| A symbol outside the comment's own package, or any symbol not part of the contract | `GetUpdatesParams.Limit` in `.env.example` |
+| A package-qualified symbol of **this** Go module named outside the comment's own package — the form `<pkg>.<Ident>`, where `<pkg>` names a package of this module | `store.Post` in a comment of package `internal/scheduler` [source: fa9279f:internal/scheduler/schedule.go § Schedule · `grep -n 'store\.Post' internal/scheduler/schedule.go`] |
 | A key-decision anchor | `// (design D4, D9). A non-nil return means ctx was cancelled mid-attempt` |
 | A design-section number written without its file | `DESIGN §3.5`, `§16.5` |
 | An issue or pull-request number outside the `TODO(#…)` form | `# lab-game balance constants (issue #18, …)` |
@@ -153,6 +172,24 @@ ask.
 put to the owner — key-decision anchor, section number, issue number, bare path, URL. The
 same-package contract symbol was settled the round before with its own carve-out, and a later
 reader must not collapse them.
+
+**What the narrowing leaves outside the symbol class, stated so that nothing is left implied.**
+The class above is written in the one form a lexical gate can decide, and the gate decides it in
+full — which is why AC2 and AC3 do not narrow for it:
+
+- **A qualified symbol from outside this module is not a member.** `time.Duration`, `errors.Is`,
+  `context.Context`, `telego.GetUpdatesParams`, and the bare `GetUpdatesParams.Limit` by which
+  `.env.example` names that type's field, all survive the sweep as written. Membership turns on
+  `<pkg>` naming a package of *this* module, and that set of names is read off the tree the gate
+  runs against, never inherited from this document.
+- **A bare, unqualified name is not a member.** `Session`, `Type.Field`, or a "see such-and-such"
+  with no package qualifier cannot be separated by any lexical rule from ordinary prose, or from
+  the same-package contract symbol the KD-9 carve-out keeps. It stays banned as prose that points
+  the reader elsewhere, and it is judged in review against the diff, exactly as the narration half
+  is (KD-13, AC16). No gate is asked to decide it, and no criterion claims one does.
+- **A gated file that has no Go package** — `.env.example`, a `Makefile`, a `*.sh`, a `*.yml`, a
+  `*.sql` — has no own package for the carve-out to compare against, so a package-qualified symbol
+  of this module in its comments is always outside the comment's own package, and banned.
 
 ### Usage prose becomes `--help`
 
@@ -209,7 +246,10 @@ Not a bound on the class (Scope item 8) — the sites already identified:
   because the file has no `.sh` extension; the symlink makes that line redundant or a
   deliberate double-check [source: 76a7b41:Makefile § shellcheck target · `sed -n '/^shellcheck:/,/^$/p' Makefile`].
 - `.github/workflows/ci.yml` — the `paths-filter` block, whose own comment warns that a gate
-  not named there silently stops running; a new gate needs its filter entry and its job.
+  not named there silently stops running; a new gate needs its filter entry and its job, and
+  `.githooks/**` needs a filter entry of its own (Scope item 11). The Harness-guards job's
+  shellcheck step is the other site: its `find` expression is what decides which scripts CI
+  checks.
 - `.claude/skills/task/scripts/test-precommit-dispatch.sh` — the regression suite for the hook
   whose shape Scope item 6 changes.
 - `.claude/settings.json` — the `--no-verify` guard and the panic gate mention the hook and the
@@ -220,8 +260,11 @@ Not a bound on the class (Scope item 8) — the sites already identified:
 
 ### Conventions the gate inherits
 
-- Every gate this project owns is reachable through `Makefile` and is invoked by CI from the
-  same target, so a local run and a CI run cannot disagree about the command.
+- Every gate this project owns is reachable through `Makefile`. The Go gates are invoked by CI
+  from that target; the harness guards are not — CI runs them directly, and its shellcheck step
+  carries an expression of its own instead of calling the target, which is how the `.githooks/**`
+  gap of Scope item 11 opened. A gate this task adds is invoked from the same `Makefile` target
+  locally and in CI, so a local run and a CI run cannot disagree about the command.
 - Guard scripts in this repository are shell, live beside a regression suite that CI runs, and
   are covered by `make shellcheck`. `AGENTS.md` requires tests for any file with ~50+ lines of
   substantial logic.
@@ -267,7 +310,9 @@ line number.
    comment does not name the guarantor"* to be **Wrong** — *"the comment is the contract"*.
    `ai-docs/doc-convention.md` § DOC-3 — Contract sections requires that *"A function returning
    a sentinel error names it"*. **Resolution:** the owner's round-1 answer carves out the
-   same-package symbol that *is* the contract, so those sections stand unchanged (KD-9)
+   same-package symbol that *is* the contract, so those sections stand unchanged (KD-9). The
+   owner's narrowing of 2026-09-08 shrinks the conflict further — the banned symbol class reaches
+   only this module's own packages — without changing that resolution
    [source: 76a7b41:ai-docs/go-api-naming.md § The `…Unchecked` AXIOM · `sed -n '/^## The/,/^## Naming/p' ai-docs/go-api-naming.md`;
    76a7b41:ai-docs/doc-convention.md § DOC-3 — Contract sections · `sed -n '/^## DOC-3/,/^## DOC-4/p' ai-docs/doc-convention.md`].
 
@@ -296,10 +341,10 @@ line number.
 | AC10 | No doc comment demanded by `revive`'s `exported` or `package-comments` rules was removed: every exported item and every package still carries one. |
 | AC11 | Every key of every comment-bearing file under `config/` and its nested directories carries prose that describes the key without pointing outward, and that prose is in English. |
 | AC12 | `.env.example` documents each variable with self-contained prose, carries no outward pointer, and still states which variables do not belong in the file; its key set still matches the loader's consulted key set exactly, in both directions. |
-| AC13 | The doc-style document states the rule, names the banned classes and the exemptions, records that the narration half is review-judged, and records that shell in workflow `run:` blocks and in `.claude/settings.json` hook bodies obeys the rule without a machine gate. |
+| AC13 | The doc-style document states the rule, names the banned classes and the exemptions, records that the narration half and the bare-unqualified-name half are review-judged and why, and records that shell in workflow `run:` blocks and in `.claude/settings.json` hook bodies obeys the rule without a machine gate. |
 | AC14 | No instruction file still mandates a comment reference of a banned class. History surfaces — `ai-docs/learnings.md`, `ai-docs/harness-gaps.md`, `ai-docs/plans/**` — keep whatever they say. |
-| AC15 | Behaviour is unchanged: outside `config/**`, `.env.example` and the scripts that gain `--help`, every line removed or rewritten in the diff is a comment line, and no statement, key, or value moves. |
-| AC16 | No comment surviving the sweep narrates what the code does step by step or how it is implemented; each states what the thing is, its call contract, or what the linter requires. Judged in review against the diff — the owner ruled out a machine check for this dimension (KD-13). |
+| AC15 | The sweep changes comments and nothing else: in a file whose only reason to appear in the diff is the comment sweep, every line removed or rewritten is a comment line, and no statement, key, or value moves. A file that also carries a change this task requires for another reason is outside this criterion — `config/**`, `.env.example`, the scripts that gain `--help`, the files that wire the gate and its CI job, `.githooks/pre-commit` and its symlink target, and the files that close the shellcheck gap of Scope item 11. Behaviour preservation in those files is judged by the criteria that own their changes. |
+| AC16 | No comment surviving the sweep narrates what the code does step by step or how it is implemented, and none points the reader elsewhere by a bare unqualified name ("see such-and-such"); each states what the thing is, its call contract, or what the linter requires. Judged in review against the diff — the owner ruled out a machine check for the narration dimension (KD-13), and no lexical rule can decide the bare name (§ Banned reference classes). |
 | AC17 | Every tracked `*.sh` file that carried usage prose answers `--help` by printing the invocation grammar that prose carried, and exits 0. |
 | AC18 | No tracked `*.sh` file that carried no usage prose answers `--help`, and none acquired argument handling it did not have. |
 | AC19 | The `--help` handling is the same shape in every script that has it. |
@@ -307,6 +352,7 @@ line number.
 | AC21 | Every script that gained `--help` still performs its original job unchanged when invoked without it, and `make shellcheck` is clean. |
 | AC22 | Every instruction-file site that told a reader how to invoke one of those scripts now points at `--help` or is removed. |
 | AC23 | The #68 body states the reformulated rule and no longer prescribes deleting doc comments or dropping `revive`. |
+| AC24 | CI shellchecks every tracked `*.sh` file in the repository, those under `.githooks/` included, and a commit whose only changed paths are under `.githooks/**` runs the job that shellchecks them. |
 
 ## Open questions
 
