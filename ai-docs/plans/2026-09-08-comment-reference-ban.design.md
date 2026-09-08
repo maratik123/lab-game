@@ -2,7 +2,11 @@
 
 **Issue:** #68
 **Date:** 2026-09-08
-**Revision:** round 3 — the YAML extractor's line numbers (D1a), the package survey for the four
+**Revision:** round 4 — the round-3 GO notes folded in, each re-measured rather than transcribed:
+the `.githooks/**` router branch (D6, subtask 1, § Test Design), the duplication argument for the
+per-script `--help` block (D9), the pin on D8's `cp -r` probe, the source the `config/**` prose is
+written from (D13), and D3's CI evidence re-answered on the channel the question is actually about.
+Round 3 settled the YAML extractor's line numbers (D1a), the package survey for the four
 scanner grammars (D1b), the re-measured `mvdan.cc/sh/v3` footprint (D3), and the cross-group
 `--help` shape obligation (D9). Round 2 reconciled the design against the spec as amended at
 `/task` Step 7: KD-9's narrowing to this module's own packages, AC15's carve-out written into the
@@ -184,11 +188,25 @@ scratch module → `go 1.26` unchanged; `grep -m1 '^go ' <modcache>/…/v3.14.1.
 
 Two consequences the wiring must not be surprised by. The `go.mod`/`go.sum` diff of subtask 1 is not
 confined to the `require` line, and it is correct — a reviewer seeing the `go.sum` growth should not
-"clean it up". And CI's Go jobs read `go-version-file: go.mod`
-[measured `a18467f:.github/workflows/ci.yml` · `grep -n 'go-version-file' .github/workflows/ci.yml`
-→ `go-version-file: go.mod` on each `actions/setup-go@v7` step], so the directive change is the
-value those jobs resolve; `1.26.0` is a version this toolchain already satisfies
-[measured `a18467f` · `go version` → `go version go1.26.5-X:nodwarf5 linux/amd64`].
+"clean it up". And the CI half of the directive change is answered by the workflow, not by this
+machine's `go version`: the workflow sets `GOTOOLCHAIN: local` for every job, and each Go job
+resolves its toolchain from the very directive the change edits
+[measured `bba84c6:.github/workflows/ci.yml` · `grep -n 'GOTOOLCHAIN' .github/workflows/ci.yml` →
+`GOTOOLCHAIN: local` in the workflow-level `env:` block ·
+`grep -n 'go-version-file' .github/workflows/ci.yml` → `go-version-file: go.mod` on each
+`actions/setup-go@v7` step]. Two consequences follow. `GOTOOLCHAIN=local` means **no toolchain
+download is ever attempted** during a job, so the directive must be satisfied by whatever
+`setup-go` installed; and what `setup-go` installs is read from that same directive, so the two
+move together rather than against each other. `actions/setup-go`'s own documentation says it falls
+back to the `go` directive and matches by semver, and does **not** state how it resolves a
+three-part value [https://github.com/actions/setup-go, fetched 2026-09-08]. That ambiguity is not
+load-bearing here: both readings of `1.26.0` — that exact patch, or the newest of the line —
+satisfy a `go 1.26.0` directive, and a value `setup-go` could not resolve at all fails its own step
+loudly instead of silently selecting a wrong toolchain.
+
+Round 3 discharged this with `go version` on the development machine. That is an adjacent channel:
+it answers what a local build does, not what `setup-go` resolves, and the evidence above is
+recorded in its place so the citation names the channel it answers.
 
 ### D4 — What the machine gate decides, and what stays review-judged
 
@@ -267,6 +285,41 @@ the shape `check-citations.sh` already models for its own high-water mark
 `grep -n 'INSTRUMENT reading\|Instrument failure' .claude/skills/ai-audit/scripts/check-citations.sh` →
 `# The high-water mark is an INSTRUMENT reading.` and `Instrument failure, not a citation finding`].
 
+**`.githooks/**` is gated as a directory, so the router keys it on content, not on an extension.**
+Every other class KD-1 names is keyed by an extension or by a whole file name; `.githooks/**` is the
+one keyed by a path prefix, and its members are not all `*.sh`
+[measured `bba84c6:ai-docs/plans/2026-09-08-comment-reference-ban.spec.md` § KD-1 ·
+`grep -n 'KD-1 — which file classes' ai-docs/plans/2026-09-08-comment-reference-ban.spec.md` → the
+class list is the source extensions, the whole file names `.gitignore`, `.env.example` and
+`Makefile`, and `.githooks/**`]. Today the directory holds
+`coverage-ratchet.sh` beside an extension-less, shebang-bearing `pre-commit`
+[measured `bba84c6` · `git ls-files -s .githooks` → `100755 … .githooks/coverage-ratchet.sh` and
+`100755 … .githooks/pre-commit`], and after subtask 10 that same tracked entry is a symlink whose
+blob is the target path rather than a script `[derived → AC7]`. Neither default a router could fall
+into is acceptable: "absent from the extension table ⇒ not gated" silently drops a class KD-1 gates,
+which is the exact silent-violation shape this gate exists to stop, and "absent from the extension
+table ⇒ exit 2" turns `verify` red the moment subtask 15 wires it. The rule is therefore explicit:
+
+- a path under `.githooks/**` that ends in `.sh` **or** whose content begins with a `#!` shebang
+  goes to the shell extractor — in `--staged` mode the content read is the index blob, as for every
+  other mode-`--staged` decision above;
+- a **symlink entry**, wherever in the gated set it appears, is **skipped, and the skip is
+  reported** rather than silent. A link carries no comment of its own, and its target is itself a
+  tracked `*.sh` scanned under its own path `[derived → AC7]`, so nothing is dropped; skipping it is also what stops
+  one body being reported twice, once under each name. The router recognises the link by its index
+  mode in `--staged` mode — a staged symlink is recorded as mode `120000`
+  [measured `bba84c6` · scratch repository, `ln -s real.sh link && git add link && git ls-files -s`
+  → `120000 … link` beside `100755 … real.sh`] — and by `lstat` in worktree mode;
+- anything else under `.githooks/**` is an **instrument failure — exit 2**, because the gated set
+  names a file the gate cannot decide, and loud beats silent at that boundary. Nothing is in that
+  branch today or after the change — every shebang-bearing tracked file outside `.githooks/` already
+  ends in `.sh`
+  [measured `bba84c6` ·
+  `git ls-files | while read -r f; do head -c2 "$f" | grep -q '#!' && echo "$f"; done` →
+  the `ai-docs/scripts/`, `.claude/skills/*/scripts/` and `.githooks/` scripts, with
+  `.githooks/pre-commit` the only extension-less member] — and AC8 is what keeps it that way
+  `[derived → AC8]`.
+
 `git` is invoked with a fixed argument vector and no shell. `gosec` may still flag the subprocess;
 if it does, the suppression is a specific `//nolint:gosec` with a stated reason, which is what
 `nolintlint`'s `require-specific` and `require-explanation` settings demand, and the config's only
@@ -313,9 +366,13 @@ locks
 Both assertions survive a symlink, because `grep` and `[ -x ]` follow one.
 
 That suite builds a throwaway repository by copying `.githooks` into a sandbox, and `cp -r`
-preserves a symlink on this toolchain
-[measured · scratch probe, a directory holding `real.sh` and a symlink to it, `cp -r` → the copy
-lists `link -> real.sh`]. So the sandbox inherits the new shape. But that sandbox has no Go module
+preserves a symlink on this toolchain. This is external-tool behaviour rather than a fact about a
+file in the tree, so the pin fixes the checkout the probe ran against, not a coordinate inside it
+[measured `bba84c6` · scratch probe under the session scratchpad: a directory holding `real.sh` and
+a symlink `link -> real.sh`, `cp -r src dst` → `ls -l dst` lists `link -> real.sh`; the same
+directory staged in a throwaway repository → `git ls-files -s` reports mode `120000` for `link`].
+So the sandbox inherits the new shape, and the tracked entry subtask 10 creates is recorded as a
+link rather than as a second copy of the script. But that sandbox has no Go module
 and stages no gated path, and a dispatcher that unconditionally ran the gate there would refuse
 every fixture commit and turn the suite red. The dispatcher therefore has named skip conditions and
 prints each one — D16 states them, and states the seam that lets the suite exercise a real refusal
@@ -355,6 +412,45 @@ file — an implementation the sweep destroys
 `usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }`].
 
 The fixed line `  -h|--help) usage; exit 0 ;;` is the shape marker the checker of D10 greps for.
+
+**Why the block is copied into each script instead of sourced from a shared helper.** The
+duplication is far past the `≥ 3`-site threshold at which this subagent's charter demands a shared
+unit rather than copy-paste, so the argument is owed rather than assumed. Call sites: the block
+lands in every script of the D10 set, and that set — derived at sweep time from the merge base, not
+listed here — is a subset of the tracked `*.sh` that carry usage prose in a comment today,
+`≥20` (verified `git ls-files '*.sh' | xargs grep -lE '^[[:space:]]*#.*([Uu]sage|[Rr]unnable)'`,
+spanning `ai-docs/scripts/`, `.claude/skills/*/scripts/` and `.githooks/`).
+
+The alternative — a sourced library, `ai-docs/scripts/lib/usage.sh` or similar — loses on a
+measured property of this corpus, not on "minimal surface" or "no new file". **No script here
+resolves its own location.** Every tracked `*.sh` that resolves anything resolves the *repository
+root*, through `git rev-parse --show-toplevel`; none uses `BASH_SOURCE` or `dirname "$0"`, and none
+sources a sibling file at all
+[measured `bba84c6` · `git ls-files '*.sh' | xargs grep -ln 'BASH_SOURCE\|dirname "\$0"'` → no
+output · `git ls-files '*.sh' | xargs grep -nE '^[[:space:]]*(\.|source)[[:space:]]+'` → no output ·
+the same scan for `show-toplevel` → the `ai-docs/scripts/` guards, both skill suites and
+`.githooks/coverage-ratchet.sh`]. A library would therefore have to be reached either from the repo
+root — which makes every guard consult `git` before it can answer `--help`, destroying the one
+property AC19 is about, that nothing happens first (D9 names "no `git` invoked" among the things
+that must not) — or from a new `BASH_SOURCE` prologue in every script, which is the same
+duplication moved one level down, plus a resolution failure mode the corpus does not have today. It also breaks the one place a guard already runs outside this tree:
+`test-precommit-dispatch.sh` copies `.githooks/` into a throwaway repository and runs the hook
+there, where a sibling library outside that directory does not exist
+[measured `bba84c6:ai-docs/scripts/test-precommit-dispatch.sh` ·
+`grep -n 'cp -r' ai-docs/scripts/test-precommit-dispatch.sh` →
+`cp -r "$repo_root/.githooks" "$sut/.githooks"` and the same copy into `"$control"`]. And the
+scripts answer to callers with different cwd contracts — `Makefile`, CI `run:` steps, a
+`.claude/settings.json` hook body, and the pre-commit hook
+[measured `bba84c6` · `grep -n 'coverage-ratchet' Makefile` → `.githooks/coverage-ratchet.sh
+--check` · `grep -n 'bash ai-docs/scripts' .github/workflows/ci.yml` → the Harness-guards steps ·
+`grep -n 'check-review-register' .claude/settings.json` → a hook body running
+`script=ai-docs/scripts/check-review-register.sh` by repo-root-relative path].
+
+What is shared is only the dispatch: `usage()`'s body states a different invocation grammar in every
+script `[derived → AC17, AC18]`. The drift the charter warns about is answered by gating rather than
+by trust — D10's checker greps the fixed marker line over the tracked tree, and subtask 12's
+completion condition is byte-identity of that line across every script that answers `--help`
+`[derived → AC19]`.
 
 **AC19 spans a group boundary, so the shape is pinned to an artefact rather than to a memory.**
 `coverage-ratchet.sh` takes this shape in subtask 8 (Group A, code change-type — `.githooks/**`);
@@ -445,6 +541,22 @@ completeness `.env.example` reaches per variable; a group key gains prose when t
 introduction. The placeholder status of the numbers is a fact about the file and survives, restated
 without the issue number and without the design-section pointer that currently carries it. No value
 changes.
+
+**Where that prose comes from, since this document is not the source.** The pointer being deleted
+is, for most keys, the only carrier in the tree of what the key means, so the order of operations is
+part of the subtask: for each leaf key the implementor **reads the `docs/DESIGN.md` section the
+key's own pointer names, and reads it before stripping that pointer**, then writes the English prose
+from what that section says the key controls; the pointer is removed in the same edit that replaces
+it, never in an earlier pass. For a leaf key that carries no pointer today — several do not — the
+source is the section covering that key's mechanic, and the file-level frame is `docs/DESIGN.md`
+§16.5, which is what the header's own pointer names
+[measured `bba84c6:config/balance.yaml` · `grep -nE '#.*(DESIGN|§)' config/balance.yaml` → the
+per-key comments are `docs/DESIGN.md §…` pointers, some of them carrying a clause of prose beside
+the pointer, and the header's pointer is §16.5 · `cat -n config/balance.yaml` → leaf keys including
+`cap`, `step_cost` and `backpack_ttl` carry no comment at all]. `docs/DESIGN.md` is Russian and the replacement is English (KD-12), so this is a
+translation of substance into self-contained prose, not a transcription of wording — and the
+subtask is routed to the code group by its change-type, so the reading is stated here rather than
+assumed `[derived → AC11]`.
 
 ### D14 — `.env.example` (AC12)
 
@@ -591,7 +703,7 @@ KD-18 leaves the shape to the design. Two were open; the design takes the second
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | Comment extraction: the file-class router and one extractor per grammar (Go, shell, YAML, SQL, `Makefile`, `.gitignore`, `.env.example`), each returning marker-stripped text with a line number — the YAML one via the D1a reconciliation, since yaml.v3 reports the node's line and not the comment's; add the `mvdan.cc/sh/v3` requirement via `go get` + `go mod tidy`, expecting the `go.sum` growth and the `go`-directive normalisation D3 measures | `internal/commentref/` (extractors + tests), `go.mod`, `go.sum` | — |
+| 1 | Comment extraction: the file-class router and one extractor per grammar (Go, shell, YAML, SQL, `Makefile`, `.gitignore`, `.env.example`), each returning marker-stripped text with a line number — the YAML one via the D1a reconciliation, since yaml.v3 reports the node's line and not the comment's; the router keys `.githooks/**` on content per D6, since that class alone is not extension-keyed — `.sh`-or-shebang to the shell extractor, a symlink entry skipped with the skip reported, anything else exit 2; add the `mvdan.cc/sh/v3` requirement via `go get` + `go mod tidy`, expecting the `go.sum` growth and the `go`-directive normalisation D3 measures | `internal/commentref/` (extractors + tests), `go.mod`, `go.sum` | — |
 | 2 | The banned-class classifier (D4) and the exemption pass (D5), over extracted comments | `internal/commentref/` (classifier + tests) | 1 |
 | 3 | The command: the input modes and exit codes D6 names, the `<file>:<line>: <class>: <text>` report, a testable `run` with a thin `main` | `cmd/commentrefs/` | 2 |
 | 4 | Sweep `cmd/bot`, `internal/config`, `internal/backoff` to the gate's silence (D12) | `cmd/bot/*.go`, `internal/config/*.go`, `internal/backoff/*.go` | 3 |
@@ -786,7 +898,12 @@ Scenarios, one table per grammar, each case a source snippet as a Go string lite
   quoted value asserted **absent**. That library is the grammar to match because it is what reads
   this file in this tree (D14).
 - Router: each gated path shape maps to its extractor; a path outside the gated set is reported as
-  not gated rather than silently skipped.
+  not gated rather than silently skipped; and the `.githooks/**` branch of D6, which is where the
+  gated set stops being extension-keyed — an extension-less shebang-bearing file routed to the shell
+  extractor; a **symlink** entry skipped with its skip reported, asserted in **both** `--staged` and
+  worktree mode, and paired with a case asserting the link's target is still reported under its own
+  path, so "skipped" cannot silently become "ungated"; and an extension-less, non-shebang,
+  non-symlink file under `.githooks/` escalating to **exit 2** rather than passing as clean.
 Fixtures: string literals in the test file, plus `git ls-files` for the whole-tree parse case.
 Instrument check: for each grammar, a case whose expected list is deliberately non-empty beside a
 case whose expected list is empty, so a router returning nothing cannot pass the table.
