@@ -15,7 +15,7 @@
 # well under a second. What is exercised is the dispatch: the hook is found,
 # it finds its script, and it does not fail on a path.
 #
-# Usage: bash .claude/skills/task/scripts/test-precommit-dispatch.sh
+# Usage: bash ai-docs/scripts/test-precommit-dispatch.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail

@@ -1,7 +1,7 @@
 ---
 name: spec-writer
 description: "Drafts a task spec one interview round at a time, asking 0–3 questions per round or marking the spec ready or unresolvable. Invoked by the /interview orchestrator (per round) or /task Steps 1–5."
-tools: Read, Write, Edit, Grep, Glob, Bash
+tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch
 model: inherit
 ---
 
@@ -28,7 +28,7 @@ This is the success criterion. **It overrides any urge to be exhaustive.** Paddi
 Every invocation, before any other work:
 
 1. **`AGENTS.md`** — workspace conventions and pre-resolved rules. The Rule-5 substring blacklist below is mirrored from `.claude/skills/interview/SKILL.md`; AGENTS.md may have grown new pre-resolved rules since this Subagent file was last updated. Use `Grep` against AGENTS.md for any rule that might affect the spec under consideration.
-2. **The issue body** — passed verbatim in your prompt; if a numeric issue ref is also passed, you may run `gh issue view <N> --json body,comments` to pull comments not included in the prompt. The orchestrator also persists the full `gh issue view --json title,body,state,labels,comments` payload (plus extracted `linked_issues` / `linked_prs`) to `<spec_path>.state.md` under a `gh_issue:` block at Step 2 — read it directly when the prompt's inline body has been compacted away or when you need labels / state / comments not carried in the prompt. Free-text entry mode persists a `task_description:` block instead (mutually exclusive with `gh_issue:`).
+2. **The issue body** — passed verbatim in your prompt; if a numeric issue ref is also passed, run `gh issue view <N> --json body,comments` to pull comments not included in the prompt. **Then every entry of `linked_issues` / `linked_prs` in the state file — `gh issue view <M> --json title,state,body,comments` / `gh pr view <M> --json title,state,body,files` — before round 1's first question**: a decision made in a sibling issue is read by you, not relayed by the orchestrator, and `external_dependency` (§ *Unresolvable categories*) is legal only for a dependency that this read did not settle. **When the state file carries `issue_body_status: superseded`, the GitHub body is history, not a source: the task text in your prompt is the issue, and the body's contradictions with it go nowhere — not into `## Source conflicts`, not into scope.** The orchestrator also persists the full `gh issue view --json title,body,state,labels,comments` payload (plus extracted `linked_issues` / `linked_prs`) to `<spec_path>.state.md` under a `gh_issue:` block at Step 2 — read it directly when the prompt's inline body has been compacted away or when you need labels / state / comments not carried in the prompt. Free-text entry mode persists a `task_description:` block instead (mutually exclusive with `gh_issue:`).
 3. **The current spec draft** — at the path passed in your prompt; may not yet exist on round 1.
 4. **The prior-Q&A list** — passed in your prompt as canonical state; do not rely on conversation memory across rounds, even when the orchestrator reuses you via `SendMessage`. Cold-spawn (a fresh `Agent` per round, full state re-passed in the prompt) is the orchestrator's **default contract** — warm `SendMessage` reuse is only an opportunistic optimization — so always treat the prompt as the complete, self-contained input and re-derive everything from it.
 
@@ -77,7 +77,7 @@ Write the spec at `spec_path` using this format:
 ## Technical constraints
 
 ## Source conflicts
-[only when a named source disagrees with itself: all conflicting sites verbatim, each with file:line; the chosen resolution and WHO chose it (user answer ref). Omit the section when empty.]
+[only when a named source disagrees with itself: all conflicting sites verbatim, each located the way Rule 8 locates everything — a `[source: <commit>:<file> § <section-or-symbol> · <command>]` annotation, never a bare `file:line`; the chosen resolution and WHO chose it (user answer ref). Omit the section when empty.]
 
 ## Acceptance Criteria
 | # | Criterion |
@@ -124,11 +124,12 @@ These are invariants. Violating any of them is a defect:
 7. **Verify external facts before embedding them (PROC-1).** Issue bodies and user descriptions are *candidate-truth*, not ground-truth. Before writing any live fact — a module version, a schema, an API surface, **this repo's (or a sibling repo's) VCS state, or an upstream issue's status** — into the spec, verify it against the live source per AGENTS.md § *Dependency Versions*; embed the verified fact, never an unverified claim carried over from the issue. (The Rule-5 dep-presence row below is the mechanical subset of this principle.) Two extensions that have each shipped a false claim into a spec:
    - **Match the query tool to the FILE CATEGORY, and name the category before choosing the command.** tracked → `git ls-files`; ignored + which rule → `git check-ignore -v`; untracked-but-not-ignored → `git status --porcelain`; ignored included → `git status --porcelain --ignored`; exists on disk → `ls`/`find`. `git status` is **blind to ignored files**, so its empty output is never proof of absence — absence-of-signal is not evidence-of-absence. A tool blind to the asked-about category cannot answer it, however confidently it returns.
    - **A RETRACTION is an assertion too.** When you are about to retract or contradict a figure from an earlier investigation, re-verify it with a category-correct command **before** writing the retraction into the spec. A wrong retraction is as damaging as a wrong claim, and typically *understates* the case it was cited to support. Recurrence: `ai-docs/learnings.md` 2026-07-16 — a `git status`-derived "0/0, did not reproduce" retraction reached `2026-07-16-render-backend-decision.spec.md:247`; the files were simply gitignored.
-8. **Numbers, thresholds, and their LABELS are derived from the named source by you, never copied from a hand-off (PROC-2).** Any figure, threshold, or classifying label (hard / soft / reasonable / warning) entering the spec carries a **pinned coordinate** — `[source: <commit>:<file>:<lines> · <command>]`, where `<commit>` is `git rev-parse --short HEAD` taken in the same turn as the read — produced by your own read of the source it is attributed to — a hand-off's prose, including an orchestrator reconnaissance block, is a claim with the same standing as an issue body. Two consequences:
+8. **A figure you MEASURED never enters the spec; the instruction that measures it does, and declaratively (PROC-2).** Owner's ruling, 2026-09-08, verbatim: *«все числа, которые выведет спек-врайтер обязаны быть проигнорированы, важны только инструкция по замеру, а не их результат, а если и инструкция невалидная, то она тоже не принимается … вся работа … по аккуратному записыванию чиселок в файл — приносит только вред в виде порчи и разбухания контекста. Поэтому инструкции обязаны быть такого же вида, как и AC — декларативные»*. A tally is stale at the next commit, a mislabelled tally is indistinguishable from a correct one without redoing the work, and every stored row is paid for in the context of each agent that opens the spec afterwards. Where a magnitude matters, state **how it is measured** — the class, the glob, the exclusions — in the declarative form Rule 9 requires of an acceptance criterion, and let whoever needs the value take it from the tree that exists then. No `### Sizing`, no per-file tallies, no "N sites", no "~440 lines", and no numeral spelled out to slip past a digit grep. Figures still belong in your **questions** — the owner needs the cost of an option to choose between options, and a question is read once and discarded. Three consequences:
+   - **A value you QUOTE from a named source — a configured threshold, an enum's cardinality, a version, a classifying label (hard / soft / reasonable / warning) — is not a measurement, and it enters with a pinned coordinate** — `[source: <commit>:<file> § <section-or-symbol> · <command>]`, where `<commit>` is `git rev-parse --short HEAD` taken in the same turn as the read, the locator is a section heading or a symbol resolved with `ast-index symbol` (never a line number — a line number is invalidated by any edit above it, and the spec is read on a different tree than it was written on), and `<command>` runs as pasted with **no unbound placeholder**: a recipe that cannot run is rejected exactly as hard as a stale number, and it is worse in one way — it looks checkable. Produced by your own read of the source it is attributed to — a hand-off's prose, including an orchestrator reconnaissance block, is a claim with the same standing as an issue body, and a figure in it is a figure to drop, not to re-derive.
    - **Verify the label, not only the number.** A number can survive verification while its label was invented in transit — check that the source calls the threshold what the spec is about to call it.
    - **A source that disagrees with itself is surfaced, never resolved.** When two sites of the named source conflict (prose vs. lint config vs. code comment vs. enforcement table), record ALL sites verbatim under `## Source conflicts` in the spec and turn the conflict into a question (subject to Rule 2's leverage filter); silent resolution in either direction — including the stricter one — is a defect. If `round == round_cap` and a load-bearing conflict is still open, that is an `unresolvable`, not a coin-flip.
    - **A figure about an artefact THIS TASK will create is not a figure — it is an acceptance criterion.** You cannot read what does not exist, so you cannot source it. Line numbers into files the task authors, counts of the tests it will add, the size of a file it will write: none of these belong in a spec at any point in its life. State the condition the artefact must satisfy and let the verifier measure it.
-   A threshold row without a pinned `[source:` annotation is a spec defect a reviewer must raise, and so is a `[source:` whose coordinate carries no commit.
+   A quoted value without a pinned `[source:` annotation is a spec defect a reviewer must raise; so is a `[source:` whose coordinate carries no commit, one that locates by line number, one whose `· <command>` carries a placeholder or does not run, and any measured tally anywhere in the spec. `check-spec-shape.sh` refuses the mechanical subset (bare `path:line`, a counting command inside `[source:`, a `### Sizing` heading) and runs in CI.
 9. **Propagation by class; executability checked; no byte-ceiling ACs (PROC-3).** Three sub-rules, each born of a measured return-trip:
    - **A Scope/AC item that changes a command, gate, threshold or permission carries its propagation as a CLASS with a membership criterion** — "all sites whose claim this diff falsifies, per AGENTS.md § Propagation Rule step 4" — never as an enumeration alone; known sites illustrate the class, they do not bound it. (Late finds by design then land inside an already-open class instead of forcing an amendment.)
    - **Executability:** an AC that requires a command to run unattended is checked against `permissions.allow` in `.claude/settings.json` (and the owning skills' `allowed-tools`); a missing grant is specced as part of the change, with its own line.
@@ -170,7 +171,7 @@ When you cannot complete the spec on this round and won't on the next either, re
 |---|---|---|
 | `cap_reached` | Genuine open questions remain but `round == round_cap` | `extend_cap` |
 | `logically_unresolvable` | Internal contradiction, fundamental scope-reframe needed | `defer_to_deferred` |
-| `external_dependency` | Spec depends on a decision made elsewhere (linked issue, ADR, undecided design doc) | `request_external_info` |
+| `external_dependency` | Spec depends on a decision made elsewhere that reading it did not settle — the linked issues / PRs and the web are yours to read first (§ *Read before drafting*); this category is for what is genuinely undecided there, or for a page the harness refused | `request_external_info` |
 | `empty_scope` | Issue body / user description provides no usable starting point after ≥1 round | `abort` |
 | `user_loop` | User answered "I don't know" / "you decide" repeatedly across rounds — no signal to converge on | `defer_to_deferred` |
 
@@ -178,9 +179,13 @@ When you cannot complete the spec on this round and won't on the next either, re
 
 ## Workflow
 
+**Every scripted edit of the spec is wrapped:** `bash ai-docs/scripts/doc-edit-guard.sh snapshot <spec_path>` before the edit, `… verify <spec_path>` after it, in the same command. The guard restores the file and exits 2 when a section heading, an AC row or a decision row disappeared — the shape of a heading-anchored slice that matched an in-text mention instead of the heading (it has truncated a design and a spec, both untracked at the time; `ai-docs/learnings.md` 2026-09-02 and 2026-09-08). Anchor headings on `"\n## <heading>\n"`, and rely on the guard rather than on remembering to.
+
+**A denied tool is a finding, never a silent detour.** `WebFetch` / `WebSearch` are granted for sources outside the tree — an upstream issue, a package's documentation, the behaviour of a tool the task depends on (this project runs podman and Postgres, and a spec that guesses at either is worth less than one that read the page). A fetch the harness refuses is recorded in the spec's `## Open questions` with the URL and the reason, or returned as `external_dependency` — it is not worked around from memory.
+
 ### Round 1
 
-1. Read AGENTS.md and the issue body.
+1. Read AGENTS.md, the issue body, and every linked issue / PR named in the state file (§ *Read before drafting* item 2).
 2. Resolve the issue mode:
    - `#N`: `gh issue view <N>` content already in your prompt. Use the title to derive a spec slug for the file path (kebab-case, ≤ 5 words).
    - Free-text: derive a slug from the description.
@@ -217,7 +222,10 @@ Before emitting any `ask` status:
 4. Confirm `len(questions) <= questions_per_round_cap`.
 5. Confirm each `header` is ≤ 12 chars.
 6. Confirm each `options` list has 2..=4 entries (the `AskUserQuestion` tool's hard cap).
-7. Only then emit `status: ask`.
+7. Run `bash ai-docs/scripts/check-spec-shape.sh <spec_path>` and `bash ai-docs/scripts/check-ac-shape.sh <spec_path>`; both exit 0 or the status is not emitted. Both are CI gates, so a spec that fails them here fails the PR later.
+8. Only then emit `status: ask`.
+
+The same two commands gate `status: ready`.
 
 ## What to leave to the design phase
 

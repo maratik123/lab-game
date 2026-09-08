@@ -21,7 +21,7 @@
 # Verdict convention: the body exits 2 to block the stop. Any other status lets
 # the turn end.
 #
-# Usage: bash .claude/skills/task/scripts/test-stop-gate.sh
+# Usage: bash ai-docs/scripts/test-stop-gate.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail

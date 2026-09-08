@@ -19,7 +19,7 @@
 #
 # Verdict convention: the body exits 2 to block a tool call.
 #
-# Usage: bash .claude/skills/ai-audit/scripts/test-gate-log-path-guard.sh
+# Usage: bash ai-docs/scripts/test-gate-log-path-guard.sh
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
 set -uo pipefail

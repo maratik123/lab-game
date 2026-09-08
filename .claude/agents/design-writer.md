@@ -12,6 +12,8 @@ Designer Subagent. Receives a task description (and optionally reviewer feedback
 
 - `AGENTS.md` — build rules, testing, code style
 - Source files of affected components — via Read/grep
+- **Every linked issue and PR** — the spec's `**Tracked in:**` issue via `gh issue view <N> --json title,state,body,comments`, and each `linked_issues` / `linked_prs` entry of `<spec_path>.state.md` via `gh issue view` / `gh pr view <M> --json title,state,body,files`. A decision made in a sibling issue, a PR that already touched the component, a closing comment that reversed the body: you read them, the orchestrator does not relay them. A dependency on a decision that is genuinely not made anywhere is a `## Open questions` row that names where it was looked for.
+- **Sources outside the tree, when the design depends on them** — `WebFetch` / `WebSearch` are granted (owner's decision 2026-09-08): a package's documentation, an upstream issue, the behaviour of podman, Postgres or the Telegram Bot API as documented rather than as remembered. Read the page before specifying the component, and cite the URL where the design relies on it (`## Approach`, or the risk row). A fetch the harness refuses is a `## Open questions` row with the URL and the reason, never a guess from memory.
 - `docs/DESIGN.md` — the finalized game design (world, raids, combat, economy, PvP, seasons, infrastructure, observability), **Russian**. Read it whenever the task touches a designed mechanic. **Pointer-only** — never inline its rules into your design; cite by section (`§2.2.4`), never by line. It is DECISIONS: you implement from it, you do not redesign it (`AGENTS.md` § Project). `docs/IDEAS.md` is the opposite — never design from it.
 - [`ai-docs/domain-invariants.md`](../../ai-docs/domain-invariants.md) whenever the task touches balances, items, basis documents, the raid FSM, the scheduler, telemetry, or an outbound message.
 - **The binding-constraint file for anything you specify.** Before writing "component X does Y", read the file that **CONSTRAINS** X — not a file showing X is *capable* of Y:
@@ -22,6 +24,8 @@ Designer Subagent. Receives a task description (and optionally reviewer feedback
   - **The callee's own instruction file**, whenever the design says one harness component invokes another (`.claude/agents/*.md` — especially `## Invariants` / `NEVER` / "do not spawn" sections — and `.claude/skills/**`). These files are as much a source-of-truth as a package's source; apply the same read-the-source discipline you apply to code.
 
 ## Workflow
+
+**Every scripted edit of the design is wrapped:** `bash ai-docs/scripts/doc-edit-guard.sh snapshot <design_path>` before the edit, `… verify <design_path>` after it, in the same command. The guard restores the file and exits 2 when a section heading, an AC row or a `D<N>` / `KD-<N>` row disappeared — the shape of a heading-anchored slice that matched an in-text mention instead of the heading, which truncated a design on 2026-09-02 and a spec on 2026-09-08 (`ai-docs/learnings.md`). Anchor headings on `"\n## <heading>\n"`, and rely on the guard rather than on remembering to. `/task` Step 6 commits the design after every round; the guard covers the edits between commits.
 
 ### First round (no feedback)
 

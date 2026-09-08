@@ -150,7 +150,7 @@ jobs:
       - name: shellcheck every harness script
         run: |
           set -euo pipefail
-          find .claude -name '*.sh' -print0 | xargs -0 -r shellcheck -s bash
+          find .claude ai-docs/scripts -name '*.sh' -print0 | xargs -0 -r shellcheck -s bash
       - name: shellcheck every hook body in settings.json
         run: |
           set -euo pipefail
@@ -179,16 +179,21 @@ jobs:
           set -euo pipefail
           bash .claude/skills/ai-audit/scripts/test-check-citations.sh
           bash .claude/skills/task/scripts/test-append-task-run.sh
-          bash .claude/skills/ai-audit/scripts/test-piped-gate-guard.sh
-          bash .claude/skills/ai-audit/scripts/test-spawn-contract-guard.sh
-          bash .claude/skills/task/scripts/test-stop-gate.sh
-          bash .claude/skills/ai-audit/scripts/test-gate-log-path-guard.sh
-          bash .claude/skills/ai-audit/scripts/test-no-verify-guard.sh
-          bash .claude/skills/ai-audit/scripts/test-ac-shape.sh
-          bash .claude/skills/ai-audit/scripts/test-review-register.sh
-          bash .claude/skills/task/scripts/test-precommit-dispatch.sh
+          bash ai-docs/scripts/test-piped-gate-guard.sh
+          bash ai-docs/scripts/test-spawn-contract-guard.sh
+          bash ai-docs/scripts/test-stop-gate.sh
+          bash ai-docs/scripts/test-gate-log-path-guard.sh
+          bash ai-docs/scripts/test-no-verify-guard.sh
+          bash ai-docs/scripts/test-ac-shape.sh
+          bash ai-docs/scripts/test-review-register.sh
+          bash ai-docs/scripts/test-precommit-dispatch.sh
+          bash ai-docs/scripts/test-instruction-edit-guard.sh
+          bash ai-docs/scripts/test-doc-edit-guard.sh
+          bash ai-docs/scripts/test-spec-shape.sh
       - name: acceptance criteria state conditions, not tests
-        run: bash .claude/skills/ai-audit/scripts/check-ac-shape.sh
+        run: bash ai-docs/scripts/check-ac-shape.sh
+      - name: specs locate by commit or symbol and store no tally
+        run: bash ai-docs/scripts/check-spec-shape.sh
       - name: relative markdown links resolve
         run: |
           set -euo pipefail
