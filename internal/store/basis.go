@@ -90,9 +90,9 @@ func (m *ManualCorrection) insert(ctx context.Context, tx pgx.Tx) (int64, error)
 }
 
 // DeferredTask is the basis for a mechanic's effects posted by a one-shot
-// scheduled task's handler (design D14, internal/scheduler). TaskID is the
+// scheduled task's handler. TaskID is the
 // scheduled_task row's id, carried by value with deliberately NO foreign
-// key back to scheduled_task (AC27): delete-on-done removes the task row
+// key back to scheduled_task: delete-on-done removes the task row
 // while its basis document and postings live on. TaskID is the Go zero
 // value when the handler has no task id to name (stored as NULL via
 // NULLIF, since scheduled_task.id is GENERATED ALWAYS AS IDENTITY and so
@@ -133,9 +133,9 @@ func (d *DeferredTask) insert(ctx context.Context, tx pgx.Tx) (int64, error) {
 }
 
 // RecurrentTask is the basis for a mechanic's effects posted by a
-// recurring scheduled task's handler (design D14, internal/scheduler).
+// recurring scheduled task's handler.
 // Same shape as DeferredTask, and for the same reasons: TaskID by value
-// with deliberately no foreign key back to scheduled_task (AC27), zero
+// with deliberately no foreign key back to scheduled_task, zero
 // stored as NULL via NULLIF, and InstanceKey's empty string likewise.
 type RecurrentTask struct {
 	TaskID      int64

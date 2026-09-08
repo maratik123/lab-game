@@ -1,6 +1,6 @@
 // Package testdb provisions a PostgreSQL instance for package tests that
-// exercise real database behaviour (AGENTS.md § Go Test Conventions —
-// "Postgres is tested against Postgres"). It never skips: with neither the
+// exercise real database behaviour — Postgres is tested against Postgres.
+// It never skips: with neither the
 // LAB_GAME_TEST_DSN environment variable nor a reachable container runtime,
 // Main returns a non-zero exit code instead of letting tests report a false
 // pass.
@@ -166,8 +166,8 @@ const (
 	// a package's TestMain; Ryuk remains the crash safety net.
 	terminateTimeout = 30 * time.Second
 	// schemaMaxConns caps each per-test pool so 16 parallel subtests stay
-	// well under the server's connection limit (design D11: 16 × 4 = 64
-	// against max_connections = 100).
+	// well under the server's connection limit (16 × 4 = 64 against
+	// max_connections = 100).
 	schemaMaxConns = 4
 )
 
@@ -202,8 +202,8 @@ func Schema(tb testing.TB) *pgxpool.Config {
 
 	quoted := pgx.Identifier{name}.Sanitize()
 
-	// Schema's signature is fixed by design (D11: Schema(tb) *pgxpool.Config,
-	// no context parameter) — it necessarily starts its own background
+	// Schema's signature is fixed by design — Schema(tb) *pgxpool.Config,
+	// no context parameter — so it necessarily starts its own background
 	// context for the short-lived admin connection that creates the schema.
 	ctx := context.Background()
 	admin, err := pgxpool.NewWithConfig(ctx, cfg.Copy())

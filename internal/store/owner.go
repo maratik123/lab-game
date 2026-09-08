@@ -10,9 +10,9 @@ import (
 // Queryer is the single QueryRow method a read shared between a
 // transaction and a pool-backed caller needs — satisfied by both pgx.Tx
 // and *pgxpool.Pool. It is declared here, by PlayerExists' own package,
-// per this project's interfaces-declared-by-the-consumer rule (AGENTS.md
-// § API Naming, design D11): PlayerExists runs both on a handler's tx and
-// on internal/ingest's gate, which has no transaction to borrow.
+// per this project's interfaces-declared-by-the-consumer rule: PlayerExists
+// runs both on a handler's tx and on the update-ingest loop's gate, which
+// has no transaction to borrow.
 type Queryer interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
@@ -20,7 +20,7 @@ type Queryer interface {
 // PlayerExists reports whether an owner row with kind = 'player' and the
 // given telegramID exists, queried through q. The predicate names the
 // kind because owner's uniqueness is on the (kind, telegram_id) pair and
-// a chat's own id lives in the same column (design D10) — a lookup keyed
+// a chat's own id lives in the same column — a lookup keyed
 // on telegram_id alone would match every chat the bot was ever added to.
 func PlayerExists(ctx context.Context, q Queryer, telegramID int64) (bool, error) {
 	var exists bool
@@ -58,7 +58,7 @@ type Owner struct {
 // CreateOwner creates an owner of the given kind, with its telegramID where
 // the kind requires one, and — in the same transaction — every scope whose
 // scope_definition.owner_kind matches, every account of those scopes, and a
-// zero-balance account_balance row for each controlled account (D14). The
+// zero-balance account_balance row for each controlled account. The
 // World owner is seeded by migration and is never created here: kind ==
 // OwnerWorld is rejected with ErrInvalidOwner, as is any kind outside the
 // OwnerKind mirror, and OwnerPlayer/OwnerChat with a nil telegramID —

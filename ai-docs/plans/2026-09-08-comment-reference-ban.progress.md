@@ -8,13 +8,13 @@ _Updated: 2026-09-08 09:41_
 **Last build:** not run
 **Issue:** #68
 **Spec:** ai-docs/plans/2026-09-08-comment-reference-ban.spec.md
-**current_step:** Step 8 — Group A subtask 4 of 10 complete
+**current_step:** Step 8 — Group A subtask 5 of 10 complete
 **last_passed_gate:** golangci-lint run (whole module)
 **entry_args:** 68
 
 ## Next action
 
-**Do this immediately:** start Group A subtask 5 — sweep `internal/store` + migrations, `internal/testdb`.
+**Do this immediately:** start Group A subtask 6 — sweep `internal/tg`, `internal/tgtest`.
 
 ## Subtasks
 
@@ -24,6 +24,7 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - [x] 2. The banned-class classifier (D4) and the exemption pass (D5)
 - [x] 3. The command `cmd/commentrefs`: input modes, exit codes, report format
 - [x] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
+- [x] 5. Sweep `internal/store` + migrations, `internal/testdb`
 - [ ] 3. The command `cmd/commentrefs`: input modes, exit codes, report format
 - [ ] 4. Sweep `cmd/bot`, `internal/config`, `internal/backoff`
 - [ ] 5. Sweep `internal/store` + migrations, `internal/testdb`
@@ -52,6 +53,9 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - **Subtask 3**: `AC6` — the gate's own source was run against itself (`go run ./cmd/commentrefs internal/commentref/*.go cmd/commentrefs/*.go`) and initially reported nine real findings, all in doc comments that named a gated-set grammar by its literal repository-root file name (`Makefile`, `.gitignore`, `.env.example`) or by a bare source extension token (`.sh`), plus two stray `KD-5`/`D4` design citations left over from drafting. Every doc comment was reworded to describe the grammar or behaviour without the literal banned token; the gate is clean over its own package now, verified by re-running it, not merely reasoned about.
 - **Subtask 4**: the sweep of `cmd/bot`, `internal/config`, `internal/backoff` removed roughly 120 report lines across 16 files — overwhelmingly `decision-anchor` (`D6`, `D9`, `D10`, `D13`, `D15`, `D16`, `D20`, …) and `ac-id` citations in doc comments, plus a smaller set of `repo-path` (sibling-file and package-path mentions like `internal/tg`, `transport.go`, `config/balance.yaml`) and `module-symbol` findings (`backoff.DefaultFactor`, `backoff.Exponential`, `backoff.ValidFactor` — cross-package under KD-9's "this module only" narrowing, so banned even though they name the real default/contract). Every sentence's substantive claim survived; only the outward pointer was cut, per D12 ("where a sentence exists only to carry the reference, the sentence goes with it" — no sentence here existed only for that). Verified per-file with `go run ./cmd/commentrefs <file>` after each edit, not only at the end.
 - **Subtask 4**: `config/balance.go`'s citation-stripping regex left two literal `//.` orphan comment lines (`gocritic`'s `commentFormatting` caught both); fixed by re-flowing the sentence rather than leaving the stray period, confirmed by re-running `golangci-lint run`.
+- **Subtask 5**: the sweep of `internal/store`, its embedded migrations and `internal/testdb` removed roughly 150 report lines across 24 files, the densest single subtask so far — the `00003_event_log.sql` migration alone carried ~34, mostly `§13.x`/`§11`/`§5` design-section citations woven into view-doc prose ("answers §13.3's headline MVP number") that needed rephrasing into standalone sentences ("answers the headline MVP activation number"), not just deletion.
+- **Subtask 5**: two SQL comments used "D1"/"D7" as the domain's own retention-metric shorthand (Day-1/Day-7 retention), which collided lexically with the `decision-anchor` pattern (`D[0-9]+`) though the sentence was never citing a design decision. Resolved by spelling them "Day-1"/"Day-7" in prose — clearer for a reader anyway, and it sidesteps the classifier without touching the classifier itself, consistent with the design's own risk note that the direction is conservative and the fix is to write the sentence without the colliding token.
+- **Subtask 5**: `internal/store/migrations/00004_ingest.sql`'s header comment named `scheduler.DeadTask` — a genuine cross-package module-symbol under KD-9's this-module-only narrowing, banned even from a comment that is, in substance, describing the shared contract — rephrased to describe the shape ("the same shape the scheduler's own dead-task row already has") without the qualified symbol.
 
 ## Key discoveries (don't re-investigate)
 
@@ -103,3 +107,5 @@ Groups per the design's `## Handoff plan`: **A** = 1–10 (code, `sonnet`/`code-
 - `cmd/bot/main.go`, `cmd/bot/main_test.go` — comment sweep
 - `internal/config/*.go` (all 19 files) — comment sweep
 - `internal/backoff/backoff.go`, `internal/backoff/backoff_test.go` — comment sweep
+- `internal/store/*.go` (all non-test and test files), `internal/store/migrations/*.sql` — comment sweep
+- `internal/testdb/testdb.go`, `internal/testdb/testdb_test.go` — comment sweep

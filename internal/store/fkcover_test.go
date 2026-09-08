@@ -25,7 +25,7 @@ type idxRow struct {
 // uncoveredFKs returns the names of every foreign key in the current schema
 // (contype = 'f') whose referencing columns are not covered — as a set, by
 // the leading columns of some index on the same relation whose predicate is
-// either absent or an "IS NOT NULL" partial predicate (D15/AC17).
+// either absent or an "IS NOT NULL" partial predicate.
 func uncoveredFKs(t *testing.T, ctx context.Context, q interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
 },

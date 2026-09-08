@@ -272,7 +272,7 @@ func TestSchema_constraints(t *testing.T) {
 		sqlstate(t, err, "428C9", "")
 	})
 
-	// design D14: ingest_offset is a guarded singleton, seeded by the
+	// ingest_offset is a guarded singleton, seeded by the
 	// migration itself — a second row is refused by the CHECK (id = 1)
 	// working alongside the primary key, not merely by the primary key
 	// alone (a second id could otherwise coexist).
@@ -307,7 +307,7 @@ func TestSchema_constraints(t *testing.T) {
 		}
 	})
 
-	// design D14: a give-up row with an empty kind is refused.
+	// A give-up row with an empty kind is refused.
 	t.Run("ingest_dead_update_empty_kind_refused", func(t *testing.T) {
 		t.Parallel()
 		tx, err := pool.Begin(ctx)

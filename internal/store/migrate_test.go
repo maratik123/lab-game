@@ -18,8 +18,8 @@ func TestMigrate_shape_and_seeds(t *testing.T) {
 
 	// Base tables only (plus goose's own version table) — information_schema.tables
 	// with no table_type filter also lists views, and the migration set now
-	// creates some (AC11), so this assertion is scoped to base tables and the
-	// views get their own exact-set assertion (views_test.go).
+	// creates some, so this assertion is scoped to base tables and the
+	// views get their own exact-set assertion in a sibling test file.
 	rows, err := pool.Query(ctx,
 		`SELECT table_name FROM information_schema.tables
 		 WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'`)
@@ -288,12 +288,12 @@ func TestMigrate_indexes_constraints_and_column_types(t *testing.T) {
 	}
 }
 
-// TestMigrate_scheduledTaskShape asserts D5's deliberately-absent columns
-// (AC31 — no execution marker, no heartbeat, no "completed" state value)
-// and the identity index's two-predicate scope (AC29). Neither the index
+// TestMigrate_scheduledTaskShape asserts the schema's deliberately-absent
+// columns (no execution marker, no heartbeat, no "completed" state value)
+// and the identity index's two-predicate scope. Neither the index
 // presence loop nor the CHECK substring map above can fail on a shape that
-// merely adds these things back, so this test is what actually holds AC3
-// and AC31 (§ Risks).
+// merely adds these things back, so this test is what actually holds that
+// property.
 func TestMigrate_scheduledTaskShape(t *testing.T) {
 	t.Parallel()
 
@@ -350,7 +350,7 @@ func TestMigrate_scheduledTaskShape(t *testing.T) {
 	}
 }
 
-// TestMigrate_eventShape asserts AC1's exact column enumeration for event:
+// TestMigrate_eventShape asserts the exact column enumeration for event:
 // the table-list assertion above only proves the table exists, not that its
 // shape matches, and no other test pins the column set.
 func TestMigrate_eventShape(t *testing.T) {
@@ -380,10 +380,10 @@ func TestMigrate_eventShape(t *testing.T) {
 	want := []string{"chat_id", "depth", "id", "maze_id", "payload", "player_id", "ts", "type"}
 	sort.Strings(want)
 	if !slices.Equal(cols, want) {
-		t.Fatalf("event columns = %v, want %v (AC1)", cols, want)
+		t.Fatalf("event columns = %v, want %v", cols, want)
 	}
 
-	// Nullability: only type, payload and ts are NOT NULL (AC1).
+	// Nullability: only type, payload and ts are NOT NULL.
 	nrows, err := pool.Query(ctx,
 		`SELECT column_name, is_nullable FROM information_schema.columns
 		 WHERE table_schema = current_schema() AND table_name = 'event'`)
@@ -427,7 +427,7 @@ func TestMigrate_eventShape(t *testing.T) {
 
 	// event.type's foreign key is named, so the write API can map the
 	// SQLSTATE 23503 violation of exactly this constraint to
-	// ErrUnknownEventType (AC8).
+	// ErrUnknownEventType.
 	var fkExists bool
 	if err := pool.QueryRow(ctx,
 		`SELECT EXISTS (

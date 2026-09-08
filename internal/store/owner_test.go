@@ -11,7 +11,7 @@ import (
 )
 
 // balanceInvariantViolations counts accounts whose account_balance
-// row-presence disagrees with their definition's controlled flag (AC18).
+// row-presence disagrees with their definition's controlled flag.
 func balanceInvariantViolations(t *testing.T, ctx context.Context, tx pgx.Tx) int {
 	t.Helper()
 	var count int
@@ -208,7 +208,7 @@ func TestCreateOwner_rejection_table(t *testing.T) {
 	}
 }
 
-// TestPlayerExists_kindPairIsThePredicate is design D10/D11's core
+// TestPlayerExists_kindPairIsThePredicate asserts the core
 // property: the (kind, telegram_id) PAIR is what PlayerExists checks, not
 // the telegram_id column alone — a chat sharing the same telegram_id as a
 // player must report false.
@@ -249,8 +249,9 @@ func TestPlayerExists_kindPairIsThePredicate(t *testing.T) {
 	}
 }
 
-// TestPlayerExists_noOwnerReportsFalse pins the third row of D10/D11's
-// table: an id with no owner row at all reports false, not an error.
+// TestPlayerExists_noOwnerReportsFalse pins the third row of the
+// predicate's own table: an id with no owner row at all reports false,
+// not an error.
 func TestPlayerExists_noOwnerReportsFalse(t *testing.T) {
 	t.Parallel()
 
@@ -267,7 +268,7 @@ func TestPlayerExists_noOwnerReportsFalse(t *testing.T) {
 }
 
 // TestPlayerExists_closedPoolSurfacesError asserts a closed pool's error
-// is returned rather than papered over as a false (design D11).
+// is returned rather than papered over as a false.
 func TestPlayerExists_closedPoolSurfacesError(t *testing.T) {
 	t.Parallel()
 
@@ -285,8 +286,7 @@ func TestPlayerExists_closedPoolSurfacesError(t *testing.T) {
 }
 
 // TestPlayerExists_txAndPoolAgree asserts the same call behaves
-// identically through a pgx.Tx and through a *pgxpool.Pool (design D11,
-// AC29).
+// identically through a pgx.Tx and through a *pgxpool.Pool.
 func TestPlayerExists_txAndPoolAgree(t *testing.T) {
 	t.Parallel()
 

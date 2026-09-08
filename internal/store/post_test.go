@@ -11,9 +11,10 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// AC9 positive control: the exact grep pattern (D2/AC9) must hit each of
-// the four lines below and neither decoy. Never executed as SQL — these
-// are comment text planted for the Step-9 grep sweep.
+// Positive control: the exact grep pattern this suite relies on must hit
+// each of the four lines below and neither decoy. Never executed as SQL —
+// these are comment text planted for a source-sweep test elsewhere in
+// this package.
 //
 // UPDATE posting SET amount = 0
 // delete from posting where id = 1

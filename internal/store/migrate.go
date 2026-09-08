@@ -16,7 +16,7 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Migrate applies every pending migration in internal/store/migrations to
+// Migrate applies every pending migration this package embeds to
 // pool's database, forward-only (no -- +goose Down section exists in this
 // package). It is safe to call more than once: a database already at the
 // latest migration is left unchanged. logger must be non-nil (goose rejects

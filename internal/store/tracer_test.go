@@ -15,9 +15,9 @@ type recordedStmt struct {
 }
 
 // queryRecorder is a pgx.QueryTracer that records every statement issued on
-// connections it is attached to (AC3's phase/capture-order assertions and
-// every "recorder empty after rec.Reset()" pre-SQL assertion). Safe for
-// concurrent use.
+// connections it is attached to (the phase/capture-order assertions and
+// every "recorder empty after rec.Reset()" pre-SQL assertion elsewhere in
+// this suite). Safe for concurrent use.
 type queryRecorder struct {
 	mu    sync.Mutex
 	stmts []recordedStmt
