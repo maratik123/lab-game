@@ -1,0 +1,688 @@
+# Design: Health metrics and canaries — `/metrics`, update and scheduler lag, dual `getMe`
+
+**Issue:** #23
+**Date:** 2026-09-09
+
+## Approach
+
+One new package, `internal/health`, holds the whole health-metrics surface: the registry
+constructor, the metric families, the adapters implementing each consumer-declared observer
+seam, the pgx-pool collector, the `promhttp` endpoint's server, and the canary probes with their
+ticker. Nothing in `internal/tg`, `internal/scheduler` or `internal/ingest` changes, because
+each of those already declares the seam this package plugs into and each documents a nil observer
+as checked rather than called
+[measured 9ff1fce:internal/ingest/observe.go:119-127 · `sed -n '119,127p' internal/ingest/observe.go`
+→ `// Observer receives this package's observations. A nil Observer is` / `// checked, not called, so
+the loop compiles and its` / `// tests pass with no implementation installed.`]. Installing an
+implementation is therefore purely additive, and this task changes no signature in any of them.
+
+Nothing here assembles a process. `cmd/bot` is untouched (AC29): it still loads and validates
+configuration and prints the build identity
+[measured 9ff1fce:cmd/bot/main.go:29-41 · `sed -n '29,41p' cmd/bot/main.go` → `func run(lookup
+config.Lookup, stderr, stdout io.Writer) int {` whose body is `config.Load`, a `Fprintf` to stderr on
+failure and a `Fprintf` of `version` to stdout otherwise]. Every component this package exports is
+constructible in isolation with an explicit lifecycle, which is exactly what #24 needs to wire.
+
+### Why one package, and why these seams
+
+The observer interfaces are consumer-declared and satisfied implicitly, so a single package
+can satisfy them all without any of them importing it. Splitting the health surface into
+`internal/metrics` + `internal/canary` would produce two packages that only ever import each other
+and the same registry — the shape the update-ingestion design already rejected for the same
+reason [measured 9ff1fce:ai-docs/key-decisions.md:77 · `rg -n -o 'whose sub-packages would only
+ever import each other' ai-docs/key-decisions.md` → `77:whose sub-packages would only ever import
+each other`]. `internal/health` imports `internal/tg`, `internal/scheduler`, `internal/ingest`,
+`internal/config` and `github.com/jackc/pgx/v5/pgxpool`; none of those imports it, so there is no
+cycle. It deliberately does **not** import `internal/store`: the pool collector takes an accessor
+function rather than a pool or a store handle, which keeps the health test binary free of a database
+(D9).
+
+### Why `github.com/prometheus/client_golang`
+
+`docs/DESIGN.md` §13.5 names promhttp for the endpoint, and promhttp is that module's subpackage
+[measured 9ff1fce:docs/DESIGN.md · `rg -n promhttp docs/DESIGN.md` → the §13.5 bullet «здоровье:
+**Prometheus** скрейпит `/metrics` бота (promhttp) и `/stats` инстанса bot-api»];
+`AGENTS.md` § *Dependency Versions* makes an established ecosystem package the default and refuses
+hand-rolling in its place. The version taken is the newest published
+[measured 9ff1fce · `go list -m -versions github.com/prometheus/client_golang` → the version list
+ending `v1.24.0-rc.0 v1.24.0 v1.24.1`]. Its build closure, resolved in a scratch module importing
+`prometheus`, `collectors`, `promhttp` and `testutil`, adds `beorn7/perks`, `kylelemons/godebug`,
+`munnerz/goautoneg`, `prometheus/client_model`, `prometheus/common`, `prometheus/procfs` and
+`google.golang.org/protobuf`, and reuses `cespare/xxhash/v2` and `golang.org/x/sys`, which this
+module already requires
+[measured 9ff1fce · `go mod tidy && cat go.mod` in a scratch module requiring
+`github.com/prometheus/client_golang v1.24.1` → a require block naming `beorn7/perks`,
+`cespare/xxhash/v2`, `kylelemons/godebug`, `munnerz/goautoneg`, `prometheus/client_model`,
+`prometheus/common`, `prometheus/procfs`, `golang.org/x/sys`, `google.golang.org/protobuf`; and
+`grep -n 'xxhash\|golang.org/x/sys' go.mod` in this repository → `github.com/cespare/xxhash/v2
+v2.3.0 // indirect` and `golang.org/x/sys v0.47.0 // indirect`]. That closure is the expected shape,
+not the contract: the binding statement is the `git diff go.mod go.sum` the implementor reads before
+staging (AC28, subtask 1).
+
+*Rejected:* hand-rolling an exposition format. The Prometheus text format has a specification, an
+escaping rule and a histogram layout this project would then own and test forever, and `promhttp` is
+named by the design document itself — and `AGENTS.md`'s refused-argument table already answers both
+arguments that would be offered for writing one [measured 9ff1fce:AGENTS.md:196-197 · `sed -n
+'196,197p' AGENTS.md` → `| *"It's only 10–20 lines — cheaper than writing the import"* | **REFUSED.**
+…` and `| *"Better to write our own than to pull in an established dependency"* | **REFUSED.** …`]. *Rejected:* `VictoriaMetrics/metrics`
+— smaller, but it has no `promhttp`, no `collectors` package for the Go-runtime and process series
+AC13 asks for, and no `testutil`/`promlint` for the naming gate D12 builds on. *Escape hatch:* every
+registration in this package goes through a `prometheus.Registerer` parameter, so the registry type
+is one import away from being swapped behind the same constructors.
+
+### Rejected alternatives, structural
+
+*Rejected — registering on the client library's global default registerer, or using `promauto`.*
+Both make a registration invisible at the call site, collide between tests in the same binary, and
+make an isolated registry impossible. AC2 forbids both, and D12 gates the forbidding.
+
+*Rejected — the canaries as scheduler tasks.* Settled by the product owner (spec, round-1 answer 2)
+and by the failure mode: a probe that stops when Postgres stops goes silent exactly during the
+incident it exists to localise.
+
+*Rejected — an in-process gauge for the cross-leg "own sick, cloud healthy" signal.* Settled in the
+spec's Key decisions: both legs export their own series and the inference is an expression in the
+alert contract, evaluated by the monitoring stack.
+
+*Rejected — the aggregate constructor.* An earlier shape had one `New()` returning a struct holding
+the registry and every adapter. It is dropped: AC1 requires every family to register on a
+**supplied** registerer, #24 owns "one place where every subsystem is constructed and injected", and
+an aggregate here would be a second, competing composition root. Every constructor takes a
+`prometheus.Registerer` and returns its own component.
+
+## Key decisions
+
+**D1 — `internal/health`, one package, one file per component.** Files: `doc.go` (the package
+comment and the unexported-to-metrics register), `registry.go` (`NewRegistry`, `RegisterRuntime`,
+the name prefix, the bucket variables), `labels.go` (label-name constants, the enum label-value
+mappers, the allow-list), `transport.go`, `scheduler.go`, `ingest.go`, `pool.go`, `server.go`,
+`canary.go` (the runner and the `Prober` seam), `probe.go` (the Telegram prober, its status recorder
+and the failure classifier). The split keeps every file well inside the workspace's soft band and
+gives each `_test.go` an obvious home [derived → the file-limits gate in subtask 10].
+
+**D2 — the registry is constructed empty and every registration takes a `prometheus.Registerer`.**
+`NewRegistry() *prometheus.Registry` returns a vanilla registry with nothing on it;
+`RegisterRuntime(reg prometheus.Registerer) error` puts the client library's Go-runtime and process
+collectors on whatever registerer it is handed. Every other constructor takes a `Registerer` as its
+first parameter. This is what makes AC1's second clause literally true of *every* family, including
+the library's own, and it is what lets a test build an isolated registry per case. The library
+supplies both collectors
+[measured 9ff1fce · `go doc github.com/prometheus/client_golang/prometheus/collectors` in a scratch
+module → `func NewGoCollector(opts ...func(o *internal.GoCollectorOptions)) prometheus.Collector` and
+`func NewProcessCollector(opts ProcessCollectorOpts) prometheus.Collector`].
+
+**D3 — no `MustRegister`, no `MustNewConstMetric`, and `promhttp.HandlerOpts.Registry` stays nil.**
+`MustRegister` panics where `Register` returns an error
+[measured 9ff1fce · `go doc github.com/prometheus/client_golang/prometheus.Registerer` in a scratch
+module → `// MustRegister works like Register but registers any number of` / `// Collectors and
+panics upon the first registration that causes an` / `// error.`, beside `Register(Collector)
+error`, whose own doc names `AlreadyRegisteredError` as the re-registration outcome]. `promhttp.HandlerOpts.Registry` is documented as panicking on a failed
+registration [measured 9ff1fce · `go doc
+github.com/prometheus/client_golang/prometheus/promhttp.HandlerOpts` in a scratch module → `// If
+Registry is not nil, it is used to register a metric` … `// A failed registration causes a panic.`],
+so this package leaves it nil and does not export promhttp's own error counter. The pool collector
+builds its metrics with `prometheus.NewConstMetric`, which returns an error rather than panicking
+[measured 9ff1fce · `go doc github.com/prometheus/client_golang/prometheus.NewConstMetric` in a
+scratch module → `func NewConstMetric(desc *Desc, valueType ValueType, value float64, labelValues
+...string) (Metric, error)`]. The project's panic index is empty and the project targets zero
+production panics [measured 9ff1fce:ai-docs/panic-index.md · `sed -n '/^| File:line/,$p'
+ai-docs/panic-index.md` → a header row and a `| — | — | — |` body row], and this task adds no row to
+it (AC32).
+
+**The one remaining panic surface is `…Vec.WithLabelValues`, and it is used deliberately.**
+`WithLabelValues` panics where `GetMetricWithLabelValues` would return an error, and the error is
+label-cardinality mismatch alone [measured 9ff1fce · `go doc
+github.com/prometheus/client_golang/prometheus.CounterVec.GetMetricWithLabelValues` in a scratch
+module → `An error is returned if the number of label values is not the same as the number of
+variable labels in Desc (minus any curried labels).`]. Every call site in this package passes a
+literal argument list against a `Desc` declared in the same file, so the mismatch is a
+compile-adjacent mistake rather than a runtime input — and D12's scrape test exercises every family
+through its adapter, so a mismatch reds at the first run rather than in production. It is not a
+`panic` call in this module's code, so it adds no panic-index row; the alternative — threading a
+cardinality error out of `ObserveCall`, whose signature returns nothing and which is documented as
+running on the caller's goroutine — has nowhere to go and would land as a swallowed error, which
+`AGENTS.md` § *Code Style* forbids outright.
+
+**D4 — the name prefix is `labgame_`, and every family is named in the catalogue below.** One
+module-wide prefix, base units, `_total` on counters, `_seconds` on duration histograms
+(spec constraint 5). The Go-runtime and process collectors keep the library's own `go_` and
+`process_` prefixes, which is what a Prometheus dashboard expects of them.
+
+**D5 — label-value strings are this package's, mapped in an exhaustive switch, never delegated to a
+source package's `String()`.** A label value is a monitoring-facing data contract that the alert
+contract names and a dashboard queries; a Go constant may be renamed under `AGENTS.md` § *API
+Stability*, and a renamed constant must not silently rename a series. `internal/scheduler` declares
+no renderer at all for either of its enums
+[measured 9ff1fce:internal/scheduler · `go doc github.com/maratik123/lab-game/internal/scheduler`
+→ `type FailureKind int` and `type Outcome int` each followed by its `const` line and then the next
+type, with no method listed under either],
+and `ingest.Outcome`'s renderer emits Go identifier names rather than label values
+[measured 9ff1fce:internal/ingest/observe.go:48-65 · `sed -n '48,65p' internal/ingest/observe.go` →
+`func (o Outcome) String() string {` returning `"OutcomeHandled"`, `"OutcomeDuplicate"` and the
+rest]. Each mapper is a `switch` with a `default` returning a single named `unknown` value, which
+keeps the value set closed however the source enum grows; `default-signifies-exhaustive` is set, so
+the `exhaustive` linter is satisfied by that clause
+[measured 9ff1fce:.golangci.yml:40-41 · `sed -n '40,41p' .golangci.yml` → `exhaustive:` /
+`default-signifies-exhaustive: true`].
+
+**D6 — the metric catalogue.** Every family this task adds, with its labels and its source field.
+
+*Transport, from `tg.Observation` (AC4, AC9):*
+
+| Family | Type | Labels | Source |
+|---|---|---|---|
+| `labgame_botapi_call_duration_seconds` | histogram | `method` | `Latency` |
+| `labgame_botapi_responses_total` | counter | `method`, `code` | `StatusCode`, rendered decimal; `0` means no response was received |
+| `labgame_botapi_rate_limited_total` | counter | `method` | `RateLimited` |
+| `labgame_botapi_retries_total` | counter | `method` | `Retries`, added as a count |
+
+Every field of `tg.Observation` reaches a metric, so this package's register names no transport
+exemption. `Observation` has no method-class field and `classifyMethod` is unexported
+[measured 9ff1fce:internal/tg/class.go:46 · `sed -n '46p' internal/tg/class.go` → `func
+classifyMethod(name string) MethodClass {`], so the class label the spec's allow-list permits is not
+carried: the allow-list is a ceiling, not an obligation, and reaching that value would need a
+signature change spec constraint 1 forbids.
+
+*Scheduler, from `scheduler.Observation` and `scheduler.LoopObservation` (AC5, AC8, AC11):*
+
+| Family | Type | Labels | Source |
+|---|---|---|---|
+| `labgame_scheduler_task_lag_seconds` | histogram | `type` | `Observation.Lag` |
+| `labgame_scheduler_tasks_total` | counter | `type`, `outcome`, `failure` | `Outcome`, `Failure` |
+| `labgame_scheduler_loop_duration_seconds` | histogram | — | `LoopObservation.Duration` |
+| `labgame_scheduler_claim_batch_size` | histogram | — | `LoopObservation.BatchSize` |
+| `labgame_scheduler_loop_errors_total` | counter | — | `LoopObservation.Err != nil` |
+
+`outcome` values: `done`, `noop`, `failed`, `unknown`. `failure` values: `none`, `handler`,
+`unregistered`, `deadline`, `rolled_back`, `unknown` — one per member of `scheduler.FailureKind`
+plus the closing default, which is what AC11 asks for.
+
+*Ingest, from `ingest.Observation` and `ingest.LoopObservation` (AC6, AC7, AC10):*
+
+| Family | Type | Labels | Source |
+|---|---|---|---|
+| `labgame_ingest_update_lag_seconds` | histogram | `kind` | `Lag`, sampled only when `LagKnown` |
+| `labgame_ingest_handler_duration_seconds` | histogram | `kind`, `outcome` | `Duration` |
+| `labgame_ingest_updates_total` | counter | `kind`, `outcome` | one per observation |
+| `labgame_ingest_undecodable_updates_total` | counter | — | `Err != nil` |
+| `labgame_ingest_poll_duration_seconds` | histogram | — | `LoopObservation.Duration` |
+| `labgame_ingest_poll_batch_size` | histogram | — | `LoopObservation.BatchSize` |
+| `labgame_ingest_poll_errors_total` | counter | — | `LoopObservation.Err != nil` |
+
+`outcome` values: `handled`, `duplicate`, `unrouted`, `failed`, `panic`, `given_up`, `unknown` —
+exactly the members of `ingest.Outcome` plus the closing default, which is what AC10 asks for, and
+which is what makes recovered panics and idempotency duplicates individually visible. `kind` carries
+the derived kind verbatim; the empty kind an unrouted update leaves behind maps to the same named
+`unknown` value, so no series carries an empty label value. `Duration` means a different thing per
+outcome [measured 9ff1fce:internal/ingest/observe.go:79-89 · `sed -n '79,89p'
+internal/ingest/observe.go` → `// Duration is how long this observation's own unit of work took:` …
+`For OutcomeUnrouted, no handler ever runs, so Duration is the` / `// unrouted-settlement statement
+instead. For OutcomeGivenUp, no` / `// handler runs either`], which is why `outcome` is a label on
+that histogram rather than folded away.
+
+*pgx pool, from `pgxpool.Stat` (AC12):*
+
+| Family | Type | Labels | Source |
+|---|---|---|---|
+| `labgame_pgxpool_conns` | gauge | `state` (`idle`, `acquired`, `constructing`) | `IdleConns`, `AcquiredConns`, `ConstructingConns` |
+| `labgame_pgxpool_total_conns` | gauge | — | `TotalConns` |
+| `labgame_pgxpool_max_conns` | gauge | — | `MaxConns` |
+| `labgame_pgxpool_acquires_total` | counter | — | `AcquireCount` |
+| `labgame_pgxpool_acquire_duration_seconds_total` | counter | — | `AcquireDuration` |
+| `labgame_pgxpool_empty_acquires_total` | counter | — | `EmptyAcquireCount` |
+| `labgame_pgxpool_empty_acquire_wait_seconds_total` | counter | — | `EmptyAcquireWaitTime` |
+| `labgame_pgxpool_canceled_acquires_total` | counter | — | `CanceledAcquireCount` |
+| `labgame_pgxpool_new_conns_total` | counter | — | `NewConnsCount` |
+| `labgame_pgxpool_max_lifetime_destroys_total` | counter | — | `MaxLifetimeDestroyCount` |
+| `labgame_pgxpool_max_idle_destroys_total` | counter | — | `MaxIdleDestroyCount` |
+
+The whole `Stat` surface is covered [measured 9ff1fce · `go doc
+github.com/jackc/pgx/v5/pgxpool.Stat` → the method set `AcquireCount`, `AcquireDuration`,
+`AcquiredConns`, `CanceledAcquireCount`, `ConstructingConns`, `EmptyAcquireCount`,
+`EmptyAcquireWaitTime`, `IdleConns`, `MaxConns`, `MaxIdleDestroyCount`, `MaxLifetimeDestroyCount`,
+`NewConnsCount`, `TotalConns`].
+
+*Canary (AC14, AC19):*
+
+| Family | Type | Labels | Source |
+|---|---|---|---|
+| `labgame_canary_probes_total` | counter | `leg` (`own`, `cloud`), `outcome` (`success`, `failure`) | one per probe |
+| `labgame_canary_probe_failures_total` | counter | `leg`, `reason` | the classifier of D11 |
+| `labgame_canary_probe_duration_seconds` | histogram | `leg`, `outcome` | the probe's measured latency |
+
+**D7 — histogram buckets are compiled-in named variables, not configuration, and one set does not
+serve every family.** Buckets are not persisted, are cheap to change, and are not a game constant,
+so `docs/DESIGN.md` §16.5 does not reach them; making them an operator key would let an operator
+silently break a recorded histogram's comparability across a restart. Named variables in
+`registry.go`, one per shape: a transport/probe/handler-duration set spanning milliseconds to the
+default attempt timeout; an update-lag set spanning a fraction of a second to an hour, because the
+star of the dashboard is a stall indicator and a stall is measured in minutes; a scheduler-lag set
+spanning a fraction of a second to half an hour; a poll-duration set whose upper reach covers the
+default long-poll window; a scheduler-loop set in the sub-second band; and two batch-size sets
+covering the ranges their own configuration bounds — the ingest batch limit's stated ceiling
+[measured 9ff1fce:internal/config/ingest.go:41-43 · `sed -n '41,43p' internal/config/ingest.go` →
+`// ingestBatchLimitMax is the Bot API's own stated ceiling on` / `//
+GetUpdatesParams.Limit ("Values between 1-100 are accepted").` / `const ingestBatchLimitMax = 100`]
+and the scheduler's claim limit
+[measured 9ff1fce:.env.example:90 · `rg -n LAB_GAME_SCHEDULER_CLAIM_LIMIT .env.example` →
+`90:LAB_GAME_SCHEDULER_CLAIM_LIMIT=32`]. This closes the spec's second Open question.
+
+**D8 — no label combination is pre-initialised.** The common Prometheus advice is to touch every
+label combination at start-up so a series exists at zero. It is refused here, because AC17 and spec
+constraint 11 require a configured-off cloud leg to export **no probe sample of any kind**, and the
+alert contract's absence test (D14) is what distinguishes a disabled leg from a failing one. A
+pre-initialised `leg="cloud"` series would read as a healthy leg, which constraint 11 names as the
+one thing that must never happen. The rule is package-wide rather than canary-only, so there is no
+second convention to remember.
+
+**D9 — the pool collector takes an accessor, and its zero value is not constructible by hand.**
+`NewPoolCollector(reg prometheus.Registerer, stat func() *pgxpool.Stat) (*PoolCollector, error)`;
+`Collect` calls `stat` on every scrape, which is AC12's "at scrape time rather than a cached
+snapshot". The accessor is the seam the spec asks for ("fed a pool accessor at construction rather
+than constructing a pool itself"), and #24 passes `pool.Stat`. **A hand-built `&pgxpool.Stat{}` is a
+nil dereference, not an empty snapshot** — `Stat` holds an unexported `*puddle.Stat` that every
+method delegates to
+[measured 9ff1fce · `sed -n '9,21p' $(go env GOMODCACHE)/github.com/jackc/pgx/v5@v5.10.0/pgxpool/stat.go`
+→ `type Stat struct {` / `s *puddle.Stat` … and `func (s *Stat) AcquireCount() int64 { return
+s.s.AcquireCount() }`] — so the accessor's documented contract is "returns a snapshot taken from a
+real pool, or nil", and `Collect` emits nothing when it returns nil. That nil branch is not
+defensive decoration: it is the honest answer for a caller whose pool has been closed, and it keeps
+the collector from taking the process down at scrape time. **A real pool needs no reachable server
+to answer `Stat()`**, which is what keeps this package's test binary database-free
+[measured 9ff1fce · a scratch probe running `pgxpool.NewWithConfig` against a DSN pointing at a
+closed port, then `pool.Stat()` → `new err: <nil>` followed by a populated snapshot line].
+
+**D10 — `Server` and `Canary` both carry `Start` / `Shutdown`, deliberately unlike this module's
+existing foreground loops.** Both of those are `Run(ctx)`
+[measured 9ff1fce:internal/ingest/loop.go:183 and internal/scheduler/worker.go:144 · `rg -n 'func
+\(l \*Loop\) Run' internal/ingest/loop.go; rg -n 'func \(w \*Worker\) Run'
+internal/scheduler/worker.go` → `183:func (l *Loop) Run(ctx context.Context) error {` and `144:func
+(w *Worker) Run(ctx context.Context) error {`]. The spec asks twice for "an explicit start and an explicit shutdown the caller
+owns" (Scope 3, constraint 10), and AC21 asks for a shutdown entry point that *returns*. `Run(ctx)`
+is the right shape for a foreground loop the composition root owns a goroutine for; these two are
+background services #24 starts and stops around everything else, and giving both the same pair keeps
+#24's start-up and shutdown sequences symmetric. `Server.Start` binds the listener **synchronously**
+and returns the bind error before spawning the serve goroutine, which is what makes AC32's "a bind
+failure is reported through a returned error" true; `Server.Addr()` exposes the bound address so a
+test may bind port `0`. `Server.Shutdown(ctx)` joins the graceful-shutdown error with the serve
+goroutine's terminal error, so no error is dropped; `http.ErrServerClosed` is the expected terminal
+value and is not reported as a failure. `Canary.Start` returns an error on a second call rather than
+panicking, and `Canary.Shutdown(ctx)` cancels the run context — which cancels the in-flight
+per-tick contexts with it — and waits for the probe goroutine, so a shutdown never waits out the
+current interval (AC21). The server sets an explicit `ReadHeaderTimeout` from a named constant;
+`gosec` is enabled and its Slowloris rule is what makes that non-optional
+[measured 9ff1fce:.golangci.yml:26-27 · `sed -n '26,27p' .golangci.yml` → `# Security` / `- gosec`].
+
+**D11 — the canary probes through `internal/tg`, one client per leg, one attempt per tick, and its
+own observer.** Each leg gets its own `*tg.Client` built with its own limiter, so a canary draws on
+no production budget; `getMe` classifies as `ClassOther`
+[measured 9ff1fce:internal/tg/class_test.go:64 · `sed -n '64p' internal/tg/class_test.go` →
+`{"getMe", ClassOther},`], whose windows default to unbounded
+[measured 9ff1fce:.env.example:75-78 · `sed -n '75,78p' .env.example` → `# Every other call:
+unbounded by default. Same grammar as above.` / `LAB_GAME_TG_LIMIT_OTHER_GLOBAL=off` /
+`LAB_GAME_TG_LIMIT_OTHER_CHAT_RATE=off` / `LAB_GAME_TG_LIMIT_OTHER_CHAT_CAP=off`]. `NewTelegramProber` copies the supplied `config.Transport` and sets
+`RetryMaxAttempts` to one itself, documenting that the field is ignored — that is AC18's "exactly one
+attempt per tick", structural rather than configured, and `tg.New` accepts one as the minimum
+[measured 9ff1fce:internal/tg/client.go:105-107 · `sed -n '105,107p' internal/tg/client.go` → `if
+opts.Transport.RetryMaxAttempts < 1 {` returning `optionErrorf("Transport.RetryMaxAttempts", "must be
+at least 1, got %d", …)`]. **The canary client's `Observer` is the leg's own status recorder, never
+the transport adapter**, which is what makes AC18's second clause structural: a canary call has no
+path to the transport series.
+
+*The recorder is how AC16's success condition becomes literal.* `tg.Observation` carries the last
+HTTP status code and the whole-call latency
+[measured 9ff1fce:internal/tg/observe.go:9-25 · `sed -n '9,25p' internal/tg/observe.go` → `type
+Observation struct {` with `Method`, `Latency`, `StatusCode`, `RateLimited`, `Retries`], and the
+package's caller returns success only on a decoded envelope whose `Ok` is true
+[measured 9ff1fce:internal/tg/caller.go:92-95 · `sed -n '92,95p' internal/tg/caller.go` → `if
+attemptErr == nil && resp != nil && resp.Ok {` … `return resp, nil`]. So a probe reports success
+**only** when `GetMe` returned no error *and* the recorded status code is 200 — `ok:true` from the
+caller, `200` from the recorder, which is exactly the pair AC16 names. The recorder holds one
+observation under a mutex and its contract states its precondition: at most one call in flight on
+the client it is installed on, guaranteed by the runner running one probe per leg per tick and
+waiting for it.
+
+*Failure classification carries no error text* (AC19): with a recorded status code above zero the
+`reason` label is that code rendered decimal; with a zero status code it is `timeout`
+(`context.DeadlineExceeded` in the error chain), `canceled` (`context.Canceled`) or `network`. The
+transport's own error type is already token-sanitised and names the method rather than the URL
+[measured 9ff1fce:internal/tg/errors.go:8-15 · `sed -n '8,15p' internal/tg/errors.go` → `// Error is
+the one typed error this package's caller ever returns for a` … `Err is sanitised at construction
+time` … `the bot token never appears in Err, in Error()'s rendering, or in any` /
+`// instrumentation observation.`], and no part of it becomes a label value regardless.
+
+*The probe seam is an interface declared here* — `Prober` with `Probe(ctx) (ProbeResult, error)`,
+`ProbeResult` carrying the latency and the status code — so the runner's tests need neither telego
+nor a socket, and the runner applies the 200-and-no-error rule once for both legs.
+
+**D12 — the structural guards are tests, not prose.** Each closes an AC that a reviewer would
+otherwise have to take on faith: a walk of the module's Go files asserting no import
+of `prometheus/promauto` and no use of the default registerer (AC2); a scrape of a registry whose
+every adapter has been driven once, asserting every label name belongs to the allow-list and every
+enum-valued label's observed value set is the closed set D6 names (AC10, AC11, AC23); the same
+scrape asserting the body contains none of the sentinel secrets the fixture was built with — the bot
+token, the cloud token, the DSN, a chat id, an update id, a task id, an operation id (AC23, AC24);
+and `testutil.GatherAndLint` over that registry asserting no problem
+[measured 9ff1fce · `go doc github.com/prometheus/client_golang/prometheus/testutil` in a scratch
+module → `func GatherAndLint(g prometheus.Gatherer, metricNames ...string) ([]promlint.Problem,
+error)` and `CollectAndLint can be used to detect metrics that have issues with their name, type, or
+metadata`]. A problem promlint reports is a naming defect to fix in the name, never an assertion to
+relax — nothing scrapes these names yet, so the names are still free to move and the alert contract
+moves with them in the same PR.
+
+**D13 — configuration: a new `LAB_GAME_HEALTH_` optional-with-default class.** The keys below, in
+`internal/config/health.go`, read by a dedicated `loadHealth` and appended to `EnvKeys()` alongside
+the transport, scheduler and ingest classes — the shape those three already established
+[measured 9ff1fce:internal/config/env.go:52-57 · `sed -n '52,57p' internal/config/env.go` → `func
+EnvKeys() []string {` whose body appends `transportEnvKeys()`, `schedulerEnvKeys()` and
+`ingestEnvKeys()`].
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `LAB_GAME_HEALTH_METRICS_ADDR` | `string` | `127.0.0.1:9095` | loopback only (AC22) |
+| `LAB_GAME_HEALTH_CANARY_INTERVAL` | `time.Duration` | `1m` | one cadence, both legs (AC20) |
+| `LAB_GAME_HEALTH_CANARY_CLOUD_TOKEN` | `Secret` | empty | empty or absent disables the cloud leg (AC17) |
+| `LAB_GAME_HEALTH_CANARY_CLOUD_BASE_URL` | `url.URL` | the cloud Bot API origin | validated by the same parser the instance base URL uses |
+
+*The interval default is the design's own cadence* [measured 9ff1fce:docs/DESIGN.md § 13.2 ·
+`sed -n '/^### 13.2\./,/^### 13.3\./p' docs/DESIGN.md` → the canary bullet reading «`getMe` раз в
+минуту через свой инстанс … + тот же `getMe` напрямую в облачный api.telegram.org как референс»].
+
+*The listen-address default is a decision with a source.* It must not collide with anything
+`docs/DESIGN.md` §13.5 puts on the same host — Prometheus itself and Grafana — nor with the
+Postgres and `telegram-bot-api` ports `.env.example` already documents
+[measured 9ff1fce:.env.example:23,27 · `rg -n 'LAB_GAME_DSN=|LAB_GAME_BOT_API_BASE_URL=' .env.example`
+→ `23:LAB_GAME_DSN=postgres://user:password@localhost:5432/labgame?sslmode=disable` and
+`27:LAB_GAME_BOT_API_BASE_URL=http://localhost:8081`]. `9095` sits just past the
+Prometheus core block and carries no allocation in the Prometheus port registry
+[measured 9ff1fce · `curl -sS https://raw.githubusercontent.com/wiki/prometheus/prometheus/Default-port-allocations.md`
+then `grep -nE '^\| *90(9[0-9]) ' → | 9090 | http | Prometheus server |, | 9091 | http | Pushgateway
+|, | 9092 | n/a | UNALLOCATED …, | 9093 | http | Alertmanager |, | 9094 | ? | Alertmanager clustering
+|` and `grep -n '9095\|9096' → no match`]. The address is a configuration value regardless, so an
+operator collision is a one-variable fix.
+
+*The cloud base URL is a value, not a compiled-in literal*, because §11 already makes the Bot API
+base URL a three-value axis — own instance, cloud, fake server — and a hard-wired endpoint would put
+the probe out of a fake server's reach.
+
+*Present-but-empty means off, exactly as absent does*, for the cloud token alone. An operator who
+writes the key with no value plainly means "off", and refusing it would buy nothing. Every other key
+in the class treats present-but-malformed as a `*KeyError` naming the variable, per the class's
+existing shape.
+
+**D14 — the alert contract lives at `ai-docs/alert-contract.md`, in English.** `AGENTS.md` restricts
+Russian to owner conversation and `docs/**` [measured 9ff1fce:AGENTS.md:4 · `rg -n -o 'Russian for
+two surfaces only:\*\* conversation with the product owner, and `docs/\*\*`' AGENTS.md` → that
+sentence, on line 4]; this is an operations artefact the infrastructure pass
+reads. It carries the metric catalogue of D6 and one row per alert: name, the metrics it reads, the
+expression shape over them, the condition shape, and the severity — the consecutive-canary-failure
+alert, the update-lag-growth alert, the cross-leg "own instance sick while cloud healthy"
+expression, what that expression means when the cloud leg is configured off, and the absence test
+that separates a disabled leg from a failing one. **The absence test is written over the whole
+`labgame_canary_probes_total{leg="cloud"}` vector, never over one `outcome` value**, because D8
+leaves an outcome's series absent until that outcome first occurs: a healthy leg has no `failure`
+series and a dead leg has no `success` series, so only the vector's total absence means "not
+configured". Thresholds stay the infrastructure pass's, and the document says so.
+
+**D15 — this task moves no balance and declares no event.** It registers no ledger basis document,
+writes no posting, and adds no event type: the telemetry-with-the-mechanic invariant binds a
+*mechanic*, and #23 is the health surface itself. `docs/DESIGN.md` §13.4's event dictionary and the
+product SQL views are the other half of observability and are already shipped
+[measured 9ff1fce:ai-docs/context.md:27 · `rg -n -o 'the product event log \(the `event` table' ai-docs/context.md`
+→ `27:the product event log (the `event` table`]. Nothing
+here reaches `store.Post`, so there is no posting signature to state.
+
+## Decomposition
+
+| # | Task | Files | Depends on |
+|---|------|-------|------------|
+| 1 | Take the module requirement: `go get github.com/prometheus/client_golang@v1.24.1`, `go mod tidy`, read `git diff go.mod go.sum` before staging | `go.mod`, `go.sum` | — |
+| 2 | The `LAB_GAME_HEALTH_` configuration class: keys, `Health` struct, defaults, `loadHealth`, `healthEnvKeys()`, `EnvKeys()` and `Config` wiring, the example-file entries, and the class's tests including the sibling `ExampleMatchesDefaults` shape | `internal/config/health.go`, `internal/config/health_test.go`, `internal/config/config.go`, `internal/config/env.go`, `.env.example` | — |
+| 3 | Package skeleton: package comment and the unexported-to-metrics register, `NewRegistry`, `RegisterRuntime`, the name prefix, the bucket variables, the label-name constants, the enum label-value mappers and the allow-list | `internal/health/doc.go`, `internal/health/registry.go`, `internal/health/labels.go`, and their tests | 1 |
+| 4 | The transport adapter satisfying `tg.Observer` | `internal/health/transport.go`, `internal/health/transport_test.go` | 3 |
+| 5 | The scheduler adapter satisfying `scheduler.Observer` | `internal/health/scheduler.go`, `internal/health/scheduler_test.go` | 3 |
+| 6 | The ingest adapter satisfying `ingest.Observer`, with the `LagKnown` sampling gate | `internal/health/ingest.go`, `internal/health/ingest_test.go` | 3 |
+| 7 | The pgx pool collector over a `func() *pgxpool.Stat` accessor | `internal/health/pool.go`, `internal/health/pool_test.go` | 3 |
+| 8 | The `promhttp` endpoint's server with synchronous bind, `Addr`, and joined-error shutdown | `internal/health/server.go`, `internal/health/server_test.go` | 3 |
+| 9 | The canaries: the `Prober` seam, the Telegram prober with its status recorder and failure classifier, the leg builder that disables the cloud leg on an absent token, and the ticker runner | `internal/health/canary.go`, `internal/health/probe.go`, `internal/health/canary_test.go`, `internal/health/probe_test.go` | 2, 3 |
+| 10 | The structural guards of D12, then the whole `make verify` plus the coverage ratchet | `internal/health/guards_test.go` | 4, 5, 6, 7, 8, 9 |
+| 11 | The alert contract | `ai-docs/alert-contract.md` | 10 |
+| 12 | Propagation per `AGENTS.md` § *Propagation Rule* step 4: index the contract, and correct every live surface this diff falsifies | `ai-docs/agent-docs-index.md`, `ai-docs/context.md`, `ai-docs/context-status.md`, `ai-docs/key-decisions.md` | 11 |
+
+**Subtask 12's sweep is an obligation, not a fixed list.** The class is "any live surface asserting
+what the bot exposes, what environment variables it reads, or which packages exist". The files
+named are the members a sweep at this commit finds
+[measured 9ff1fce · `rg -l -i "LAB_GAME_INGEST_|optional-with-default|internal/ingest" --glob '*.md'
+--glob '!tmp/**' --glob '!ai-docs/plans/**' --glob '!ai-docs/learnings.md' .` →
+`./ai-docs/context.md`, `./ai-docs/context-status.md`, `./ai-docs/key-decisions.md`], plus
+`ai-docs/agent-docs-index.md`, which AC27 names outright. The implementor re-runs the sweep against
+the finished diff rather than trusting this row; history surfaces (`ai-docs/learnings.md`,
+`ai-docs/plans/done/**`) are left untouched. Known falsifications to fix rather than rediscover:
+`key-decisions.md`'s KD-27 states the optional-with-default class's boundary by enumerating its
+member scopes [measured 9ff1fce:ai-docs/key-decisions.md · `rg -n 'the relaxation reaches'
+ai-docs/key-decisions.md` → `*The boundary, stated exactly:* the relaxation reaches **only**
+operational tuning keys — these fourteen, the seven `LAB_GAME_SCHEDULER_*` keys … and the seven
+`LAB_GAME_INGEST_*` keys update ingestion added as the third`], and `context.md`'s layout paragraph
+enumerates the packages and names each observation seam as "the observation seam #23 reads" — which
+stops being true when #23 lands [measured 9ff1fce:ai-docs/context.md:27 · `rg -n -o 'the observation
+seam #23 reads' ai-docs/context.md` → the phrase, on line 27, more than once].
+
+## Handoff plan
+
+Grouping is required for **every M ≥ 1** — this section is mandatory in every design, including a
+single-subtask one, whose one group is also terminal and runs in its own `/context-reset` subagent.
+A group holds **up to 10** consecutive subtasks; ten is a **maximum**, not an exact count, and a
+group ends at whichever comes first: the size cap, a change-type switch, or a dependency-forced
+boundary. The terminal group's size is in `1..=10`. Each group is homogeneous by change-type —
+**code** (`*.go`, migrations) or **instructions/harness** (`*.md`, `.claude/**`, `AGENTS.md`,
+`ai-docs/**`) — never both. The classes are the harness's and are not restated here. The files of
+this change that fall in **neither** enumerated class — `go.mod`, `go.sum` and `.env.example` — are
+grouped with the code, because each is machine-read build or configuration input asserted by a Go
+test in the same commit, not instructions an agent reads. Nothing that *is* enumerated is
+reclassified. Same-change-type subtasks are clustered into the **fewest groups possible**, bounded
+by the size cap, by dependency order and by homogeneity; naive interleaving is the least-desirable
+fallback and is not used here. The default maximum is **4** groups per task, and more than 4 is
+surfaced to the user for approval; this design defines **2**.
+
+- **Handoff into Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
+  § Compaction recovery (re-entry). Every group is entered through it, the first included.
+- **Group A** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
+  window — subtasks 1–10 (code change-type: `*.go`, plus `go.mod`, `go.sum` and `.env.example`).
+  At the size cap, not over it. Subtasks 4–8 are independent of one another and depend only on 3, so
+  their order inside the group is free; 9 additionally needs 2, and 10 needs all of 4–9.
+- **Handoff after Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
+  § Compaction recovery (re-entry). The parent `/task` resumes in Group B with fresh context.
+- **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
+  (typically xHigh) — NOT pinned — via the `general-purpose` subagent with no inline `model=`
+  override, 1M-token window — subtasks 11–12 (instructions/harness change-type: `ai-docs/**`).
+  Terminal group, within the `1..=10` range. Both subtasks depend on Group A's subtask 10, which
+  completes first, so dependency order holds across the boundary.
+
+Marker-to-implementor routing is applied at spawn: a **code** group routes to
+`subagent_type="code-writer"`, whose `model: sonnet` and `effort: medium` are frontmatter-pinned, with
+no inline override; an **instructions/harness** group routes to `subagent_type="general-purpose"`
+with no inline `model=` and inherited effort. The `design-writer`, `design-review`, `self-review` and
+`spec-writer` subagents run on the orchestrator's model regardless of any group marker.
+
+## Risks
+
+- **A registration or metric constructor that panics defeats AC32 and the empty panic index.** The
+  library ships a panicking spelling beside every fallible one, and `promhttp.HandlerOpts.Registry`
+  panics on a failed registration by its own documentation. Mitigation: D3 fixes the non-panicking
+  spelling for each, and subtask 10's guard walk is the place a `MustRegister` would be caught —
+  `[measured 9ff1fce · go doc github.com/prometheus/client_golang/prometheus/promhttp.HandlerOpts in
+  a scratch module → "A failed registration causes a panic."]`.
+- **A hand-built `pgxpool.Stat` nil-dereferences at scrape time.** A test author reaching for
+  `&pgxpool.Stat{}` as a fixture writes a panic into the scrape path. Mitigation: D9 makes the real
+  pool the fixture — a pool built against an unreachable DSN answers `Stat()` with no server — and
+  the accessor's contract is "a snapshot from a real pool, or nil" with `Collect` emitting nothing on
+  nil — `[measured 9ff1fce · sed -n '9,21p' $(go env
+  GOMODCACHE)/github.com/jackc/pgx/v5@v5.10.0/pgxpool/stat.go → type Stat struct { s *puddle.Stat …
+  } with every method delegating through s.s]`.
+- **The example-environment tests reject an empty default.** Every value in the example file must be
+  non-empty, and each optional class has a test asserting the example's own values reload to the
+  compiled-in defaults — while the cloud token's compiled-in default is empty by AC17. Mitigation:
+  subtask 2's `ExampleMatchesDefaults` compares the class with the token field zeroed on the loaded
+  value, and asserts separately that the example documents a non-empty placeholder while an absent
+  key yields the empty default — `[measured 9ff1fce:internal/config/disjoint_test.go:110-116 ·
+  sed -n '110,116p' internal/config/disjoint_test.go → func TestEnvExample_ValuesAreNonEmpty(t
+  *testing.T) whose body errors on any key whose value trims to empty]`.
+- **A comment or an example-file comment naming the cloud origin trips the comment-reference gate.**
+  A URL is a banned class in every gated file, and `.env.example` is in the gated set. Mitigation:
+  the origin appears as a *value* in the example file and as a string literal in Go, never inside a
+  comment; the same rule keeps the alert contract's name out of every comment — `[measured
+  9ff1fce:ai-docs/doc-convention.md:13-14 · sed -n '13,14p' ai-docs/doc-convention.md → "DOC-4 and
+  DOC-5 apply to every comment in the gated set: *.go, *.sh, *.sql, *.yml, *.yaml, .gitignore,
+  .env.example, Makefile, and everything under .githooks/."]`.
+- **A `promlint` problem fails subtask 10 late, after the alert contract has been drafted against the
+  offending name.** Mitigation: subtask 10 precedes subtask 11 in the decomposition precisely so the
+  names are settled before the contract quotes them; a reported problem changes the name, not the
+  assertion — `[derived → subtask 10's `GatherAndLint` assertion, and subtask 11's dependency on 10]`.
+- **The canary's goroutine outlives a test, or races its own shutdown.** The race gate is required
+  for concurrent code and a leaked goroutine fails a `synctest` bubble outright. Mitigation: `Start`
+  refuses a second call, `Shutdown` cancels the run context and waits, and the runner tests run
+  inside a bubble whose root cannot return while the probe goroutine lives —
+  `[derived → the canary lifecycle tests of § Test Design, run under `make test-race`]`.
+- **The coverage ratchet blocks on a large new package.** A new package's uncovered error branches
+  drag the module's statement coverage down, and the ratchet refuses a drop past its tolerance.
+  Mitigation: every subtask ships its tests with its code (TDD), and the error branches this design
+  creates — a registration failure, a bind failure, a nil accessor, a double `Start` — are each
+  reachable from a test without a fixture the package could not build —
+  `[derived → the per-subtask tests of § Test Design, and subtask 10's ratchet run]`.
+- **The `method` label is bounded only by what this module calls.** A future caller looping a method
+  name derived from user input would make it unbounded. Mitigation: the allow-list of the spec's Key
+  decisions binds the label *name* set, and the value set is closed by the methods this module itself
+  issues; the alert contract records the bound so the infrastructure pass can alarm on series growth
+  — `[derived → subtask 10's label allow-list guard, and subtask 11's contract]`.
+
+## Test Design
+
+Every entry here describes a test that does not exist yet.
+
+**Subtask 2 — `internal/config/health_test.go`.** Entry points `loadHealth` and `Load`. Table
+subtests, `t.Parallel()`: all keys absent yields the compiled-in defaults, and the cloud token is
+empty so the leg is off; the example file's own values reload to those defaults with the token field
+excluded from the comparison; a malformed duration, a malformed address and a malformed base URL each
+produce a `*KeyError` naming their own variable and matching `ErrInvalidValue`; a present-but-empty
+cloud token is treated as absent; the default address parses as loopback. Plus the existing
+package-level identity assertions, which must still pass with the new keys present. Fixtures: the
+package's own `mapLookup` and `readEnvExampleKeys` helpers.
+`[derived → AC17, AC20, AC22, AC24, AC25]`
+
+**Subtask 3 — `internal/health/registry_test.go`, `labels_test.go`.** Entry points `NewRegistry`,
+`RegisterRuntime`, and each label-value mapper. Scenarios: a fresh registry gathers nothing;
+`RegisterRuntime` on it makes the Go-runtime and process families present in a scrape;
+`RegisterRuntime` twice on the same registerer returns an error rather than panicking; each mapper is
+table-driven over every member of its source enum plus an out-of-range value, asserting the closed
+value set and the single `unknown` fallback. Fixture: an isolated `prometheus.Registry` per case.
+`[derived → AC1, AC13, AC30]`
+
+**Subtask 4 — `internal/health/transport_test.go`.** Entry point `(*TransportObserver).ObserveCall`.
+Scenarios: a successful call adds one duration sample and one response count under its own method and
+code; a rate-limited call increments the 429 counter; a call with retries adds that many to the retry
+counter; a call with no response records code `0`; two calls on different methods stay in separate
+series. Assertion style: `testutil.CollectAndCompare` against an inline exposition fixture for the
+counters, and `testutil.CollectAndCount` for the histogram, so a wrong label or a wrong family name
+fails rather than passing on a total. `[derived → AC4, AC9]`
+
+**Subtask 5 — `internal/health/scheduler_test.go`.** Entry points `ObserveTask` and `ObserveLoop`.
+Scenarios: one observation per outcome, asserting the `outcome` label; one per member of
+`FailureKind`, asserting the `failure` label and that the observed value set is exactly the closed
+set; lag lands in the lag histogram under its `type` label; a loop observation with a non-nil error
+increments the loop-error counter and contributes nothing else; a loop observation with a nil error
+increments neither. `[derived → AC5, AC8, AC11]`
+
+**Subtask 6 — `internal/health/ingest_test.go`.** Entry points `ObserveUpdate` and `ObserveLoop`.
+Scenarios: one observation per member of `ingest.Outcome`, asserting the closed `outcome` value set
+and that panic, duplicate, unrouted and given-up are each individually visible; **an observation with
+`LagKnown` false contributes no lag sample at all**, checked as a count of zero on the lag family and
+a non-zero count on the counter from the same observation, so "no sample" is distinguished from "a
+zero-valued sample"; an observation with `LagKnown` true does contribute one; the empty kind maps to
+the `unknown` label value; a non-nil `Err` increments the undecodable counter. `[derived → AC6, AC7,
+AC10]`
+
+**Subtask 7 — `internal/health/pool_test.go`.** Entry points `NewPoolCollector` and its `Collect`.
+Scenarios: with an accessor returning a real pool's snapshot, a scrape carries every family of D6's
+pool table; with an accessor returning nil, a scrape carries none of them and does not fail; **the
+accessor is called once per scrape and its return value is not cached**, checked by an accessor that
+counts its own calls and by two scrapes whose values differ. Fixture: `pgxpool.NewWithConfig` against
+a DSN pointing at a closed port — no server, no container, no `internal/testdb` import.
+`[derived → AC12]`
+
+**Subtask 8 — `internal/health/server_test.go`.** Entry points `NewServer`, `Start`, `Addr`,
+`Shutdown`. Scenarios: `Start` on `127.0.0.1:0` binds and `Addr` reports the bound port; a GET of the
+metrics path returns 200 with a body naming a family registered on the supplied gatherer; a GET of
+another path returns 404; `Start` on an address already bound returns the bind error and starts no
+goroutine; `Shutdown` returns nil on a clean stop and the serve goroutine's terminal
+`http.ErrServerClosed` is not reported as a failure; `Shutdown` on a server never started returns an
+error rather than panicking. Runs outside a `synctest` bubble — a real listener is not durably
+blockable inside one [measured 9ff1fce:ai-docs/key-decisions.md:71 · `rg -n -o 'a pipe conn being durably
+blockable inside a bubble while a real listener is not' ai-docs/key-decisions.md` → that clause of KD-26]. `[derived → AC3, AC22, AC32]`
+
+**Subtask 9 — `internal/health/probe_test.go`, `canary_test.go`.** Entry points
+`NewTelegramProber`, `(*TelegramProber).Probe`, `NewLegs`, `NewCanary`, `Start`, `Shutdown`.
+
+*Prober scenarios*, against `internal/tgtest`'s in-process fake server wired through the client's
+`HTTPClient` — a server that reaches no network by construction
+[measured 9ff1fce:internal/tgtest/tgtest.go:11 · `rg -n -o 'BaseURL is under the reserved
+".invalid" TLD' internal/tgtest/tgtest.go` → that clause of the package comment]: a 200 carrying `ok:true` yields no error and a status of 200, and the runner counts it a
+success; a 200 carrying `ok:false` yields an error and is counted a failure; a 500 is counted a
+failure with the code as its `reason`; a dial failure is counted a failure with `network`; a context
+deadline is counted a failure with `timeout`; **a probe makes exactly one attempt** — asserted by a
+handler counting the requests it receives while answering 500, which the production retry policy
+would have retried; and **no probe writes to a transport-adapter registry** — asserted by running a
+probe with a `TransportObserver` registered on a separate registry and gathering zero transport
+families from it. `[derived → AC15, AC16, AC18, AC19]`
+
+*Leg-builder scenarios:* with a cloud token configured, `NewLegs` returns a prober per leg; **with the
+cloud token empty it returns a nil cloud prober**, and a canary built from it, run over several
+ticks, exports no `leg="cloud"` series of any kind — asserted as the absence of the label value in
+the gathered families, not as a zero-valued sample, because D8's absence is what the alert contract's
+absence test rests on. `[derived → AC14, AC17]`
+
+*Runner scenarios*, inside a `testing/synctest` bubble with fake `Prober`s so no socket is involved:
+the first probe fires at `Start` rather than after one interval; a probe fires on each subsequent
+tick; both legs probe on the same tick from one cadence value; a `Shutdown` issued mid-interval
+returns promptly rather than after the remaining interval, asserted against the bubble's virtual
+clock; a second `Start` returns an error; a prober that blocks past the interval is cancelled and
+counted a failure rather than overlapping the next tick; the probe goroutine has exited when the
+bubble's root returns. The whole file also runs under `make test-race`. `[derived → AC14, AC20,
+AC21]`
+
+**Subtask 10 — `internal/health/guards_test.go`.** Each guard is a `t.Parallel()` test.
+(a) A walk of every `.go` file under `cmd/` and `internal/`, parsed rather than grepped, asserting no
+import path ending in `prometheus/promauto` and no reference to the library's default registerer or
+default gatherer; the walk resolves the repository root from the test file's own location, matching
+the helper this module's config tests already use
+[measured 9ff1fce:internal/config/repo_root_test.go:15 · `rg -n 'func repoRootPath'
+internal/config/repo_root_test.go` → `15:func repoRootPath(t *testing.T, rel string) string {`]. **The walk is proved discriminating before it is
+trusted**: it is run once against a scratch file carrying the banned import and required to fail,
+then that file is removed — a guard that has never gone red is a claim about the guard.
+(b) A registry driven once through every adapter, then gathered: every label name of every family
+belongs to the allow-list, and every enum-valued label's observed value set equals the closed set D6
+names. (c) The same scrape's text contains none of the sentinel secrets its fixture was built with —
+a bot token, a cloud token, a DSN, a chat id, an update id, a task id, an operation id — each a
+distinctive literal that could only appear by leaking. (d) `testutil.GatherAndLint` over that
+registry reports no problem. `[derived → AC2, AC23, AC24, AC31]`
+
+**Subtask 11 — no test.** The alert contract is prose; AC26 and AC27 are checked by reading it and by
+the index entry.
+
+## Open questions
+
+- **An in-process gauge for the cross-leg derived signal.** Deferred by the spec's Key decisions;
+  revisit if the infrastructure pass finds the expression awkward to write against scrape gaps.
+- **Alert threshold values** — how many consecutive canary failures, and what rate of update-lag
+  growth. The contract fixes the shapes and the names; the numbers are the infrastructure pass's.
+- **Whether the cloud canary bot is §12.5's test bot or a third one.** This task defines only the key
+  the token arrives through and the behaviour when it is absent.
+- **A readiness endpoint beside the metrics path.** Not asked for by `docs/DESIGN.md`; #24 lists a
+  readiness signal in its own scope and may want one when it owns start-up.
+- **The `telegram-bot-api` instance's `/stats` shape.** Out of scope here; the alert contract may
+  eventually name the series the infrastructure pass scrapes from it, which that pass owns.
+- **Whether `labgame_ingest_update_lag_seconds` should sample only an update's first observation.**
+  The design samples every observation whose `LagKnown` is true, which is what AC7 asks for and no
+  more: a retried update contributes a sample per attempt, each with a larger lag. That is deliberate
+  — a retry storm *is* the loop falling behind, and the star of the dashboard is a stall indicator —
+  but it means the histogram is weighted by attempt count, and the alert contract says so. Revisit if
+  the infrastructure pass wants a per-update distribution instead of a per-handling one.
