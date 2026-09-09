@@ -5,7 +5,7 @@ _Updated: 2026-09-09 17:42_
 
 **Branch:** feat/2026-09-09-health-metrics-canaries
 **base_commit:** 3616d527e04ea6abf7a1f72de041140b297e96a9
-**Last build:** not run
+**Last build:** PASS
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
 **current_step:** Step 8 — subtask 13 of 13 complete (Group C DONE; all subtasks complete)
@@ -313,6 +313,8 @@ measured behaviour rather than the predicted one. The design document itself is 
   relative-markdown-link check run locally, the citation-namespace guard
   (`check-citations.sh`, PASS), and `realpath -e` on both new relative links. Committed at 311ca88.
 
+- **Step 9**: all 34 criteria verified by the orchestrator's own commands; interface satisfaction proven by compiling an assertion program rather than by matching method names. Coverage ratchet 89.74%, unchanged.
+
 ## Key discoveries (don't re-investigate)
 
 - Six file-location-ascent root resolvers exist, not four: the four `repoRootPath` copies plus `repoRoot` in `internal/commentref` and `internal/testdb`. Found by behaviour (`runtime.Caller`), not by identifier.
@@ -364,7 +366,40 @@ measured behaviour rather than the predicted one. The design document itself is 
 
 | AC | Status |
 |----|--------|
-| AC1–AC34 | NOT_TESTED |
+| AC1 | PASS — `NewRegistry` returns a dedicated registry; every family takes a supplied `prometheus.Registerer` |
+| AC2 | PASS — `rg 'promauto|DefaultRegisterer|MustRegister'` hits only `guards_test.go`, which names them to forbid them |
+| AC3 | PASS — `promhttp.HandlerFor` on its own `http.Server`, addr from config, exported `Start`/`Shutdown` |
+| AC4 | PASS — compiled `var _ tg.Observer = (*health.TransportObserver)(nil)` in a throwaway program — satisfaction proven, not eyeballed |
+| AC5 | PASS — same method: `_ scheduler.Observer = (*health.SchedulerObserver)(nil)` compiles |
+| AC6 | PASS — same method: `_ ingest.Observer = (*health.IngestObserver)(nil)` compiles |
+| AC7 | PASS — `LagKnown` gate in `ingest.go`; package tests green |
+| AC8 | PASS — scheduler lag histogram carries the task-type label; guard (c) asserts the value set |
+| AC9 | PASS — transport families: latency by method, codes by method+status, 429 and retry counters |
+| AC10 | PASS — `TestGuard_LabelNamesAndClosedSetValues` green — observed set equals the six `ingest.Outcome` members |
+| AC11 | PASS — same guard — observed set equals the five `scheduler.FailureKind` members |
+| AC12 | PASS — `PoolCollector.Collect` calls the `func() *pgxpool.Stat` accessor at collection time |
+| AC13 | PASS — `collectors.NewGoCollector()` and `NewProcessCollector` registered on the same registry |
+| AC14 | PASS — two legs, `leg` label with exactly `own`/`cloud`, outcome counter and latency histogram each |
+| AC15 | PASS — `TestNewTelegramProber_TransmitsItsOwnToken` green — asserts the token on the transmitted request path |
+| AC16 | PASS — same test for the cloud leg; success requires HTTP 200 with `ok:true` |
+| AC17 | PASS — `TestNewLegs_EmptyCloudTokenDisablesCloudLeg` and `TestCanary_DisabledCloudLegExportsNoSeries` green |
+| AC18 | PASS — `TestTelegramProber_NeverWritesToATransportRegistry` green; one attempt per tick per leg |
+| AC19 | PASS — failures classified by status code or transport-error class; guard (c) rejects raw error text |
+| AC20 | PASS — `defaultHealth()` sets `CanaryInterval: time.Minute` — one value driving both legs |
+| AC21 | PASS — guard (i): `canary.go`/`probe.go` import no pgx, pgxpool, store or scheduler symbol |
+| AC22 | PASS — `defaultHealthMetricsAddr = "127.0.0.1" + ":" + "9095"` — loopback only |
+| AC23 | PASS — guard (c) plus `TestGuard_ScrapeCarriesNoSentinelSecret`, both green |
+| AC24 | PASS — `CanaryCloudToken Secret` in the config struct |
+| AC25 | PASS — four `LAB_GAME_HEALTH_` keys in `.env.example`; `healthEnvKeys()` in the exported enumeration; config suite green |
+| AC26 | PASS — `ai-docs/alert-contract.md` exists, English, carries both canary alerts, the cross-leg expression, the off-leg meaning and the absence test |
+| AC27 | PASS — listed in `ai-docs/agent-docs-index.md` |
+| AC28 | PASS — `go.mod` requires `client_golang v1.24.1`; `go mod tidy` leaves no delta |
+| AC29 | PASS — the only `cmd/` path in the diff is `cmd/bot/main_test.go` — a test file; no production file, no composition moved |
+| AC30 | PASS — `revive` `exported` + `package-comments` enabled and `golangci-lint run` green |
+| AC31 | PASS — `make comment-refs` green over the whole tracked gated set |
+| AC32 | PASS — no `panic(`, `log.Fatal` or `os.Exit` in `internal/health` or `internal/repotest`; panic index still empty |
+| AC33 | PASS — build, vet, fmt, lint, tidy, comment-refs, `make test` and `make test-race` all green (0 FAIL, 0 DATA RACE); coverage ratchet 89.74% holds against 89.74% |
+| AC34 | PASS — propagation sweep touched `.env.example`, `agent-docs-index.md`, `context.md`, `key-decisions.md`, `INDEX.md`; Go-comment half landed in subtask 3 |
 
 ## Review register
 
