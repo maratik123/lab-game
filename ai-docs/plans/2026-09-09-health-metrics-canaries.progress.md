@@ -8,13 +8,16 @@ _Updated: 2026-09-09 16:14_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — subtask 4 of 13 complete
-**last_passed_gate:** go build/test/vet, golangci-lint fmt -d + run, make comment-refs — all green (commit 9407fd4)
+**current_step:** Step 8 — subtask 6 of 13 complete (Group A DONE)
+**last_passed_gate:** go build/test/vet, golangci-lint fmt -d + run, make comment-refs — all green (commit ca44911)
 **entry_args:** 23
 
 ## Next action
 
-**Do this immediately:** spawn Group A (subtasks 1–6) through `/context-reset` with `subagent_type="code-writer"`, per the design's `## Handoff plan`.
+**Do this immediately:** Group A (subtasks 1–6) is complete and committed (commits f57403f, 4c9e9ff,
+c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per the design's
+`## Handoff plan`, spawn `/context-reset` § Compaction recovery (re-entry) to hand off into Group B
+(subtasks 7–11, pinned order 10, 7, 8, 9, 11) with `subagent_type="code-writer"`, fresh context.
 
 ## Subtasks
 
@@ -22,12 +25,12 @@ _Updated: 2026-09-09 16:14_
 - [x] 2. `go get github.com/prometheus/client_golang@v1.24.1`, `go mod tidy`
 - [x] 3. The `LAB_GAME_HEALTH_` configuration class
 - [x] 4. Package skeleton: registry, labels, buckets, the D16 register
-- [ ] 5. Transport adapter (`tg.Observer`)  ← CURRENT
-- [ ] 6. Scheduler adapter (`scheduler.Observer`)
+- [x] 5. Transport adapter (`tg.Observer`)
+- [x] 6. Scheduler adapter (`scheduler.Observer`)
 - [ ] 7. Ingest adapter (`ingest.Observer`), `LagKnown` gate
 - [ ] 8. pgx pool collector
 - [ ] 9. `promhttp` endpoint server
-- [ ] 10. The canaries: `Prober`/`ProberFactory`, both legs, the ticker
+- [ ] 10. The canaries: `Prober`/`ProberFactory`, both legs, the ticker  ← CURRENT (Group B, pinned order 10, 7, 8, 9, 11)
 - [ ] 11. The structural guards (a)–(i)
 - [ ] 12. The alert contract
 - [ ] 13. Propagation sweep
@@ -89,6 +92,27 @@ _Updated: 2026-09-09 16:14_
   design's predicted closure exactly. Gates run and green: `go build ./...`, `go test ./...` (whole
   module), `go vet ./...`, `golangci-lint fmt -d` (no target file present in its diff),
   `golangci-lint run` (0 issues), `make comment-refs`. Committed at 9407fd4.
+- **Step 8, subtask 5**: `TransportObserver` touches the rate-limited and retry counters only when
+  their condition holds (`RateLimited` true / `Retries > 0`), so a method that never rate-limits or
+  retries carries no dead series for those two families — consistent with D8's no-pre-initialisation
+  rule generalised beyond the canary leg it was stated for. `make comment-refs` again caught
+  package-qualified symbols (`tg.Observer`, `tg.Observation`) in the first draft's doc comments;
+  rewritten to prose naming neither. Gates run and green: `go build ./...`, `go test ./...` (whole
+  module), `go vet ./...`, `golangci-lint fmt -d` (no target file present in its diff),
+  `golangci-lint run` (0 issues), `make comment-refs`. Committed at f5b9b4e.
+- **Step 8, subtask 6**: `Observation.Duration` and `Observation.BatchSize` (the loop-level ones) are
+  observed into their histograms regardless of whether the cycle's `Err` is non-nil — read
+  `internal/scheduler/worker.go`'s `RunOnce` directly (`sed -n '95,127p'`) and confirmed both fields
+  carry a real, meaningful value on every `observeLoop` call site, including the two error paths;
+  only the loop-error counter is conditional on `Err != nil`. Added `internal/health/gather_test.go`
+  as a shared test helper (not itself a subtask deliverable named in the design, but needed by this
+  subtask's exempt-field byte-comparison test and reusable by every later adapter's own exempt-field
+  test) — `gatherFrom`, `observedLabelValues`, `gatherText`, the last using
+  `github.com/prometheus/common/expfmt` for a canonical text-exposition comparison
+  `testutil.CollectAndCompare` cannot give across two different collectors. Gates run and green:
+  `go build ./...`, `go test ./...` (whole module), `go vet ./...`, `golangci-lint fmt -d` (no target
+  file present in its diff), `golangci-lint run` (0 issues), `make comment-refs`. Committed at
+  ca44911. **Group A (subtasks 1–6) is complete.**
 
 ## Key discoveries (don't re-investigate)
 
@@ -121,6 +145,8 @@ _Updated: 2026-09-09 16:14_
 - `.env.example` (LAB_GAME_HEALTH_* keys)
 - `internal/health/doc.go`, `internal/health/registry.go`, `internal/health/registry_test.go`,
   `internal/health/labels.go`, `internal/health/labels_test.go` (new)
+- `internal/health/transport.go`, `internal/health/transport_test.go` (new)
+- `internal/health/scheduler.go`, `internal/health/scheduler_test.go`, `internal/health/gather_test.go` (new)
 
 ## AC Status
 
