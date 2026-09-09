@@ -36,6 +36,14 @@ detection rule is widened to the semantic class — one of the missed sites uses
 the round-5 rule provably could not see — and is validated against the pre-change tree rather
 than only against scratch files it was written to catch. No AC changed; no spec amendment was
 needed, because AC35 as written already required this.
+**Amended:** 2026-09-09 — round 7, the last. Spec 9571152 defines AC35's class by **mechanism**
+rather than by outcome, which resolves the round-6 blocker without an exception list. D19
+withdraws a false claim it made in the same breath as diagnosing the same error — that
+`runtime.Caller` is coextensive with the resolver class — and records the durable form of the
+lesson. Guard (g) is scoped to the mechanism class explicitly and its restore list is corrected.
+Every discriminating proof moves off the working tree onto a `t.TempDir()` copy, which removes a
+guard-against-guard collision and a dirty-tree failure mode the design had stated the halves of
+but never joined.
 
 ## Approach
 
@@ -945,8 +953,10 @@ divergence here: AC35 then asked for one declaration of `repoRootPath`, which an
 cannot satisfy, since an unexported identifier is unreachable from another package's test binary.
 Spec ca5f71f resolved it in the design's favour — AC35 and Scope 15 now require the shared
 declaration to be **exported** under a new name and require no declaration under the old spelling
-to survive anywhere, this task's own new package included. The note is retired: `repotest.RootPath`
-is what the spec asks for, and guard (g) asserts exactly the two halves the AC states.
+to survive anywhere, this task's own new package included, and spec 9571152 then defined the
+class it applies to by mechanism (D19). The note is retired: the exported `repotest.Root` — the
+one declaration that resolves — is what the spec asks for, `RootPath` joins over it, and guard
+(g) asserts each clause the amended AC states rather than a paraphrase of it.
 
 **D18 — live Go doc comments assert what this change falsifies, and they belong to subtask 3, not
 to the propagation sweep.** § Decomposition declares the falsification class as "any live
@@ -1008,18 +1018,36 @@ record.
 the mistake is reusable.** Rounds 3 through 5 measured the duplication with `rg 'func
 repoRootPath'` — an **identifier** search — and every later round inherited that set, D12 going so
 far as to say the measurement "stands as taken and is not re-taken". AC35 is written by
-**behaviour**: "exactly one declaration of the repository-root path helper", and "every package
-that resolves a repository-root path in its tests calls the shared declaration". A search keyed to
-one spelling cannot answer a question posed about a behaviour, and two live resolvers fell through
-the gap — `internal/commentref`'s and `internal/testdb`'s, both named `repoRoot` and both returning
-the root itself rather than a joined path. Re-measured by behaviour, the resolvers are those of
-`cmd/bot`, `internal/config`, `internal/ingest`, `internal/tg`, `internal/commentref` and
-`internal/testdb`
-[measured ca5f71f · `rg -n 'runtime\.Caller' --type go` → matches in `cmd/bot/main_test.go`,
+**behaviour**, so a search keyed to one spelling could not answer it, and two live resolvers fell
+through the gap — `internal/commentref`'s and `internal/testdb`'s, both named `repoRoot` and both
+returning the root itself rather than a joined path.
+
+**Spec 9571152 then closed the question properly, by defining the class in the AC by
+*mechanism*.** AC35 now names the **file-location-ascent kind** — a helper that derives the root
+from its own source file's location and ascends a fixed number of directory levels, under whatever
+spelling — and says outright that a resolver obtaining the root another way, by asking git for
+instance, is not of this kind and is neither hoisted nor modified. The members follow from the
+mechanism instead of from an exception list, which is why no member is named in the spec and why
+this design derives them rather than being handed them. Derived that way, the in-class resolvers
+are those of `cmd/bot`, `internal/config`, `internal/ingest`, `internal/tg`, `internal/commentref`
+and `internal/testdb`
+[measured 9571152 · `rg -n 'runtime\.Caller' --type go` → matches in `cmd/bot/main_test.go`,
 `internal/ingest/guards_test.go`, `internal/commentref/testhelpers_test.go`,
-`internal/tg/guards_test.go`, `internal/testdb/server_test.go`, `internal/config/repo_root_test.go`
-and nowhere else]. **All of them are in the move.** No spec amendment was needed — AC35 already
-required it — and neither newly-found file sits under `cmd/`, so AC29 is untouched.
+`internal/tg/guards_test.go`, `internal/testdb/server_test.go`,
+`internal/config/repo_root_test.go`]. **All of them are in the move**, and subtask 1's file list is
+that set. No spec amendment was needed for their inclusion — AC35 already required it — and
+neither newly-found file sits under `cmd/`, so AC29 is untouched.
+
+**Out of class, by mechanism and not by exception: the two git-based resolvers in
+`cmd/commentrefs`.** Its production `repoRoot(ctx)` and its test-side `repoRootForTest(t)` both
+ask git for the worktree root
+[measured 9571152:cmd/commentrefs/git.go and cmd/commentrefs/git_test.go · `rg -n
+'rev-parse", "--show-toplevel"' cmd/commentrefs/` → `func repoRoot(ctx context.Context) (string,
+error)` and `func repoRootForTest(t *testing.T) string`, each calling `runGit(…, ".",
+"rev-parse", "--show-toplevel")`]. Neither derives anything from its own file's location, so
+neither is of the file-location-ascent kind; the test-side one deliberately exercises the same git
+mechanism the tool ships, which is the point of it. AC29 forbids touching them in any case, but
+the operative reason is the class definition, not the prohibition.
 
 *The self-inflicted part is worth stating plainly, because it is what makes this more than a miss.*
 Guard (g) enforces the behaviour class. Had subtask 1 moved only the identifier-matched set,
@@ -1028,9 +1056,24 @@ the remedy outside every declared file list — a task-stopping failure manufact
 itself. The general form: **when an AC is written about a behaviour, the measurement that scopes
 the work must search for that behaviour**; an identifier is a proxy, and a proxy that has never
 been checked against the thing it proxies is the same green-instrument shape this design polices
-everywhere else. That `runtime.Caller` is currently coextensive with the class is itself a measured
-fact rather than an assumption, and it is what lets guard (g) use that call as its cheap first
-filter.
+everywhere else.
+
+**And the round-6 statement of that lesson was itself too narrow — withdrawn here, in the same
+shape as the error it was diagnosing.** Round 6 wrote that `runtime.Caller` "is currently
+coextensive with the class", and that the search returned those files "and nowhere else". Both are
+**false**: `cmd/commentrefs` holds two repository-root resolvers that call no `runtime.Caller` at
+all. What is true, and all that was ever measured, is narrower — `runtime.Caller` is coextensive
+with the *file-location-ascent* kind, which is a different and smaller class than "resolves the
+repository root". Round 6 diagnosed a proxy failure and committed one in the same paragraph.
+
+**So the durable form of the rule is not "do not use an identifier proxy".** The failure was not
+*an identifier* proxy; it was *a proxy*, and `runtime.Caller` is a proxy too — for a mechanism,
+one step closer to the behaviour and still not the behaviour. The rule that survives: **a
+measurement that scopes work against a stated behaviour must be run with at least two independent
+mechanisms, or the class must be defined by mechanism in the acceptance criterion itself.** AC35
+now does the latter, which is why this round needed no third enumeration — the class is a
+definition to apply rather than a set to go looking for, and guard (g) can be written against that
+definition instead of against whatever the last search happened to return.
 
 ## Decomposition
 
@@ -1373,17 +1416,39 @@ counted a failure rather than overlapping the next tick; the probe goroutine has
 bubble's root returns. The whole file also runs under `make test-race`. `[derived → AC14, AC20,
 AC21]`
 
-**Subtask 11 — `internal/health/guards_test.go`.** Each guard is a `t.Parallel()` test.
+**Subtask 11 — `internal/health/guards_test.go`.** Each guard is a `t.Parallel()` test, **and that
+is only sound because of the isolation rule below.**
+
+**Every walk takes a root parameter, and every discriminating proof runs over a `t.TempDir()`
+copy — no proof mutates the repository.** Round 6 specified four tree-mutating proofs against the
+live module: a scratch `promauto` file for (a), two scratch files for (f), a scratch import into
+the tracked `probe.go` for (i), and a `git show` restore for (g). The design had stated the halves
+of two consequences and never joined them. **First, the guards would have collided with each
+other:** guard (a) rejects any use of the library's default registerer, and this design says
+elsewhere that package-level `prometheus.MustRegister` *is* such a use — so guard (f)'s second
+scratch file reds guard (a) whenever the two overlap in time, which under `t.Parallel()` is
+whenever they run. **Second, any failure between mutation and restore leaves tracked source
+dirty**, and the coverage ratchet blocks outright on unstaged edits to `.go` files — so a red in
+the middle of a proof would stop the run at the gate rather than at the assertion, with the cause
+one layer away from the symptom. Both dissolve the same way: each walk is `walk(t, root, …)`, the
+real run passes `repotest.Root(t)`, and each proof copies the `.go` files under `cmd/` and
+`internal/` into its own `t.TempDir()`, mutates *that*, and points its own guard at it. Nothing is
+shared, so nothing collides and nothing needs restoring; a proof that fails leaves a temp
+directory behind and a clean worktree. Mutating the repository to prove a test is a defect
+independent of parallelism, and the root parameter is what makes the alternative available.
+
 (a) A walk of every `.go` file under `cmd/` and `internal/`, parsed rather than grepped, asserting no
 import path ending in `prometheus/promauto` and no reference to the library's default registerer or
-default gatherer. **It obtains the repository root by calling `repotest.RootPath`, and declares no
-resolver of its own** — subtask 1 has already deleted the per-package copies, and writing a local
+default gatherer. **It obtains the repository root by calling `repotest.Root`** — the root itself,
+which is what a walk wants, per D17's ruling that `RootPath` is for genuinely joined paths —
+**and declares no resolver of its own** — subtask 1 has already deleted the per-package copies, and writing a local
 `runtime.Caller` resolver here would be the very declaration AC35 forbids "including in the
 package this task adds", which the handoff plan bars even transiently. Note that the shared helper
 resolves from **its own** file's location, not the caller's, so nothing about this guard's own
 position matters. **The walk is proved discriminating before it is
 trusted**: it is run once against a scratch file carrying the banned import and required to fail,
-then that file is removed — a guard that has never gone red is a claim about the guard.
+then that file is removed — a guard that has never gone red is a claim about the guard. That
+scratch file lives in the proof's temp copy, never in the worktree.
 (b) The register guard of D16: reflect over `tg.Observation`, `scheduler.Observation`,
 `scheduler.LoopObservation`, `ingest.Observation` and `ingest.LoopObservation`, and assert in both
 directions that the package's field-disposition table names exactly those fields — a field with no
@@ -1404,17 +1469,24 @@ none of the sentinel secrets its fixture was built with —
 a bot token, a cloud token, a DSN, a chat id, an update id, a task id, an operation id — each a
 distinctive literal that could only appear by leaking. (e) `testutil.GatherAndLint` over that
 registry reports no problem. (f) A walk of `internal/health`'s own non-test files — rooted the same
-way (a) is, through `repotest.RootPath` — asserting none
+way (a) is, through `repotest.Root` — asserting none
 contains `panic(`, `log.Fatal`, `os.Exit`, `MustRegister` or `MustNew` — AC32's source property,
 which neither the bucket table test nor the server test asserts and which no enabled lint rule
 asserts either. **Proved discriminating against both categories it covers**, which is the half
 round 3 got wrong: run once against a scratch file carrying a bare `panic(` and required to fail,
 **and once against a scratch file carrying `prometheus.MustRegister(c)` and required to fail** —
 the second is the proof that separates this walk from round 3's, which could not have detected a
-library `Must…` call at all. Both scratch files removed after.
+library `Must…` call at all. Both scratch files live in this proof's own temp copy — which is also
+what stops the `MustRegister` one from redding guard (a).
 (g) AC35, over every `.go` file in the module, stated as the specification it is: **zero
-repository-root resolvers outside `internal/repotest`, exactly one inside it, and zero
-declarations anywhere under the old unexported spelling `repoRootPath`.**
+repository-root helpers *of the file-location-ascent kind* outside `internal/repotest`, exactly
+one inside it, and zero declarations anywhere under the old unexported spelling `repoRootPath`.**
+**The class qualifier is not decoration — without it the "and no other file" half of the
+validation below is unsatisfiable.** AC35 defines the kind by mechanism: derives the root from its
+own source file's location and ascends a fixed number of directory levels. A resolver that obtains
+the root another way is out of class by definition, not by exemption, and `cmd/commentrefs` holds
+two that ask git for it (D19). The guard must not flag them, and would have to if its scope were
+"resolves the repository root".
 **How the guard recognises "a resolver" is the load-bearing part, and naming it by identifier
 would make the guard green for the case it exists to catch** — a copy called `healthRepoRoot` or
 `rootPath` passes a name-matching rule while violating AC35 outright. So the guard recognises the
@@ -1425,16 +1497,26 @@ wrote the rule as "repeated `filepath.Dir` ascents", which was itself a green in
 the resolvers live in this repository right now spells its ascent
 `filepath.Join(filepath.Dir(file), "..", "..")` and that rule cannot see it (D19). The
 identifier check for `repoRootPath` stays as a second, cheaper half, because AC35 names that
-spelling explicitly. `runtime.Caller` is the cheap first filter and is currently coextensive with
-the class (D19), which is why the AST test refines it rather than replacing it.
+spelling explicitly. `runtime.Caller` is the cheap first filter, and it is coextensive with **the
+file-location-ascent kind** — not with repository-root resolution in general, which is the
+over-claim D19 withdraws — so the AST ascent test refines that filter rather than replacing it,
+and a resolver reaching the root without consulting its own file's location never enters the
+guard's scope at all.
 
 **Guard (g)'s own validation is against the pre-change tree, not against scratch files it was
 written to catch.** Scratch files prove only that a rule detects the shape its author had in mind,
-which is exactly how round 5's rule passed while missing a live site. The protocol: `cp`-backup
-the files subtask 1 changed, restore each from `git show <subtask-1 parent>:<path>`, run the
-guard, and **require it to name every one of D19's resolvers and no other file**; then restore the
-backups and require green. Red-with, green-without, over the real tree, in both directions. The
-three scratch-file proofs stay as cheap regression cover for the detection rules themselves —
+which is exactly how round 5's rule passed while missing a live site. The protocol, in a
+`t.TempDir()` copy and never in the worktree: copy the module's `.go` files into it, then
+overwrite **the files that exist at subtask 1's parent commit** with their content from `git show
+<subtask-1 parent>:<path>` — that is the in-class resolvers' own files and nothing else;
+`internal/repotest`'s files do not exist at that commit, so they are *removed* from the copy
+rather than restored, which is what makes the copy a faithful pre-change tree. Run the guard
+against that root and **require it to name every in-class resolver D19 derives and no other
+file** — the git-based pair in `cmd/commentrefs` being present in the copy and required *not* to
+appear, which is the assertion that proves the class qualifier is doing work. Then run the guard
+against the real root and require green. Red-with, green-without, over a real tree, in both
+directions, with the worktree untouched throughout. The three scratch-file proofs stay as cheap
+regression cover for the detection rules themselves —
 `func repoRootPath(...)`, a differently-named `filepath.Dir`-chain clone, and a differently-named
 `filepath.Join(..., "..", "..")` clone, the third being the spelling round 5 could not see.
 (h) AC36: no **non-test** file in the module imports `internal/repotest`, parsed rather than
@@ -1448,7 +1530,9 @@ so no package-wide rule can cover it, and "the canary keeps probing while the da
 unreachable" is otherwise discharged by construction alone, with a later edit wiring a store
 handle into the probe path shipping green. The runner scenarios cannot cover it either: they use
 fake `Prober`s and never touch the property. It is a few lines on the walk guard (a) already
-performs. Proved discriminating against a scratch import added to `probe.go`.
+performs. Proved discriminating against a scratch import added to the temp copy's `probe.go` —
+the tracked file is never edited, which matters more here than for the other proofs because
+`probe.go` is production source and a failed restore would leave it dirty.
 **AC31 is not in this subtask's list and was wrongly claimed there before**: none of these guards
 inspects comments. It is discharged by `make comment-refs`, which rides in AC33's gate run at the
 end of this same subtask.
