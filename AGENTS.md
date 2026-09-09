@@ -46,7 +46,7 @@ go test -race ./...                                     # race gate (required fo
 make test                                               # the whole suite against ONE shared Postgres
 make test-race                                          # the race gate on that same route
 make test-db-up                                         # bring up a long-lived shared test server (CLIENTS=N sizes it)
-make test-db-down                                       # remove it — nothing else can
+make test-db-down                                       # remove it — no reaper will
 make test-fallback                                      # the per-binary container path's own gate
 make test-contention                                    # the race gate under induced cross-package load
 go vet ./...                                            # vet (also inside golangci-lint)

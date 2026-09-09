@@ -109,6 +109,17 @@ test-fallback:
 # it; an orphaned loop otherwise dies in the container teardown and fills
 # its log with failures that the exhaustion scan then has to read past.
 #
+# The loop's own failure is swallowed on purpose. The subshell inherits -e,
+# so without that the loop would stop at its FIRST failing iteration and the
+# target would still report the foreground's status — a green verdict whose
+# last seconds ran under no load at all, and the trigger correlates with the
+# very condition being probed. The loop is a load source, not an assertion.
+#
+# The exhaustion scan runs here rather than in whoever reads the logs. A run
+# that ran the server out of connections says nothing about contention in
+# either direction, so it is neither a pass nor a finding: the target names
+# it and exits 2, distinct from the foreground gate's own status.
+#
 # The target's OWN output — the granted ceiling the
 # wrapper echoes, the client count and the pinned parallelism — is captured
 # to a third file there and replayed to the terminal afterwards, so the
@@ -124,13 +135,20 @@ test-contention:
 	go run ./cmd/testpg --clients 2 --parallel $(CONTENTION_PARALLEL) -- bash -c '\
 	  set -eu -o pipefail; \
 	  set -m; \
-	  ( while true; do go test -count=1 -parallel $(CONTENTION_PARALLEL) ./internal/ingest/... ./internal/scheduler/... ./internal/store/... ./internal/testdb/...; done ) >tmp/test-contention-load.log 2>&1 & \
+	  ( while true; do go test -count=1 -parallel $(CONTENTION_PARALLEL) ./internal/ingest/... ./internal/scheduler/... ./internal/store/... ./internal/testdb/... || true; done ) >tmp/test-contention-load.log 2>&1 & \
 	  load_pid=$$!; \
 	  fg_status=0; \
 	  go test -race -count=1 -parallel $(CONTENTION_PARALLEL) ./... >tmp/test-contention-race.log 2>&1 || fg_status=$$?; \
 	  kill -- -"$$load_pid" 2>/dev/null || true; \
 	  wait "$$load_pid" 2>/dev/null || true; \
+	  exhausted=0; \
+	  grep -qE "sorry, too many clients already|SQLSTATE 53300" tmp/test-contention-race.log tmp/test-contention-load.log || exhausted=$$?; \
 	  echo "test-contention: clients=2 parallel=$(CONTENTION_PARALLEL)"; \
+	  if [ "$$exhausted" -eq 0 ]; then \
+	    echo "test-contention: INSTRUMENT FAILURE — the server ran out of connections, so this run says nothing about contention either way"; \
+	    exit 2; \
+	  fi; \
+	  echo "test-contention: exhaustion scan clean"; \
 	  exit "$$fg_status" \
 	' > tmp/test-contention.log 2>&1 || status=$$?; \
 	cat tmp/test-contention.log; \
