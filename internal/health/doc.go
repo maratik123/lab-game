@@ -17,13 +17,13 @@
 // struct's own, and that every exempt field named here also appears in
 // this table.
 //
-//   - A task observation's batch-size field is an alias, not an omission:
+//   - A task observation's BatchSize field is an alias, not an omission:
 //     it is the discovery cardinality of the cycle the task came from, so
 //     it repeats once per task in a batch. The claim-batch-size family
 //     already takes the same number once per cycle from the loop
-//     observation's own batch-size field; exporting the task-level one as
+//     observation's own BatchSize field; exporting the task-level one as
 //     well would weight the distribution by batch size.
-//   - A task observation's consecutive-failures field is a per-row
+//   - A task observation's ConsecutiveFailures field is a per-row
 //     property, not a health series: a gauge of it is last-write-wins
 //     across concurrently executing tasks and means nothing at scrape
 //     time, and a histogram of it would double-count a row that fails
@@ -31,8 +31,8 @@
 //     failure-labelled counter; "this specific row is stuck" is a per-row
 //     question a dead-task listing answers, not a fleet-wide one this
 //     package exports.
-//   - An update observation's attempt-ordinal field is bounded only by an
-//     operator-set retry cap — a per-update property, not a fleet-wide
-//     one. The retry volume it would describe is already the failed- and
-//     panic-labelled outcome counts.
+//   - An update observation's Attempt field (its attempt ordinal) is
+//     bounded only by an operator-set retry cap — a per-update property,
+//     not a fleet-wide one. The retry volume it would describe is
+//     already the failed- and panic-labelled outcome counts.
 package health
