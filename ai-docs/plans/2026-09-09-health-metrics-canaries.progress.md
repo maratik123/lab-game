@@ -8,8 +8,8 @@ _Updated: 2026-09-09 16:14_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — Group B subtask 7 of 13 complete (pinned order 10, 7, 8, 9, 11)
-**last_passed_gate:** go build/test/vet, go test -race (internal/health), golangci-lint fmt -d + run, make comment-refs — all green (commit a4ba9a2)
+**current_step:** Step 8 — Group B subtask 8 of 13 complete (pinned order 10, 7, 8, 9, 11)
+**last_passed_gate:** go build/test/vet, go test -race (internal/health), golangci-lint fmt -d + run, make comment-refs — all green (commit 6bb8320)
 **entry_args:** 23
 
 ## Next action
@@ -28,8 +28,8 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
 - [x] 5. Transport adapter (`tg.Observer`)
 - [x] 6. Scheduler adapter (`scheduler.Observer`)
 - [x] 7. Ingest adapter (`ingest.Observer`), `LagKnown` gate
-- [ ] 8. pgx pool collector  ← CURRENT (Group B, pinned order 10, 7, 8, 9, 11)
-- [ ] 9. `promhttp` endpoint server
+- [x] 8. pgx pool collector
+- [ ] 9. `promhttp` endpoint server  ← CURRENT (Group B, pinned order 10, 7, 8, 9, 11)
 - [x] 10. The canaries: `Prober`/`ProberFactory`, both legs, the ticker
 - [ ] 11. The structural guards (a)–(i)
 - [ ] 12. The alert contract
@@ -143,6 +143,23 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
   `go test ./internal/health/...` and the whole module, `go test -race ./internal/health/...`,
   `go vet ./...`, `golangci-lint fmt -d` (no target file present in its diff), `golangci-lint run`
   (0 issues), `make comment-refs`. Committed at a4ba9a2.
+- **Step 8, subtask 8**: `internal/health/pool.go`'s `PoolCollector` is an ad-hoc
+  `prometheus.Collector` (not a struct of pre-built vecs like the other adapters) since its metric
+  set depends on the accessor's return value at scrape time; `Describe` sends no descriptor,
+  marking it unchecked, which the client library's own doc comment names as the deliberate way to
+  build such a collector. The fixture is a real `*pgxpool.Pool` built via `pgxpool.NewWithConfig`
+  against a DSN pointing at a port a `net.ListenConfig` bound then immediately closed — confirmed
+  (subtask 8's own design note) that such a pool still answers `Stat()` with no server, so the test
+  binary stays database-free. The "not cached" scenario needed two pools built with different
+  `MaxConns` (a bare re-run of `realStat` twice would return two structurally-identical zero-value
+  snapshots and the assertion would pass vacuously) so the two scrapes' text actually differs.
+  `golangci-lint run`'s `noctx` flagged a bare `net.Listen` in the test fixture — fixed with
+  `(*net.ListenConfig).Listen`. `make comment-refs` caught one `repo-path` match
+  (`internal/testdb`, named only to say the fixture avoids it) — rewritten to prose naming no
+  package path. Gates run and green: `go build ./...`, `go test ./internal/health/...` and the whole
+  module, `go test -race ./internal/health/...`, `go vet ./...`, `golangci-lint fmt -d` (no target
+  file present in its diff), `golangci-lint run` (0 issues), `make comment-refs`. Committed at
+  6bb8320.
 
 ## Key discoveries (don't re-investigate)
 
