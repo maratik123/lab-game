@@ -3,6 +3,8 @@ package commentref
 import (
 	"errors"
 	"testing"
+
+	"github.com/maratik123/lab-game/internal/repotest"
 )
 
 func TestExtractYAML(t *testing.T) {
@@ -101,7 +103,7 @@ func TestExtractYAML_ReportsSomething(t *testing.T) {
 // repository and asserts no reconciliation failure.
 func TestExtractYAML_WholeTree(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
+	root := repotest.Root(t)
 	files := append(gitLsFiles(t, root, "*.yml"), gitLsFiles(t, root, "*.yaml")...)
 	if len(files) == 0 {
 		t.Fatal("git ls-files reported no yaml files")

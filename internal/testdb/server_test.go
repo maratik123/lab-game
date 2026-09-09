@@ -4,12 +4,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/maratik123/lab-game/internal/repotest"
 )
 
 func TestCeiling_formula(t *testing.T) {
@@ -126,19 +127,6 @@ func TestProbe_invalidDSN(t *testing.T) {
 	}
 }
 
-// repoRoot returns this module's root, derived from this file's own path
-// rather than from the working directory, so the test is not sensitive to
-// how `go test` was invoked.
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatalf("runtime.Caller(0) failed")
-	}
-	// this file lives two directories below the module root.
-	return filepath.Join(filepath.Dir(file), "..", "..")
-}
-
 // callersOfMain walks the module tree and returns the set of package
 // directories, relative to root, whose test files call testdb.Main —
 // derived from the tree rather than typed by hand, so it cannot drift from
@@ -187,7 +175,7 @@ func callersOfMain(t *testing.T, root string) map[string]bool {
 func TestBinaries_matchesTree(t *testing.T) {
 	t.Parallel()
 
-	root := repoRoot(t)
+	root := repotest.Root(t)
 	got := callersOfMain(t, root)
 
 	// This package's own tests call testdb.Main through the external test

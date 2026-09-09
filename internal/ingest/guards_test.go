@@ -8,32 +8,19 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/mymmrac/telego"
-)
 
-// repoRootPath resolves rel against the repository root, regardless of the
-// test binary's working directory — this package is exactly two
-// directories below the root, the same depth a sibling package's own
-// copy of this helper resolves from.
-func repoRootPath(t *testing.T, rel string) string {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("repoRootPath: runtime.Caller failed")
-	}
-	root := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
-	return filepath.Join(root, filepath.FromSlash(rel))
-}
+	"github.com/maratik123/lab-game/internal/repotest"
+)
 
 // ingestNonTestFiles returns every non-test Go source file's path in
 // this package.
 func ingestNonTestFiles(t *testing.T) []string {
 	t.Helper()
-	dir := repoRootPath(t, filepath.Join("internal", "ingest"))
+	dir := repotest.RootPath(t, filepath.Join("internal", "ingest"))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("ReadDir(%s): %v", dir, err)

@@ -4,22 +4,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
-
-// repoRoot resolves the repository root from this test file's own
-// location, matching the helper every package's test suite in this module
-// already uses.
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("repoRoot: runtime.Caller failed")
-	}
-	return filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
-}
 
 // readRepoFile reads rel, relative to root, failing the test on error.
 func readRepoFile(t *testing.T, root, rel string) []byte {

@@ -7,27 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/maratik123/lab-game/internal/config"
+	"github.com/maratik123/lab-game/internal/repotest"
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
-
-// repoRootPath resolves rel against the repository root, regardless of the
-// test binary's working directory — this package is exactly two
-// directories below the root, same depth as this module's configuration
-// package's own copy of this helper.
-func repoRootPath(t *testing.T, rel string) string {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("repoRootPath: runtime.Caller failed")
-	}
-	root := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
-	return filepath.Join(root, filepath.FromSlash(rel))
-}
 
 // walkGoFiles calls fn for every non-test Go source file under root's
 // command and package directories.
@@ -69,7 +55,7 @@ func walkGoFiles(t *testing.T, root string, fn func(path string, content []byte)
 func TestGuard_NoFastHTTPOrGoJSONImport(t *testing.T) {
 	t.Parallel()
 	forbidden := []string{`"github.com/valyala/fasthttp`, `"github.com/grbit/go-json`, `"github.com/valyala/fastjson`}
-	root := repoRootPath(t, ".")
+	root := repotest.Root(t)
 	walkGoFiles(t, root, func(path string, content []byte) {
 		for _, f := range forbidden {
 			if strings.Contains(string(content), f) {
@@ -84,7 +70,7 @@ func TestGuard_NoFastHTTPOrGoJSONImport(t *testing.T) {
 // integration owns registering this package's Observations against one.
 func TestGuard_NoMetricsRegistryImportInTG(t *testing.T) {
 	t.Parallel()
-	root := repoRootPath(t, ".")
+	root := repotest.Root(t)
 	dir := filepath.Join(root, "internal", "tg")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -115,7 +101,7 @@ func TestGuard_NoMetricsRegistryImportInTG(t *testing.T) {
 func TestGuard_NoRetryOrRateLimitLiteralAtCallSite(t *testing.T) {
 	t.Parallel()
 	pattern := regexp.MustCompile(`[0-9]+\s*\*\s*time\.(Nanosecond|Microsecond|Millisecond|Second|Minute|Hour)`)
-	root := repoRootPath(t, ".")
+	root := repotest.Root(t)
 	dir := filepath.Join(root, "internal", "tg")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -144,7 +130,7 @@ func TestGuard_NoRetryOrRateLimitLiteralAtCallSite(t *testing.T) {
 func TestGuard_NoTelegoBotConstructionOutsideTG(t *testing.T) {
 	t.Parallel()
 	pattern := regexp.MustCompile(`telego\.(NewBot|With[A-Za-z]+)\(`)
-	root := repoRootPath(t, ".")
+	root := repotest.Root(t)
 	tgDir := filepath.Join(root, "internal", "tg") + string(filepath.Separator)
 	walkGoFiles(t, root, func(path string, content []byte) {
 		if strings.HasPrefix(path, tgDir) {
@@ -165,7 +151,7 @@ func TestGuard_NoTelegoBotConstructionOutsideTG(t *testing.T) {
 // since the Limiter never takes a URL parameter at all.)
 func TestGuard_BaseURLOnlyInConstructor(t *testing.T) {
 	t.Parallel()
-	root := repoRootPath(t, ".")
+	root := repotest.Root(t)
 	dir := filepath.Join(root, "internal", "tg")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -198,7 +184,7 @@ func TestGuard_BaseURLOnlyInConstructor(t *testing.T) {
 // and fixtures, not about telego's own exported accessors).
 func TestGuard_TokenExposureSitesAreTheAcceptedOnes(t *testing.T) {
 	t.Parallel()
-	root := repoRootPath(t, ".")
+	root := repotest.Root(t)
 	pattern := regexp.MustCompile(`\.Token\(\)|\.FileDownloadURL\(`)
 	walkGoFiles(t, root, func(path string, content []byte) {
 		for _, m := range pattern.FindAllString(string(content), -1) {
@@ -257,8 +243,8 @@ func TestGuard_EndToEndViaConfigLoadProducedBaseURL(t *testing.T) {
 		"LAB_GAME_DSN":              "postgres://user:pass@localhost/db",
 		"LAB_GAME_BOT_API_BASE_URL": tgtest.BaseURL,
 		"LAB_GAME_ALLOWED_CHAT_IDS": "-100123456789",
-		"LAB_GAME_BALANCE_PATH":     repoRootPath(t, "config/balance.yaml"),
-		"LAB_GAME_WORLD_PATH":       repoRootPath(t, "config/world"),
+		"LAB_GAME_BALANCE_PATH":     repotest.RootPath(t, "config/balance.yaml"),
+		"LAB_GAME_WORLD_PATH":       repotest.RootPath(t, "config/world"),
 	}
 	lookup := func(key string) (string, bool) { v, ok := env[key]; return v, ok }
 
