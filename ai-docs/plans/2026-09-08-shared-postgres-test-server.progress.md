@@ -10,7 +10,7 @@ _Updated: 2026-09-08 22:07_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 11 — review fixes complete (Round 5)
+**current_step:** Step 12 — finalising, PR not yet opened
 **last_passed_gate:** `make verify` + `make cover-ratchet` + `make test-contention` | 2026-09-09T10:05Z | f70c827cdf3235c74fff49884bccb9ef4a883486
 **entry_args:** 67
 
@@ -182,6 +182,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 11 (Round 4)**: R4-1's fix was proved by the same injection that proved the defect — an unresolvable package in the loop's package list. Before: one iteration then silence, target green. After: three failure blocks, the loop still loading.
 - **Step 11 (Round 5)**: the first round of the five to find no defect in shipped behaviour — its major was a false sentence this run itself wrote, and the rest were test coverage and instrument robustness. That is the convergence signal the round count alone does not give.
 - **Step 11 (Round 5)**: R5-4 is the exhaustion scan's own § Patterns 2 instance. `grep -q` answers 2 when the scan itself fails, and 2 took the same branch as 1, so a scan that could not run would have printed `exhaustion scan clean` — a green verdict from an instrument that never looked. The three-way branch was exercised at 0, 1 and 2 before being trusted.
+- **Step 12**: the owner raised the self-review cap three times (3 to 4, 4 to 5) and chose to open the PR at the third exhaustion, on the evidence that round 5 was the first to find no defect in shipped behaviour. Five rounds, twenty-one findings, none re-litigated above a 33% share.
+- **Step 12**: fourteen rows went to the deferred inbox from the spec's three sections and the design's open questions, including the harness-wide bare-`go test` sweep that Group B flagged as at risk of being lost — it is carried by the design's own open questions, which Step 12 parses.
 ## Key discoveries (don't re-investigate)
 
 - `testdb.Main` returns `m.Run()` before touching testcontainers when `LAB_GAME_TEST_DSN` is set, so no test needs to change to reach a shared server.

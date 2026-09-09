@@ -13,6 +13,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | [2026-09-05 — event log: the `event` table, the §13.4 dictionary, and the MVP SQL views](done/2026-09-05-event-log-dictionary-views.spec.md) | ✅ implemented | #21 | #18 · the ledger core (2026-09-02) |
 | [2026-09-06 — update ingestion: long polling, dispatch, operation idempotency, chat allowlist](done/2026-09-06-update-ingestion-dispatch-idempotency.spec.md) | ✅ implemented | #22 | #18 · #19 · the ledger core (2026-09-02) |
 | [2026-09-08 — comment reference ban: doc comments stay, outward references go](done/2026-09-08-comment-reference-ban.spec.md) | ✅ implemented | #68 | — |
+| [2026-09-08 — shared PostgreSQL test server: one server per run, containers as the fallback](done/2026-09-08-shared-postgres-test-server.spec.md) | ✅ implemented | #67 | the ledger core (2026-09-02) |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 
