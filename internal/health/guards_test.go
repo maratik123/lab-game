@@ -8,7 +8,6 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -717,25 +716,38 @@ func TestGuard_NoRepoRootPathIdentifierAnywhere(t *testing.T) {
 	}
 }
 
-// gitShowFile returns rev's content of rel (repository-root-relative),
-// run with root as the working directory.
-func gitShowFile(t *testing.T, root, rev, rel string) []byte {
+// preMoveFixture returns the frozen pre-consolidation content of rel
+// (repository-root-relative), read from a committed testdata snapshot
+// rather than via git — CI runs on a shallow clone that lacks the
+// consolidation commit's parent, so reconstructing that history with
+// "git show <rev>~1:<path>" fails there even though it succeeds in a
+// full checkout. The stored copy carries a "fixture" suffix so the
+// module-wide guards below, which walk every Go source file on disk,
+// do not parse it as a second copy of a resolver they are checking
+// for.
+func preMoveFixture(t *testing.T, rel string) []byte {
 	t.Helper()
-	cmd := exec.CommandContext(context.Background(), "git", "show", rev+":"+rel)
-	cmd.Dir = root
-	out, err := cmd.Output()
+	path := filepath.Join("testdata", "pre-move", filepath.FromSlash(rel)+".fixture")
+	content, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("git show %s:%s: %v", rev, rel, err)
+		t.Fatalf("ReadFile(%s): %v", path, err)
 	}
-	return out
+	return content
 }
 
-// preSubtask1Rev is the commit immediately before the shared
-// root-resolving package's consolidation landed — the parent of the
-// commit that introduced it. Fixed rather than searched: that
-// consolidation is already merged history on this branch by the time
-// this guard runs, and a merge-commit workflow never rewrites it.
-const preSubtask1Rev = "f57403f~1"
+// workingTreeFile returns rel's (repository-root-relative) current
+// content under root. Used for the git-mechanism files, which must
+// stay live: the guard's point is that a git-based resolver is not of
+// the file-location-ascent class, so it is read as it stands today.
+func workingTreeFile(t *testing.T, root, rel string) []byte {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", path, err)
+	}
+	return content
+}
 
 // TestGuard_SingleRepoRootResolver_PreChangeTree validates guard (g)
 // against the tree the consolidation replaced, not against scratch
@@ -771,10 +783,10 @@ func TestGuard_SingleRepoRootResolver_PreChangeTree(t *testing.T) {
 		}
 	}
 	for _, rel := range preMoveFiles {
-		writeAt(rel, gitShowFile(t, root, preSubtask1Rev, rel))
+		writeAt(rel, preMoveFixture(t, rel))
 	}
 	for _, rel := range gitBasedFiles {
-		writeAt(rel, gitShowFile(t, root, "HEAD", rel))
+		writeAt(rel, workingTreeFile(t, root, rel))
 	}
 
 	hits := fileLocationAscentResolvers(t, tmp)
