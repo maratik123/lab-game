@@ -14,6 +14,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | [2026-09-06 — update ingestion: long polling, dispatch, operation idempotency, chat allowlist](done/2026-09-06-update-ingestion-dispatch-idempotency.spec.md) | ✅ implemented | #22 | #18 · #19 · the ledger core (2026-09-02) |
 | [2026-09-08 — comment reference ban: doc comments stay, outward references go](done/2026-09-08-comment-reference-ban.spec.md) | ✅ implemented | #68 | — |
 | [2026-09-08 — shared PostgreSQL test server: one server per run, containers as the fallback](done/2026-09-08-shared-postgres-test-server.spec.md) | ✅ implemented | #67 | the ledger core (2026-09-02) |
+| [2026-09-09 — health metrics and canaries: `/metrics`, update and scheduler lag, dual `getMe`](2026-09-09-health-metrics-canaries.spec.md) | 🟡 spec only | #23 | #19 · #20 · #22 |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 
