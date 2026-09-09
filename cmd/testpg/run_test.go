@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -182,6 +183,44 @@ func TestRunChild_stopRunsAfterACancelledContext(t *testing.T) {
 	}
 	if !stub.stopCalled {
 		t.Errorf("stop was not called after a cancelled context; teardown must run on every exit path")
+	}
+}
+
+func TestRunChild_provisionFails_reportsAndRunsNoChild(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubSeam{provisionErr: errors.New("no container runtime")}
+	var stdout, stderr bytes.Buffer
+
+	code := runChild(t.Context(), exitChild(0), noLookup, stub.seam(), 1, 1, &stdout, &stderr)
+
+	if code == 0 {
+		t.Fatalf("runChild = 0 when provisioning failed; want non-zero")
+	}
+	// One failure that names its cause beats every database-backed package
+	// timing out on its own wait strategy and describing the host instead.
+	if !strings.Contains(stderr.String(), "no container runtime") {
+		t.Errorf("stderr = %q, want the provisioner's own cause named", stderr.String())
+	}
+	if stub.stopCalled {
+		t.Errorf("stop was called although nothing was provisioned")
+	}
+}
+
+func TestRunChild_stopFails_reportsButKeepsTheChildsStatus(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubSeam{stopErr: errors.New("container already gone")}
+	var stdout, stderr bytes.Buffer
+
+	code := runChild(t.Context(), exitChild(3), noLookup, stub.seam(), 1, 1, &stdout, &stderr)
+
+	// Teardown trouble is reported, never substituted for the gate's verdict.
+	if code != 3 {
+		t.Fatalf("runChild = %d, want the child's own exit code 3 despite the teardown error", code)
+	}
+	if !strings.Contains(stderr.String(), "container already gone") {
+		t.Errorf("stderr = %q, want the teardown error reported", stderr.String())
 	}
 }
 

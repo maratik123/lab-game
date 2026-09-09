@@ -262,6 +262,17 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | R4-A5 | round 4 | — | accepted@4 — R1-6's objection still upheld; the test file is unchanged since round 1 and the stated reason still holds | `git diff bcca2d6..HEAD -- cmd/testpg/run_test.go` → empty |
 | R4-A6 | round 4 | — | accepted@4 — no Go file changed since round 3, so the panic-index sweep, the domain-invariant sweep and the D9 retiming read all stand as round 3 left them | `git diff --name-only bcca2d6..HEAD` → `Makefile` and this file only |
 | R4-A7 | round 4 | — | accepted@4 — KD-20's ceiling arithmetic re-derived against the shipped binary's own echo, term by term: `clients×Binaries×parallel×(schemaMaxConns+1)+ceilingSlack` gives 2×4×4×5+32 = 192 and 1×4×16×5+32 = 352 | `make test-contention CONTENTION_PARALLEL=4` → `ceiling 192 (clients=2, parallel=4)`; `make test-db-up` → `capacity 352 admits the 352 needed (clients=1, parallel=16)` |
+| R5-1 | round 5 | major | fixed@PENDING | `grep -c 'go test .*-count=1' Makefile` → **3** (`:88`, `:138`, `:141`), against `ai-docs/context-status.md:208`'s "the two that do are the only ones that need it"; the row closes when `grep -c 'the two that do are the only ones that need it' ai-docs/context-status.md` → 0 and the replacement sentence names all three plus the run-conditions reason the two-case partition cannot express |
+| R5-2 | round 5 | minor | fixed@PENDING | `grep -n 'INSTRUMENT FAILURE\|exit 2' Makefile` finds the scan the target now performs, against `grep -n 'scan both logs' ai-docs/go-test-conventions.md` → the bullet must say the target does it and that exit 2 means the run is discarded, not that the race gate failed |
+| R5-3 | round 5 | nit | fixed@PENDING | `grep -n 'provisionErr\|stopErr' cmd/testpg/run_test.go` → today only the declaration (`:20`, `:24`) and the stub's read (`:38-39`, `:47`); no test assigns either, so `cmd/testpg/run.go:143-145` and `:152-155` are unexercised. Closes when a test sets one and the branch is asserted |
+| R5-4 | round 5 | nit | fixed@PENDING | `grep -qE 'zzz' tmp/test-contention-race.log /nonexistent; echo $?` → **2**, the same else-branch `Makefile:145-151` treats as "exhaustion scan clean". Closes when an error status is distinguished from a clean scan |
+| R5-A1 | round 5 | — | accepted@5 — R4-1 re-proved by the same injection that proved the defect: with `./internal/nosuchpkg/...` prepended to the load list over a `cp` backup, the load log carries **5** `^ok` lines across two iterations plus three failure blocks, i.e. the loop survives its failing iteration. R4-2, R4-3 and R4-4 re-verified by their own commands | injection re-run, then `grep -c '^ok' tmp/test-contention-load.log` → 5 (> 4); `grep -n "test-contention's load loop carry it" ai-docs/go-test-conventions.md` → no hit, the bullet now names both children; `grep -rn '53300' --include=Makefile .` → `Makefile:145`; `grep -n 'nothing else can' AGENTS.md; grep -n 'the only thing that can' ai-docs/go-test-conventions.md` → both empty |
+| R5-A2 | round 5 | — | accepted@5 — the shipped tree's own gates: `make verify` GREEN (24 `ok`, 0 `FAIL`), `make cover-ratchet` **89.19% holds against 89.44%**, `make test-contention CONTENTION_PARALLEL=4` GREEN with 0 `(cached)`, 0 `SQLSTATE 57P0`, the exhaustion scan clean, and no surviving container or process | `make verify; make cover-ratchet; make test-contention CONTENTION_PARALLEL=4` |
+| R5-A3 | round 5 | — | accepted@5 — R4-A3 upheld and NOT re-raised: the design's Decomposition row 5 still names `-count=1` on the load run only, and that remains R3-1's own subject with D7/D12 silent rather than contradicted. R5-1 is a different artefact class — a live document with a counted claim — and takes the ordinary-edit route, not the Design Amendment recipe | `grep -n 'count=1 on the load run' ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md` against `Makefile:141` |
+| R5-A4 | round 5 | — | accepted@5 — R1-6's objection still upheld; `cmd/testpg/run_test.go` is byte-identical to the round-1 fix | `git diff bcca2d6..HEAD -- cmd/testpg/run_test.go` → empty |
+| R5-A5 | round 5 | — | accepted@5 — no Go file has changed since round 3, so the panic-index sweep, the domain-invariant sweep and the D9 retiming read stand as rounds 3 and 4 left them; the only code change since round 4 is none at all (the tree is byte-identical to 33be21b) | `git diff --name-only 33be21b..HEAD` → this file only |
+| R5-A6 | round 5 | — | accepted@5 — `CONTENTION_PARALLEL`'s `nproc` default refuses above 24 cores (`2×4×p×5+32 > 1000`), and that is the design's own stated residue with its mitigation, not a defect: `Ceiling` names the flags that lower it. Measured here at `nproc` = 16 → 672, inside `ceilingMax` | `nproc` → 16; design § Risks and the `ceilingMax` row |
+| R5-A7 | round 5 | — | accepted@5 — the wrapper's decision-order tests do reach the clauses they name rather than passing vacuously: every "seam untouched" case also asserts the DSN the child actually saw, so an early return would fail the second assertion | `grep -n 'child saw DSN' cmd/testpg/run_test.go` → the caller-DSN and locator-admits cases |
 
 ## Files touched
 
@@ -507,3 +518,68 @@ not-raisable with its reason (R4-A3), the AC recipes re-derived by command (R4-A
 objection still upheld (R4-A5), the panic and domain-invariant sweeps standing as round 3 left
 them because no Go file changed (R4-A6), and KD-20's ceiling arithmetic re-derived against the
 binary's own echo (R4-A7).
+
+## Self-Review (Round 5)
+
+**Verdict:** REJECT
+
+**What was checked.** `AGENTS.md`; the spec's `## Acceptance Criteria` (AC1–AC18); the design's
+Approach, D1–D12, Decomposition, Handoff plan, Risks, Test Design and Open questions. Diff
+`dbff3d8..HEAD` (27 files, 45 commits); `git diff --name-only 33be21b..HEAD` is this file alone,
+so the code tree is byte-identical to the round-4 fix. Round-5 scope taken from the
+`## Review register` per instruction 7a. The spawn prompt carried only the five permitted
+lines — no contamination.
+
+Re-run against the shipped tree, never accepted from this file: **`make verify` GREEN**
+(24 `ok`, 0 `FAIL`; it carries `golangci-lint fmt -d`, `go build`, `go vet`,
+`golangci-lint run`, `make file-limits`, `make test`, `make test-race`, `make tidy-check`,
+`make actionlint`, `make shellcheck`, `make comment-refs`), `make cover-ratchet` →
+**89.19% holds against 89.44%** (tolerance 0.60 pp), and `make test-contention
+CONTENTION_PARALLEL=4` → **GREEN**, `grep -c '(cached)' tmp/test-contention-race.log` → **0**
+with real timings for every contended package (`internal/scheduler 6.043s`,
+`internal/store 6.698s`, `internal/ingest 4.262s`), `grep -c 'SQLSTATE 57P0'
+tmp/test-contention-load.log` → **0**, the target's own `exhaustion scan clean` line present,
+and neither a container nor a `go test` surviving the run — AC10 re-measured PASS.
+
+Per-row re-verification of the round-4 register:
+
+- **R4-1 (fixed@33be21b) — confirmed by the row's own injection, not by reading the `|| true`.**
+  Over a `cp` backup with `./internal/nosuchpkg/...` prepended to the load loop's package list,
+  `make test-contention CONTENTION_PARALLEL=4` left `tmp/test-contention-load.log` with **5**
+  `^ok` lines (> 4) across two iterations, each preceded by its own
+  `FAIL ./internal/nosuchpkg/... [setup failed]` block: the loop now survives a failing
+  iteration and keeps loading. Makefile restored from the backup, `git status --short` empty.
+- **R4-2 (fixed@33be21b) — confirmed.** `ai-docs/go-test-conventions.md:45` now names **both**
+  of `test-contention`'s children and states the run-conditions reason the foreground gate
+  carries the flag. (Its sibling site is R5-1 below.)
+- **R4-3 (fixed@33be21b) — confirmed.** The scan is in the target at `Makefile:145`, and the
+  target classifies rather than reports: `INSTRUMENT FAILURE … exit 2`.
+- **R4-4 (fixed@33be21b) — confirmed.** `grep -n 'nothing else can' AGENTS.md` and
+  `grep -n 'the only thing that can' ai-docs/go-test-conventions.md` are both empty; both
+  sentences now say no reaper will remove it and that any container command reaches it.
+- **R1-6 — objection still upheld** (register R5-A4); `cmd/testpg/run_test.go` is unchanged
+  since `bcca2d6`.
+
+Also derived in this round rather than read: the wrapper's decision-order tests checked for the
+§ *Patterns* 2 shape — every "seam untouched" case also asserts the DSN the child actually
+printed, so an early return could not pass them vacuously (R5-A7); `CONTENTION_PARALLEL`'s
+`nproc` default against `ceilingMax` (R5-A6, `nproc` = 16 → 672, inside the bound, and the
+refusal above 24 cores is the design's stated residue); the progress file's required re-entry
+fields (`current_step`, `last_passed_gate`, `entry_args` present, `parent_skill` correctly
+omitted per the canonical template); and the panic-index and domain-invariant sweeps left
+standing on the ground that no Go file has changed since round 3 (R5-A5). Every mutation probe
+was taken over a `cp` backup and `git status --short` confirmed empty afterwards.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| R5-1 | `ai-docs/context-status.md:208` | major | **A live document this diff itself wrote states a counted claim the shipped tree falsifies — and the count it gets wrong is the one defect class this task has already repeated three times.** Under *Invariants this now relies on*: "A gate that exists to exercise one particular path therefore carries `-count=1`, and **the two that do are the only ones that need it**." Measured: `grep -c 'go test .*-count=1' Makefile` → **3** — `test-fallback` (`:88`), `test-contention`'s load loop (`:138`) and `test-contention`'s foreground race gate (`:141`). The third landed in round 3's fix (19baf8c), *after* this entry was authored (55682cc), and it is there for a reason the sentence's two-case partition cannot express: not because it exercises a provisioning path, but because it asserts a property of the run's *conditions* — which is precisely what R3-1 established. R4-2 found this drift and fixed it in `ai-docs/go-test-conventions.md:45`; the sweep did not reach this file, and it is the only live site left (`grep -rn 'count=1\\|test-contention' --include='*.md' .` outside `ai-docs/plans/**`, `tmp/` and the append-only learnings log → `AGENTS.md:51,71,122`, `context-status.md:198,207,208`, `go-test-conventions.md:45,48`; only `:208` carries a count). Violates **AC14**, which the `## AC Status` table records PASS. `major`, not R4-2's `minor`, on that row's own stated ground — it read "Nothing here is strictly false, which is why it is `minor`", and this sentence *is* strictly false — and on § *Patterns* 3: the bullet is filed as an **invariant** in the file whose stated purpose is capturing "traps … worth not rediscovering", and it mis-states the trap that has now recurred three times in this run (AC3 at Step 9 → 1a3ee3a; R3-1 → 19baf8c; R4-2 → 33be21b). A reader classifying a new gate by it reaches the fourth. **Not R4-A3 re-raised** — that row rules the *design* doc's silence not-raisable; this is a live document, the half R4-2 established as raisable. **Not R4-2 re-opened** — R4-2's verifying command passes on its own file. **No design amendment**: the sentence is this diff's own new prose, so the fix is an ordinary edit to the entry this run added, not an edit of a pre-existing append-only entry. | ✅ Fixed |
+| R5-2 | `ai-docs/go-test-conventions.md:48` | minor | The live convention page still hands the reader the exhaustion scan that R4-3's fix moved into the target. It reads "A red run is read before it is believed: scan both logs for `sorry, too many clients already` first" — but `Makefile:144-151` now scans, prints `test-contention: INSTRUMENT FAILURE …` and **exits 2**, so an exhausted run never reaches the reader as a red the instruction applies to. Nothing here is false, which is why it is `minor`; the gap is that **no live document names exit 2 or says what it means** — that the run is discarded, not that the race gate failed. `ai-docs/context-status.md:207` carries the semantics ("an instrument failure and is thrown away") but not that the target enforces them. Cites AC14 and `AGENTS.md` § *Propagation Rule* step 4 — the same incomplete sweep as R5-1, one fix later. | ✅ Fixed |
+| R5-3 | `cmd/testpg/run_test.go:20`, `:24` | nit | `stubSeam.provisionErr` and `stubSeam.stopErr` are read by the stub's closures (`:38-39`, `:47`) and set by **no** test — `grep -n 'provisionErr\\|stopErr' cmd/testpg/run_test.go` returns only the declarations and those reads. So the two branches they exist to reach are unexercised: `runChild`'s provisioning failure (`cmd/testpg/run.go:143-145`, "could not start a server" → `exitFailure`) and the deferred teardown's error report (`:152-155`). The design's Test Design enumerates neither scenario, so this is not a design gap — it is two dead fields advertising coverage the package does not have. | ✅ Fixed |
+| R5-4 | `Makefile:145` | nit | The exhaustion scan cannot tell "no match" from "the scan could not run". `grep -qE … a.log b.log \|\| exhausted=$?` yields 1 for no-match and **2** for an error — measured: `grep -qE 'zzz' tmp/test-contention-race.log /nonexistent; echo $?` → `2` — and `:147`'s `[ "$exhausted" -eq 0 ]` sends both down the same branch, printing `test-contention: exhaustion scan clean`. Unreachable today, because both logs are created by redirections earlier in the same script, which is why it is a `nit` — but it is the § *Patterns* 2 shape sitting in the one instrument the target's exit-2 verdict rests on. Exit: branch on 0 / 1 / other, and make the third an instrument failure of its own. | ✅ Fixed |
+
+**Recorded, not raised** — each is an `accepted@5` register row rather than a finding, so round 6
+is scoped by it: R4-1's injection re-run and R4-2/R4-3/R4-4 re-verified (R5-A1), the shipped
+tree's own three gate runs (R5-A2), R4-A3 upheld and the design half deliberately not re-raised
+(R5-A3), R1-6's objection still upheld (R5-A4), the panic / domain / D9 sweeps standing because
+no Go file changed (R5-A5), `CONTENTION_PARALLEL`'s default against `ceilingMax` ruled a stated
+residue (R5-A6), and the decision-order tests checked against the vacuous-guard shape (R5-A7).

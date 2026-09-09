@@ -148,6 +148,10 @@ test-contention:
 	    echo "test-contention: INSTRUMENT FAILURE — the server ran out of connections, so this run says nothing about contention either way"; \
 	    exit 2; \
 	  fi; \
+	  if [ "$$exhausted" -ne 1 ]; then \
+	    echo "test-contention: INSTRUMENT FAILURE — the exhaustion scan itself failed (grep exit $$exhausted), so a clean result would be a claim about the scan"; \
+	    exit 2; \
+	  fi; \
 	  echo "test-contention: exhaustion scan clean"; \
 	  exit "$$fg_status" \
 	' > tmp/test-contention.log 2>&1 || status=$$?; \
