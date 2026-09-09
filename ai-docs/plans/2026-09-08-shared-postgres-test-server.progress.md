@@ -10,8 +10,8 @@ _Updated: 2026-09-08 22:07_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 11 — review fixes complete (Round 2)
-**last_passed_gate:** `make verify` + `make cover-ratchet` | 2026-09-09T07:05Z | bcca2d62a3c6a0c1714bda572a8d6b849cd28bdd
+**current_step:** Step 11 — review fixes complete (Round 3)
+**last_passed_gate:** `make verify` + `make cover-ratchet` + `make test-contention` | 2026-09-09T07:20Z | 19baf8cc4a5810af766395fbe3425e4975e30c7a
 **entry_args:** 67
 
 ## Next action
@@ -176,6 +176,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 11 (Round 1)**: the mechanism behind R1-1 was read out of the toolchain rather than inferred — `m.Run` calls `m.before()`, which is where `StartTestLog` opens the log the go command reads for cache validity, and the DSN is read before that. A `TestMain` reading configuration before delegating to `m.Run()` is invisible to the test cache by construction.
 - **Step 11 (Round 2)**: R1-3 was taken by the recipe route rather than the design-amendment route — the finding offered both and D12's requirement is served, not narrowed, by making the values durable. The re-litigation tripwire was computed before continuing: three rows raised, one of them a re-opening, so 33% against a 50% threshold, and R1-3 was at its first re-opening.
 - **Step 11 (Round 2)**: the round-1 fix for R1-3 shipped with no test, which the reviewer proved by mutation. The replacement assertion was mutation-checked the same way before being recorded: delete the echo, `cmd/testpg` goes red.
+- **Step 11 (Round 3)**: the owner raised the self-review cap to 4 (was 3). R3-1 is the third instance of one defect class in this task — a gate answered from the test cache — after AC3's at Step 9 and the load loop's in the design. The class is now stated in the recipe's own comment rather than left to be rediscovered a fourth time.
+- **Step 11 (Round 3)**: AC10's earlier recorded PASS was a cached green, including the orchestrator's own Step-9 measurement of it. Re-measured after the fix: zero cached packages in the race log and `internal/scheduler` at 5.822s under load. AC11's RED stands unaffected — a source change invalidates the cache, so the reverted-instrument run genuinely executed; only its trailing green needed redoing.
 ## Key discoveries (don't re-investigate)
 
 - `testdb.Main` returns `m.Run()` before touching testcontainers when `LAB_GAME_TEST_DSN` is set, so no test needs to change to reach a shared server.
@@ -238,8 +240,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | R2-A5 | round 2 | — | accepted@2 — AC9 re-derived on the shipped file list: every changed path is `**/*.go`, `Makefile`, `.githooks/**`, `ai-docs/**`, `AGENTS.md` or `.github/workflows/**`, all named in the filter | `git diff --name-only dbff3d8..HEAD` against `.github/workflows/ci.yml:38-79` |
 | R2-A6 | round 2 | — | accepted@2 — R1-6's objection upheld: a nit with a specific, technically accurate reason; the "thirteen"/"three entry points" counts are loose (14 functions, `runChild` + `run --up` + `run --down`) but the ground holds | `grep -c '^func Test' cmd/testpg/run_test.go` → 14 |
 | R2-A7 | round 2 | — | accepted@2 — R1-2, R1-4, R1-5, R1-7, R1-8 each re-verified fixed on the shipped tree; no container and no locator file left behind by any probe | see the round-2 § What was checked |
-| R3-1 | round 3 | major | fixed@PENDING | `make test-contention CONTENTION_PARALLEL=4 && grep -c '(cached)' tmp/test-contention-race.log` → must be **0**. Today it is 8–11 and `internal/scheduler` is among them, so the gate whose status is the probe's verdict reports green having executed none of the contended packages |
-| R3-2 | round 3 | minor | fixed@PENDING | `make test-contention CONTENTION_PARALLEL=4; grep -c 'SQLSTATE 57P0' tmp/test-contention-load.log` → must be **0**. Today the load log ends in a teardown-induced failure block, because `kill "$load_pid"` reaches the loop subshell and not the `go test` it is running |
+| R3-1 | round 3 | major | fixed@19baf8c | `make test-contention CONTENTION_PARALLEL=4 && grep -c '(cached)' tmp/test-contention-race.log` → must be **0**. Today it is 8–11 and `internal/scheduler` is among them, so the gate whose status is the probe's verdict reports green having executed none of the contended packages |
+| R3-2 | round 3 | minor | fixed@19baf8c | `make test-contention CONTENTION_PARALLEL=4; grep -c 'SQLSTATE 57P0' tmp/test-contention-load.log` → must be **0**. Today the load log ends in a teardown-induced failure block, because `kill "$load_pid"` reaches the loop subshell and not the `go test` it is running |
 | R3-A1 | round 3 | — | accepted@3 — R1-3 re-verified fixed on the shipped tree, both halves: the three values reach the scratch log, and the echo assertion is load-bearing (mutation-run, not assumed) | `grep -inE 'ceiling\|clients=\|parallel=' tmp/test-contention.log` → 2 hits; then `sed -i '150d' cmd/testpg/run.go && go test -count=1 ./cmd/testpg/` → RED at `run_test.go:149` |
 | R3-A2 | round 3 | — | accepted@3 — R2-1 and R2-2 re-verified fixed | `grep -n 'testdb: %v' internal/testdb/testdb.go` → no hit; `grep -n 't.Parallel' cmd/testpg/run_test.go` → no hit at the `--up`/`--down` tests |
 | R3-A3 | round 3 | — | accepted@3 — the shipped tree's own gate run: `make verify` GREEN and the ratchet holds with headroom | `make verify; make cover-ratchet` → 89.19% >= 89.44% (tolerance 0.60 pp) |
