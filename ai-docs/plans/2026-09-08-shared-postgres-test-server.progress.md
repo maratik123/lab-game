@@ -238,6 +238,15 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | R2-A5 | round 2 | — | accepted@2 — AC9 re-derived on the shipped file list: every changed path is `**/*.go`, `Makefile`, `.githooks/**`, `ai-docs/**`, `AGENTS.md` or `.github/workflows/**`, all named in the filter | `git diff --name-only dbff3d8..HEAD` against `.github/workflows/ci.yml:38-79` |
 | R2-A6 | round 2 | — | accepted@2 — R1-6's objection upheld: a nit with a specific, technically accurate reason; the "thirteen"/"three entry points" counts are loose (14 functions, `runChild` + `run --up` + `run --down`) but the ground holds | `grep -c '^func Test' cmd/testpg/run_test.go` → 14 |
 | R2-A7 | round 2 | — | accepted@2 — R1-2, R1-4, R1-5, R1-7, R1-8 each re-verified fixed on the shipped tree; no container and no locator file left behind by any probe | see the round-2 § What was checked |
+| R3-1 | round 3 | major | fixed@PENDING | `make test-contention CONTENTION_PARALLEL=4 && grep -c '(cached)' tmp/test-contention-race.log` → must be **0**. Today it is 8–11 and `internal/scheduler` is among them, so the gate whose status is the probe's verdict reports green having executed none of the contended packages |
+| R3-2 | round 3 | minor | fixed@PENDING | `make test-contention CONTENTION_PARALLEL=4; grep -c 'SQLSTATE 57P0' tmp/test-contention-load.log` → must be **0**. Today the load log ends in a teardown-induced failure block, because `kill "$load_pid"` reaches the loop subshell and not the `go test` it is running |
+| R3-A1 | round 3 | — | accepted@3 — R1-3 re-verified fixed on the shipped tree, both halves: the three values reach the scratch log, and the echo assertion is load-bearing (mutation-run, not assumed) | `grep -inE 'ceiling\|clients=\|parallel=' tmp/test-contention.log` → 2 hits; then `sed -i '150d' cmd/testpg/run.go && go test -count=1 ./cmd/testpg/` → RED at `run_test.go:149` |
+| R3-A2 | round 3 | — | accepted@3 — R2-1 and R2-2 re-verified fixed | `grep -n 'testdb: %v' internal/testdb/testdb.go` → no hit; `grep -n 't.Parallel' cmd/testpg/run_test.go` → no hit at the `--up`/`--down` tests |
+| R3-A3 | round 3 | — | accepted@3 — the shipped tree's own gate run: `make verify` GREEN and the ratchet holds with headroom | `make verify; make cover-ratchet` → 89.19% >= 89.44% (tolerance 0.60 pp) |
+| R3-A4 | round 3 | — | accepted@3 — AC8, AC9, AC13, AC15, AC18 and the panic / domain-invariant sweeps re-derived on the shipped file list: no service block, every changed path class named in the change filter, no `done/` edit, no pipe in any new recipe, no production panic site, no committed host literal beyond stub DSNs and a deliberately unreachable one | `git diff --name-only dbff3d8..HEAD` against `.github/workflows/ci.yml:38-79` |
+| R3-A5 | round 3 | — | accepted@3 — the `//nolint` reason at `cmd/testpg/run.go:316` naming `runChild`'s teardown is judged a same-package contract note, not a banned bare-name pointer: it states why the two teardowns are deliberately identical, and it is not the only thing carrying the reason | `make comment-refs` → 0, plus the review-judged read of the doc convention's two manual halves |
+| R3-A6 | round 3 | — | accepted@3 — the contention retiming re-read whole: every widened value is an instrument (`contentionSafeConfig`, `waitLockFree`'s poll ceiling, the reconcile poll loop), the deadline suite's `shortDeadlineConfig` is untouched, and no asserted proposition changed | `git diff dbff3d8..HEAD -- internal/scheduler/` |
+| R3-A7 | round 3 | — | accepted@3 — the three `at:` values in the new `learnings.md` entries re-resolved: two are real objects, the third is the deliberately-preserved wrong value its successor entry exists to correct | `git cat-file -t 56857fb314b73e180f9c9132ccd4e0c488b8b994 b8951419d4848f807f1fe105cd152fdb537e4a55` → commit, commit; `git cat-file -t f9834898…` → fatal |
 
 ## Files touched
 
@@ -358,3 +367,58 @@ is scoped by it: R1-1's independent re-measurement (R2-A1), `internal/ingest`'s 
 unchanged budgets (R2-A2), `schemaMaxConns`'s image-default comment (R2-A3),
 `TestBinaries_matchesTree`'s count-plus-names shape (R2-A4), AC9's re-derivation (R2-A5), R1-6's
 upheld objection (R2-A6), and the five round-1 fixes re-verified green (R2-A7).
+
+## Self-Review (Round 3)
+
+**Verdict:** REJECT
+
+**What was checked.** `AGENTS.md`; the spec's `## Acceptance Criteria` (AC1–AC18); the design's
+Approach, D1–D12, Decomposition, Handoff plan, Risks, Test Design and Open questions. Diff
+`dbff3d8..HEAD` (27 files, 42 commits); the code tree is byte-identical to `bcca2d6`, the only
+later commit being this file's own register close. Round-3 scope taken from the `## Review
+register` per instruction 7a. The spawn prompt carried only the five permitted lines — no
+contamination.
+
+Re-run against the shipped tree, never accepted from the progress file: `go vet ./...` (0),
+`golangci-lint run` (0 issues), `golangci-lint fmt -d` (clean), **`make verify` GREEN**,
+`make cover-ratchet` → **89.19% >= 89.44%** (tolerance 0.60 pp), and
+`make test-contention CONTENTION_PARALLEL=4` **twice** — which is where the round's finding is.
+
+Per-row re-verification of the round-2 register:
+
+- **R1-3 (fixed@bcca2d6) — confirmed, both halves.** `grep -inE 'ceiling|clients=|parallel='
+  tmp/test-contention.log` returns `testpg: started a server, ceiling 192 (clients=2,
+  parallel=4)` and `test-contention: clients=2 parallel=4`, so the arithmetic now outlives the
+  scrollback. Coverage half mutation-run rather than read: deleting `cmd/testpg/run.go:150`
+  turns `go test -count=1 ./cmd/testpg/` RED at `run_test.go:149` (`stderr = "", want the
+  granted ceiling 100 echoed`). Working tree restored and confirmed clean.
+- **R2-1 (fixed@bcca2d6) — confirmed.** `internal/testdb/testdb.go:56` prints `"%v\n"`; the
+  provisioner's own prefix is no longer doubled.
+- **R2-2 (fixed@bcca2d6) — confirmed.** Neither `--up`/`--down` test calls `t.Parallel()` any
+  more, and the reason is written where the two of them sit.
+- **R1-6 — objection still upheld** (register R2-A6); nothing has changed since.
+
+Also re-derived in this round: AC8 (no `services:` block; the Test job's four run steps are
+`make test` / `test-race` / `cover-ratchet` / `test-fallback`); AC9 on the shipped file list
+against the filter block; AC13 (KD-20 carries the arithmetic term by term; no `ai-docs/plans/done/**`
+file is touched); AC15 (no new recipe pipes a load-bearing status — the `|` characters in the
+contention recipe are all `||`); AC18 (only stub DSNs and a deliberately unreachable
+`127.0.0.1:1`); the panic-index sweep over every changed non-test Go file (no hit, so no row is
+owed); the domain-invariant sweep (no balance moves, no mechanic, no schema or enum touched);
+the D9 retiming read whole; the three `at:` values in the new `learnings.md` entries; and the
+progress file's required re-entry fields (`current_step`, `last_passed_gate`, `entry_args`
+present, `parent_skill` correctly omitted). Every mutation probe was taken over a `cp` backup
+and `git status --short` confirmed empty afterwards; no container and no locator file was left
+behind.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| R3-1 | `Makefile:115` | major | **`make test-contention`'s foreground race gate carries no `-count=1`, so the gate whose exit status IS the probe's verdict is served from the test cache — and on this tree it is. AC10's recorded PASS is a cached green.** Measured twice on the shipped tree: `make test-contention CONTENTION_PARALLEL=4` → GREEN in 11.7 s, and `tmp/test-contention-race.log` reads `ok … internal/scheduler (cached)` and `ok … internal/ingest (cached)` — 8 of 12 packages cached in one run, 9 of 12 in the other, `internal/scheduler` (the package the recorded trap names and the whole contention subtask exists for) cached in both. It was not executed at all, under load or otherwise. Counterfactual over a `cp` backup of the Makefile: adding `-count=1` to that one command makes the same target at the same parallelism run `internal/scheduler 5.755s`, `internal/store 6.207s`, `internal/ingest 4.146s` against the same background load, GREEN — so the tree is sound and the instrument was not. **This does not re-litigate the owner's "no ordinary gate gains `-count=1`".** D7 records that decision with its ground — "`make test`, `make test-race` and the ratchet measurement keep replaying: *a cached pass is a real pass from an identical earlier run*" — and that ground holds for a gate asserting *the code passes* and fails for this one, which asserts *the code passes under induced cross-package contention*: a property of the run's conditions, which the cache key cannot see, by R1-1's own measurement that the provisioning regime enters no cache key at all. D12 already wrote this argument for the target's **other** child (design `:534-541`, "**The load run carries `-count=1`**, and that is not decoration … an instrument that cannot load anything") and stopped one child short; it is the same defect class as AC3's, found at Step 9 and fixed in 1a3ee3a. Consequence: AC10 is recorded PASS on a run that may have executed none of the contended packages, and AC11's green half is in the same position (its RED half is sound — the reverted instrument changed the file, so that run missed the cache by construction). Exit: add `-count=1` to `Makefile:115` — that contradicts nothing in D12, it applies the paragraph D12 already wrote for the sibling child — then re-run and re-record AC10 and AC11's green with `grep -c '(cached)' tmp/test-contention-race.log` = 0. If the owner would rather the design state the reasoning explicitly, that is a **Design Amendment trigger** — design doc `ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md:532-541` (D12) is silent where it should be explicit; recipe at `.claude/skills/task/SKILL.md` Step 11 fail-loud table, and then spawn the `design-writer` Subagent to amend it, never an orchestrator `Edit`. | ✅ Fixed |
+| R3-2 | `Makefile:116-117` | minor | **`kill "$load_pid"` reaches the loop subshell, not the `go test` the loop is running, so the load run is not killed — it is orphaned and runs on into the wrapper's container teardown.** D12 (design `:532`) says the recipe kills the load run afterwards; it kills the loop driver. Mechanism confirmed directly rather than inferred: `( while true; do sleep 30; done ) & kill $!; wait` leaves the `sleep` alive. Observed effect on every run: `tmp/test-contention-load.log` ends in a block of teardown-induced failures — 43 `FAIL` lines in the run just taken, `FATAL: the database system is shutting down (SQLSTATE 57P03)` and `terminating connection due to administrator command (SQLSTATE 57P01)` — so the log D12 requires to be scanned before any red is classified always ends in failures a reader has to learn to discount, and the target returns while a `go test` is still holding connections. Not an AC break: the foreground's status is the verdict and the exhaustion literals D12 scans for are absent. Exit: start the loop under job control and kill its process group, or have the loop trap the signal and forward it to the child. | ✅ Fixed |
+
+**Recorded, not raised** — each is an `accepted@3` register row rather than a finding, so round 4
+is scoped by it: R1-3's two-half re-verification (R3-A1), R2-1 and R2-2 re-verified (R3-A2), the
+shipped tree's own `make verify` / ratchet run (R3-A3), the AC8 / AC9 / AC13 / AC15 / AC18 and
+panic / domain sweeps (R3-A4), the `runChild`-teardown `//nolint` reason judged a same-package
+contract note rather than a banned bare-name pointer (R3-A5), the D9 retiming read whole
+(R3-A6), and the three `learnings.md` `at:` values (R3-A7).

@@ -92,10 +92,24 @@ test-fallback:
 # sizes a server for TWO clients at the SAME pinned parallelism (the
 # ceiling's product form is correct only while every client shares one
 # parallel value); its child backgrounds a load loop of the database-backed
-# packages' own tests (-count=1, so it cannot be served from the test
-# cache — a loop without it loads nothing past its first iteration) and
-# foregrounds the race gate, both logging to files under the ignored
-# scratch directory. The target's OWN output — the granted ceiling the
+# packages' own tests and foregrounds the race gate, both logging to files
+# under the ignored scratch directory.
+#
+# BOTH children carry -count=1, and for the same reason: the DSN reaches no
+# cache key, so a repeat of either is answered from an earlier run that may
+# have taken the other provisioning path. Without it the load loop loads
+# nothing past its first iteration, and — the sharper half — the foreground
+# gate, whose exit status IS this probe's verdict, reports on a run that
+# never happened under load. That is not the ordinary-gate case where a
+# cached pass is a real pass: this gate asserts a property of the run's
+# conditions, which the cache key cannot see.
+#
+# Job control is on so the load loop is its own process group and the kill
+# below reaches the go test inside it rather than only the subshell around
+# it; an orphaned loop otherwise dies in the container teardown and fills
+# its log with failures that the exhaustion scan then has to read past.
+#
+# The target's OWN output — the granted ceiling the
 # wrapper echoes, the client count and the pinned parallelism — is captured
 # to a third file there and replayed to the terminal afterwards, so the
 # arithmetic a run relied on outlives the scrollback it was printed in; a
@@ -109,11 +123,12 @@ test-contention:
 	status=0; \
 	go run ./cmd/testpg --clients 2 --parallel $(CONTENTION_PARALLEL) -- bash -c '\
 	  set -eu -o pipefail; \
+	  set -m; \
 	  ( while true; do go test -count=1 -parallel $(CONTENTION_PARALLEL) ./internal/ingest/... ./internal/scheduler/... ./internal/store/... ./internal/testdb/...; done ) >tmp/test-contention-load.log 2>&1 & \
 	  load_pid=$$!; \
 	  fg_status=0; \
-	  go test -race -parallel $(CONTENTION_PARALLEL) ./... >tmp/test-contention-race.log 2>&1 || fg_status=$$?; \
-	  kill "$$load_pid" 2>/dev/null || true; \
+	  go test -race -count=1 -parallel $(CONTENTION_PARALLEL) ./... >tmp/test-contention-race.log 2>&1 || fg_status=$$?; \
+	  kill -- -"$$load_pid" 2>/dev/null || true; \
 	  wait "$$load_pid" 2>/dev/null || true; \
 	  echo "test-contention: clients=2 parallel=$(CONTENTION_PARALLEL)"; \
 	  exit "$$fg_status" \
