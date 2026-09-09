@@ -8,8 +8,8 @@ _Updated: 2026-09-09 16:14_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — Group B subtask 8 of 13 complete (pinned order 10, 7, 8, 9, 11)
-**last_passed_gate:** go build/test/vet, go test -race (internal/health), golangci-lint fmt -d + run, make comment-refs — all green (commit 6bb8320)
+**current_step:** Step 8 — Group B subtask 9 of 13 complete (pinned order 10, 7, 8, 9, 11)
+**last_passed_gate:** go build/test/vet, go test -race (internal/health), golangci-lint fmt -d + run, make comment-refs — all green (commit 63eb6b3)
 **entry_args:** 23
 
 ## Next action
@@ -29,9 +29,9 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
 - [x] 6. Scheduler adapter (`scheduler.Observer`)
 - [x] 7. Ingest adapter (`ingest.Observer`), `LagKnown` gate
 - [x] 8. pgx pool collector
-- [ ] 9. `promhttp` endpoint server  ← CURRENT (Group B, pinned order 10, 7, 8, 9, 11)
+- [x] 9. `promhttp` endpoint server
 - [x] 10. The canaries: `Prober`/`ProberFactory`, both legs, the ticker
-- [ ] 11. The structural guards (a)–(i)
+- [ ] 11. The structural guards (a)–(i)  ← CURRENT (Group B, pinned order 10, 7, 8, 9, 11)
 - [ ] 12. The alert contract
 - [ ] 13. Propagation sweep
 
@@ -160,6 +160,18 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
   module, `go test -race ./internal/health/...`, `go vet ./...`, `golangci-lint fmt -d` (no target
   file present in its diff), `golangci-lint run` (0 issues), `make comment-refs`. Committed at
   6bb8320.
+- **Step 8, subtask 9**: `Server.Start` binds via `(*net.ListenConfig).Listen` (the `noctx` linter
+  rejects a bare `net.Listen`) synchronously, before spawning the serve goroutine, so a bind error
+  is always a returned error rather than a background-goroutine surprise. `Shutdown` joins the
+  graceful-stop error with the serve goroutine's own terminal error via `errors.Join`, treating
+  `http.ErrServerClosed` as success. Tests run outside a `synctest` bubble (a real listener is not
+  durably blockable inside one) and hit the bound `127.0.0.1:0` port over real HTTP. `golangci-lint
+  run` flagged the same `noctx` issue in the test fixture's already-bound-address probe and an
+  unused `nolint:gosec` half of a directive (`nolintlint`) — fixed by switching production code to
+  `(*net.ListenConfig).Listen` and narrowing the test directive to `//nolint:noctx` alone. Gates run
+  and green: `go build ./...`, `go test ./internal/health/...` and the whole module,
+  `go test -race ./internal/health/...`, `go vet ./...`, `golangci-lint fmt -d` (no target file
+  present in its diff), `golangci-lint run` (0 issues), `make comment-refs`. Committed at 63eb6b3.
 
 ## Key discoveries (don't re-investigate)
 
