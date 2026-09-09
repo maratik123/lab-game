@@ -9,7 +9,7 @@ _Updated: 2026-09-09 16:14_
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
 **current_step:** Step 8 — subtask 11 of 13 complete (Group B DONE)
-**last_passed_gate:** make verify (full, incl. coverage ratchet) — green (commit 4829153)
+**last_passed_gate:** go build ./..., go test ./internal/health/..., go test -race ./internal/health/..., go vet ./..., golangci-lint fmt -d, golangci-lint run, make comment-refs, go test ./... (whole module) — green (2026-09-09T17:25:20Z, commit PENDING-COMMIT)
 **entry_args:** 23
 
 ## Next action
@@ -208,6 +208,41 @@ a4ba9a2, 6bb8320, 63eb6b3, 4829153, plus `.progress.md`-only commits). Per the d
   `go test ./...` and `-race` both through the shared-server route, `go mod tidy` delta,
   `actionlint`, `shellcheck`, `make comment-refs`) plus the coverage ratchet, all green — Group B
   (subtasks 7–11) is complete. Committed at 4829153.
+- **Step 8 subtask 10 (post-commit gap fix)**: closed a test-coverage gap the orchestrator found in
+  subtask 10 before Group C started. `TestNewLegs_PairingNeverSwapped` only asserts the
+  credential-endpoint pairing at the `NewLegs` constructor boundary (a recording `ProberFactory`
+  checking the options struct it received); nothing in the suite reached the wire to confirm
+  `NewTelegramProber` actually transmits the token it was handed rather than a swapped or
+  hard-coded one, which left AC15/AC16 ("issues `getMe` with the production bot token") unverified
+  at the strength the design calls for. Added
+  `TestNewTelegramProber_TransmitsItsOwnToken` in `internal/health/probe_test.go`: two
+  `TelegramProber`s, each built with its own format-valid-but-distinguishable fake token against
+  its own `tgtest.Server`, each asserting its own recorded `r.URL.Path` (telego's own path shape is
+  `/bot<token>/<method>`, read directly from `github.com/mymmrac/telego`'s `bot.go`) carries exactly
+  its own token, plus a same-path check that would catch a same-value hard-coding masking as two
+  correct answers. Recording uses a mutex-guarded `pathRecorder`, not a bare variable, following the
+  existing `atomic` counter in `TestTelegramProber_ServerError` -- a plain field written on the fake
+  server's handler goroutine and read from the test goroutine after `Probe` returns is not
+  established to be race-free by the HTTP round trip alone.
+  Proved discriminating (this design's own guard-section requirement): temporarily replaced
+  `NewTelegramProber`'s `tg.Options.Token` argument with a fixed, format-valid, wrong token
+  (`"9:ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-"`) in `internal/health/probe.go`, re-ran the new test --
+  it FAILED, reporting both legs' recorded paths carrying the wrong constant token and the
+  same-path check firing -- then reverted `probe.go` via a `cp`-backup taken before the edit and
+  confirmed (`diff`) the reverted file is byte-identical to the pre-corruption version, and that the
+  test passes again.
+  Base-URL observability finding: `tgtest.Server.DialContext`'s signature is
+  `func(ctx context.Context, _, _ string) (net.Conn, error)` -- it discards the network/address
+  arguments entirely and always hands back the same in-process pipe connection, so a prober's
+  `BaseURL` is NOT observable through `srv.Client()`; any `BaseURL` value routes to the same fake
+  server. Only the request path (which embeds the token) is observable at the wire through this
+  fixture, so the new test asserts the token half of the pairing at the wire and leaves the
+  endpoint half resting on the existing `NewLegs`-level constructor check plus this file's own
+  `tgtest.BaseURL`-only usage; this is reported here rather than asserted as something it is not.
+  Gates run and green: `go build ./...`, `go test ./internal/health/...`,
+  `go test -race ./internal/health/...`, `go vet ./...`, `golangci-lint fmt -d` (clean),
+  `golangci-lint run` (0 issues), `make comment-refs`, `go test ./...` (whole module, all packages
+  ok). Committed at PENDING-SHA (updated in the following `.progress.md`-only commit).
 
 ## Key discoveries (don't re-investigate)
 

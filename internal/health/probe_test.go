@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -153,6 +154,96 @@ func TestTelegramProber_NeverWritesToATransportRegistry(t *testing.T) {
 		if len(mf.GetMetric()) > 0 {
 			t.Errorf("family %s carries %d metrics after a probe — a canary call must never reach the transport registry", mf.GetName(), len(mf.GetMetric()))
 		}
+	}
+}
+
+// pathRecorder records the last HTTP request path a fake server's handler
+// observed, under a mutex — the handler runs on the server goroutine and
+// the assertion reads it from the test goroutine, so a plain field would
+// race even though the HTTP round trip itself happened to complete first.
+type pathRecorder struct {
+	mu   sync.Mutex
+	path string
+}
+
+func (r *pathRecorder) record(p string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.path = p
+}
+
+func (r *pathRecorder) get() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.path
+}
+
+// TestNewTelegramProber_TransmitsItsOwnToken asserts the pairing at the
+// wire, not at the constructor argument: NewLegs's own recording-factory
+// test (TestNewLegs_PairingNeverSwapped) never issues a real HTTP request,
+// so it cannot catch a swap or a hard-coded credential introduced inside
+// NewTelegramProber itself. Two probers, built with two distinguishable
+// (but format-valid) tokens against two independent fake servers, each
+// assert their own recorded request path — proving no crossover, not only
+// that some token arrived.
+func TestNewTelegramProber_TransmitsItsOwnToken(t *testing.T) {
+	t.Parallel()
+
+	// Both tokens match telego's own token shape (a digit run, a colon,
+	// then 35 word/hyphen characters), the same shape this package's other
+	// fake-token constant uses, so telego's construction-time validation
+	// accepts them; the repeated "AAAA-"/"BBBB-" bodies make each
+	// unmistakably not a credential.
+	const tokenA = "111:AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-"
+	const tokenB = "222:BBBB-BBBB-BBBB-BBBB-BBBB-BBBB-BBBB-"
+
+	var pathA, pathB pathRecorder
+	successBody := json.RawMessage(`{"id":1,"is_bot":true,"first_name":"x"}`)
+	srvA := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
+		pathA.record(r.URL.Path)
+		tgtest.Success(successBody)(w, r)
+	})
+	srvB := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
+		pathB.record(r.URL.Path)
+		tgtest.Success(successBody)(w, r)
+	})
+
+	pA, err := NewTelegramProber(TelegramProberOptions{
+		Token:      tokenA,
+		BaseURL:    tgtest.BaseURL,
+		Transport:  probeTransport(),
+		HTTPClient: srvA.Client(),
+	})
+	if err != nil {
+		t.Fatalf("NewTelegramProber (leg A): %v", err)
+	}
+	pB, err := NewTelegramProber(TelegramProberOptions{
+		Token:      tokenB,
+		BaseURL:    tgtest.BaseURL,
+		Transport:  probeTransport(),
+		HTTPClient: srvB.Client(),
+	})
+	if err != nil {
+		t.Fatalf("NewTelegramProber (leg B): %v", err)
+	}
+
+	if _, err := pA.Probe(context.Background()); err != nil {
+		t.Fatalf("Probe (leg A): %v", err)
+	}
+	if _, err := pB.Probe(context.Background()); err != nil {
+		t.Fatalf("Probe (leg B): %v", err)
+	}
+
+	wantA := "/bot" + tokenA + "/getMe"
+	wantB := "/bot" + tokenB + "/getMe"
+	if got := pathA.get(); got != wantA {
+		t.Errorf("leg A transmitted path %q, want %q", got, wantA)
+	}
+	if got := pathB.get(); got != wantB {
+		t.Errorf("leg B transmitted path %q, want %q", got, wantB)
+	}
+	if pathA.get() == pathB.get() {
+		t.Errorf("legs A and B transmitted the same request path %q — the token was not distinguished at the wire", pathA.get())
 	}
 }
 
