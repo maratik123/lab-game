@@ -24,7 +24,7 @@ const (
 // listen address: the loopback interface only, on a port chosen to
 // collide with neither Prometheus's own well-known ports nor this
 // module's other documented ports.
-const defaultHealthMetricsAddr = "127.0.0.1" + ":" + "9095"
+const defaultHealthMetricsAddr = "127.0.0.1:9095"
 
 // defaultHealthCanaryCloudBaseURL is the cloud reference leg's compiled-in
 // default endpoint — the Bot API's own cloud origin, used as the canary's
@@ -50,8 +50,10 @@ func healthEnvKeys() []string {
 // LAB_GAME_HEALTH_ variable never fails Load.
 type Health struct {
 	// MetricsAddr is the /metrics endpoint's listen address
-	// (LAB_GAME_HEALTH_METRICS_ADDR). See defaultHealthMetricsAddr for the
-	// compiled-in default and the reasoning behind it.
+	// (LAB_GAME_HEALTH_METRICS_ADDR). The compiled-in default is the
+	// loopback interface only, on a port chosen to collide with neither
+	// Prometheus's own well-known ports nor this module's other
+	// documented ports.
 	MetricsAddr string
 	// CanaryInterval is the tick cadence driving both canary legs
 	// (LAB_GAME_HEALTH_CANARY_INTERVAL, default one minute — the design's
@@ -67,19 +69,18 @@ type Health struct {
 	CanaryCloudToken Secret
 	// CanaryCloudBaseURL is the cloud reference leg's Bot API base URL
 	// (LAB_GAME_HEALTH_CANARY_CLOUD_BASE_URL). Defaults to the Bot API's
-	// own cloud origin (see defaultHealthCanaryCloudBaseURL), validated by
-	// the same parser BotAPIBaseURL uses.
+	// own cloud origin, validated by the same parser that validates every
+	// other configured Bot API base URL in this package.
 	CanaryCloudBaseURL url.URL
 }
 
 // defaultHealth returns the compiled-in defaults every health key falls
 // back to when its environment variable is absent.
 //
-// defaultHealthCanaryCloudBaseURL is a literal this package's own parser
-// accepts — pinned by TestDefaultHealth_CloudBaseURLParses — so the error
-// branch below is unreachable in practice; it is handled rather than
-// ignored so a future edit to the literal fails as an empty URL instead
-// of silently swallowing the parse error.
+// The compiled-in cloud base URL literal is a value this package's own
+// parser accepts, so the error branch below is unreachable in practice;
+// it is handled rather than ignored so a future edit to the literal
+// fails as an empty URL instead of silently swallowing the parse error.
 func defaultHealth() Health {
 	var cloudBaseURL url.URL
 	if u, err := parseBotAPIBaseURL(defaultHealthCanaryCloudBaseURL); err == nil {

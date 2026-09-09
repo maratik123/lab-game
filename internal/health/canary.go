@@ -38,17 +38,20 @@ const (
 // supplies; wiring these fields from the running configuration is the
 // composition root's own obligation.
 type LegsOptions struct {
-	// OwnToken is the own-instance leg's bot token.
-	OwnToken string
+	// OwnToken is the own-instance leg's bot token. Its type redacts it
+	// from a %v of this struct.
+	OwnToken config.Secret
 	// OwnBaseURL is the own-instance leg's Bot API base URL.
 	OwnBaseURL string
 	// CloudToken is the cloud reference leg's bot token. Empty disables
-	// the cloud leg entirely.
-	CloudToken string
+	// the cloud leg entirely. Its type redacts it from a %v of this
+	// struct.
+	CloudToken config.Secret
 	// CloudBaseURL is the cloud reference leg's Bot API base URL.
 	CloudBaseURL string
 	// Transport is copied into each leg's prober, with
-	// RetryMaxAttempts forced to one (see NewTelegramProber).
+	// RetryMaxAttempts always forced to exactly one attempt per call —
+	// the canary's own attempt count is structural, not configured.
 	Transport config.Transport
 	// ProberFactory builds one leg's Prober. Nil means
 	// NewTelegramProber. A test installs a recording factory to assert

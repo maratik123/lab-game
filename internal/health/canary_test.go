@@ -2,6 +2,8 @@ package health
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -60,6 +62,26 @@ func TestNewLegs_PairingNeverSwapped(t *testing.T) {
 	}
 	if cloud.Token != "cloud-token" || cloud.BaseURL != "https://cloud.invalid" {
 		t.Errorf("cloud leg = (%q, %q), want (%q, %q)", cloud.Token, cloud.BaseURL, "cloud-token", "https://cloud.invalid")
+	}
+}
+
+// TestLegsOptions_RedactsTokensInDefaultVerb falsifies a %v rendering of
+// LegsOptions that leaks either token: both fields carry a type that
+// redacts its own rendering precisely so this never happens.
+func TestLegsOptions_RedactsTokensInDefaultVerb(t *testing.T) {
+	t.Parallel()
+	opts := LegsOptions{
+		OwnToken:     "own-secret-token",
+		OwnBaseURL:   "https://own.invalid",
+		CloudToken:   "cloud-secret-token",
+		CloudBaseURL: "https://cloud.invalid",
+	}
+	rendered := fmt.Sprintf("%v", opts)
+	if strings.Contains(rendered, "own-secret-token") || strings.Contains(rendered, "cloud-secret-token") {
+		t.Errorf("%%v of LegsOptions leaked a token: %s", rendered)
+	}
+	if got := strings.Count(rendered, "[redacted]"); got != 2 {
+		t.Errorf("%%v of LegsOptions carries %d redaction placeholders, want 2: %s", got, rendered)
 	}
 }
 

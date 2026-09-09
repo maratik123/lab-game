@@ -39,11 +39,11 @@ var allowedLabelNames = []string{
 const unknownLabelValue = "unknown"
 
 // schedulerOutcomeLabel maps a task outcome to its label value. The
-// default branch is unreachable in an observed series — the worker
-// refuses an out-of-range outcome before ever building an
-// observation — but it keeps this switch total under the linter's
+// default branch keeps this switch total under the linter's
 // default-signifies-exhaustive setting, and it is exercised directly by
-// this package's own unit test.
+// this package's own unit test; whether an out-of-range value can ever
+// reach it depends on the worker's own internal validation, which this
+// mapper does not assume.
 func schedulerOutcomeLabel(o scheduler.Outcome) string {
 	switch o {
 	case scheduler.OutcomeDone:

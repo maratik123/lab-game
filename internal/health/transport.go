@@ -11,7 +11,9 @@ import (
 
 // TransportObserver is the Telegram transport's Observer implementation,
 // exporting every field of a transport observation: this package carries
-// no transport exemption.
+// no transport exemption. Safe for concurrent use: ObserveCall is called
+// from every goroutine that makes a Bot API call, and the underlying
+// vectors are themselves safe for concurrent use.
 type TransportObserver struct {
 	callDuration *prometheus.HistogramVec
 	responses    *prometheus.CounterVec

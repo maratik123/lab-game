@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -56,6 +58,25 @@ func TestTelegramProber_Success(t *testing.T) {
 	}
 }
 
+// TestTelegramProberOptions_RedactsTokenInDefaultVerb falsifies a %v
+// rendering of TelegramProberOptions that leaks the token: the field
+// carries a type that redacts its own rendering precisely so this never
+// happens.
+func TestTelegramProberOptions_RedactsTokenInDefaultVerb(t *testing.T) {
+	t.Parallel()
+	opts := TelegramProberOptions{
+		Token:   "own-secret-token",
+		BaseURL: "https://own.invalid",
+	}
+	rendered := fmt.Sprintf("%v", opts)
+	if strings.Contains(rendered, "own-secret-token") {
+		t.Errorf("%%v of TelegramProberOptions leaked the token: %s", rendered)
+	}
+	if !strings.Contains(rendered, "[redacted]") {
+		t.Errorf("%%v of TelegramProberOptions carries no redaction placeholder: %s", rendered)
+	}
+}
+
 func TestTelegramProber_OkFalse(t *testing.T) {
 	t.Parallel()
 	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
@@ -92,6 +113,28 @@ func TestTelegramProber_ServerError(t *testing.T) {
 	}
 	if got := classifyFailure(result.StatusCode, err); got != "500" {
 		t.Errorf("classifyFailure = %q, want %q", got, "500")
+	}
+}
+
+// TestTelegramProber_OkTrueWithServerError falsifies a probe that trusts
+// the decoded envelope alone: a handler answering a 500 status while
+// still claiming ok:true in its body must not count as a successful
+// probe.
+func TestTelegramProber_OkTrueWithServerError(t *testing.T) {
+	t.Parallel()
+	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"x"}}`))
+	})
+	p := newTestProber(t, srv)
+
+	result, err := p.Probe(context.Background())
+	if err == nil {
+		t.Fatal("Probe: expected an error from a 500 status carrying ok:true")
+	}
+	if result.StatusCode != http.StatusInternalServerError {
+		t.Errorf("StatusCode = %d, want 500", result.StatusCode)
 	}
 }
 

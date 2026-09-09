@@ -59,9 +59,13 @@ it. Three consequences bind every rule the pass writes:
 - **`unknown` is a real label value, not a bug.** Every enum-to-label mapper
   is total: an out-of-range input maps to `unknown`. For the update kind it
   is genuinely observed — an unrouted update carries no kind — so a
-  dashboard grouping by `kind` must expect it. For the scheduler and ingest
-  outcome labels it is a declared-only branch that the shipped code has no
-  path to produce; `unknown` appearing there is itself worth a look.
+  dashboard grouping by `kind` must expect it. For the ingest outcome label
+  and the scheduler failure-classification label it is a declared-only
+  branch that the shipped code has no path to produce; `unknown` appearing
+  there is itself worth a look. The scheduler *outcome* label carries no
+  such guarantee — a consumer-declared handler supplies it and the worker
+  passes it through unnormalised, so `unknown` is reachable there in
+  principle.
 
 Histograms expose the usual `_bucket`, `_sum` and `_count` series. The
 Go-runtime and process collectors, where the composition root installs them,

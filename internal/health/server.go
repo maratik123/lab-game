@@ -28,10 +28,13 @@ const readHeaderTimeout = 5 * time.Second
 type Server struct {
 	httpSrv *http.Server
 
-	mu       sync.Mutex
-	started  bool
-	listener net.Listener
-	serveErr chan error
+	mu           sync.Mutex
+	started      bool
+	listener     net.Listener
+	serveErr     chan error
+	shutdownOnce sync.Once
+	shutdownDone chan struct{}
+	shutdownErr  error
 }
 
 // NewServer builds a Server that gathers from gatherer at the fixed
@@ -66,6 +69,7 @@ func (s *Server) Start() error {
 	s.listener = ln
 	s.started = true
 	s.serveErr = make(chan error, 1)
+	s.shutdownDone = make(chan struct{})
 	go func() {
 		s.serveErr <- s.httpSrv.Serve(ln)
 	}()
@@ -88,20 +92,34 @@ func (s *Server) Addr() string {
 // the serve goroutine's terminal error so neither is dropped;
 // http.ErrServerClosed is the expected terminal value of a graceful stop
 // and is not itself reported as a failure. Returns an error rather than
-// panicking when called on a server never started.
+// panicking when called on a server never started. Idempotent: a second
+// (or later) call never repeats the graceful stop — it waits for the
+// first call's result, bounded by its own ctx, and returns that same
+// result once ready.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	started := s.started
 	serveErr := s.serveErr
+	done := s.shutdownDone
 	s.mu.Unlock()
 	if !started {
 		return errors.New("health: server not started")
 	}
 
-	shutdownErr := s.httpSrv.Shutdown(ctx)
-	err := <-serveErr
-	if errors.Is(err, http.ErrServerClosed) {
-		err = nil
+	s.shutdownOnce.Do(func() {
+		shutdownErr := s.httpSrv.Shutdown(ctx)
+		err := <-serveErr
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		s.shutdownErr = errors.Join(shutdownErr, err)
+		close(done)
+	})
+
+	select {
+	case <-done:
+		return s.shutdownErr
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	return errors.Join(shutdownErr, err)
 }

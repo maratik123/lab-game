@@ -49,7 +49,10 @@ var (
 
 // PoolCollector exports a pgx connection pool's Stat as Prometheus
 // metrics, calling its accessor once per scrape rather than caching a
-// snapshot.
+// snapshot. Safe for concurrent use: the registry calls Collect from
+// scrape goroutines, possibly concurrently with a scrape already in
+// flight, and this type keeps no mutable state of its own beyond the
+// accessor closure it was built with.
 type PoolCollector struct {
 	stat func() *pgxpool.Stat
 }

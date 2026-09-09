@@ -38,7 +38,8 @@ type Prober interface {
 // pairing is decided.
 type TelegramProberOptions struct {
 	// Token is the bot token this leg's getMe call authenticates with.
-	Token string
+	// Its type redacts it from a %v of this struct.
+	Token config.Secret
 	// BaseURL is the Bot API base URL this leg probes.
 	BaseURL string
 	// Transport is copied into the built client, with RetryMaxAttempts
@@ -94,7 +95,7 @@ func NewTelegramProber(opts TelegramProberOptions) (*TelegramProber, error) {
 	recorder := &statusRecorder{}
 	client, err := tg.New(tg.Options{
 		BaseURL:    opts.BaseURL,
-		Token:      opts.Token,
+		Token:      opts.Token.Reveal(),
 		Transport:  transport,
 		Observer:   recorder,
 		HTTPClient: opts.HTTPClient,
@@ -107,14 +108,19 @@ func NewTelegramProber(opts TelegramProberOptions) (*TelegramProber, error) {
 
 // Probe issues one getMe call. Success is reported only when the call
 // returned no error — which telego's caller guarantees only for a
-// decoded envelope whose Ok field is true — so a probe succeeds only
-// when the call reports ok:true and the recorder holds a 200.
+// decoded envelope whose Ok field is true — and the recorded status
+// code is exactly 200; a non-200 status paired with a nil error (an
+// envelope claiming ok:true on a non-200 response) is still reported
+// as a failure.
 func (p *TelegramProber) Probe(ctx context.Context) (ProbeResult, error) {
 	_, err := p.client.API().GetMe(ctx)
 	obs := p.recorder.take()
 	result := ProbeResult{Latency: obs.Latency, StatusCode: obs.StatusCode}
 	if err != nil {
 		return result, err
+	}
+	if obs.StatusCode != http.StatusOK {
+		return result, fmt.Errorf("health: probe: status %d with no call error", obs.StatusCode)
 	}
 	return result, nil
 }

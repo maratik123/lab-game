@@ -123,6 +123,38 @@ func TestServer_ShutdownReturnsNilOnCleanStop(t *testing.T) {
 	}
 }
 
+// TestServer_SecondShutdownReturnsRatherThanHanging falsifies a
+// second-call deadlock: without the fix, the first Shutdown drains the
+// single-value serve-error channel and a second call blocks on it
+// forever. A deadline on the second call's own context makes a
+// regression fail the test instead of stalling the whole suite.
+func TestServer_SecondShutdownReturnsRatherThanHanging(t *testing.T) {
+	t.Parallel()
+	s := NewServer("127.0.0.1:0", NewRegistry())
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := s.Shutdown(context.Background()); err != nil {
+		t.Fatalf("first Shutdown: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+		done <- s.Shutdown(ctx)
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("second Shutdown: %v, want nil (the latched first-call result)", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("DEADLOCK: second Shutdown never returned within a 3s test guard")
+	}
+}
+
 func TestServer_ShutdownOnNeverStartedReturnsError(t *testing.T) {
 	t.Parallel()
 	s := NewServer("127.0.0.1:0", NewRegistry())
