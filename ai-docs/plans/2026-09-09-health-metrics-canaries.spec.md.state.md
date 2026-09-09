@@ -60,7 +60,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 3
 agent_id: ac1667e9338683a66
 prior_qa:
   - round: 1
@@ -69,4 +69,7 @@ prior_qa:
   - round: 1
     question: "What drives the two canary probes' cadence?"
     answer: "In-process tick - a goroutine on the configured interval, independent of Postgres, so both legs keep reporting while the database is down. Nothing persisted, no new task type, no scheduler coupling."
+  - round: 2
+    question: "Design-review round 1 (Issue 2, major): AC23 makes the Key-decisions label allow-list binding, but it enumerates only 'canary leg' while AC14 requires a canary outcome counter and AC19 requires a failure classification. Fold the reason values into the existing 'HTTP status code' member, amend the allow-list, or restructure the metrics to avoid the labels?"
+    answer: "Amend the spec. Add 'canary outcome' and 'canary failure reason' to the Which-labels-are-allowed enumeration. AC14/AC19 already mandate both, so the list was written before the metric shapes existed; cardinality stays disciplined - outcome has two values, reason is bounded by HTTP status codes plus the three transport-error classes, and neither is player-identifying."
 ```

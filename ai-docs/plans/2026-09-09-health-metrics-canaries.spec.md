@@ -2,7 +2,19 @@
 
 **Source:** issue #23
 **Date:** 2026-09-09
+**Amended:** 2026-09-09 (design-review round 1)
 **Tracked in:** #23
+
+> **Amended after design-review round 1.** The canary families carry an outcome label and a
+> failure-reason label. The Key-decisions allow-list — which AC23 makes binding by reference —
+> enumerated neither, while AC14 already required a per-leg outcome counter and AC19 already
+> required the failure classification. The list was written before the canary metric shapes
+> existed, so AC23's guard would have passed against a label set the spec never authorised. The
+> amendment is exactly: the **Which labels are allowed** row now names the canary outcome and the
+> canary failure reason, with their value sets stated closed the same way the existing members
+> are, and the **Which labels are forbidden** row separates a classified reason from raw error
+> text in one clause. Approved by the product owner. No acceptance criterion changes, no scope
+> moves, and nothing else in this spec is re-opened.
 
 This is the health half of observability: a Prometheus registry the bot's already-instrumented
 packages report into, an endpoint that serves it, and the two end-to-end `getMe` canaries the
@@ -122,8 +134,8 @@ constructible components with explicit lifecycles and changes no process assembl
 | Which Prometheus client library | `github.com/prometheus/client_golang`. The design names promhttp for the endpoint, and promhttp is that module's subpackage; AGENTS.md § *Dependency Versions* refuses hand-rolling in its place. |
 | Global registry or an explicit one | An explicit `prometheus.Registry` constructed by the package and passed to every registration. No global default registerer, no `promauto`: a package-level registration is invisible at the call site, collides between tests, and cannot be isolated. |
 | Where the endpoint's lifecycle lives | Here as a constructible server with explicit start and shutdown; #24 starts and stops it. The roadmap lists #23 as a dependency of #24, so the assembly direction is fixed. |
-| Which labels are allowed | Bot API method name, Bot API method class, HTTP status code, scheduler task type, scheduler outcome, scheduler failure kind, ingest update kind, ingest outcome, canary leg, pgx pool state. Each value set is closed by an enum or by the set of methods this module itself calls. |
-| Which labels are forbidden | Chat id, user or player id, update id, task id, operation id, raw error text, request URL, and any bot token in any form. Unbounded or player-identifying — a health series must not become a per-player series, and the product questions are the event log's. |
+| Which labels are allowed | Bot API method name, Bot API method class, HTTP status code, scheduler task type, scheduler outcome, scheduler failure kind, ingest update kind, ingest outcome, canary leg, canary outcome, canary failure reason, pgx pool state. Every value set is bounded and never data-derived: an enum (the scheduler outcome and failure kind, the ingest update kind and outcome), the set of methods this module itself calls, the HTTP status-code space, the two canary legs, the canary's success-or-failure pair, and — for the canary failure reason — a status code where a response arrived plus a code-enumerated class where none did (timeout, cancellation, network failure). None is player-identifying, and none is taken from an error's text. The list is a ceiling, not an obligation. |
+| Which labels are forbidden | Chat id, user or player id, update id, task id, operation id, raw error text, request URL, and any bot token in any form. Unbounded or player-identifying — a health series must not become a per-player series, and the product questions are the event log's. A classified canary failure reason is not error text: it is one of the enumerated classes the allowed row names, chosen from the error, never rendered from it. |
 | Canary interval | A configuration key, optional-with-default, whose default is the design's once-a-minute cadence [source: 081213a:docs/DESIGN.md § 13.2 · sed -n '/^### 13.2\./,/^### 13.3\./p' docs/DESIGN.md]. |
 | Canary cost against the rate limiters | Nil by construction: each leg gets its own client with its own limiter and a single attempt, so a canary neither draws on the production budget nor mixes into the production transport series. `getMe` classifies as `ClassOther` [source: 081213a:internal/tg/class.go § classifyMethod · sed -n '/^func classifyMethod/,/^}/p' internal/tg/class.go], whose windows are unbounded by default [source: 081213a:internal/config/transport.go § defaultTransport · sed -n '/^func defaultTransport/,/^}/p' internal/config/transport.go]. |
 | Why one attempt, not the production retry policy | A retrying canary measures the retry loop, not the network: the failure it exists to show is masked by the retry and the latency it reports is mostly backoff. |
