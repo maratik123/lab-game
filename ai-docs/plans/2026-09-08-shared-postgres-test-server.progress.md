@@ -10,8 +10,8 @@ _Updated: 2026-09-08 22:07_
 **Issue:** #67
 **Spec:** ai-docs/plans/2026-09-08-shared-postgres-test-server.spec.md
 
-**current_step:** Step 11 — review fixes complete (Round 1)
-**last_passed_gate:** `make verify` | 2026-09-08T23:20Z | f4e6e759f08fedab25a57a119ad17980c2d3aa35
+**current_step:** Step 11 — review fixes complete (Round 2)
+**last_passed_gate:** `make verify` + `make cover-ratchet` | 2026-09-09T07:05Z | bcca2d62a3c6a0c1714bda572a8d6b849cd28bdd
 **entry_args:** 67
 
 ## Next action
@@ -174,6 +174,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 11 (Round 1)**: R1-6 is the round's one objection — the thirteen wrapper tests span three entry points and assert structurally different things, so a table would need a per-case closure field, which separate functions already are.
 - **Step 11 (Round 1)**: R1-1 and R1-5 were routed through the Design Amendment recipe rather than folded in, surfaced to the owner with the reviewer's wording verbatim. The owner decided no ordinary gate gains `-count=1` and exempted the amendment's re-review for this instance. Amending D7 turned up more than the finding: D10 and subtask 12 were instructing an edit that replaces a true workspace sentence with a false one, which is the route by which the falsehood reached a live document.
 - **Step 11 (Round 1)**: the mechanism behind R1-1 was read out of the toolchain rather than inferred — `m.Run` calls `m.before()`, which is where `StartTestLog` opens the log the go command reads for cache validity, and the DSN is read before that. A `TestMain` reading configuration before delegating to `m.Run()` is invisible to the test cache by construction.
+- **Step 11 (Round 2)**: R1-3 was taken by the recipe route rather than the design-amendment route — the finding offered both and D12's requirement is served, not narrowed, by making the values durable. The re-litigation tripwire was computed before continuing: three rows raised, one of them a re-opening, so 33% against a 50% threshold, and R1-3 was at its first re-opening.
+- **Step 11 (Round 2)**: the round-1 fix for R1-3 shipped with no test, which the reviewer proved by mutation. The replacement assertion was mutation-checked the same way before being recorded: delete the echo, `cmd/testpg` goes red.
 ## Key discoveries (don't re-investigate)
 
 - `testdb.Main` returns `m.Run()` before touching testcontainers when `LAB_GAME_TEST_DSN` is set, so no test needs to change to reach a shared server.
@@ -214,7 +216,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 |----|--------|----------|--------|-------------------|
 | R1-1 | round 1 | major | fixed@f4e6e75 | `go clean -testcache; for i in 1 2 3; do go run ./cmd/testpg -- bash -c 'echo "DSN=$LAB_GAME_TEST_DSN"; go test ./internal/store/'; done` |
 | R1-2 | round 1 | major | fixed@a11a5fa | `make test-db-up CLIENTS=1; make test-db-up CLIENTS=2; psql "$(cat tmp/testpg-dsn)" -At -c 'show max_connections'` |
-| R1-3 | round 1 | major | fixed@4088c69 | `make test-contention CONTENTION_PARALLEL=4; grep -inE 'ceiling\|clients=\|parallel=' tmp/test-contention.log` → prints both the granted ceiling and the client/parallel pair. The recipe now captures the TARGET's own two streams to a third scratch file and replays them, which is the exit the finding offered ("a file under tmp/"); the two child logs stay the children's own output, since the arithmetic is the target's, not theirs. Coverage half: with `cmd/testpg/run.go`'s ceiling `logf` deleted, `go test -count=1 ./cmd/testpg` goes RED — mutation-run, not assumed |
+| R1-3 | round 1 | major | fixed@bcca2d6 | `make test-contention CONTENTION_PARALLEL=4; grep -inE 'ceiling\|clients=\|parallel=' tmp/test-contention.log` → prints both the granted ceiling and the client/parallel pair. The recipe now captures the TARGET's own two streams to a third scratch file and replays them, which is the exit the finding offered ("a file under tmp/"); the two child logs stay the children's own output, since the arithmetic is the target's, not theirs. Coverage half: with `cmd/testpg/run.go`'s ceiling `logf` deleted, `go test -count=1 ./cmd/testpg` goes RED — mutation-run, not assumed |
 | R1-4 | round 1 | minor | fixed@a11a5fa | `DOCKER_HOST=unix:///nonexistent/podman.sock make test-db-up` |
 | R1-5 | round 1 | minor | fixed@f4e6e75 | `grep -n 'redirects to a file under' ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md` |
 | R1-6 | round 1 | nit | accepted@1 — shape only; the thirteen cases span three entry points and assert structurally different things (seam untouched / stop ran / ceiling arithmetic / usage error), so a table would need a per-case closure field, which separate test functions already are | `grep -c '^func Test' cmd/testpg/run_test.go` |
@@ -227,8 +229,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | R1-A5 | round 1 | — | accepted@1 — KD-20's corrected consequence clause is true on the shipped tree | `go list -deps ./cmd/bot \| grep -c testcontainers` → 0 |
 | R1-A6 | round 1 | — | accepted@1 — both new `at:` SHAs in `learnings.md` resolve; the third is the deliberately-preserved wrong value its successor entry corrects | `git cat-file -t 56857fb314b73e180f9c9132ccd4e0c488b8b994 b8951419d4848f807f1fe105cd152fdb537e4a55` |
 | R1-A7 | round 1 | — | accepted@1 — the ratchet holds on a cold cache with headroom, so the recorded 89.44 is not a lucky replay | `go clean -testcache && make cover-ratchet` → 90.04% >= 89.44% |
-| R2-1 | round 2 | nit | fixed@4088c69 | `grep -n 'testdb: %v' internal/testdb/testdb.go` against `grep -n 'testdb: starting' internal/testdb/server.go` |
-| R2-2 | round 2 | nit | fixed@4088c69 | `grep -n 'os.Setenv' cmd/testpg/run.go` against `grep -n 't.Parallel' cmd/testpg/run_test.go` at the --up/--down tests |
+| R2-1 | round 2 | nit | fixed@bcca2d6 | `grep -n 'testdb: %v' internal/testdb/testdb.go` against `grep -n 'testdb: starting' internal/testdb/server.go` |
+| R2-2 | round 2 | nit | fixed@bcca2d6 | `grep -n 'os.Setenv' cmd/testpg/run.go` against `grep -n 't.Parallel' cmd/testpg/run_test.go` at the --up/--down tests |
 | R2-A1 | round 2 | — | accepted@2 — R1-1's correction re-measured independently on the shipped tree: the DSN is in no cache key, so all four corrected documents are true | `go run ./cmd/testpg -- go test -count=1 ./internal/store/` then `LAB_GAME_TEST_DSN='postgres://labgame:labgame@127.0.0.1:1/labgame_test?sslmode=disable' go test ./internal/store/` → `(cached)` |
 | R2-A2 | round 2 | — | accepted@2 — `internal/ingest`'s untouched 2 s / 5 s budgets: subtask 8's mandate was to CLASSIFY every wall-clock constant, and these were classified and recorded; the probe is green with `internal/ingest` at 4.194s under load | `grep -rn 'time.Sleep\|WithTimeout\|time.After' internal/ingest/*_test.go` |
 | R2-A3 | round 2 | — | accepted@2 — `schemaMaxConns`'s `max_connections = 100` comment is still true of the path it describes; the design reserves the image default for the fallback explicitly | `grep -n -B 3 'schemaMaxConns = 4' internal/testdb/testdb.go` |
