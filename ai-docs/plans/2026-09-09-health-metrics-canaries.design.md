@@ -51,6 +51,12 @@ they are this design's own decision and this design's own test, carrying their o
 rather than discharging a criterion. Every citation of the removed criteria is gone, the one
 passage that existed only to reconcile with their wording is deleted rather than re-anchored, and
 AC29's remaining citations are re-read against its minimal text.
+**Amended:** 2026-09-09 — not a design round. D13's and D14's prediction about the shipped
+example placeholder was corrected against a measurement taken on the implementation: the
+placeholder is not a syntactically valid bot token, so the canary legs fail at construction
+rather than probing forever under a dead credential. The owner authorised the change as a
+factual repair, with no design-review re-run; the design loop was already closed. Landed at
+`ed3e778`.
 
 ## Approach
 
