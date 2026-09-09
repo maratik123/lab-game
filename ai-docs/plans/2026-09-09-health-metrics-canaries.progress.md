@@ -8,8 +8,8 @@ _Updated: 2026-09-09 16:14_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — Group B subtask 10 of 13 complete (pinned order 10, 7, 8, 9, 11)
-**last_passed_gate:** go build/test/vet, go test -race (internal/health), golangci-lint fmt -d + run, make comment-refs — all green (commit 64a015a)
+**current_step:** Step 8 — Group B subtask 7 of 13 complete (pinned order 10, 7, 8, 9, 11)
+**last_passed_gate:** go build/test/vet, go test -race (internal/health), golangci-lint fmt -d + run, make comment-refs — all green (commit a4ba9a2)
 **entry_args:** 23
 
 ## Next action
@@ -27,8 +27,8 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
 - [x] 4. Package skeleton: registry, labels, buckets, the D16 register
 - [x] 5. Transport adapter (`tg.Observer`)
 - [x] 6. Scheduler adapter (`scheduler.Observer`)
-- [ ] 7. Ingest adapter (`ingest.Observer`), `LagKnown` gate  ← CURRENT (Group B, pinned order 10, 7, 8, 9, 11)
-- [ ] 8. pgx pool collector
+- [x] 7. Ingest adapter (`ingest.Observer`), `LagKnown` gate
+- [ ] 8. pgx pool collector  ← CURRENT (Group B, pinned order 10, 7, 8, 9, 11)
 - [ ] 9. `promhttp` endpoint server
 - [x] 10. The canaries: `Prober`/`ProberFactory`, both legs, the ticker
 - [ ] 11. The structural guards (a)–(i)
@@ -130,6 +130,19 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
   `go test ./internal/health/...`, `go test -race ./internal/health/...`, `go vet ./...`,
   `golangci-lint fmt -d` (no target file present in its diff), `golangci-lint run` (0 issues),
   `make comment-refs`. Committed at 64a015a.
+- **Step 8, subtask 7**: `internal/health/ingest.go`'s `IngestObserver` reuses `registry.go`'s
+  existing ingest family consts (subtask 4 already declared them) and `labels.go`'s
+  `ingestKindLabel`/`ingestOutcomeLabel`. `ObserveUpdate` samples the lag histogram only when
+  `obs.LagKnown`, verified by a test asserting a zero histogram count alongside a non-zero counter
+  count from the same observation. `make comment-refs` raised no findings on first pass — the file
+  cites no AC/decision id and no package-qualified module symbol. One test fix during authoring:
+  `testutil.CollectAndCount` on a plain (non-vec) `prometheus.Counter` always returns 1 once the
+  collector exists, regardless of its value, so the "no loop error increments the counter" assertion
+  had to switch to `testutil.ToFloat64` — `CollectAndCount` only discriminates a `*Vec`'s label
+  cardinality, not a scalar counter's value. Gates run and green: `go build ./...`,
+  `go test ./internal/health/...` and the whole module, `go test -race ./internal/health/...`,
+  `go vet ./...`, `golangci-lint fmt -d` (no target file present in its diff), `golangci-lint run`
+  (0 issues), `make comment-refs`. Committed at a4ba9a2.
 
 ## Key discoveries (don't re-investigate)
 
