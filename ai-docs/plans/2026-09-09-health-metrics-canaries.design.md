@@ -10,6 +10,11 @@ it named the wrong surface and missed the one D7 creates; D6 stops mis-citing AC
 the divergence as a divergence; and D10 names the endpoint's path. The recommendations are
 taken: D13 owns KD-27's substantive clause, the ingest counter is renamed to what it counts, and
 D5 states the `kind` exemption where the rule is. No AC changed and no scope moved.
+**Amended:** 2026-09-09 — round 3. D11 gains the credential-to-endpoint pairing AC15 and AC16
+turn on, which round 2 left unstated and unasserted; D12's scrape guard is re-keyed per
+`(family, label)` because one label *name* spans disjoint value sets, and gains a panic-source
+guard; D13's KD-27 amendment is narrowed to the two keys the spec authorises; D16's
+unreachability claim is narrowed to the two enums that own it. No AC changed and no scope moved.
 
 ## Approach
 
@@ -267,8 +272,21 @@ signature change spec constraint 1 forbids.
 
 `outcome` values: `done`, `noop`, `failed`. `failure` values: `none`, `handler`, `unregistered`,
 `deadline`, `rolled_back` — one per member of `scheduler.FailureKind`, which is the set AC11
-requires. Each mapper additionally declares an `unknown` branch it cannot reach from this
-module's own code; D16 states why that is not a widening of AC11.
+requires. Each mapper additionally declares an `unknown` branch; D16 states why that is not a
+widening of AC11, and which of the two branches is genuinely unreachable. The `failure` one is:
+every `FailureKind` an observation can carry is set by the worker itself. The `outcome` one is
+**not**, and the difference matters — `scheduler.Outcome` arrives from the consumer-declared
+`Handler`, and the worker passes it through to the observation without normalising it
+[measured d8ead96:internal/scheduler/execute.go:226 and :173 · `rg -n 'handler.Execute\(ctx|
+outcome := r.outcome' internal/scheduler/execute.go` → `226: outcome, handlerErr =
+handler.Execute(ctx, tx, task)` and `173: outcome := r.outcome`, the value then assigned to
+`obs.Outcome`]. A third-party handler returning an out-of-range value therefore *can* make
+`unknown` an observed scheduler `outcome`, which is precisely why the branch exists. No AC binds
+that set — AC11 binds `scheduler.FailureKind` and AC10 binds `ingest.Outcome` — so nothing here
+turns on it; the settlement path refuses the same value separately
+[measured d8ead96:internal/scheduler/settle.go:190-196 · `sed -n '190,196p'
+internal/scheduler/settle.go` → `switch outcome {` … `default:` / `return fmt.Errorf("scheduler:
+unknown outcome %d", outcome)`].
 
 *Per-field ruling, `scheduler.Observation` (AC5).* `Type`, `Lag`, `Outcome` and `Failure` reach
 the families above. The other two are **deliberately unexported to metrics**, and the reason is
@@ -321,8 +339,9 @@ same multiplicity applies to the lag histogram and is carried in § Open questio
 
 `outcome` values: `handled`, `duplicate`, `unrouted`, `failed`, `panic`, `given_up` — exactly the
 members of `ingest.Outcome`, which is the set AC10 requires, and which is what makes recovered
-panics and idempotency duplicates individually visible. As with the scheduler mappers, an
-`unknown` branch is declared but unreachable from this module's code; D16 states why. `kind` carries
+panics and idempotency duplicates individually visible. An `unknown` branch is declared here too,
+and unlike the scheduler's `outcome` mapper this one really is unreachable — `ingest.Outcome` is
+set by the loop alone, never by a consumer; D16 states what follows. `kind` carries
 the derived kind verbatim; the empty kind an unrouted update leaves behind maps to the same named
 `unknown` value, so no series carries an empty label value — and that mapping IS reachable, since
 an unrouted update genuinely carries the zero `Kind`, so `unknown` is an observed `kind` value
@@ -504,6 +523,54 @@ the one typed error this package's caller ever returns for a` … `Err is saniti
 time` … `the bot token never appears in Err, in Error()'s rendering, or in any` /
 `// instrumentation observation.`], and no part of it becomes a label value regardless.
 
+**`NewLegs` is where a credential meets an endpoint, and the pairing is stated here because a
+swap is silent.** Round 2 named `NewLegs` only in § Test Design and never said what it is handed.
+That is the one place this design failed to apply its own standard — D11 makes the attempt count
+structural rather than configured, and then left the pairing to be inferred. The harm is specific
+and is the whole reason the spec has a § Source conflicts section: swap the two and the
+**production** bot token issues `getMe` at the cloud frontend every minute, reopening the session
+§12.2's runbook keeps closed, against a spec constraint that says the own leg "opens no session
+anywhere else"
+[measured d8ead96:ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md · `sed -n '/^13\. /,/^14\./p'
+ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md` → `13. **The own-instance leg carries
+the production bot token against the configured instance base` / `URL** — the chain the design
+asks it to exercise — and opens no session anywhere else.`]. Every test round 2 listed passes
+under the swap: both probers run against a fake server with a fake token, both get 200 and
+`ok:true`, and the leg-builder scenario only checked the cloud prober's nil-ness.
+
+*The pairing, stated.* `LegsOptions` carries each leg's credential beside its own endpoint and
+nothing else routes one to the other:
+
+| Leg | Token | Base URL | Source |
+|---|---|---|---|
+| own instance | `LegsOptions.OwnToken` | `LegsOptions.OwnBaseURL` | `Config.BotToken` and `Config.BotAPIBaseURL` |
+| cloud reference | `LegsOptions.CloudToken` | `LegsOptions.CloudBaseURL` | `Config.Health.CanaryCloudToken` and `Config.Health.CanaryCloudBaseURL` |
+
+Both token fields are `config.Secret`, so a `%v` of the options struct redacts them. An empty
+`CloudToken` returns a nil cloud `Prober` and builds no cloud client at all (AC17).
+
+*And the pairing is asserted, at each place it can break.* The design owns every one of them but
+the last, which it names rather than assumes:
+
+- **Inside `NewLegs`** — routing the own token to the cloud endpoint. Closed by an injectable
+  constructor: `ProberFactory func(TelegramProberOptions) (Prober, error)`, a field of
+  `LegsOptions` that is nil in production and then means this package's own
+  `NewTelegramProber`. A test passes a recording factory and asserts the exact `(Token, BaseURL)`
+  pair of each call. The seam exists for this assertion and for no other reason; without it the
+  routing is unobservable short of the network.
+- **Inside `NewTelegramProber`** — building the client with the right pair but transmitting
+  something else. Closed at the wire: telego addresses `<base>/bot<token>/<method>`
+  [measured d8ead96:internal/tgtest/tgtest_test.go:15 · `sed -n '15p'
+  internal/tgtest/tgtest_test.go` → `req, err := http.NewRequestWithContext(ctx,
+  http.MethodPost, BaseURL+"/bot"+Token+"/getMe", nil)`], so the fake server records the path it
+  received and the test reads the transmitted token out of it. That is a stronger assertion than
+  any constructor-argument check: it asserts what left the process.
+- **In #24's wiring of `LegsOptions`** — passing the cloud token as `OwnToken`. This one is *not*
+  this task's to close, and saying so is the point rather than an omission: `cmd/` is untouched by
+  AC29, so the mapping in the table above is a boundary obligation handed to #24, named here so it
+  arrives as a stated contract instead of an assumption. The field names are the mitigation this
+  task can supply, and their doc comments state the source variable for each.
+
 *The probe seam is an interface declared here* — `Prober` with `Probe(ctx) (ProbeResult, error)`,
 `ProbeResult` carrying the latency and the status code — so the runner's tests need neither telego
 nor a socket, and the runner applies the 200-and-no-error rule once for both legs.
@@ -513,8 +580,9 @@ otherwise have to take on faith: a walk of the module's Go files asserting no im
 of `prometheus/promauto` and no use of the default registerer (AC2); a reflection guard binding
 the observation-field register to the structs it claims to cover, both directions (D16; AC4, AC5,
 AC6); a scrape of a registry whose every adapter has been driven once, asserting every label name
-belongs to the allow-list and every enum-valued label's **observed** value set is exactly the
-member set D6 names (AC10, AC11, AC23); the same
+belongs to the allow-list and every closed-set label's **observed** values, **keyed by `(family,
+label)`** (AC10, AC11, AC23); a walk of this package's own non-test source for `panic(`,
+`log.Fatal` and `os.Exit` (AC32); the same
 scrape asserting the body contains none of the sentinel secrets the fixture was built with — the bot
 token, the cloud token, the DSN, a chat id, an update id, a task id, an operation id (AC23, AC24);
 and `testutil.GatherAndLint` over that registry asserting no problem
@@ -524,6 +592,52 @@ error)` and `CollectAndLint can be used to detect metrics that have issues with 
 metadata`]. A problem promlint reports is a naming defect to fix in the name, never an assertion to
 relax — nothing scrapes these names yet, so the names are still free to move and the alert contract
 moves with them in the same PR.
+
+**The value-set assertion is keyed by `(family, label)`, never by label name alone.** `outcome` is
+one label *name* over three disjoint value sets, and `kind` wants `unknown` included where
+`outcome` and `failure` want it excluded (D16), so a guard grouping by name observes their union
+and fails against every one of them. The table it asserts:
+
+| Family | Label | Observed values asserted |
+|---|---|---|
+| `labgame_scheduler_tasks_total` | `outcome` | `done`, `noop`, `failed` |
+| `labgame_scheduler_tasks_total` | `failure` | exactly the members of `scheduler.FailureKind` |
+| `labgame_ingest_update_outcomes_total`, `labgame_ingest_handler_duration_seconds` | `outcome` | exactly the members of `ingest.Outcome` |
+| the ingest families carrying it | `kind` | the kinds the fixture drives, `unknown` included |
+| `labgame_canary_probes_total`, `labgame_canary_probe_duration_seconds` | `outcome` | `success`, `failure` |
+| the canary families carrying it | `leg` | `own`, `cloud` |
+| `labgame_pgxpool_conns` | `state` | `idle`, `acquired`, `constructing` |
+
+`method`, `code` and `reason` are **not** closed-set labels in this sense and get membership
+assertions rather than set equality: the first two range over the Bot API's own method and status
+spaces, and `reason` is a decimal status code or one of the enumerated transport classes, so the
+guard asserts each observed value matches that shape.
+
+**The sixth guard closes AC32 structurally, which round 2 left to prose.** A walk of
+`internal/health`'s non-test files for `panic(`, `log.Fatal` and `os.Exit`, on the in-repo model
+[measured d8ead96:internal/ingest/guards_test.go:78-92 · `sed -n '78,92p'
+internal/ingest/guards_test.go` → `func TestGuard_NoPanicLogFatalOrOsExit(t *testing.T) {` with
+`forbidden := []string{"panic(", "log.Fatal", "os.Exit"}`]. Round 2 mapped AC32 only to the
+bucket table test and the server test, and neither asserts the source property; a lint rule does
+not either. Proved discriminating the way the other walks are.
+
+**One rule this design triggers and does not discharge, recorded rather than argued away.**
+Guard (a) and guard (f) both need the repository root, and the helper that finds it —
+`repoRootPath` — is already copied across four test binaries
+[measured d8ead96 · `rg -n 'func repoRootPath' --glob '*_test.go' .` → `internal/ingest/guards_test.go:22`,
+`cmd/bot/main_test.go:16`, `internal/tg/guards_test.go:22`, `internal/config/repo_root_test.go:15`];
+`internal/tg` has additionally grown a `walkGoFiles` of its own
+[measured d8ead96:internal/tg/guards_test.go:34 · `rg -n 'func walkGoFiles' --glob '*_test.go' .` →
+`./internal/tg/guards_test.go:34:func walkGoFiles(t *testing.T, root string, fn func(path string,
+content []byte)) {`]. Subtask 10 adds the fifth copy. **The workspace's ≥3-site rule is triggered
+and the correct remedy is a small shared package** — `internal/tgtest`'s own package comment names
+that threshold as the reason it exists. This task does not take that remedy, and the reason is
+neither "minimal surface" nor "no new package", both of which are refused arguments: **AC29
+forbids modifying any file under `cmd/`, and `cmd/bot/main_test.go` is one of the four sites**, so
+a hoist cannot be completed here; a partial hoist would leave the same rule half-applied while
+spending scope the spec does not authorise, and § Communication requires an ask rather than a
+notification for that. The item is carried to § Open questions so the orchestrator routes it,
+instead of being lost between two constraints.
 
 **D13 — configuration: a new `LAB_GAME_HEALTH_` optional-with-default class.** The keys below, in
 `internal/config/health.go`, read by a dedicated `loadHealth` and appended to `EnvKeys()` alongside
@@ -577,9 +691,15 @@ outright (Scope 10, AC17 — an absent cloud token must load without error and d
 the reason the original clause does not reach them is that KD-27 was written about credentials the
 process **cannot run without**, whereas these two configure an optional *diagnostic leg* whose
 absence is a supported operating mode. The bot token and the DSN stay required and gain no
-default; the instance base URL stays required and gains none. Subtask 12 amends KD-27 to carry
-this shape — the class boundary now reads "required unless the value's own absence is a designed
-operating mode" — rather than merely appending a fourth scope to its enumeration.
+default; the instance base URL stays required and gains none. **Subtask 12 records these two keys
+as named exceptions to KD-27's clause, and rewrites no boundary.** An earlier draft of this
+paragraph generalised the clause to "required unless the value's own absence is a designed
+operating mode"; that is withdrawn. The spec authorises *these two keys* (Scope 10, AC17) and
+authorises nothing wider, and loosening a rule nobody asked to loosen is unapproved scope exactly
+as tightening one is. So the amendment names `LAB_GAME_HEALTH_CANARY_CLOUD_TOKEN` and
+`LAB_GAME_HEALTH_CANARY_CLOUD_BASE_URL` as exceptions carrying the reason above, and leaves
+KD-27's clause standing for every other secret and every other base URL — a future optional
+secret argues its own case rather than inheriting one.
 
 **D14 — the alert contract lives at `ai-docs/alert-contract.md`, in English.** `AGENTS.md` restricts
 Russian to owner conversation and `docs/**` [measured 9ff1fce:AGENTS.md:4 · `rg -n -o 'Russian for
@@ -647,13 +767,26 @@ lint-clean, and which keeps the value set closed if the source enum ever grows. 
 this was "what AC10 asks for". It is not, and the sentence is withdrawn.
 
 The reconciliation is that **a label's value set is the set of values the series actually carry**,
-not the range of the function that computes them. The `unknown` branch is unreachable from this
-module's code — the source packages produce only in-range values — so it emits nothing and the
-observed set is exactly the members, which is what the ACs require. **D12's guard therefore asserts
+not the range of the function that computes them. For **the two enums the ACs actually bind** —
+`ingest.Outcome`, which only the ingest loop sets, and `scheduler.FailureKind`, which only the
+worker sets — the `unknown` branch is unreachable, so it emits nothing and the observed set is
+exactly the members, which is what AC10 and AC11 require. The claim is deliberately **not** made
+for `scheduler.Outcome`, which a consumer-declared `Handler` supplies and the worker passes
+through unnormalised (D6): there `unknown` is reachable in principle, no AC binds the set, and the
+branch is doing real work rather than sitting unreachable. **D12's guard therefore asserts
 the OBSERVED set, not the declared one**, and no § Test Design scenario drives an out-of-range enum
 value into it: doing so to "make `unknown` observable" would be manufacturing the very series the
 AC forbids. Widening the AC instead was rejected — it would authorise the silent-mislabel case the
 criterion exists to catch.
+
+**AC30 is discharged by the lint gate, and that is worth one sentence rather than a re-derivation
+later.** Every exported item added here needs a doc comment opening with its name and every new
+package needs a package comment; `revive`'s `exported` and `package-comments` rules are enabled
+[measured d8ead96:.golangci.yml:45-48 · `sed -n '45,48p' .golangci.yml` → `revive:` / `rules:` /
+`- name: exported` / `- name: package-comments`], so `golangci-lint run` refuses the diff that
+misses one and AC33 carries that gate. No separate guard is written for it, and none is needed —
+which is the opposite of AC32's case, where no lint rule asserts the source property and D12's
+sixth guard therefore does.
 
 Two consequences worth keeping straight. The mapper's `default` branch **is** still tested, as a
 unit test of the function in subtask 3, called directly with an out-of-range value; that is a
@@ -674,10 +807,10 @@ because an unrouted update really does carry the zero `Kind` — so the observed
 | 6 | The ingest adapter satisfying `ingest.Observer`, with the `LagKnown` sampling gate | `internal/health/ingest.go`, `internal/health/ingest_test.go` | 3 |
 | 7 | The pgx pool collector over a `func() *pgxpool.Stat` accessor | `internal/health/pool.go`, `internal/health/pool_test.go` | 3 |
 | 8 | The `promhttp` endpoint's server with synchronous bind, `Addr`, and joined-error shutdown | `internal/health/server.go`, `internal/health/server_test.go` | 3 |
-| 9 | The canaries: the `Prober` seam, the Telegram prober with its status recorder and failure classifier, the leg builder that disables the cloud leg on an absent token, and the ticker runner | `internal/health/canary.go`, `internal/health/probe.go`, `internal/health/canary_test.go`, `internal/health/probe_test.go` | 2, 3 |
-| 10 | The structural guards of D12 — including the D16 register-vs-struct reflection guard — then the whole `make verify` plus the coverage ratchet | `internal/health/guards_test.go` | 4, 5, 6, 7, 8, 9 |
+| 9 | The canaries: the `Prober` seam and the `ProberFactory` seam, the Telegram prober with its status recorder and failure classifier, the leg builder with the credential-to-endpoint pairing of D11 (and the cloud leg disabled on an absent token), and the ticker runner | `internal/health/canary.go`, `internal/health/probe.go`, `internal/health/canary_test.go`, `internal/health/probe_test.go` | 2, 3 |
+| 10 | The structural guards of D12 — the D16 register-vs-struct reflection guard, the per-`(family, label)` value-set guard and the panic-source walk included — then the whole `make verify` plus the coverage ratchet | `internal/health/guards_test.go` | 4, 5, 6, 7, 8, 9 |
 | 11 | The alert contract | `ai-docs/alert-contract.md` | 10 |
-| 12 | Propagation per `AGENTS.md` § *Propagation Rule* step 4: index the contract, and correct every live surface this diff falsifies | `ai-docs/agent-docs-index.md`, `ai-docs/context.md`, `ai-docs/context-status.md`, `ai-docs/key-decisions.md` | 11 |
+| 12 | Propagation per `AGENTS.md` § *Propagation Rule* step 4 (AC27, AC34): index the contract, correct every live surface this diff falsifies, and record the two KD-27 exceptions D13 names — the clause itself is left standing | `ai-docs/agent-docs-index.md`, `ai-docs/context.md`, `ai-docs/context-status.md`, `ai-docs/key-decisions.md` | 11 |
 
 **Subtask 12's sweep is an obligation, not a fixed list.** The class is "any live surface asserting
 what the bot exposes, what environment variables it reads, or which packages exist". The files
@@ -753,6 +886,15 @@ with no inline `model=` and inherited effort. The `design-writer`, `design-revie
   GOMODCACHE)/github.com/prometheus/client_golang@v1.24.1/prometheus/histogram.go → NewMetricVec's
   newMetric closure calling newHistogram, and sed -n '590,595p' of the same file → the
   "histogram buckets must be in increasing order" panic]`.
+- **A credential reaches the wrong endpoint and every test still passes.** The own leg carries the
+  production bot token; the cloud leg must not. A swap inside `NewLegs` sends that token to the
+  cloud frontend once a minute, reopening the session the migration runbook keeps closed — and it
+  is invisible to every behavioural test, because both legs answer 200 with `ok:true` against a
+  fake server holding a fake token. This is the sharpest correctness risk in the change and round
+  2 carried no mitigation for it at all. Mitigation: D11 states the pairing, the `ProberFactory`
+  seam makes the routing observable, and subtask 9 asserts both the recorded `(Token, BaseURL)`
+  pair per leg and the token actually transmitted on the wire; #24 owns the remaining hop and is
+  told so — `[derived → subtask 9's leg-pairing scenarios]`.
 - **The observation-field register drifts from the structs it claims to cover.** A telego or
   scheduler change adding an `Observation` field would leave the register silently incomplete,
   which is exactly the state round 1 shipped in this document. Mitigation: D16's table plus D12's
@@ -891,13 +1033,26 @@ deadline is counted a failure with `timeout`; **a probe makes exactly one attemp
 handler counting the requests it receives while answering 500, which the production retry policy
 would have retried; and **no probe writes to a transport-adapter registry** — asserted by running a
 probe with a `TransportObserver` registered on a separate registry and gathering zero transport
-families from it. `[derived → AC15, AC16, AC18, AC19]`
+families from it. **And the transmitted credential is asserted, not assumed**: the fake server
+records the request path it received, and the test requires it to carry the prober's own token and
+the `getMe` method — the half of AC15/AC16 that says *this* token left the process for *this*
+endpoint. A prober built with one token and transmitting another reds here.
+`[derived → AC16, AC18, AC19]`
 
-*Leg-builder scenarios:* with a cloud token configured, `NewLegs` returns a prober per leg; **with the
-cloud token empty it returns a nil cloud prober**, and a canary built from it, run over several
+*Leg-builder scenarios — the credential-to-endpoint pairing of D11, which round 2 left unasserted
+and which no other scenario reaches.* `NewLegs` is called with a recording `ProberFactory` and a
+distinguishable token and base URL per leg — the own leg's pair differing from the cloud leg's in
+both components. Assertions: the factory was called once per enabled leg; the own call
+received exactly `(OwnToken, OwnBaseURL)` and the cloud call exactly `(CloudToken, CloudBaseURL)`.
+**A swap in either direction fails this test**, which is the whole reason it exists — every other
+scenario in this subtask passes under a swap, because both legs answer 200 with `ok:true` against a
+fake server holding a fake token. Composed with the prober scenario above, the chain from a
+configuration value to the bytes on the wire is covered end to end. Then: **with the cloud token
+empty the factory is called once, for the own leg only**, `NewLegs` returns a nil cloud prober, and
+a canary built from it, run over several
 ticks, exports no `leg="cloud"` series of any kind — asserted as the absence of the label value in
 the gathered families, not as a zero-valued sample, because D8's absence is what the alert contract's
-absence test rests on. `[derived → AC14, AC17]`
+absence test rests on. `[derived → AC14, AC15, AC16, AC17]`
 
 *Runner scenarios*, inside a `testing/synctest` bubble with fake `Prober`s so no socket is involved:
 the first probe fires at `Start` rather than after one interval; a probe fires on each subsequent
@@ -925,14 +1080,23 @@ present in the package's own doc comment, obtained by parsing the package rather
 a string. Proved discriminating the same way guard (a) is: run once against a table with one row
 removed and once against a doc comment with one exempt name removed, each required to fail.
 (c) A registry driven once through every adapter, then gathered: every label name of every family
-belongs to the allow-list, and every enum-valued label's **observed** value set equals exactly the
-member set D6 names — the `unknown` branch of `outcome` and `failure` is unreachable from this
-module's code and therefore absent, which is the assertion rather than an exception to it, while
-`kind`'s `unknown` is genuinely observed and is expected (D16). (d) The same scrape's text contains
+belongs to the allow-list, and every closed-set label's **observed** values are asserted **per
+`(family, label)`**, against D12's table. Keying by label name alone would be a defect rather than
+a shortcut: `outcome` is one name over three disjoint sets — the scheduler's, the ingest loop's and
+the canary's — so a name-keyed guard observes their union and fails against all three, and `kind`
+expects `unknown` where the ingest `outcome` and the scheduler `failure` expect its absence. The
+fixture drives only in-range enum values, so `unknown` is absent from those two by construction and
+that absence is the assertion, never an exception to it (D16). `method`, `code` and `reason` get a
+shape assertion instead of set equality, per the same table. (d) The same scrape's text contains
 none of the sentinel secrets its fixture was built with —
 a bot token, a cloud token, a DSN, a chat id, an update id, a task id, an operation id — each a
 distinctive literal that could only appear by leaking. (e) `testutil.GatherAndLint` over that
-registry reports no problem. `[derived → AC2, AC4, AC5, AC6, AC10, AC11, AC23, AC24, AC31]`
+registry reports no problem. (f) A walk of `internal/health`'s own non-test files asserting none
+contains `panic(`, `log.Fatal` or `os.Exit` — AC32's source property, which neither the bucket
+table test nor the server test asserts and which no enabled lint rule asserts either. Proved
+discriminating the way (a) and (b) are: run once against a scratch file in the package carrying a
+bare `panic(` and required to fail, then that file removed.
+`[derived → AC2, AC4, AC5, AC6, AC10, AC11, AC23, AC24, AC31, AC32]`
 
 **Subtask 11 — no test.** The alert contract is prose; AC26 and AC27 are checked by reading it and by
 the index entry.
@@ -955,3 +1119,14 @@ the index entry.
   — a retry storm *is* the loop falling behind, and the star of the dashboard is a stall indicator —
   but it means the histogram is weighted by attempt count, and the alert contract says so. Revisit if
   the infrastructure pass wants a per-update distribution instead of a per-handling one.
+- **`repoRootPath` (and `walkGoFiles`) want a shared test-helper package, and this task cannot
+  finish the job.** D12 records the measurement: the helper is already copied across four test
+  binaries and subtask 10 adds the fifth, which is past the workspace's ≥3-site threshold, and
+  `internal/tg` has grown a second duplicated walker beside it. The remedy is a small package under
+  `internal/`, on `internal/tgtest`'s own precedent. It is **not** taken here because
+  `cmd/bot/main_test.go` is one of the four sites and AC29 forbids modifying any file under `cmd/`,
+  so the hoist cannot be completed within this task's authorised scope, and a partial hoist would
+  spend scope the spec does not grant to leave the rule half-applied. **This is a routing decision
+  for the orchestrator, not a disposition**: either a follow-up issue that owns all five sites, or
+  an explicit widening of this task's scope. Recorded here so it reaches triage rather than being
+  lost between the two constraints that block it.
