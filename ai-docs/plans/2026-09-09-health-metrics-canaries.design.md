@@ -15,6 +15,13 @@ turn on, which round 2 left unstated and unasserted; D12's scrape guard is re-ke
 `(family, label)` because one label *name* spans disjoint value sets, and gains a panic-source
 guard; D13's KD-27 amendment is narrowed to the two keys the spec authorises; D16's
 unreachability claim is narrowed to the two enums that own it. No AC changed and no scope moved.
+**Amended:** 2026-09-09 — round 4, against the spec at 9396d3c, which narrows AC29 and adds
+Scope 15, AC35 and AC36: the owner widened scope to take the test-helper hoist here rather than
+defer it. D17 designs that package and D18 routes the Go doc comments this change falsifies;
+the decomposition grows a leading subtask and the handoff plan grows to three groups. Round 3's
+positive claim that a handler can make `unknown` an observed scheduler `outcome` is **withdrawn
+as false** (D6). D9 names the sink for a collector error and D12's source walk is extended to the
+library's `Must…` spellings, which the round-3 § Risks row wrongly claimed were already covered.
 
 ## Approach
 
@@ -79,7 +86,7 @@ module already requires
 `grep -n 'xxhash\|golang.org/x/sys' go.mod` in this repository → `github.com/cespare/xxhash/v2
 v2.3.0 // indirect` and `golang.org/x/sys v0.47.0 // indirect`]. That closure is the expected shape,
 not the contract: the binding statement is the `git diff go.mod go.sum` the implementor reads before
-staging (AC28, subtask 1).
+staging (AC28, subtask 2).
 
 *Rejected:* hand-rolling an exposition format. The Prometheus text format has a specification, an
 escaping rule and a histogram layout this project would then own and test forever, and `promhttp` is
@@ -121,7 +128,7 @@ the name prefix, the bucket variables), `labels.go` (label-name constants, the e
 mappers, the allow-list), `transport.go`, `scheduler.go`, `ingest.go`, `pool.go`, `server.go`,
 `canary.go` (the runner and the `Prober` seam), `probe.go` (the Telegram prober, its status recorder
 and the failure classifier). The split keeps every file well inside the workspace's soft band and
-gives each `_test.go` an obvious home [derived → the file-limits gate in subtask 10].
+gives each `_test.go` an obvious home [derived → the file-limits gate in subtask 11].
 
 **D2 — the registry is constructed empty and every registration takes a `prometheus.Registerer`.**
 `NewRegistry() *prometheus.Registry` returns a vanilla registry with nothing on it;
@@ -280,13 +287,25 @@ every `FailureKind` an observation can carry is set by the worker itself. The `o
 [measured d8ead96:internal/scheduler/execute.go:226 and :173 · `rg -n 'handler.Execute\(ctx|
 outcome := r.outcome' internal/scheduler/execute.go` → `226: outcome, handlerErr =
 handler.Execute(ctx, tx, task)` and `173: outcome := r.outcome`, the value then assigned to
-`obs.Outcome`]. A third-party handler returning an out-of-range value therefore *can* make
-`unknown` an observed scheduler `outcome`, which is precisely why the branch exists. No AC binds
-that set — AC11 binds `scheduler.FailureKind` and AC10 binds `ingest.Outcome` — so nothing here
-turns on it; the settlement path refuses the same value separately
-[measured d8ead96:internal/scheduler/settle.go:190-196 · `sed -n '190,196p'
-internal/scheduler/settle.go` → `switch outcome {` … `default:` / `return fmt.Errorf("scheduler:
-unknown outcome %d", outcome)`].
+`obs.Outcome`]. **Round 3 concluded from that pass-through that a handler returning an
+out-of-range value can make `unknown` an observed scheduler `outcome`. That is false, and it is
+withdrawn.** The value never reaches an observation: `settleOutcome` runs first and its `default`
+branch refuses an unknown outcome, and the caller rolls back and returns on that error, before
+either the assignment or the observe call
+[measured 9396d3c:internal/scheduler/execute.go:186-188,204,209 and internal/scheduler/settle.go:190-196 ·
+`sed -n '186,188p;204p;209p' internal/scheduler/execute.go; sed -n '190,196p'
+internal/scheduler/settle.go` → `if err := settleOutcome(ctx, tx, task, decl, outcome,
+handlerErr, w.cfg); err != nil {` / `_ = tx.Rollback(ctx)` / `return fmt.Errorf("scheduler:
+settle task %d: %w", task.ID, err)`, with `obs.Outcome = outcome` and `w.observeTask(obs)` below
+it, and `switch outcome {` … `default:` / `return fmt.Errorf("scheduler: unknown outcome %d",
+outcome)`]. Every other site that observes sets `OutcomeFailed` explicitly first, so no path
+emits an out-of-range scheduler outcome. **The branch exists for totality, not for a reachable
+case:** `exhaustive` requires the switch to be total, and the branch keeps the value set closed
+however the source enum grows. What this design still declines to do is *claim* unreachability
+for `scheduler.Outcome` the way it does for the two enums the ACs bind — that guarantee rests on
+another package's internal control flow rather than on a contract, and D16 keeps the conservative
+framing. Nothing downstream moves: D12's table already asserts the observed set `done`, `noop`,
+`failed`.
 
 *Per-field ruling, `scheduler.Observation` (AC5).* `Type`, `Lag`, `Outcome` and `Failure` reach
 the families above. The other two are **deliberately unexported to metrics**, and the reason is
@@ -418,7 +437,7 @@ Two consequences bind the implementor:
   panics on a bad argument, and at package scope that is an init-time crash with no test between
   the mistake and the binary. An explicit literal has no arguments to get wrong, and it also makes
   the boundaries readable in review, which matters more here than brevity.
-- **A table-driven test over every bucket variable, in subtask 3, independent of the scrape
+- **A table-driven test over every bucket variable, in subtask 4, independent of the scrape
   guard.** For each variable: non-empty, strictly increasing, every boundary finite and positive,
   and no `+Inf` written by hand. Strictly-increasing is the panic guard. **Non-empty is a
   different guard for a different failure**: an empty slice does not panic, it is silently
@@ -450,7 +469,21 @@ method delegates to
 s.s.AcquireCount() }`] — so the accessor's documented contract is "returns a snapshot taken from a
 real pool, or nil", and `Collect` emits nothing when it returns nil. That nil branch is not
 defensive decoration: it is the honest answer for a caller whose pool has been closed, and it keeps
-the collector from taking the process down at scrape time. **A real pool needs no reachable server
+the collector from taking the process down at scrape time.
+
+**`Collect` has no error return, and the sink for one is named here rather than left to the
+implementor — because the obvious way out of that corner is a panicking constructor.**
+`prometheus.NewConstMetric` returns `(Metric, error)`; `Collect` cannot return it, `_ = err` is
+forbidden outright by `AGENTS.md` § *Code Style*, and the escape hatch sitting right beside it in
+the library is `MustNewConstMetric`, which panics. The library supplies the correct sink instead:
+a non-nil error becomes `prometheus.NewInvalidMetric(desc, err)`, sent on the channel like any
+other metric, and the registry reports it as a collection error on the scrape
+[measured 9396d3c · `go doc github.com/prometheus/client_golang/prometheus.NewInvalidMetric` in a
+scratch module → `func NewInvalidMetric(desc *Desc, err error) Metric` / `NewInvalidMetric returns
+a metric whose Write method always returns the provided error. It is useful if a Collector finds
+itself unable to collect a metric and wishes to report an error to the registry.`]. So the error
+is neither swallowed nor fatal, and no `Must…` call is needed anywhere in this package — which is
+what D12's extended source walk then enforces rather than assumes. **A real pool needs no reachable server
 to answer `Stat()`**, which is what keeps this package's test binary database-free
 [measured 9ff1fce · a scratch probe running `pgxpool.NewWithConfig` against a DSN pointing at a
 closed port, then `pool.Stat()` → `new err: <nil>` followed by a populated snapshot line].
@@ -479,7 +512,7 @@ current interval (AC21). **The endpoint's path is `/metrics`, a compiled-in cons
 contract plus the infrastructure pass both wire against it. The *address* is the operator's knob
 because a port collides; the *path* is a contract with the scraper, and making it movable would
 let an operator silently break every alert without editing an alert. `Server` mounts that one
-path on its own `http.ServeMux`; every other path is the mux's own 404, which is what subtask 8
+path on its own `http.ServeMux`; every other path is the mux's own 404, which is what subtask 9
 asserts against a fixed target. The server sets an explicit `ReadHeaderTimeout` from a named
 constant;
 `gosec` is enabled and its Slowloris rule is what makes that non-optional
@@ -582,7 +615,8 @@ the observation-field register to the structs it claims to cover, both direction
 AC6); a scrape of a registry whose every adapter has been driven once, asserting every label name
 belongs to the allow-list and every closed-set label's **observed** values, **keyed by `(family,
 label)`** (AC10, AC11, AC23); a walk of this package's own non-test source for `panic(`,
-`log.Fatal` and `os.Exit` (AC32); the same
+`log.Fatal`, `os.Exit` **and the client library's panicking `Must…` spellings** (AC32); a pair of
+walks over the module for the shared test helper of D17 (AC35, AC36); the same
 scrape asserting the body contains none of the sentinel secrets the fixture was built with — the bot
 token, the cloud token, the DSN, a chat id, an update id, a task id, an operation id (AC23, AC24);
 and `testutil.GatherAndLint` over that registry asserting no problem
@@ -613,31 +647,44 @@ assertions rather than set equality: the first two range over the Bot API's own 
 spaces, and `reason` is a decimal status code or one of the enumerated transport classes, so the
 guard asserts each observed value matches that shape.
 
-**The sixth guard closes AC32 structurally, which round 2 left to prose.** A walk of
-`internal/health`'s non-test files for `panic(`, `log.Fatal` and `os.Exit`, on the in-repo model
+**The sixth guard closes AC32 structurally, and round 3's version of it did not.** Round 3 wrote
+the forbidden set as `panic(`, `log.Fatal`, `os.Exit`, while § Risks claimed the same walk was
+"the place a `MustRegister` would be caught". It was not, and could not be: `reg.MustRegister(…)`
+and `prometheus.MustNewConstMetric(…)` are *library* calls, so they contain none of those tokens
+and the walk stays green on a file carrying one. That is the green-instrument shape this design
+polices elsewhere — a safeguard whose instrument cannot detect the category it claims — and the
+discriminating proof round 3 specified (a scratch file with a bare `panic(`) passes without ever
+touching the hazard. **The forbidden set therefore also carries `MustRegister` and `MustNew`**,
+the second as a family prefix rather than an enumeration, because the library ships
+`MustNewConstMetric`, `MustNewConstHistogram`, `MustNewConstNativeHistogram` and the two
+`…WithCreatedTimestamp` variants, and an enumerated list would miss the next one
+[measured 9396d3c · `go doc github.com/prometheus/client_golang/prometheus` in a scratch module →
+`func MustRegister(cs ...Collector)` at package level, plus `MustNewConstHistogram`,
+`MustNewConstHistogramWithCreatedTimestamp`, `MustNewConstMetric`,
+`MustNewConstMetricWithCreatedTimestamp` and `MustNewConstNativeHistogram`]. Guard (a) catches
+only the package-level `prometheus.MustRegister`, and only because that one is a *default
+registerer* use; `reg.MustRegister` on this package's own registry is invisible to it, and that
+is the spelling an implementor actually reaches for. The walk is on the in-repo model
 [measured d8ead96:internal/ingest/guards_test.go:78-92 · `sed -n '78,92p'
 internal/ingest/guards_test.go` → `func TestGuard_NoPanicLogFatalOrOsExit(t *testing.T) {` with
-`forbidden := []string{"panic(", "log.Fatal", "os.Exit"}`]. Round 2 mapped AC32 only to the
-bucket table test and the server test, and neither asserts the source property; a lint rule does
-not either. Proved discriminating the way the other walks are.
+`forbidden := []string{"panic(", "log.Fatal", "os.Exit"}`], extended by the two entries above.
+Round 2 mapped AC32 only to the bucket table test and the server test, and neither asserts the
+source property; a lint rule does not either. **Proved discriminating against both categories**,
+not just the cheap one: a scratch file carrying a bare `panic(` must red it, and a second scratch
+file carrying `prometheus.MustRegister(c)` must red it too — the second proof is the one round 3
+lacked, and without it the extension is itself an untested instrument.
 
-**One rule this design triggers and does not discharge, recorded rather than argued away.**
-Guard (a) and guard (f) both need the repository root, and the helper that finds it —
-`repoRootPath` — is already copied across four test binaries
-[measured d8ead96 · `rg -n 'func repoRootPath' --glob '*_test.go' .` → `internal/ingest/guards_test.go:22`,
-`cmd/bot/main_test.go:16`, `internal/tg/guards_test.go:22`, `internal/config/repo_root_test.go:15`];
-`internal/tg` has additionally grown a `walkGoFiles` of its own
-[measured d8ead96:internal/tg/guards_test.go:34 · `rg -n 'func walkGoFiles' --glob '*_test.go' .` →
-`./internal/tg/guards_test.go:34:func walkGoFiles(t *testing.T, root string, fn func(path string,
-content []byte)) {`]. Subtask 10 adds the fifth copy. **The workspace's ≥3-site rule is triggered
-and the correct remedy is a small shared package** — `internal/tgtest`'s own package comment names
-that threshold as the reason it exists. This task does not take that remedy, and the reason is
-neither "minimal surface" nor "no new package", both of which are refused arguments: **AC29
-forbids modifying any file under `cmd/`, and `cmd/bot/main_test.go` is one of the four sites**, so
-a hoist cannot be completed here; a partial hoist would leave the same rule half-applied while
-spending scope the spec does not authorise, and § Communication requires an ask rather than a
-notification for that. The item is carried to § Open questions so the orchestrator routes it,
-instead of being lost between two constraints.
+**Guard (a) and guard (f) both need the repository root, and the helper that finds it is now
+hoisted rather than copied a fifth time.** Round 3 recorded the ≥3-site duplication, judged the
+remedy blocked by AC29, and routed it to the orchestrator; the owner resolved it the other way —
+spec 9396d3c narrows AC29 to permit exactly the one edit the hoist needs in `cmd/bot/main_test.go`
+and adds Scope 15, AC35 and AC36. So the remedy is taken here: D17 designs the package, subtask 1
+performs the move before any subtask needs it, and guard (g) plus guard (h) hold it. The
+measurement that triggered the rule stands as taken and is not re-taken: `repoRootPath` had four
+declarations — `cmd/bot/main_test.go:16`, `internal/ingest/guards_test.go:22`,
+`internal/tg/guards_test.go:22`, `internal/config/repo_root_test.go:15`. **`walkGoFiles` is not
+part of this and is deliberately left alone:** it has one declaration module-wide, so no rule is
+triggered and consolidating it would be unrequested scope.
 
 **D13 — configuration: a new `LAB_GAME_HEALTH_` optional-with-default class.** The keys below, in
 `internal/config/health.go`, read by a dedicated `loadHealth` and appended to `EnvKeys()` alongside
@@ -691,7 +738,7 @@ outright (Scope 10, AC17 — an absent cloud token must load without error and d
 the reason the original clause does not reach them is that KD-27 was written about credentials the
 process **cannot run without**, whereas these two configure an optional *diagnostic leg* whose
 absence is a supported operating mode. The bot token and the DSN stay required and gain no
-default; the instance base URL stays required and gains none. **Subtask 12 records these two keys
+default; the instance base URL stays required and gains none. **Subtask 13 records these two keys
 as named exceptions to KD-27's clause, and rewrites no boundary.** An earlier draft of this
 paragraph generalised the clause to "required unless the value's own absence is a designed
 operating mode"; that is withdrawn. The spec authorises *these two keys* (Scope 10, AC17) and
@@ -789,30 +836,107 @@ which is the opposite of AC32's case, where no lint rule asserts the source prop
 sixth guard therefore does.
 
 Two consequences worth keeping straight. The mapper's `default` branch **is** still tested, as a
-unit test of the function in subtask 3, called directly with an out-of-range value; that is a
+unit test of the function in subtask 4, called directly with an out-of-range value; that is a
 statement about the mapper, never about a series, and the two assertions must not be conflated.
 And ingest's `kind` is the one place `unknown` is genuinely *observed* rather than merely declared,
 because an unrouted update really does carry the zero `Kind` — so the observed-set assertion for
 `kind` includes it, and for `outcome` and `failure` it does not.
 
+**D17 — the shared test helper is a new `internal/repotest`, exporting `RootPath`.** Scope 15
+leaves the layout to this design under three constraints, and each one eliminates a candidate.
+
+*Not `internal/tgtest`, although its package comment is what names the ≥3-site threshold in the
+first place.* It is a fake Bot API server — `net`, `net/http`, `encoding/json`, a pipe listener
+and a goroutine per server — and Scope 15 forbids dragging machinery a consumer does not use into
+that consumer's test binary. `internal/config`'s test binary resolves a path to the balance file;
+it has no business linking an HTTP server to do it. *Not `internal/testdb` either, and that one is
+sharper:* it provisions PostgreSQL through testcontainers, and one of the call sites is
+`cmd/bot/main_test.go`. Hosting the helper there would pull the container runtime into the bot
+command's own test binary — not into the command, so KD-20's literal invariant would survive, but
+squarely in the direction that invariant exists to keep clean. *So a new package, holding one
+thing:* `internal/repotest` imports `path/filepath`, `runtime` and `testing` and nothing else, which
+is the smallest import cost any of the call sites can pay.
+
+*The name follows `internal/tgtest`'s own pattern* — `<domain>test` for a shared, test-only
+package that is not itself a `_test.go` file — so the name states the test-only property that
+AC36 then enforces. `repotest.RootPath(tb, rel)` does not stutter, and reads at the call site as
+the four copies read today.
+
+*The mechanism is preserved exactly, not improved.* `runtime.Caller(0)` on the package's own file,
+then three `filepath.Dir` ascents — the package sits two directories below the repository root,
+which is where all four existing copies sit, so the arithmetic is unchanged. The parameter is
+`testing.TB` rather than `*testing.T`, so a benchmark or a helper may call it. *Rejected: walking
+upward for `go.mod`.* It is more robust and removes a hidden coupling to the package's own depth,
+but it is a behaviour change inside a consolidation whose whole value is that nothing else moves —
+and the fixed ascent's failure mode is a loud failure to open the resolved path, not a silent
+wrong answer. The package comment states the depth requirement so a later mover meets it.
+
+**One divergence from AC35's literal text, stated rather than glossed.** AC35 asks that "exactly
+one declaration of `repoRootPath` exists in the module, in a shared test-helper package". A
+cross-package helper must be exported, and `repoRootPath` is unexported, so the identifier cannot
+survive the move under that spelling — after the hoist there are *zero* declarations of
+`repoRootPath` and one of `repotest.RootPath`. Reintroducing the old spelling as a per-package
+alias would put a declaration back in every package, which is the duplication Scope 15 forbids in
+as many words. So guard (g) asserts the AC's intent in the form that is actually satisfiable, and
+it is strictly stronger than the literal reading: exactly one declaration of the helper
+module-wide, **and** zero surviving declarations under the old spelling.
+
+**D18 — three live Go doc comments assert what this change falsifies, and they belong to subtask
+3, not to the propagation sweep.** § Decomposition declares the falsification class as "any live
+surface asserting what the bot exposes, what environment variables it reads, or which packages
+exist", and then measures it with an `rg` over `*.md` — an instrument that cannot reach Go source,
+so the class and the instrument disagreed. Three comments in `internal/config` are in the class
+and are true today, which is what makes this diff the thing that falsifies them:
+
+- `EnvKeys`'s doc comment names "transportEnvKeys(), schedulerEnvKeys() and ingestEnvKeys() — the
+  three optional-with-default tuning classes". A fourth arrives, and *tuning* stops being the
+  right word for a class carrying a secret and a base URL
+  [measured 9396d3c:internal/config/env.go:48-49 · `sed -n '48,49p' internal/config/env.go` → `//
+  to equal exactly. transportEnvKeys(), schedulerEnvKeys() and` / `// ingestEnvKeys() — the three
+  optional-with-default tuning classes — are`].
+- `Config`'s doc comment says "Transport and Scheduler are the two exceptions … every other field
+  has no compiled-in fallback", which `Config.Health`'s defaulted secret and base URL make false
+  [measured 9396d3c:internal/config/config.go:38-41 · `sed -n '38,41p' internal/config/config.go` →
+  `// returns an error naming every rejected key. Transport and Scheduler are` / `// the two
+  exceptions: their fields are individually optional-with-default,` / `// so an absent LAB_GAME_TG_
+  or LAB_GAME_SCHEDULER_ variable never fails` / `// Load — every other field has no compiled-in
+  fallback.`]. It is already stale for `Ingest` and this change is not the place to leave it
+  staler.
+- The environment-variable const block's own comment enumerates the optional classes as the
+  transport's and the scheduler's
+  [measured 9396d3c:internal/config/env.go:11-16 · `sed -n '11,16p' internal/config/env.go` →
+  `// Environment variable names, LAB_GAME_ prefixed …` through `// tuning variables are separate,
+  optional-with-default classes, added on` / `// top by EnvKeys().`].
+
+**They are subtask 3's obligation, and the routing is structural rather than a preference.**
+Subtask 3's file list already carries `internal/config/env.go` and `internal/config/config.go`, it
+is the commit that makes the sentences false, and KD-27 records this precedent in the same words —
+the two sentences the *previous* optional class falsified "were rewritten in the same change". The
+propagation subtask cannot take them: it sits in the instructions/harness group, where a `.go`
+edit would break change-type homogeneity. So subtask 13's sweep stays `.md`-scoped by
+construction and the Go-comment half of AC34 is subtask 3's, which is what makes the declared
+class and the measuring instrument agree. Nothing gates a doc comment's truth, so this is the
+kind of AC that fails silently and green if it is not assigned to a specific commit.
+
 ## Decomposition
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | Take the module requirement: `go get github.com/prometheus/client_golang@v1.24.1`, `go mod tidy`, read `git diff go.mod go.sum` before staging | `go.mod`, `go.sum` | — |
-| 2 | The `LAB_GAME_HEALTH_` configuration class: keys, `Health` struct, defaults, `loadHealth`, `healthEnvKeys()`, `EnvKeys()` and `Config` wiring, the example-file entries, and the class's tests including the sibling `ExampleMatchesDefaults` shape | `internal/config/health.go`, `internal/config/health_test.go`, `internal/config/config.go`, `internal/config/env.go`, `.env.example` | — |
-| 3 | Package skeleton: the package comment carrying the observation-field register of D16 and the field-disposition table behind it, `NewRegistry`, `RegisterRuntime`, the name prefix, the bucket variables **and the bucket-validity table test of D7**, the label-name constants, the enum label-value mappers and the allow-list | `internal/health/doc.go`, `internal/health/registry.go`, `internal/health/labels.go`, and their tests | 1 |
-| 4 | The transport adapter satisfying `tg.Observer` | `internal/health/transport.go`, `internal/health/transport_test.go` | 3 |
-| 5 | The scheduler adapter satisfying `scheduler.Observer` | `internal/health/scheduler.go`, `internal/health/scheduler_test.go` | 3 |
-| 6 | The ingest adapter satisfying `ingest.Observer`, with the `LagKnown` sampling gate | `internal/health/ingest.go`, `internal/health/ingest_test.go` | 3 |
-| 7 | The pgx pool collector over a `func() *pgxpool.Stat` accessor | `internal/health/pool.go`, `internal/health/pool_test.go` | 3 |
-| 8 | The `promhttp` endpoint's server with synchronous bind, `Addr`, and joined-error shutdown | `internal/health/server.go`, `internal/health/server_test.go` | 3 |
-| 9 | The canaries: the `Prober` seam and the `ProberFactory` seam, the Telegram prober with its status recorder and failure classifier, the leg builder with the credential-to-endpoint pairing of D11 (and the cloud leg disabled on an absent token), and the ticker runner | `internal/health/canary.go`, `internal/health/probe.go`, `internal/health/canary_test.go`, `internal/health/probe_test.go` | 2, 3 |
-| 10 | The structural guards of D12 — the D16 register-vs-struct reflection guard, the per-`(family, label)` value-set guard and the panic-source walk included — then the whole `make verify` plus the coverage ratchet | `internal/health/guards_test.go` | 4, 5, 6, 7, 8, 9 |
-| 11 | The alert contract | `ai-docs/alert-contract.md` | 10 |
-| 12 | Propagation per `AGENTS.md` § *Propagation Rule* step 4 (AC27, AC34): index the contract, correct every live surface this diff falsifies, and record the two KD-27 exceptions D13 names — the clause itself is left standing | `ai-docs/agent-docs-index.md`, `ai-docs/context.md`, `ai-docs/context-status.md`, `ai-docs/key-decisions.md` | 11 |
+| 1 | The shared test-helper package of D17: `internal/repotest` holding `RootPath`, with every existing `repoRootPath` declaration replaced by a call into it and none left behind | `internal/repotest/repotest.go`, `internal/repotest/repotest_test.go`, `cmd/bot/main_test.go`, `internal/ingest/guards_test.go`, `internal/tg/guards_test.go`, `internal/config/repo_root_test.go` | — |
+| 2 | Take the module requirement: `go get github.com/prometheus/client_golang@v1.24.1`, `go mod tidy`, read `git diff go.mod go.sum` before staging | `go.mod`, `go.sum` | — |
+| 3 | The `LAB_GAME_HEALTH_` configuration class: keys, `Health` struct, defaults, `loadHealth`, `healthEnvKeys()`, `EnvKeys()` and `Config` wiring, the example-file entries, the class's tests including the sibling `ExampleMatchesDefaults` shape, **and the Go doc comments this class falsifies** (D18) | `internal/config/health.go`, `internal/config/health_test.go`, `internal/config/config.go`, `internal/config/env.go`, `.env.example` | — |
+| 4 | Package skeleton: the package comment carrying the observation-field register of D16 and the field-disposition table behind it, `NewRegistry`, `RegisterRuntime`, the name prefix, the bucket variables **and the bucket-validity table test of D7**, the label-name constants, the enum label-value mappers and the allow-list | `internal/health/doc.go`, `internal/health/registry.go`, `internal/health/labels.go`, and their tests | 2 |
+| 5 | The transport adapter satisfying `tg.Observer` | `internal/health/transport.go`, `internal/health/transport_test.go` | 4 |
+| 6 | The scheduler adapter satisfying `scheduler.Observer` | `internal/health/scheduler.go`, `internal/health/scheduler_test.go` | 4 |
+| 7 | The ingest adapter satisfying `ingest.Observer`, with the `LagKnown` sampling gate | `internal/health/ingest.go`, `internal/health/ingest_test.go` | 4 |
+| 8 | The pgx pool collector over a `func() *pgxpool.Stat` accessor, with the `NewInvalidMetric` error sink of D9 | `internal/health/pool.go`, `internal/health/pool_test.go` | 4 |
+| 9 | The `promhttp` endpoint's server with synchronous bind, `Addr`, and joined-error shutdown | `internal/health/server.go`, `internal/health/server_test.go` | 4 |
+| 10 | The canaries: the `Prober` seam and the `ProberFactory` seam, the Telegram prober with its status recorder and failure classifier, the leg builder with the credential-to-endpoint pairing of D11 (and the cloud leg disabled on an absent token), and the ticker runner | `internal/health/canary.go`, `internal/health/probe.go`, `internal/health/canary_test.go`, `internal/health/probe_test.go` | 3, 4 |
+| 11 | The structural guards of D12 — the D16 register-vs-struct reflection guard, the per-`(family, label)` value-set guard, the panicking-call walk and the D17 helper guards included — then the whole `make verify` plus the coverage ratchet | `internal/health/guards_test.go` | 1, 5, 6, 7, 8, 9, 10 |
+| 12 | The alert contract | `ai-docs/alert-contract.md` | 11 |
+| 13 | Propagation per `AGENTS.md` § *Propagation Rule* step 4 (AC27, AC34): index the contract, correct every live surface this diff falsifies, and record the two KD-27 exceptions D13 names — the clause itself is left standing | `ai-docs/agent-docs-index.md`, `ai-docs/context.md`, `ai-docs/context-status.md`, `ai-docs/key-decisions.md` | 12 |
 
-**Subtask 12's sweep is an obligation, not a fixed list.** The class is "any live surface asserting
+**Subtask 13's sweep is an obligation, not a fixed list.** The class is "any live surface asserting
 what the bot exposes, what environment variables it reads, or which packages exist". The files
 named are the members a sweep at this commit finds
 [measured 9ff1fce · `rg -l -i "LAB_GAME_INGEST_|optional-with-default|internal/ingest" --glob '*.md'
@@ -845,21 +969,43 @@ test in the same commit, not instructions an agent reads. Nothing that *is* enum
 reclassified. Same-change-type subtasks are clustered into the **fewest groups possible**, bounded
 by the size cap, by dependency order and by homogeneity; naive interleaving is the least-desirable
 fallback and is not used here. The default maximum is **4** groups per task, and more than 4 is
-surfaced to the user for approval; this design defines **2**.
+surfaced to the user for approval; this design defines **3**.
+
+**Why 3 rather than the 2 of round 3, and why the split is forced rather than chosen.** Scope 15
+adds the test-helper hoist, which is Go test code and therefore a code subtask. The code
+change-type now holds subtasks 1–11, which is past the size cap, and the harness's own rule is that
+a change-type with more than 10 subtasks splits into multiple same-model groups of `≤ 10`. So a
+second code group is mandatory, not a clustering preference, and the minimisation rule is satisfied
+at 3. The split is placed after subtask 10 because subtask 11 is the verification phase — the
+structural guards, their discriminating proofs, and the whole-gate run — which depends on every
+subtask before it and benefits most from entering on fresh context.
 
 - **Handoff into Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
   § Compaction recovery (re-entry). Every group is entered through it, the first included.
 - **Group A** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
   window — subtasks 1–10 (code change-type: `*.go`, plus `go.mod`, `go.sum` and `.env.example`).
-  At the size cap, not over it. Subtasks 4–8 are independent of one another and depend only on 3, so
-  their order inside the group is free; 9 additionally needs 2, and 10 needs all of 4–9.
+  At the size cap, not over it. Subtask 1 leads because subtask 11's guard walk needs the shared
+  helper and must never add a fifth copy of it, not even transiently; subtasks 5–9 are independent
+  of one another and depend only on 4, so their order inside the group is free; 10 additionally
+  needs 3.
 - **Handoff after Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
   § Compaction recovery (re-entry). The parent `/task` resumes in Group B with fresh context.
-- **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
+- **Group B** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
+  window — subtask 11 (code change-type: `*.go`). One subtask, inside the size cap. It carries every
+  structural guard and each guard's discriminating proof, so it is the group where a green
+  instrument is most dangerous and fresh context is worth most.
+- **Handoff after Group B:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
+  § Compaction recovery (re-entry). The parent `/task` resumes in Group C with fresh context.
+- **Group C** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
   (typically xHigh) — NOT pinned — via the `general-purpose` subagent with no inline `model=`
-  override, 1M-token window — subtasks 11–12 (instructions/harness change-type: `ai-docs/**`).
-  Terminal group, within the `1..=10` range. Both subtasks depend on Group A's subtask 10, which
-  completes first, so dependency order holds across the boundary.
+  override, 1M-token window — subtasks 12–13 (instructions/harness change-type: `ai-docs/**`).
+  Terminal group, within the `1..=10` range. Both depend on subtask 11, which Group B completes
+  first, so dependency order holds across the boundary.
+
+**The Go-comment half of AC34 is deliberately not in Group C.** Group C is homogeneous
+instructions/harness, so a `.go` edit cannot land in it without breaking homogeneity — which is why
+D18 routes the falsified Go doc comments to subtask 3, in Group A, beside the change that falsifies
+them. Subtask 13's sweep is `.md`-scoped by construction.
 
 Marker-to-implementor routing is applied at spawn: a **code** group routes to
 `subagent_type="code-writer"`, whose `model: sonnet` and `effort: medium` are frontmatter-pinned, with
@@ -872,7 +1018,11 @@ with no inline `model=` and inherited effort. The `design-writer`, `design-revie
 - **A registration or metric constructor that panics defeats AC32 and the empty panic index.** The
   library ships a panicking spelling beside every fallible one, and `promhttp.HandlerOpts.Registry`
   panics on a failed registration by its own documentation. Mitigation: D3 fixes the non-panicking
-  spelling for each, and subtask 10's guard walk is the place a `MustRegister` would be caught —
+  spelling for each, D9 names `NewInvalidMetric` as the collector's error sink so no corner pushes
+  an implementor toward `MustNewConstMetric`, and **subtask 11's source walk carries `MustRegister`
+  and `MustNew` in its forbidden set** — which round 3 asserted and did not deliver: its walk
+  looked only for `panic(`, `log.Fatal` and `os.Exit`, none of which appears in a library `Must…`
+  call, so the row claimed structural enforcement the instrument could not provide —
   `[measured 9ff1fce · go doc github.com/prometheus/client_golang/prometheus/promhttp.HandlerOpts in
   a scratch module → "A failed registration causes a panic."]`.
 - **A mis-ordered bucket variable panics on a production goroutine, not at start-up.** This is the
@@ -881,7 +1031,7 @@ with no inline `model=` and inherited effort. The `design-writer`, `design-revie
   observation* of a label combination, which is the ingest loop's or the scheduler worker's own
   goroutine. The error-returning spelling does not shield it, and an empty slice fails the other
   way, silently becoming `DefBuckets`. Mitigation: D7 forbids the panicking bucket helpers at
-  package scope and puts a table test over every bucket variable in subtask 3, ahead of every
+  package scope and puts a table test over every bucket variable in subtask 4, ahead of every
   adapter that observes into one — `[measured 9ff1fce · sed -n '1183,1205p' $(go env
   GOMODCACHE)/github.com/prometheus/client_golang@v1.24.1/prometheus/histogram.go → NewMetricVec's
   newMetric closure calling newHistogram, and sed -n '590,595p' of the same file → the
@@ -892,14 +1042,14 @@ with no inline `model=` and inherited effort. The `design-writer`, `design-revie
   is invisible to every behavioural test, because both legs answer 200 with `ok:true` against a
   fake server holding a fake token. This is the sharpest correctness risk in the change and round
   2 carried no mitigation for it at all. Mitigation: D11 states the pairing, the `ProberFactory`
-  seam makes the routing observable, and subtask 9 asserts both the recorded `(Token, BaseURL)`
+  seam makes the routing observable, and subtask 10 asserts both the recorded `(Token, BaseURL)`
   pair per leg and the token actually transmitted on the wire; #24 owns the remaining hop and is
-  told so — `[derived → subtask 9's leg-pairing scenarios]`.
+  told so — `[derived → subtask 10's leg-pairing scenarios]`.
 - **The observation-field register drifts from the structs it claims to cover.** A telego or
   scheduler change adding an `Observation` field would leave the register silently incomplete,
   which is exactly the state round 1 shipped in this document. Mitigation: D16's table plus D12's
   both-directions reflection guard, and the doc-comment presence assertion that stops the prose
-  and the table parting company — `[derived → subtask 10's register guard]`.
+  and the table parting company — `[derived → subtask 11's register guard]`.
 - **A hand-built `pgxpool.Stat` nil-dereferences at scrape time.** A test author reaching for
   `&pgxpool.Stat{}` as a fixture writes a panic into the scrape path. Mitigation: D9 makes the real
   pool the fixture — a pool built against an unreachable DSN answers `Stat()` with no server — and
@@ -910,7 +1060,7 @@ with no inline `model=` and inherited effort. The `design-writer`, `design-revie
 - **The example-environment tests reject an empty default.** Every value in the example file must be
   non-empty, and each optional class has a test asserting the example's own values reload to the
   compiled-in defaults — while the cloud token's compiled-in default is empty by AC17. Mitigation:
-  subtask 2's `ExampleMatchesDefaults` compares the class with the token field zeroed on the loaded
+  subtask 3's `ExampleMatchesDefaults` compares the class with the token field zeroed on the loaded
   value, and asserts separately that the example documents a non-empty placeholder while an absent
   key yields the empty default — `[measured 9ff1fce:internal/config/disjoint_test.go:110-116 ·
   sed -n '110,116p' internal/config/disjoint_test.go → func TestEnvExample_ValuesAreNonEmpty(t
@@ -922,10 +1072,10 @@ with no inline `model=` and inherited effort. The `design-writer`, `design-revie
   9ff1fce:ai-docs/doc-convention.md:13-14 · sed -n '13,14p' ai-docs/doc-convention.md → "DOC-4 and
   DOC-5 apply to every comment in the gated set: *.go, *.sh, *.sql, *.yml, *.yaml, .gitignore,
   .env.example, Makefile, and everything under .githooks/."]`.
-- **A `promlint` problem fails subtask 10 late, after the alert contract has been drafted against the
-  offending name.** Mitigation: subtask 10 precedes subtask 11 in the decomposition precisely so the
+- **A `promlint` problem fails subtask 11 late, after the alert contract has been drafted against the
+  offending name.** Mitigation: subtask 11 precedes subtask 12 in the decomposition precisely so the
   names are settled before the contract quotes them; a reported problem changes the name, not the
-  assertion — `[derived → subtask 10's `GatherAndLint` assertion, and subtask 11's dependency on 10]`.
+  assertion — `[derived → subtask 11's `GatherAndLint` assertion, and subtask 12's dependency on 10]`.
 - **The canary's goroutine outlives a test, or races its own shutdown.** The race gate is required
   for concurrent code and a leaked goroutine fails a `synctest` bubble outright. Mitigation: `Start`
   refuses a second call, `Shutdown` cancels the run context and waits, and the runner tests run
@@ -936,18 +1086,29 @@ with no inline `model=` and inherited effort. The `design-writer`, `design-revie
   Mitigation: every subtask ships its tests with its code (TDD), and the error branches this design
   creates — a registration failure, a bind failure, a nil accessor, a double `Start` — are each
   reachable from a test without a fixture the package could not build —
-  `[derived → the per-subtask tests of § Test Design, and subtask 10's ratchet run]`.
+  `[derived → the per-subtask tests of § Test Design, and subtask 11's ratchet run]`.
 - **The `method` label is bounded only by what this module calls.** A future caller looping a method
   name derived from user input would make it unbounded. Mitigation: the allow-list of the spec's Key
   decisions binds the label *name* set, and the value set is closed by the methods this module itself
   issues; the alert contract records the bound so the infrastructure pass can alarm on series growth
-  — `[derived → subtask 10's label allow-list guard, and subtask 11's contract]`.
+  — `[derived → subtask 11's label allow-list guard, and subtask 12's contract]`.
 
 ## Test Design
 
 Every entry here describes a test that does not exist yet.
 
-**Subtask 2 — `internal/config/health_test.go`.** Entry points `loadHealth` and `Load`. Table
+**Subtask 1 — `internal/repotest/repotest_test.go`, plus the four replaced call sites.** Entry
+point `repotest.RootPath`. Scenarios: a known repository-root-relative path resolves to a file
+that opens (the tracked balance file is the natural fixture, since one of the replaced call sites
+already resolves it); `"."` resolves to a directory containing `go.mod`, which is the assertion
+that pins the ascent arithmetic and fails loudly if the package is ever moved to another depth;
+the result is absolute. **The move itself is verified by the suite it does not change**: the four
+packages whose declarations are replaced keep every existing test green, which is the whole
+content of "behaviour-preserving" here — `internal/config`'s example-environment tests resolve
+real paths through it, and `cmd/bot`'s do too, so a wrong root fails them rather than passing
+quietly. `[derived → AC35, AC36, and the behaviour-preserving claim of D17]`
+
+**Subtask 3 — `internal/config/health_test.go`.** Entry points `loadHealth` and `Load`. Table
 subtests, `t.Parallel()`: all keys absent yields the compiled-in defaults, and the cloud token is
 empty so the leg is off; the example file's own values reload to those defaults with the token field
 excluded from the comparison; a malformed duration, a malformed address and a malformed base URL each
@@ -957,7 +1118,7 @@ package-level identity assertions, which must still pass with the new keys prese
 package's own `mapLookup` and `readEnvExampleKeys` helpers.
 `[derived → AC17, AC20, AC22, AC24, AC25]`
 
-**Subtask 3 — `internal/health/registry_test.go`, `labels_test.go`.** Entry points `NewRegistry`,
+**Subtask 4 — `internal/health/registry_test.go`, `labels_test.go`.** Entry points `NewRegistry`,
 `RegisterRuntime`, and each label-value mapper. Scenarios: a fresh registry gathers nothing;
 `RegisterRuntime` on it makes the Go-runtime and process families present in a scrape;
 `RegisterRuntime` twice on the same registerer returns an error rather than panicking; each mapper is
@@ -973,7 +1134,7 @@ declared by this package names a label `le`. The test names each variable explic
 reflecting over the package, so adding a bucket set without adding its row is a visible omission
 in review. `[derived → AC32, and D7's mitigation of D3's histogram panic surface]`
 
-**Subtask 4 — `internal/health/transport_test.go`.** Entry point `(*TransportObserver).ObserveCall`.
+**Subtask 5 — `internal/health/transport_test.go`.** Entry point `(*TransportObserver).ObserveCall`.
 Scenarios: a successful call adds one duration sample and one response count under its own method and
 code; a rate-limited call increments the 429 counter; a call with retries adds that many to the retry
 counter; a call with no response records code `0`; two calls on different methods stay in separate
@@ -981,7 +1142,7 @@ series. Assertion style: `testutil.CollectAndCompare` against an inline expositi
 counters, and `testutil.CollectAndCount` for the histogram, so a wrong label or a wrong family name
 fails rather than passing on a total. `[derived → AC4, AC9]`
 
-**Subtask 5 — `internal/health/scheduler_test.go`.** Entry points `ObserveTask` and `ObserveLoop`.
+**Subtask 6 — `internal/health/scheduler_test.go`.** Entry points `ObserveTask` and `ObserveLoop`.
 Scenarios: one observation per outcome, asserting the `outcome` label; one per member of
 `FailureKind`, asserting the `failure` label and that the observed value set is exactly the members
 of that enum; lag lands in the lag histogram under its `type` label; a loop observation with a
@@ -991,7 +1152,7 @@ differing only in `BatchSize` and `ConsecutiveFailures` produce byte-identical s
 author who quietly wires one of them into a family reds this test rather than shipping a series
 the register denies. `[derived → AC5, AC8, AC11]`
 
-**Subtask 6 — `internal/health/ingest_test.go`.** Entry points `ObserveUpdate` and `ObserveLoop`.
+**Subtask 7 — `internal/health/ingest_test.go`.** Entry points `ObserveUpdate` and `ObserveLoop`.
 Scenarios: one observation per member of `ingest.Outcome`, asserting the closed `outcome` value set
 and that panic, duplicate, unrouted and given-up are each individually visible; **an observation with
 `LagKnown` false contributes no lag sample at all**, checked as a count of zero on the lag family and
@@ -1002,7 +1163,7 @@ declared (D16); a non-nil `Err` increments the undecodable counter. **The exempt
 too**: two observations differing only in `Attempt` produce byte-identical scrapes.
 `[derived → AC6, AC7, AC10]`
 
-**Subtask 7 — `internal/health/pool_test.go`.** Entry points `NewPoolCollector` and its `Collect`.
+**Subtask 8 — `internal/health/pool_test.go`.** Entry points `NewPoolCollector` and its `Collect`.
 Scenarios: with an accessor returning a real pool's snapshot, a scrape carries every family of D6's
 pool table; with an accessor returning nil, a scrape carries none of them and does not fail; **the
 accessor is called once per scrape and its return value is not cached**, checked by an accessor that
@@ -1010,7 +1171,7 @@ counts its own calls and by two scrapes whose values differ. Fixture: `pgxpool.N
 a DSN pointing at a closed port — no server, no container, no `internal/testdb` import.
 `[derived → AC12]`
 
-**Subtask 8 — `internal/health/server_test.go`.** Entry points `NewServer`, `Start`, `Addr`,
+**Subtask 9 — `internal/health/server_test.go`.** Entry points `NewServer`, `Start`, `Addr`,
 `Shutdown`. Scenarios: `Start` on `127.0.0.1:0` binds and `Addr` reports the bound port; a GET of the
 metrics path returns 200 with a body naming a family registered on the supplied gatherer; a GET of
 another path returns 404; `Start` on an address already bound returns the bind error and starts no
@@ -1020,7 +1181,7 @@ error rather than panicking. Runs outside a `synctest` bubble — a real listene
 blockable inside one [measured 9ff1fce:ai-docs/key-decisions.md:71 · `rg -n -o 'a pipe conn being durably
 blockable inside a bubble while a real listener is not' ai-docs/key-decisions.md` → that clause of KD-26]. `[derived → AC3, AC22, AC32]`
 
-**Subtask 9 — `internal/health/probe_test.go`, `canary_test.go`.** Entry points
+**Subtask 10 — `internal/health/probe_test.go`, `canary_test.go`.** Entry points
 `NewTelegramProber`, `(*TelegramProber).Probe`, `NewLegs`, `NewCanary`, `Start`, `Shutdown`.
 
 *Prober scenarios*, against `internal/tgtest`'s in-process fake server wired through the client's
@@ -1063,7 +1224,7 @@ counted a failure rather than overlapping the next tick; the probe goroutine has
 bubble's root returns. The whole file also runs under `make test-race`. `[derived → AC14, AC20,
 AC21]`
 
-**Subtask 10 — `internal/health/guards_test.go`.** Each guard is a `t.Parallel()` test.
+**Subtask 11 — `internal/health/guards_test.go`.** Each guard is a `t.Parallel()` test.
 (a) A walk of every `.go` file under `cmd/` and `internal/`, parsed rather than grepped, asserting no
 import path ending in `prometheus/promauto` and no reference to the library's default registerer or
 default gatherer; the walk resolves the repository root from the test file's own location, matching
@@ -1092,13 +1253,26 @@ none of the sentinel secrets its fixture was built with —
 a bot token, a cloud token, a DSN, a chat id, an update id, a task id, an operation id — each a
 distinctive literal that could only appear by leaking. (e) `testutil.GatherAndLint` over that
 registry reports no problem. (f) A walk of `internal/health`'s own non-test files asserting none
-contains `panic(`, `log.Fatal` or `os.Exit` — AC32's source property, which neither the bucket
-table test nor the server test asserts and which no enabled lint rule asserts either. Proved
-discriminating the way (a) and (b) are: run once against a scratch file in the package carrying a
-bare `panic(` and required to fail, then that file removed.
-`[derived → AC2, AC4, AC5, AC6, AC10, AC11, AC23, AC24, AC31, AC32]`
+contains `panic(`, `log.Fatal`, `os.Exit`, `MustRegister` or `MustNew` — AC32's source property,
+which neither the bucket table test nor the server test asserts and which no enabled lint rule
+asserts either. **Proved discriminating against both categories it covers**, which is the half
+round 3 got wrong: run once against a scratch file carrying a bare `panic(` and required to fail,
+**and once against a scratch file carrying `prometheus.MustRegister(c)` and required to fail** —
+the second is the proof that separates this walk from round 3's, which could not have detected a
+library `Must…` call at all. Both scratch files removed after.
+(g) AC35's pair, over every `.go` file in the module: exactly one declaration of the shared
+helper, in `internal/repotest`, **and zero declarations under the old unexported spelling**, so
+neither a surviving copy nor a reintroduced per-package alias passes. Proved discriminating
+against a scratch file re-declaring the helper.
+(h) AC36: no **non-test** file in the module imports `internal/repotest`, parsed rather than
+grepped so a mention in a comment is not a false positive — the property that keeps the helper out
+of the bot command's link graph.
+**AC31 is not in this subtask's list and was wrongly claimed there before**: none of these guards
+inspects comments. It is discharged by `make comment-refs`, which rides in AC33's gate run at the
+end of this same subtask.
+`[derived → AC2, AC4, AC5, AC6, AC10, AC11, AC23, AC24, AC32, AC35, AC36]`
 
-**Subtask 11 — no test.** The alert contract is prose; AC26 and AC27 are checked by reading it and by
+**Subtask 12 — no test.** The alert contract is prose; AC26 and AC27 are checked by reading it and by
 the index entry.
 
 ## Open questions
@@ -1119,14 +1293,10 @@ the index entry.
   — a retry storm *is* the loop falling behind, and the star of the dashboard is a stall indicator —
   but it means the histogram is weighted by attempt count, and the alert contract says so. Revisit if
   the infrastructure pass wants a per-update distribution instead of a per-handling one.
-- **`repoRootPath` (and `walkGoFiles`) want a shared test-helper package, and this task cannot
-  finish the job.** D12 records the measurement: the helper is already copied across four test
-  binaries and subtask 10 adds the fifth, which is past the workspace's ≥3-site threshold, and
-  `internal/tg` has grown a second duplicated walker beside it. The remedy is a small package under
-  `internal/`, on `internal/tgtest`'s own precedent. It is **not** taken here because
-  `cmd/bot/main_test.go` is one of the four sites and AC29 forbids modifying any file under `cmd/`,
-  so the hoist cannot be completed within this task's authorised scope, and a partial hoist would
-  spend scope the spec does not grant to leave the rule half-applied. **This is a routing decision
-  for the orchestrator, not a disposition**: either a follow-up issue that owns all five sites, or
-  an explicit widening of this task's scope. Recorded here so it reaches triage rather than being
-  lost between the two constraints that block it.
+- **`repoRootPath`'s duplication — decided, not open.** Round 3 raised it as a routing question
+  between a follow-up issue and a scope widening. The owner took the widening: spec 9396d3c
+  narrows AC29 to permit the one edit the move needs under `cmd/`, and adds Scope 15, AC35 and
+  AC36. The hoist is subtask 1, the package is D17's `internal/repotest`, and guards (g) and (h)
+  hold it. Recorded here as the answer rather than deleted, so a later reader meets the decision
+  instead of re-deriving the question. **`walkGoFiles` is explicitly not part of it** — one
+  declaration module-wide triggers no rule, and consolidating it would be scope nobody asked for.
