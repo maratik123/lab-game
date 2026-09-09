@@ -26,7 +26,7 @@ unexported one is unreachable from another package's test binary. This round als
 propagation debt the round-4 widening left: two sentences still cited a superseded AC29 wording to
 claim `cmd/` was untouched. Group A/B is
 rebalanced so the canary work does not run last in the most-degraded context, D13 decides the
-example-file placeholder trap, and guard (g) gains the detection rule it was missing.
+example-file credential trap, and guard (g) gains the detection rule it was missing.
 **Amended:** 2026-09-09 — round 6. The hoist's scope was measured by **identifier** while the
 class it belongs to is defined by **behaviour**, so two live repository-root resolvers were missed; D19 records
 the widened set and the lesson, subtask 1 takes all of them, and D18's routing extends to the doc
@@ -771,11 +771,29 @@ existing shape.
 
 **That clause is not a convenience — it is the escape hatch from a trap the example file creates,
 and the trap is decided here rather than discovered in production.** Every value in
-`.env.example` must be non-empty, so the cloud token ships a placeholder; an operator who copies
-the example to `.env` and fills in the real values therefore starts with the cloud leg **enabled
-under a dead credential**. The consequence is not a quiet no-op: every probe fails, `getMe` hits
-the cloud API once a minute with a bogus token, and the consecutive-failure alert fires forever —
-so AC17's "absent means off" is easy to state and, by default, hard to reach. The decisions:
+`.env.example` must be non-empty, so the cloud token ships a placeholder. **Two different things
+happen depending on what that non-empty value is, and only the second is the trap.**
+
+*The shipped placeholder fails loudly at construction.* `changeme` is not a syntactically valid
+bot token, so building the cloud leg's client is refused, and because `NewLegs` returns the error
+rather than a partial result the **own leg is not built either** and no canary series exists at
+all. An operator who copies the example and does not touch this key meets a start-up failure
+naming the key, not a silently misbehaving probe
+[measured 6d78ade:$(go env GOMODCACHE)/github.com/mymmrac/telego@v1.11.2/bot.go:26,37 · `rg -n
+'tokenRegexp|invalid token format'` in that file → `tokenRegexp = ` followed by the pattern
+`^\d+:[\w-]{35}$`, and `var ErrInvalidToken = errors.New("telego: invalid token format")`; and a construction probe
+over the shipped code → `cloudToken="changeme"` yields `legs=false` with `health: build
+cloud-reference canary leg: health: build canary client: tg: options: Token: telego: invalid
+token format`, while `cloudToken=""` and a well-formed token each yield `legs=true` with a nil
+error]. That is the designed outcome rather than an accident of this key: the same file ships
+`LAB_GAME_BOT_TOKEN=changeme`, and the example is not meant to run as copied.
+
+*The trap is a **well-formed but wrong** credential* — a token of the right shape belonging to a
+bot that is gone, revoked, or was never the canary's. That one constructs cleanly, and then every
+probe fails, `getMe` hits the cloud API once a minute with a credential that will never work, and
+the consecutive-failure alert fires forever. Nothing distinguishes it from an outage except
+knowing to look. **Both cases have the same single remedy**, which is why the decisions below are
+unchanged by the distinction:
 
 - **The placeholder is `changeme`**, the same token the required bot token already carries in that
   file, so it reads unmistakably as a value the operator must replace rather than as a working
@@ -785,8 +803,9 @@ so AC17's "absent means off" is easy to state and, by default, hard to reach. Th
   spelling available to an operator who started from the example, since deleting the line is a
   divergence from a manifest a test asserts.
 - **The example file's comment for that key says so in prose**, beside the placeholder: what the
-  leg is, that an empty value disables it, and that a placeholder left in place means a probe
-  failing every interval. The comment names no URL and no other file, so the reference ban holds.
+  leg is, that an empty value disables it, and that a syntactically valid credential which is not
+  the canary bot's own means a probe failing every interval rather than a start-up error. The
+  comment names no URL and no other file, so the reference ban holds.
 - **The alert contract carries the same sentence** (D14), because the operator who meets this is
   reading an alert, not the configuration loader.
 
@@ -824,9 +843,11 @@ sentence, on line 4]; this is an operations artefact the infrastructure pass
 reads. It carries the metric catalogue of D6 and one row per alert: name, the metrics it reads, the
 expression shape over them, the condition shape, and the severity — the consecutive-canary-failure
 alert, the update-lag-growth alert, the cross-leg "own instance sick while cloud healthy"
-expression, what that expression means when the cloud leg is configured off, **the placeholder
+expression, what that expression means when the cloud leg is configured off, **the wrong-credential
 trap of D13** — that a cloud leg failing every interval from first start is most likely a
-placeholder token rather than an outage, and that the fix is to set the key empty — and the
+well-formed credential that is not the canary bot's rather than an outage, that the shipped
+example placeholder produces a start-up failure instead and so never reaches an alert, and that
+the fix in either case is to set the key empty — and the
 absence test
 that separates a disabled leg from a failing one. **The absence test is written over the whole
 `labgame_canary_probes_total{leg="cloud"}` vector, never over one `outcome` value**, because D8
@@ -1020,7 +1041,7 @@ which after the move is the shared package's file, not that one
 [measured ca5f71f:internal/testdb/server_test.go · `sed -n '129,131p'
 internal/testdb/server_test.go` → `// repoRoot returns this module's root, derived from this
 file's own path` / `// rather than from the working directory, so the test is not sensitive to` /
-`// how ` + "`go test`" + ` was invoked.`]. Subtask 1 re-reads the comment above **every**
+``// how `go test` was invoked.``]. Subtask 1 re-reads the comment above **every**
 declaration it removes and rewrites or deletes the ones the move falsifies; naming only these two
 would repeat, at a smaller scale, the enumerate-what-I-happened-to-look-at mistake D19 exists to
 record.
