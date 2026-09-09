@@ -8,8 +8,8 @@ _Updated: 2026-09-09 16:14_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — subtask 3 of 13 complete
-**last_passed_gate:** go build/test/vet, golangci-lint fmt -d + run, make comment-refs — all green (commit c68390c)
+**current_step:** Step 8 — subtask 4 of 13 complete
+**last_passed_gate:** go build/test/vet, golangci-lint fmt -d + run, make comment-refs — all green (commit 9407fd4)
 **entry_args:** 23
 
 ## Next action
@@ -21,8 +21,8 @@ _Updated: 2026-09-09 16:14_
 - [x] 1. `internal/repotest` — the shared root helper, every existing declaration replaced
 - [x] 2. `go get github.com/prometheus/client_golang@v1.24.1`, `go mod tidy`
 - [x] 3. The `LAB_GAME_HEALTH_` configuration class
-- [ ] 4. Package skeleton: registry, labels, buckets, the D16 register  ← CURRENT
-- [ ] 5. Transport adapter (`tg.Observer`)
+- [x] 4. Package skeleton: registry, labels, buckets, the D16 register
+- [ ] 5. Transport adapter (`tg.Observer`)  ← CURRENT
 - [ ] 6. Scheduler adapter (`scheduler.Observer`)
 - [ ] 7. Ingest adapter (`ingest.Observer`), `LagKnown` gate
 - [ ] 8. pgx pool collector
@@ -70,6 +70,25 @@ _Updated: 2026-09-09 16:14_
   supposedly-unreachable branch and it was replaced before commit. Gates run and green:
   `go build ./...`, `go test ./...` (whole module), `go vet ./...`, `golangci-lint fmt -d` (no target
   file present in its diff), `golangci-lint run` (0 issues), `make comment-refs`. Committed at c68390c.
+- **Step 8, subtask 4**: `make comment-refs` (run explicitly against the new untracked files, since
+  the no-args form only scans tracked paths) caught package-qualified module symbols
+  (`tg.Observation`, `scheduler.Observation`, etc.), bare repo-relative paths (`internal/tg`,
+  `registry.go`), and inline `AC4`/`D3` citations in the first drafts of `doc.go` and
+  `registry_test.go` — all rewritten to prose naming no symbol/path/id. `golangci-lint run` separately
+  flagged `unused` on every declaration only later subtasks will call (buckets, label mappers, the
+  allow-list, the observation register) — resolved by writing this subtask's own unit tests
+  (bucket-validity table test, per-mapper table tests, a register shape sanity test) so every
+  declaration has a real caller now rather than only in a future subtask, and flagged `goconst` on
+  repeated field-name/family-name string literals inside `observationRegister` — resolved by naming
+  family constants (`familyBotAPICallDuration` etc.) and field-name constants (`fieldBatchSize`,
+  `fieldDuration`, `fieldErr`) once and referencing them, which also makes a future typo between the
+  register and a real registration a compile-time-shared value rather than an independent literal.
+  `go mod tidy` pulled `client_golang`'s full transitive closure (`beorn7/perks`,
+  `prometheus/client_model`, `prometheus/common`, `prometheus/procfs`, `google.golang.org/protobuf`,
+  `kylelemons/godebug`, `munnerz/goautoneg`) now that a package actually imports it, matching the
+  design's predicted closure exactly. Gates run and green: `go build ./...`, `go test ./...` (whole
+  module), `go vet ./...`, `golangci-lint fmt -d` (no target file present in its diff),
+  `golangci-lint run` (0 issues), `make comment-refs`. Committed at 9407fd4.
 
 ## Key discoveries (don't re-investigate)
 
@@ -78,6 +97,30 @@ _Updated: 2026-09-09 16:14_
 - `client_golang@v1.24.1` is newest published. `newHistogram` panics on non-increasing buckets and on an `le` label; an EMPTY bucket slice silently becomes `DefBuckets` instead.
 - `internal/ingest` and `internal/tg` each ban `client_golang`, but both guards walk only their own package — `internal/health` importing it trips neither.
 - A pool built against an unreachable DSN still answers `Stat()`, so this package's tests need no Postgres.
+- `make comment-refs` (no args) scans only the tracked set — an untracked new file needs an explicit
+  path argument (`go run ./cmd/commentrefs <path>...`) to be checked before it is staged.
+- `go mod tidy` prunes an as-yet-unimported module entirely (require line and go.sum entries both) —
+  confirmed by direct measurement in subtask 2. The transitive closure only appears once a package
+  actually imports the module (subtask 4), at which point `go mod tidy` matches the design's
+  predicted closure exactly.
+
+## Files touched
+
+- `internal/repotest/repotest.go`, `internal/repotest/repotest_test.go` (new)
+- `cmd/bot/main_test.go`, `internal/ingest/guards_test.go`, `internal/tg/guards_test.go`,
+  `internal/commentref/testhelpers_test.go`, `internal/commentref/envexample_extract_test.go`,
+  `internal/commentref/go_extract_test.go`, `internal/commentref/shell_extract_test.go`,
+  `internal/commentref/sql_extract_test.go`, `internal/commentref/yaml_extract_test.go`,
+  `internal/testdb/server_test.go` (repoRootPath/repoRoot call sites converted)
+- `internal/config/repo_root_test.go` (deleted)
+- `internal/config/balance_file_test.go`, `internal/config/disjoint_test.go` (repoRootPath call sites
+  converted)
+- `go.mod`, `go.sum` (client_golang v1.24.1 + transitive closure)
+- `internal/config/health.go`, `internal/config/health_test.go` (new)
+- `internal/config/config.go`, `internal/config/env.go` (Health wiring, falsified doc comments fixed)
+- `.env.example` (LAB_GAME_HEALTH_* keys)
+- `internal/health/doc.go`, `internal/health/registry.go`, `internal/health/registry_test.go`,
+  `internal/health/labels.go`, `internal/health/labels_test.go` (new)
 
 ## AC Status
 
