@@ -9,7 +9,7 @@ _Updated: 2026-09-09 17:42_
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
 **current_step:** Step 8 — subtask 13 of 13 complete (Group C DONE; all subtasks complete)
-**last_passed_gate:** golangci-lint run | 2026-09-09T18:52:32Z | c9b521add4a931bb99936dedf40f3c4806427fc6
+**last_passed_gate:** go test -race ./internal/health/... | 2026-09-09T19:16:34Z | 21ce76236a0b67db7f11269831e25588036ed431
 **entry_args:** 23
 
 ## Next action
@@ -319,9 +319,11 @@ measured behaviour rather than the predicted one. The design document itself is 
 
 - **Step 10**: self-review round 1 REJECT — 5 major, plus minors. My Step-9 AC16 PASS was false: I verified the token-transmission test and never exercised the success condition, so the check could not detect the defect it was recorded against.
 
-- **Step 11**: ten of eleven rows fixed at c9b521a. PROC-5 objected, not fixed: `self-review.md` instruction 2 forbids reviewing the progress file's field content ("do NOT review their content for correctness; their lifecycle is the calling skill's responsibility"), and line 166 defines a Design Amendment trigger as a finding whose resolution REQUIRES editing the design — this one audits the order of an amendment already made. Surfaced to the owner verbatim; awaiting their ruling.
+- **Step 11**: ten of eleven rows fixed at c9b521a. PROC1-5 objected, not fixed: `self-review.md` instruction 2 forbids reviewing the progress file's field content ("do NOT review their content for correctness; their lifecycle is the calling skill's responsibility"), and line 166 defines a Design Amendment trigger as a finding whose resolution REQUIRES editing the design — this one audits the order of an amendment already made. Surfaced to the owner verbatim; awaiting their ruling.
 
 - **Step 11**: the D13/D14 correction at ed3e778 carried no amendment-record header while the eight before it did; the header was added through design-writer, since design writes are subagent-owned.
+
+- **Step 11 R2**: the register gate was red for this file's whole life and no commit caught it — the PreToolUse hook reads the index before the command runs, so `git add && git commit` in one call presents an empty index. Filed in harness-gaps; commits of this file now stage and commit in separate calls.
 
 ## Key discoveries (don't re-investigate)
 
@@ -389,7 +391,7 @@ measured behaviour rather than the predicted one. The design document itself is 
 | AC13 | PASS — `collectors.NewGoCollector()` and `NewProcessCollector` registered on the same registry |
 | AC14 | PASS — two legs, `leg` label with exactly `own`/`cloud`, outcome counter and latency histogram each |
 | AC15 | PASS — `TestNewTelegramProber_TransmitsItsOwnToken` green — asserts the token on the transmitted request path |
-| AC16 | FAIL — recorded PASS at Step 9 in error. `Probe` returns success on `err == nil` and never reads the recorded status; `tg.Caller` succeeds on `resp.Ok` with no status gate, so a 500 carrying `ok:true` counts as a healthy probe. Self-review round 1, R1-1. |
+| AC16 | PASS — fixed at c9b521a and re-verified in self-review round 2; `Probe` now requires the recorded status to be 200 as well as a nil error. Recorded FAIL during round 1. |
 | AC17 | PASS — `TestNewLegs_EmptyCloudTokenDisablesCloudLeg` and `TestCanary_DisabledCloudLegExportsNoSeries` green |
 | AC18 | PASS — `TestTelegramProber_NeverWritesToATransportRegistry` green; one attempt per tick per leg |
 | AC19 | PASS — failures classified by status code or transport-error class; guard (c) rejects raw error text |
@@ -413,21 +415,27 @@ measured behaviour rather than the predicted one. The design document itself is 
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
-| HEALTH-1 | R1 | major | fixed@c9b521a | add a `tgtest` handler answering `500` with `{"ok":true,...}`, call `TelegramProber.Probe`; the probe must return a non-nil error |
-| HEALTH-2 | R1 | major | fixed@c9b521a | `grep -nE 'OwnToken\|CloudToken\|Token ' internal/health/canary.go internal/health/probe.go` — each token field must read `config.Secret` |
-| HEALTH-3 | R1 | major | fixed@c9b521a | `Start`, `Shutdown(ctx)`, then `Shutdown(ctx2)` with a 500ms deadline on `*health.Server`; the second call must return, not block |
-| HEALTH-4 | R1 | major | fixed@c9b521a | `git diff 3616d52..HEAD -- '*.go' \| grep -nE '^\+.*//.*([Ss]ee \|pinned by) '` must print nothing |
-| PROC-5 | R1 | major | accepted@1 — objected with the owner's approval. Out of the reviewer's own charter in two of three parts: `self-review.md` instruction 2 says the progress file's fields are verified PRESENT but "do NOT review their content for correctness; their lifecycle is the calling skill's responsibility", which covers the missing decisions-log entry; and line 166 defines a Design Amendment trigger as a finding whose resolution REQUIRES editing the design, while this audits the ordering of an amendment already made. The re-run half rests on an incomplete premise: the owner granted the exemption explicitly when authorising the correction. The third part was right and is fixed — the amendment header was added to the design. | `git log --format='%h %s' 3616d52..HEAD -- ai-docs/plans/*.design.md` and `grep -n '^\*\*Amended:' ai-docs/plans/2026-09-09-health-metrics-canaries.design.md` — the amendment must carry its own round header and a recorded design-review verdict |
-| HEALTH-6 | R1 | minor | fixed@c9b521a | `grep -n 'sentinelChatID\|sentinelUpdateID\|sentinelTaskID\|sentinelOperationID' internal/health/guards_test.go` — each must appear in a fixture write, not only in the final assertion loop |
-| HEALTH-7 | R1 | minor | fixed@c9b521a | write any `.go` file under `tmp/`, then `go test ./internal/health/ -run 'TestGuard_SingleRepoRootResolver_RealTree\|TestGuard_NoRepoRootPathIdentifierAnywhere' -count=1` must stay green |
-| HEALTH-8 | R1 | minor | fixed@c9b521a | `grep -n 'unreachable in an observed series' internal/health/labels.go` — the scheduler-outcome mapper must not carry the claim D16 declines |
-| HEALTH-9 | R1 | minor | fixed@c9b521a | `go doc github.com/maratik123/lab-game/internal/health TransportObserver` — the doc must state its concurrency contract |
-| HEALTH-10 | R1 | nit | fixed@c9b521a | `grep -n 'defaultHealthMetricsAddr =' internal/config/health.go` — one plain literal, no concatenation |
-| PROG-11 | R1 | nit | fixed@c9b521a | `grep -c '^## Files touched' ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md` must print `1` |
-| REC-A | R1 | — | accepted@1 — every return path in the transport caller calls `observe`, so `statusRecorder.take()` can never hand back a stale observation; the never-reset field is safe as written | `grep -c 'c.client.observe(' internal/tg/caller.go` |
-| REC-B | R1 | — | accepted@1 — `.env.example` ships `changeme` for the cloud token; the value is a placeholder in a file whose every value must be non-empty, and the loader's present-but-empty clause is the documented way off. Not a tracked secret. | `grep -n 'CANARY_CLOUD_TOKEN' .env.example` |
-| REC-C | R1 | — | accepted@1 — `promAutoOffenses` matches only the `prometheus` identifier, so an aliased import escapes guard (a). No such alias exists in the module and the `promauto` import path check is alias-proof. | `rg -n 'client_golang/prometheus"' --type go` |
-| REC-D | R1 | — | accepted@1 — `PoolCollector.Describe` sends no descriptor (unchecked collector). Deliberate per D9 and documented at the method. | `grep -n 'func (c \*PoolCollector) Describe' -A 1 internal/health/pool.go` |
+| HEALTH1-1 | R1 | major | fixed@c9b521a | add a `tgtest` handler answering `500` with `{"ok":true,...}`, call `TelegramProber.Probe`; the probe must return a non-nil error |
+| HEALTH1-2 | R1 | major | fixed@c9b521a | `grep -nE 'OwnToken\|CloudToken\|Token ' internal/health/canary.go internal/health/probe.go` — each token field must read `config.Secret` |
+| HEALTH1-3 | R1 | major | fixed@c9b521a | `Start`, `Shutdown(ctx)`, then `Shutdown(ctx2)` with a 500ms deadline on `*health.Server`; the second call must return, not block |
+| HEALTH1-4 | R1 | major | fixed@c9b521a | `git diff 3616d52..HEAD -- '*.go' \| grep -nE '^\+.*//.*([Ss]ee \|pinned by) '` must print nothing |
+| PROC1-5 | R1 | major | accepted@1 — objected with the owner's approval. Out of the reviewer's own charter in two of three parts: `self-review.md` instruction 2 says the progress file's fields are verified PRESENT but "do NOT review their content for correctness; their lifecycle is the calling skill's responsibility", which covers the missing decisions-log entry; and line 166 defines a Design Amendment trigger as a finding whose resolution REQUIRES editing the design, while this audits the ordering of an amendment already made. The re-run half rests on an incomplete premise: the owner granted the exemption explicitly when authorising the correction. The third part was right and is fixed — the amendment header was added to the design. | `git log --format='%h %s' 3616d52..HEAD -- ai-docs/plans/*.design.md` and `grep -n '^\*\*Amended:' ai-docs/plans/2026-09-09-health-metrics-canaries.design.md` — the amendment must carry its own round header and a recorded design-review verdict |
+| HEALTH1-6 | R1 | minor | fixed@c9b521a | `grep -n 'sentinelChatID\|sentinelUpdateID\|sentinelTaskID\|sentinelOperationID' internal/health/guards_test.go` — each must appear in a fixture write, not only in the final assertion loop |
+| HEALTH1-7 | R1 | minor | fixed@c9b521a | write any `.go` file under `tmp/`, then `go test ./internal/health/ -run 'TestGuard_SingleRepoRootResolver_RealTree\|TestGuard_NoRepoRootPathIdentifierAnywhere' -count=1` must stay green |
+| HEALTH1-8 | R1 | minor | fixed@c9b521a | `grep -n 'unreachable in an observed series' internal/health/labels.go` — the scheduler-outcome mapper must not carry the claim D16 declines |
+| HEALTH1-9 | R1 | minor | fixed@c9b521a | `go doc github.com/maratik123/lab-game/internal/health TransportObserver` — the doc must state its concurrency contract |
+| HEALTH1-10 | R1 | nit | fixed@c9b521a | `grep -n 'defaultHealthMetricsAddr =' internal/config/health.go` — one plain literal, no concatenation |
+| PROG1-11 | R1 | nit | fixed@c9b521a | `grep -c '^## Files touched' ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md` must print `1` |
+| REC1-101 | R1 | — | accepted@1 — every return path in the transport caller calls `observe`, so `statusRecorder.take()` can never hand back a stale observation; the never-reset field is safe as written | `grep -c 'c.client.observe(' internal/tg/caller.go` |
+| REC1-102 | R1 | — | accepted@1 — `.env.example` ships `changeme` for the cloud token; the value is a placeholder in a file whose every value must be non-empty, and the loader's present-but-empty clause is the documented way off. Not a tracked secret. | `grep -n 'CANARY_CLOUD_TOKEN' .env.example` |
+| REC1-103 | R1 | — | accepted@1 — `promAutoOffenses` matches only the `prometheus` identifier, so an aliased import escapes guard (a). No such alias exists in the module and the `promauto` import path check is alias-proof. | `rg -n 'client_golang/prometheus"' --type go` |
+| REC1-104 | R1 | — | accepted@1 — `PoolCollector.Describe` sends no descriptor (unchecked collector). Deliberate per D9 and documented at the method. | `grep -n 'func (c \*PoolCollector) Describe' -A 1 internal/health/pool.go` |
+| R2-1 | R2 | major | fixed@pending | `printf '{"tool_input":{"command":"git commit -m x"}}' \| bash -c "<the check-review-register hook body from .claude/settings.json>"` with this progress file staged — must exit 0; today it exits 2 |
+| R2-2 | R2 | minor | fixed@21ce762 | build a probe holding one connection in `StateActive` (dial the bound address, write a partial request line), call `Shutdown` from a goroutine, then call `Shutdown` with a 300ms deadline — the second call must return inside its own deadline |
+| R2-3 | R2 | nit | fixed@pending | `grep -n 'AC16' ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md` — the `## AC Status` row must not read FAIL |
+| GUARDS-FILE-SIZE | R2 | — | accepted@2 — `internal/health/guards_test.go` is 879 lines: past the 800 soft band, well under the 1500 hard band a `_test.go` file gets. Nine structural guards plus their discrimination proofs is one responsibility, not a visible mix, and the don't-over-split counter-rule applies. No split asked for. | `wc -l internal/health/guards_test.go` and `make file-limits` |
+| GUARD-D-DISCRIMINATION | R2 | — | accepted@2 — guard (d) ships no `_ProvenDiscriminating` companion, unlike guards (a)/(b)/(f)/(g)/(i). Its instrument was proved capable of going red rather than taken on trust: the gathered text is non-empty and the `strings.Contains` loop reaches it. | add `"labgame_canary_probes_total"` to the sentinel slice in `TestGuard_ScrapeCarriesNoSentinelSecret` — the test must FAIL |
+| PROBE-STATUS-NO-FALSE-FAIL | R2 | — | accepted@2 — the new status gate cannot false-fail a healthy call: the transport caller's success return observes the real HTTP status, read from the response before the envelope is decoded, so a nil error never pairs with a zero status code. Re-read rather than assumed. | `sed -n '89,95p;203,220p' internal/tg/caller.go` |
 
 ## Self-Review (Round 1)
 
@@ -477,3 +485,78 @@ finding 1.**
 | 10 | internal/config/health.go:27 | nit | `defaultHealthMetricsAddr = "127.0.0.1" + ":" + "9095"` splits a value that has no reason to be split. The subtask-3 Decisions-log entry attributes the split to `make comment-refs`, but that gate reads `//` and `/* */` comments only, never a Go string literal — measured: substituting the plain `"127.0.0.1:9095"` literal and running `go run ./cmd/commentrefs internal/config/health.go` reports **CREFS-GREEN**. The split obscures the address in review and in `go doc` for nothing. | ✅ Fixed |
 | 11 | ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md:334,411 | nit | The progress file carries two `## Files touched` headings; the second (line 411) is empty. Delete the stray. | ✅ Fixed |
 
+## Self-Review (Round 2)
+
+**Verdict:** REJECT
+
+**Spawn prompt.** Five lines, all inside the closed list (invocation, `Spec:`, `Design:`,
+`Progress:`, a commit range). No contamination finding.
+
+**What was checked.** The register scopes this round. All eleven round-1 rows re-verified by
+running their own recorded verifying command against the shipped tree, plus a full re-read of
+everything `c9b521a` introduced: `probe.go`'s status gate, `canary.go`'s and `probe.go`'s
+`config.Secret` fields, `server.go`'s rewritten `Shutdown`, `config/health.go`'s rewritten
+comments, `labels.go`, `pool.go` and `transport.go`'s new sentences, `guards_test.go`'s scratch
+prune and sentinel deletion, and the four new tests. Read as upstream context for the status
+gate: the whole of `internal/tg/caller.go`. Read for design conformance: the D13/D14 amendment
+at `ed3e778` and its record header at `e86eff3`, against `.env.example`'s cloud-token comment
+and the alert contract's placeholder-trap section — all three now state the same measured
+behaviour, so the design is no longer stale against the implementation.
+
+**Round-1 rows, each re-verified by its own recorded command.**
+
+- HEALTH1-1 FIXED — `TestTelegramProber_OkTrueWithServerError` PASSES, and it is discriminating:
+  deleting the status gate from `probe.go` turns it red (`--- FAIL … Probe: expected an error
+  from a 500 status carrying ok:true`), and the file was restored byte-identical from a
+  cp-backup, `git diff --name-only` empty afterwards.
+- HEALTH1-2 FIXED — all three token fields read `config.Secret`; a default-verb rendering shows
+  exactly two redaction placeholders for the legs options and one for the prober options.
+- HEALTH1-3 FIXED — sequential `Start` → `Shutdown` → `Shutdown(500ms)` returns nil, not a
+  deadlock. One surviving half of the original finding is raised below as finding 2.
+- HEALTH1-4 FIXED — the pointer grep over the diff prints nothing. A broadened sweep over
+  `c9b521a`'s added comments returns one hit, and it is the substring `see ` inside "ever see
+  with a fixture" — not a pointer.
+- HEALTH1-6 FIXED — the four structurally-unreachable sentinels are gone, and the three that
+  remain each reach a real fixture write: both tokens through the leg builder into live probers,
+  the DSN password through a parsed pool config into the collector.
+- HEALTH1-7 FIXED — a file-location-ascent resolver written under the scratch directory leaves
+  both guards green.
+- HEALTH1-8 FIXED — the scheduler-outcome mapper no longer claims unreachability. The verifying
+  grep still prints two lines, and both are the OTHER two mappers (the scheduler
+  failure-classification mapper at :61, the ingest outcome mapper at :83) — exactly the two D16
+  does clear. Not a re-open.
+- HEALTH1-9 FIXED — `go doc` on both types states the concurrency contract, and both statements
+  are true: the client library's vectors are goroutine-safe, and the pool collector holds only
+  the accessor closure.
+- HEALTH1-10 FIXED — one plain address literal, no concatenation.
+- PROG1-11 FIXED — one `## Files touched` heading.
+- PROC1-5 stays `accepted@1`. Nothing has changed since the accepting round, so it is not
+  re-raised; its third part is confirmed landed — the design carries an `**Amended:**` header
+  for `ed3e778`.
+
+**Gates re-run against the shipped tree, not quoted from the log.** `go build ./...` GREEN ·
+`go vet ./...` GREEN · `golangci-lint run` GREEN (0 issues) · `make comment-refs` GREEN ·
+`make file-limits` GREEN · `go mod tidy` + `git diff --exit-code go.mod go.sum` CLEAN ·
+`make test` GREEN (0 FAIL) · `make test-race` GREEN (0 DATA RACE) · `make cover-ratchet` GREEN
+(89.74% holds against 89.74%). A separate race probe driving four concurrent `Shutdown` calls
+across 50 servers reports no data race. **The one gate that is RED is the review-register
+consistency gate — finding 1.**
+
+**AC-verification commands re-run against the shipped artefact.** AC2 PASS — the promauto /
+default-registerer / MustRegister sweep hits only the guard file that names them to forbid them.
+AC16 PASS, the criterion round 1 rejected on: the probe now gates success on an exactly-200
+recorded status as well as a nil error, and the falsifying case is covered by a test proved
+discriminating. AC20 and AC22 PASS — a one-minute default cadence, a loopback-only default
+address. AC24 PASS — the cloud token is the config package's secret type. AC25 PASS — four
+health keys in the example file. AC28 PASS — tidy leaves no delta. AC29 PASS — the only `cmd/`
+path in the diff is a test file. AC31 PASS. AC32 PASS — the panicking-call audit over all
+fourteen non-test files of the diff returns nothing, and the pool collector routes a
+construction failure through an invalid-metric value rather than a `Must` helper. AC33 PASS, per
+the gate list above. D19 PASS — the file-location-ascent sweep reaches only the shared helper
+package and the guard that polices it.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md:415-430 (the `## Review register` rows added at `52a26b4`) | major | **Every register id in this run is unparseable to the register-consistency gate, so that gate is RED on this branch and the wired commit hook refuses this file.** `ai-docs/scripts/check-review-register.sh:60` accepts a register id matching `^[A-Za-z]*[0-9]+-[0-9]+$` — free leading letters, then the **round** number, then the finding number (`R1-1`, `SR1-2`); its own header states that join key, and `ai-docs/templates/progress-format.md` shows `R1-3` / `R1-7`. This run's ids are `HEALTH1-1`, `HEALTH1-2`, `HEALTH1-3`, `HEALTH1-4`, `PROC1-5`, `HEALTH1-6`…`PROG1-11` — mnemonic then finding number, no round number — so every row is SKIPPED at line 60, and each of round 1's ten `✅ Fixed` table rows then reports at line 89 as having no register row. Measured, running the exact hook body from `.claude/settings.json` with a `git commit` payload and this file staged: **`hook exit: 2`**, ten lines of `round 1 finding N is marked Fixed and has no register row`. This is the only progress file in the repository where the gate is red — it is GREEN on all ten runs under `ai-docs/plans/ignored/` and on the template. Consequence: the orchestrator cannot commit this progress file at all, and `--no-verify` is no exit (a separate hook refuses it, and this one is `PreToolUse`, not a git hook). Fix: rename each register id to carry its round while keeping its finding number — `HEALTH1-1`, `HEALTH1-2`, `HEALTH1-3`, `HEALTH1-4`, `PROC1-5`, `HEALTH1-6`, `HEALTH1-7`, `HEALTH1-8`, `HEALTH1-9`, `HEALTH1-10`, `PROG1-11` — the leading letters are free, so the mnemonics survive. The `REC1-101`…`REC1-104` rows and this round's three accepted-only rows need no change: they carry no round-table counterpart, and the script skips an unparseable id rather than failing it. | ✅ Fixed |
+| 2 | internal/health/server.go:95-98 | minor | **`Shutdown`'s new idempotency doc comment claims a context bound the concurrent case does not honour.** The comment says a later call "waits for the first call's result, **bounded by its own ctx**, and returns that same result once ready". It is bounded only once the first call has finished, because a second caller arriving while the first is still inside `s.shutdownOnce.Do` blocks *in* `Do`, which consults no context; the `select` on `ctx.Done()` sits after it and is never reached. Measured with one connection held in `StateActive` so the graceful stop cannot complete: `SECOND-BLOCKED: still blocked after 3s despite its own 300ms deadline`. The claim is therefore false in precisely the case where a bound would matter — when the first call has not returned. This is not round 1's HEALTH1-3: that block was unbounded and sequential, and it is fixed and re-verified. No caller exists yet (AC29 keeps composition out of this task), but a composition root pairing a deferred shutdown with a signal-driven one is the shape this would hang. Fix is either sentence or `select`: drop the bound from the comment, or have followers wait in the existing `select` rather than inside `Do`. | ✅ Fixed |
+| 3 | ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md (`## AC Status`, the AC16 row) | nit | The AC Status table still records AC16 as FAIL, citing round-1 finding R1-1. The defect was fixed at `c9b521a` and re-verified this round with a discriminating test; the row is now a false recorded claim in a durable surface. Update it to PASS naming the status gate and its test. | ✅ Fixed |
