@@ -2,6 +2,14 @@
 
 **Issue:** #23
 **Date:** 2026-09-09
+**Amended:** 2026-09-09 — round 2, against the spec at 91a5515. The amendment authorises the
+canary `outcome` and `reason` labels this design already carried (D6), so nothing in the
+catalogue moves. The round-1 findings are folded in: the observation-field register becomes
+normative and moves into the package's own doc comments (D16); D3's panic analysis is corrected —
+it named the wrong surface and missed the one D7 creates; D6 stops mis-citing AC10/AC11 and states
+the divergence as a divergence; and D10 names the endpoint's path. The recommendations are
+taken: D13 owns KD-27's substantive clause, the ingest counter is renamed to what it counts, and
+D5 states the `kind` exemption where the rule is. No AC changed and no scope moved.
 
 ## Approach
 
@@ -33,7 +41,16 @@ reason [measured 9ff1fce:ai-docs/key-decisions.md:77 · `rg -n -o 'whose sub-pac
 ever import each other' ai-docs/key-decisions.md` → `77:whose sub-packages would only ever import
 each other`]. `internal/health` imports `internal/tg`, `internal/scheduler`, `internal/ingest`,
 `internal/config` and `github.com/jackc/pgx/v5/pgxpool`; none of those imports it, so there is no
-cycle. It deliberately does **not** import `internal/store`: the pool collector takes an accessor
+cycle. **`internal/ingest` and `internal/tg` structurally refuse the metrics library themselves**,
+each with a package-scoped guard test, and this task must leave both green and untouched rather than
+relax either [measured 9ff1fce:internal/ingest/guards_test.go:97-104 and
+internal/tg/guards_test.go:101-103 · `rg -n 'client_golang' internal/ingest/guards_test.go
+internal/tg/guards_test.go` → `100: if strings.Contains(string(content),
+"prometheus/client_golang") {` erroring `internal/ingest must expose only the Observer interface`,
+and the same shape erroring `internal/tg must expose only the Observer interface`; each walks its
+own package's non-test files only, so a sibling package importing the library does not trip it].
+That is independent confirmation that the exposition belongs here and nowhere else. It
+deliberately does **not** import `internal/store`: the pool collector takes an accessor
 function rather than a pool or a store handle, which keeps the health test binary free of a database
 (D9).
 
@@ -93,7 +110,8 @@ an aggregate here would be a second, competing composition root. Every construct
 ## Key decisions
 
 **D1 — `internal/health`, one package, one file per component.** Files: `doc.go` (the package
-comment and the unexported-to-metrics register), `registry.go` (`NewRegistry`, `RegisterRuntime`,
+comment, which carries the observation-field register of D16 and the field-disposition table
+behind it), `registry.go` (`NewRegistry`, `RegisterRuntime`,
 the name prefix, the bucket variables), `labels.go` (label-name constants, the enum label-value
 mappers, the allow-list), `transport.go`, `scheduler.go`, `ingest.go`, `pool.go`, `server.go`,
 `canary.go` (the runner and the `Prober` seam), `probe.go` (the Telegram prober, its status recorder
@@ -129,19 +147,59 @@ production panics [measured 9ff1fce:ai-docs/panic-index.md · `sed -n '/^| File:
 ai-docs/panic-index.md` → a header row and a `| — | — | — |` body row], and this task adds no row to
 it (AC32).
 
-**The one remaining panic surface is `…Vec.WithLabelValues`, and it is used deliberately.**
-`WithLabelValues` panics where `GetMetricWithLabelValues` would return an error, and the error is
-label-cardinality mismatch alone [measured 9ff1fce · `go doc
-github.com/prometheus/client_golang/prometheus.CounterVec.GetMetricWithLabelValues` in a scratch
-module → `An error is returned if the number of label values is not the same as the number of
-variable labels in Desc (minus any curried labels).`]. Every call site in this package passes a
-literal argument list against a `Desc` declared in the same file, so the mismatch is a
-compile-adjacent mistake rather than a runtime input — and D12's scrape test exercises every family
-through its adapter, so a mismatch reds at the first run rather than in production. It is not a
-`panic` call in this module's code, so it adds no panic-index row; the alternative — threading a
-cardinality error out of `ObserveCall`, whose signature returns nothing and which is documented as
-running on the caller's goroutine — has nowhere to go and would land as a swallowed error, which
-`AGENTS.md` § *Code Style* forbids outright.
+**Round 1 of this design claimed the only remaining panic surface was `…Vec.WithLabelValues`'s
+cardinality check. That was wrong, and the review's correction is confirmed at the source.**
+The round-1 evidence was `CounterVec.GetMetricWithLabelValues`'s doc generalised to every `Vec`,
+and it missed the surface D7 itself creates. There are **two** surfaces, and the histogram one is
+the dangerous one:
+
+*Surface one — histogram buckets.* `newHistogram` panics on a bucket slice that is not strictly
+increasing, and on an `le` label in either the variable or the const label set
+[measured 9ff1fce · `sed -n '539,596p' $(go env
+GOMODCACHE)/github.com/prometheus/client_golang@v1.24.1/prometheus/histogram.go` → `func
+newHistogram(desc *Desc, opts HistogramOpts, labelValues ...string) Histogram {` whose body
+panics with `makeInconsistentCardinalityError(...)`, twice with `errBucketLabelNotAllowed`, and
+with `fmt.Errorf("histogram buckets must be in increasing order: %f >= %f", ...)`; and `rg -n
+'bucketLabel\s*=' …/prometheus/histogram.go` → `265:const bucketLabel = "le"`]. **For a
+`HistogramVec` that call is lazy**: `NewHistogramVec` closes `newHistogram` into the vec's
+`newMetric` function, so the panic fires at the first observation of a label combination — on the
+ingest loop's or the scheduler worker's own goroutine, in production
+[measured 9ff1fce · `sed -n '1183,1205p' …/prometheus/histogram.go` → `return &HistogramVec{`
+`MetricVec: NewMetricVec(desc, func(lvs ...string) Metric {` `return newHistogram(desc,
+opts.HistogramOpts, lvs...)` `}),`]. For a plain `NewHistogram` it fires at construction, and its
+own doc comment says so [measured 9ff1fce · `sed -n '520,527p' …/prometheus/histogram.go` → `//
+NewHistogram creates a new Histogram based on the provided HistogramOpts. It` / `// panics if the
+buckets in HistogramOpts are not in strictly increasing order.`]. The bucket-builder helpers panic
+on bad arguments too, which for a package-level variable means package init
+[measured 9ff1fce · `rg -n 'panic\(' …/prometheus/histogram.go` → `297: panic("LinearBuckets
+needs a positive count")`, `317`/`320`/`323` for `ExponentialBuckets`, `341`/`344` for
+`ExponentialBucketsRange`].
+
+**Two precisions the finding did not carry, both verified, and both change the mitigation.**
+First, `GetMetricWithLabelValues` does **not** shield the bucket panic: it returns an error only
+from its own hash/cardinality step and then calls the same `newMetric` closure, so switching
+spelling buys nothing here [measured 9ff1fce · `sed -n '214,222p' $(go env
+GOMODCACHE)/github.com/prometheus/client_golang@v1.24.1/prometheus/vec.go` → `h, err :=
+m.hashLabelValues(lvs)` / `if err != nil {` / `return nil, err` / `}` / `return
+m.getOrCreateMetricWithLabelValues(h, lvs, m.curry), nil`]. Second, an **empty** bucket slice does
+not panic at all — it is silently replaced by `DefBuckets`
+[measured 9ff1fce · `sed -n '573,575p' …/prometheus/histogram.go` → `if len(h.upperBounds) == 0 &&
+opts.NativeHistogramBucketFactor <= 1 {` / `h.upperBounds = DefBuckets` / `}`], so an empty
+update-lag variable would measure a stall indicator in the default millisecond band and report
+nothing wrong. That is a silent-wrong-measurement defect, not a crash, and it needs the same test
+for a different reason. D7 carries the mitigation.
+
+*Surface two — `…Vec.WithLabelValues`'s cardinality check, which is used deliberately.*
+`WithLabelValues` panics where `GetMetricWithLabelValues` returns an error, and for a histogram
+that check is `newHistogram`'s own first guard rather than only `CounterVec`'s documented one
+(both cited above). Every call site in this package passes a literal argument list against a
+`Desc` declared in the same file, so a mismatch is a compile-adjacent mistake rather than a
+runtime input, and D12's scrape guard drives every family through its adapter, so it reds at the
+first run rather than in production. Neither surface is a `panic` call in this module's code, so
+neither adds a panic-index row; the alternative — threading a cardinality error out of
+`ObserveCall`, whose signature returns nothing and which is documented as running on the caller's
+goroutine — has nowhere to go and would land as a swallowed error, which `AGENTS.md` § *Code
+Style* forbids outright.
 
 **D4 — the name prefix is `labgame_`, and every family is named in the catalogue below.** One
 module-wide prefix, base units, `_total` on counters, `_seconds` on duration histograms
@@ -164,6 +222,20 @@ keeps the value set closed however the source enum grows; `default-signifies-exh
 the `exhaustive` linter is satisfied by that clause
 [measured 9ff1fce:.golangci.yml:40-41 · `sed -n '40,41p' .golangci.yml` → `exhaustive:` /
 `default-signifies-exhaustive: true`].
+
+*The `kind` label is the one exemption to this rule, and it is stated here rather than left to be
+noticed in D6.* `ingest.Kind`'s values are the Bot API's own update-type tokens — an external
+vocabulary this project does not own and cannot rename — mirroring telego's constants, with a
+drift check that reflects over `telego.Update` and reds when the two part company
+[measured 9ff1fce:internal/ingest/kind.go:9-11 and internal/ingest/guards_test.go:139 · `sed -n
+'9,11p' internal/ingest/kind.go; rg -n 'func TestGuard_TelegoUpdateFieldsMatchKindTable'
+internal/ingest/guards_test.go` → `// Kind identifies one Bot API update type — the exact tokens`
+/ `// GetUpdatesParams.AllowedUpdates and telego's own "Update types you want` / `// your bot to
+receive" constants use.`, and `139:func TestGuard_TelegoUpdateFieldsMatchKindTable(t *testing.T)
+{`]. So taking the value verbatim delegates the series name to the Bot API, not to a Go constant,
+and a change to it would be a Bot API change rather than a refactor. **The residual is real and
+named:** `Kind` is a string type, so nothing structurally prevents someone editing a token; that
+drift check is what makes such an edit visible, and it lives in `internal/ingest`, not here.
 
 **D6 — the metric catalogue.** Every family this task adds, with its labels and its source field.
 
@@ -193,9 +265,37 @@ signature change spec constraint 1 forbids.
 | `labgame_scheduler_claim_batch_size` | histogram | — | `LoopObservation.BatchSize` |
 | `labgame_scheduler_loop_errors_total` | counter | — | `LoopObservation.Err != nil` |
 
-`outcome` values: `done`, `noop`, `failed`, `unknown`. `failure` values: `none`, `handler`,
-`unregistered`, `deadline`, `rolled_back`, `unknown` — one per member of `scheduler.FailureKind`
-plus the closing default, which is what AC11 asks for.
+`outcome` values: `done`, `noop`, `failed`. `failure` values: `none`, `handler`, `unregistered`,
+`deadline`, `rolled_back` — one per member of `scheduler.FailureKind`, which is the set AC11
+requires. Each mapper additionally declares an `unknown` branch it cannot reach from this
+module's own code; D16 states why that is not a widening of AC11.
+
+*Per-field ruling, `scheduler.Observation` (AC5).* `Type`, `Lag`, `Outcome` and `Failure` reach
+the families above. The other two are **deliberately unexported to metrics**, and the reason is
+stated in the package's own documentation per D16, not only here:
+
+- `BatchSize` — an alias, not an omission. It is the discovery cardinality of the cycle the task
+  came from, so it repeats once per task in a batch; `labgame_scheduler_claim_batch_size` takes
+  the same number once per cycle from `LoopObservation.BatchSize`. Exporting it here as well
+  would weight the distribution by batch size and make a large batch look like many large
+  batches.
+- `ConsecutiveFailures` — exported by no family, and this is the ruling the review was right to
+  demand rather than let pass silently, because the field is not a throwaway: its own doc comment
+  makes it the only truthful failure count for a `FailureDeadline` observation, whose settlement
+  is deferred [measured 9ff1fce:internal/scheduler/observe.go:47-51 · `sed -n '47,51p'
+  internal/scheduler/observe.go` → `// ConsecutiveFailures is the value the settlement will write
+  —` / `// computed from the row's failure count read at claim time, not` / `// re-read, so it is
+  truthful even for a FailureDeadline observation` / `// whose settlement is deferred.`]. It is
+  still not a *health series*: it is a per-row property, so a gauge of it is last-write-wins
+  across concurrently executing tasks and means nothing at scrape time, and a histogram of it
+  would double-count a row that fails repeatedly. What the dashboard actually needs — "tasks are
+  retrying, and by kind" — is already the `failure`-labelled counter, and "this specific row is
+  stuck" is a per-row question the dead-task listing answers. Revisit if an operator ever needs
+  retry *depth* rather than retry *volume*; that would be a histogram keyed by `type`, and it is
+  a change to this ruling, not a gap in it.
+
+*Per-field ruling, `scheduler.LoopObservation` (AC5).* `Duration`, `BatchSize` and `Err` each
+reach a family above; `Err` reaches it as a presence, never as text.
 
 *Ingest, from `ingest.Observation` and `ingest.LoopObservation` (AC6, AC7, AC10):*
 
@@ -203,17 +303,30 @@ plus the closing default, which is what AC11 asks for.
 |---|---|---|---|
 | `labgame_ingest_update_lag_seconds` | histogram | `kind` | `Lag`, sampled only when `LagKnown` |
 | `labgame_ingest_handler_duration_seconds` | histogram | `kind`, `outcome` | `Duration` |
-| `labgame_ingest_updates_total` | counter | `kind`, `outcome` | one per observation |
+| `labgame_ingest_update_outcomes_total` | counter | `kind`, `outcome` | one per observation |
 | `labgame_ingest_undecodable_updates_total` | counter | — | `Err != nil` |
 | `labgame_ingest_poll_duration_seconds` | histogram | — | `LoopObservation.Duration` |
 | `labgame_ingest_poll_batch_size` | histogram | — | `LoopObservation.BatchSize` |
 | `labgame_ingest_poll_errors_total` | counter | — | `LoopObservation.Err != nil` |
 
-`outcome` values: `handled`, `duplicate`, `unrouted`, `failed`, `panic`, `given_up`, `unknown` —
-exactly the members of `ingest.Outcome` plus the closing default, which is what AC10 asks for, and
-which is what makes recovered panics and idempotency duplicates individually visible. `kind` carries
+**The counter is named for what it counts.** An `ingest.Observation` is reported once per handler
+attempt plus once per attempt-less settlement, so a retried update contributes several
+[measured 9ff1fce:internal/ingest/observe.go:67-70 · `sed -n '67,70p' internal/ingest/observe.go`
+→ `// Observation is reported to an Observer once per handler call (attempt),` / `// plus once for
+each attempt-less settlement — unrouted and given-up:` / `// a single terminal observation per
+update would erase a` / `// panic that a later attempt recovered from.`]. A family called
+`…_updates_total` would read as a per-update count and quietly overstate traffic under retry;
+`…_update_outcomes_total` says what the series is, and promlint has no opinion either way. The
+same multiplicity applies to the lag histogram and is carried in § Open questions.
+
+`outcome` values: `handled`, `duplicate`, `unrouted`, `failed`, `panic`, `given_up` — exactly the
+members of `ingest.Outcome`, which is the set AC10 requires, and which is what makes recovered
+panics and idempotency duplicates individually visible. As with the scheduler mappers, an
+`unknown` branch is declared but unreachable from this module's code; D16 states why. `kind` carries
 the derived kind verbatim; the empty kind an unrouted update leaves behind maps to the same named
-`unknown` value, so no series carries an empty label value. `Duration` means a different thing per
+`unknown` value, so no series carries an empty label value — and that mapping IS reachable, since
+an unrouted update genuinely carries the zero `Kind`, so `unknown` is an observed `kind` value
+rather than a declared-only one. `Duration` means a different thing per
 outcome [measured 9ff1fce:internal/ingest/observe.go:79-89 · `sed -n '79,89p'
 internal/ingest/observe.go` → `// Duration is how long this observation's own unit of work took:` …
 `For OutcomeUnrouted, no handler ever runs, so Duration is the` / `// unrouted-settlement statement
@@ -250,6 +363,16 @@ github.com/jackc/pgx/v5/pgxpool.Stat` → the method set `AcquireCount`, `Acquir
 | `labgame_canary_probe_failures_total` | counter | `leg`, `reason` | the classifier of D11 |
 | `labgame_canary_probe_duration_seconds` | histogram | `leg`, `outcome` | the probe's measured latency |
 
+`outcome` and `reason` are named in the spec's allow-list, each with its value set stated closed:
+the success-or-failure pair, and — for `reason` — a status code where a response arrived plus a
+code-enumerated class where none did
+[measured 91a5515:ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md:137-138 · `sed -n '137,138p'
+ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md` → the allowed row naming `canary leg, canary outcome, canary
+failure reason` and closing each set, and the forbidden row's `A classified canary failure reason
+is not error text: it is one of the enumerated classes the allowed row names, chosen from the
+error, never rendered from it.`]. That is the authorising side of AC19 and AC23; D11 is the
+mechanism, and it renders no error text into either label.
+
 **D7 — histogram buckets are compiled-in named variables, not configuration, and one set does not
 serve every family.** Buckets are not persisted, are cheap to change, and are not a game constant,
 so `docs/DESIGN.md` §16.5 does not reach them; making them an operator key would let an operator
@@ -266,6 +389,27 @@ GetUpdatesParams.Limit ("Values between 1-100 are accepted").` / `const ingestBa
 and the scheduler's claim limit
 [measured 9ff1fce:.env.example:90 · `rg -n LAB_GAME_SCHEDULER_CLAIM_LIMIT .env.example` →
 `90:LAB_GAME_SCHEDULER_CLAIM_LIMIT=32`]. This closes the spec's second Open question.
+
+**Every bucket variable is written as an explicit ascending literal, and a test of its own proves
+it.** D3 establishes that a bucket slice is a panic input, that for a `HistogramVec` the panic
+fires lazily on the observing goroutine, and that the error-returning spelling does not shield it.
+Two consequences bind the implementor:
+
+- **No `LinearBuckets`, `ExponentialBuckets` or `ExponentialBucketsRange` at package scope.** Each
+  panics on a bad argument, and at package scope that is an init-time crash with no test between
+  the mistake and the binary. An explicit literal has no arguments to get wrong, and it also makes
+  the boundaries readable in review, which matters more here than brevity.
+- **A table-driven test over every bucket variable, in subtask 3, independent of the scrape
+  guard.** For each variable: non-empty, strictly increasing, every boundary finite and positive,
+  and no `+Inf` written by hand. Strictly-increasing is the panic guard. **Non-empty is a
+  different guard for a different failure**: an empty slice does not panic, it is silently
+  replaced by `DefBuckets` (D3), so an empty update-lag variable would measure the dashboard's
+  stall indicator in the default millisecond band and report nothing wrong. The scrape guard
+  cannot catch either one, because it observes families rather than declarations, so this test is
+  separate on purpose.
+
+No metric this task adds declares an `le` label — the label-name allow-list of D5/D12 has no such
+member — and the same table test asserts it, since `le` is the other `newHistogram` panic.
 
 **D8 — no label combination is pre-initialised.** The common Prometheus advice is to touch every
 label combination at start-up so a series exists at zero. It is refused here, because AC17 and spec
@@ -309,7 +453,16 @@ goroutine's terminal error, so no error is dropped; `http.ErrServerClosed` is th
 value and is not reported as a failure. `Canary.Start` returns an error on a second call rather than
 panicking, and `Canary.Shutdown(ctx)` cancels the run context — which cancels the in-flight
 per-tick contexts with it — and waits for the probe goroutine, so a shutdown never waits out the
-current interval (AC21). The server sets an explicit `ReadHeaderTimeout` from a named constant;
+current interval (AC21). **The endpoint's path is `/metrics`, a compiled-in constant, not a fifth configuration key.**
+`docs/DESIGN.md` §13.5 fixes it as Prometheus's scrape target
+[measured 9ff1fce:docs/DESIGN.md:436 · `rg -n promhttp docs/DESIGN.md` → `436:  - здоровье:
+**Prometheus** скрейпит `/metrics` бота (promhttp) и `/stats` инстанса bot-api;`], and the alert
+contract plus the infrastructure pass both wire against it. The *address* is the operator's knob
+because a port collides; the *path* is a contract with the scraper, and making it movable would
+let an operator silently break every alert without editing an alert. `Server` mounts that one
+path on its own `http.ServeMux`; every other path is the mux's own 404, which is what subtask 8
+asserts against a fixed target. The server sets an explicit `ReadHeaderTimeout` from a named
+constant;
 `gosec` is enabled and its Slowloris rule is what makes that non-optional
 [measured 9ff1fce:.golangci.yml:26-27 · `sed -n '26,27p' .golangci.yml` → `# Security` / `- gosec`].
 
@@ -357,9 +510,11 @@ nor a socket, and the runner applies the 200-and-no-error rule once for both leg
 
 **D12 — the structural guards are tests, not prose.** Each closes an AC that a reviewer would
 otherwise have to take on faith: a walk of the module's Go files asserting no import
-of `prometheus/promauto` and no use of the default registerer (AC2); a scrape of a registry whose
-every adapter has been driven once, asserting every label name belongs to the allow-list and every
-enum-valued label's observed value set is the closed set D6 names (AC10, AC11, AC23); the same
+of `prometheus/promauto` and no use of the default registerer (AC2); a reflection guard binding
+the observation-field register to the structs it claims to cover, both directions (D16; AC4, AC5,
+AC6); a scrape of a registry whose every adapter has been driven once, asserting every label name
+belongs to the allow-list and every enum-valued label's **observed** value set is exactly the
+member set D6 names (AC10, AC11, AC23); the same
 scrape asserting the body contains none of the sentinel secrets the fixture was built with — the bot
 token, the cloud token, the DSN, a chat id, an update id, a task id, an operation id (AC23, AC24);
 and `testutil.GatherAndLint` over that registry asserting no problem
@@ -410,6 +565,22 @@ writes the key with no value plainly means "off", and refusing it would buy noth
 in the class treats present-but-malformed as a `*KeyError` naming the variable, per the class's
 existing shape.
 
+**This class crosses a standing decision, and the crossing is owned here rather than left to a
+propagation sweep.** KD-27's substantive clause is not only the enumeration of member scopes: it
+states that secrets and the base URL stay **required with no default**
+[measured 9ff1fce:ai-docs/key-decisions.md:73 · `rg -n -o 'Secrets, the base URL, the chat allowlist and the
+balance-file and world-set paths stay \*\*required\*\* with no default' ai-docs/key-decisions.md` → that
+clause, on line 73]. `LAB_GAME_HEALTH_CANARY_CLOUD_TOKEN` is this project's first **optional
+secret** and `LAB_GAME_HEALTH_CANARY_CLOUD_BASE_URL` its first **optional base URL**, so both are
+exceptions to that sentence. They are a *recording*, not a reopening: the spec authorises each
+outright (Scope 10, AC17 — an absent cloud token must load without error and disable the leg), and
+the reason the original clause does not reach them is that KD-27 was written about credentials the
+process **cannot run without**, whereas these two configure an optional *diagnostic leg* whose
+absence is a supported operating mode. The bot token and the DSN stay required and gain no
+default; the instance base URL stays required and gains none. Subtask 12 amends KD-27 to carry
+this shape — the class boundary now reads "required unless the value's own absence is a designed
+operating mode" — rather than merely appending a fourth scope to its enumeration.
+
 **D14 — the alert contract lives at `ai-docs/alert-contract.md`, in English.** `AGENTS.md` restricts
 Russian to owner conversation and `docs/**` [measured 9ff1fce:AGENTS.md:4 · `rg -n -o 'Russian for
 two surfaces only:\*\* conversation with the product owner, and `docs/\*\*`' AGENTS.md` → that
@@ -432,20 +603,79 @@ product SQL views are the other half of observability and are already shipped
 → `27:the product event log (the `event` table`]. Nothing
 here reaches `store.Post`, so there is no posting signature to state.
 
+**D16 — the observation-field register lives in the package's own documentation, and a guard binds
+it to the structs.** Round 1 left the register named in D1 and never populated, which is why AC5
+and AC6 could not be discharged from the document. Both halves are fixed here.
+
+*Where it lives.* AC4 is the strictest of the three: an exempt field is "named in that package's
+documentation". A register living only in a design document satisfies neither that clause nor the
+spec's constraint 2, and pointing at one from a Go comment is forbidden outright — a comment may
+name no markdown path (constraint 8, AC31). So the register is **doc comments in
+`internal/health`**: `doc.go`'s package comment carries one entry per observation field that
+reaches no family, and each entry **states its own reason in prose** rather than pointing anywhere.
+The mapping half — which field feeds which family — is stated on each adapter type's own doc
+comment. D6's per-field rulings above are the source text for those entries, not a substitute for
+them.
+
+*What it covers.* Every field of `tg.Observation`, `scheduler.Observation`,
+`scheduler.LoopObservation`, `ingest.Observation` and `ingest.LoopObservation`. Transport carries
+no exemption; the scheduler's `Observation.BatchSize` and `Observation.ConsecutiveFailures` and
+ingest's `Observation.Attempt` are the exempt entries, each with the reason D6 gives.
+`ingest.Observation.Attempt` is exempt because an attempt ordinal as a label value is a set bounded
+only by an operator-set retry cap, and the retry volume it would describe is already the
+`failed`- and `panic`-labelled outcome counts; the ordinal itself is a per-update property, not a
+fleet-wide one.
+
+*What binds it.* Prose drifts, so the register is backed by a package-level table mapping each
+observation struct to each of its fields and that field's disposition — a family name, or an
+exemption. D12's reflection guard asserts, **in both directions**, that the table's field set is
+exactly the struct's own (a new upstream field reds it; a stale entry reds it too), and that every
+field marked exempt has its name present in the package's own doc comment, parsed rather than
+grepped. Without the second half the prose and the table could part company silently, which is the
+whole failure the register exists to prevent. The precedent is in this module already:
+`internal/ingest` binds its kind table to `telego.Update` by reflection for exactly this reason
+[measured 9ff1fce:internal/ingest/guards_test.go:139 · `rg -n 'func
+TestGuard_TelegoUpdateFieldsMatchKindTable' internal/ingest/guards_test.go` → `139:func
+TestGuard_TelegoUpdateFieldsMatchKindTable(t *testing.T) {`].
+
+**The same decision settles what a label's "value set" means, because D5's mappers and AC10/AC11
+do not read the same way, and the divergence is stated as a divergence rather than papered over.**
+AC10 and AC11 require the value set to be *exactly the members* of `ingest.Outcome` and
+`scheduler.FailureKind`. D5's mappers each declare one branch more than that: a `default` returning
+`unknown`, which the `exhaustive` linter's `default-signifies-exhaustive` setting is what makes
+lint-clean, and which keeps the value set closed if the source enum ever grows. Round 1 wrote that
+this was "what AC10 asks for". It is not, and the sentence is withdrawn.
+
+The reconciliation is that **a label's value set is the set of values the series actually carry**,
+not the range of the function that computes them. The `unknown` branch is unreachable from this
+module's code — the source packages produce only in-range values — so it emits nothing and the
+observed set is exactly the members, which is what the ACs require. **D12's guard therefore asserts
+the OBSERVED set, not the declared one**, and no § Test Design scenario drives an out-of-range enum
+value into it: doing so to "make `unknown` observable" would be manufacturing the very series the
+AC forbids. Widening the AC instead was rejected — it would authorise the silent-mislabel case the
+criterion exists to catch.
+
+Two consequences worth keeping straight. The mapper's `default` branch **is** still tested, as a
+unit test of the function in subtask 3, called directly with an out-of-range value; that is a
+statement about the mapper, never about a series, and the two assertions must not be conflated.
+And ingest's `kind` is the one place `unknown` is genuinely *observed* rather than merely declared,
+because an unrouted update really does carry the zero `Kind` — so the observed-set assertion for
+`kind` includes it, and for `outcome` and `failure` it does not.
+
 ## Decomposition
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
 | 1 | Take the module requirement: `go get github.com/prometheus/client_golang@v1.24.1`, `go mod tidy`, read `git diff go.mod go.sum` before staging | `go.mod`, `go.sum` | — |
 | 2 | The `LAB_GAME_HEALTH_` configuration class: keys, `Health` struct, defaults, `loadHealth`, `healthEnvKeys()`, `EnvKeys()` and `Config` wiring, the example-file entries, and the class's tests including the sibling `ExampleMatchesDefaults` shape | `internal/config/health.go`, `internal/config/health_test.go`, `internal/config/config.go`, `internal/config/env.go`, `.env.example` | — |
-| 3 | Package skeleton: package comment and the unexported-to-metrics register, `NewRegistry`, `RegisterRuntime`, the name prefix, the bucket variables, the label-name constants, the enum label-value mappers and the allow-list | `internal/health/doc.go`, `internal/health/registry.go`, `internal/health/labels.go`, and their tests | 1 |
+| 3 | Package skeleton: the package comment carrying the observation-field register of D16 and the field-disposition table behind it, `NewRegistry`, `RegisterRuntime`, the name prefix, the bucket variables **and the bucket-validity table test of D7**, the label-name constants, the enum label-value mappers and the allow-list | `internal/health/doc.go`, `internal/health/registry.go`, `internal/health/labels.go`, and their tests | 1 |
 | 4 | The transport adapter satisfying `tg.Observer` | `internal/health/transport.go`, `internal/health/transport_test.go` | 3 |
 | 5 | The scheduler adapter satisfying `scheduler.Observer` | `internal/health/scheduler.go`, `internal/health/scheduler_test.go` | 3 |
 | 6 | The ingest adapter satisfying `ingest.Observer`, with the `LagKnown` sampling gate | `internal/health/ingest.go`, `internal/health/ingest_test.go` | 3 |
 | 7 | The pgx pool collector over a `func() *pgxpool.Stat` accessor | `internal/health/pool.go`, `internal/health/pool_test.go` | 3 |
 | 8 | The `promhttp` endpoint's server with synchronous bind, `Addr`, and joined-error shutdown | `internal/health/server.go`, `internal/health/server_test.go` | 3 |
 | 9 | The canaries: the `Prober` seam, the Telegram prober with its status recorder and failure classifier, the leg builder that disables the cloud leg on an absent token, and the ticker runner | `internal/health/canary.go`, `internal/health/probe.go`, `internal/health/canary_test.go`, `internal/health/probe_test.go` | 2, 3 |
-| 10 | The structural guards of D12, then the whole `make verify` plus the coverage ratchet | `internal/health/guards_test.go` | 4, 5, 6, 7, 8, 9 |
+| 10 | The structural guards of D12 — including the D16 register-vs-struct reflection guard — then the whole `make verify` plus the coverage ratchet | `internal/health/guards_test.go` | 4, 5, 6, 7, 8, 9 |
 | 11 | The alert contract | `ai-docs/alert-contract.md` | 10 |
 | 12 | Propagation per `AGENTS.md` § *Propagation Rule* step 4: index the contract, and correct every live surface this diff falsifies | `ai-docs/agent-docs-index.md`, `ai-docs/context.md`, `ai-docs/context-status.md`, `ai-docs/key-decisions.md` | 11 |
 
@@ -512,6 +742,22 @@ with no inline `model=` and inherited effort. The `design-writer`, `design-revie
   spelling for each, and subtask 10's guard walk is the place a `MustRegister` would be caught —
   `[measured 9ff1fce · go doc github.com/prometheus/client_golang/prometheus/promhttp.HandlerOpts in
   a scratch module → "A failed registration causes a panic."]`.
+- **A mis-ordered bucket variable panics on a production goroutine, not at start-up.** This is the
+  sharpest risk in the change and round 1 missed it: for a `HistogramVec` the library builds the
+  histogram lazily, so a non-increasing bucket slice — or an `le` label — panics at the *first
+  observation* of a label combination, which is the ingest loop's or the scheduler worker's own
+  goroutine. The error-returning spelling does not shield it, and an empty slice fails the other
+  way, silently becoming `DefBuckets`. Mitigation: D7 forbids the panicking bucket helpers at
+  package scope and puts a table test over every bucket variable in subtask 3, ahead of every
+  adapter that observes into one — `[measured 9ff1fce · sed -n '1183,1205p' $(go env
+  GOMODCACHE)/github.com/prometheus/client_golang@v1.24.1/prometheus/histogram.go → NewMetricVec's
+  newMetric closure calling newHistogram, and sed -n '590,595p' of the same file → the
+  "histogram buckets must be in increasing order" panic]`.
+- **The observation-field register drifts from the structs it claims to cover.** A telego or
+  scheduler change adding an `Observation` field would leave the register silently incomplete,
+  which is exactly the state round 1 shipped in this document. Mitigation: D16's table plus D12's
+  both-directions reflection guard, and the doc-comment presence assertion that stops the prose
+  and the table parting company — `[derived → subtask 10's register guard]`.
 - **A hand-built `pgxpool.Stat` nil-dereferences at scrape time.** A test author reaching for
   `&pgxpool.Stat{}` as a fixture writes a panic into the scrape path. Mitigation: D9 makes the real
   pool the fixture — a pool built against an unreachable DSN answers `Stat()` with no server — and
@@ -574,8 +820,16 @@ package's own `mapLookup` and `readEnvExampleKeys` helpers.
 `RegisterRuntime` on it makes the Go-runtime and process families present in a scrape;
 `RegisterRuntime` twice on the same registerer returns an error rather than panicking; each mapper is
 table-driven over every member of its source enum plus an out-of-range value, asserting the closed
-value set and the single `unknown` fallback. Fixture: an isolated `prometheus.Registry` per case.
-`[derived → AC1, AC13, AC30]`
+value set and the single `unknown` fallback. **That last case is a unit test of the mapper called
+directly — it is not, and must not become, an assertion about an exported series** (D16). Fixture:
+an isolated `prometheus.Registry` per case.
+
+*Bucket validity, same subtask, its own table test and deliberately independent of any scrape.*
+Entry point: each bucket variable, read directly. For every one: non-empty; strictly increasing;
+every boundary finite and positive; no hand-written `+Inf`. Plus an assertion that no metric
+declared by this package names a label `le`. The test names each variable explicitly rather than
+reflecting over the package, so adding a bucket set without adding its row is a visible omission
+in review. `[derived → AC32, and D7's mitigation of D3's histogram panic surface]`
 
 **Subtask 4 — `internal/health/transport_test.go`.** Entry point `(*TransportObserver).ObserveCall`.
 Scenarios: a successful call adds one duration sample and one response count under its own method and
@@ -587,10 +841,13 @@ fails rather than passing on a total. `[derived → AC4, AC9]`
 
 **Subtask 5 — `internal/health/scheduler_test.go`.** Entry points `ObserveTask` and `ObserveLoop`.
 Scenarios: one observation per outcome, asserting the `outcome` label; one per member of
-`FailureKind`, asserting the `failure` label and that the observed value set is exactly the closed
-set; lag lands in the lag histogram under its `type` label; a loop observation with a non-nil error
-increments the loop-error counter and contributes nothing else; a loop observation with a nil error
-increments neither. `[derived → AC5, AC8, AC11]`
+`FailureKind`, asserting the `failure` label and that the observed value set is exactly the members
+of that enum; lag lands in the lag histogram under its `type` label; a loop observation with a
+non-nil error increments the loop-error counter and contributes nothing else; a loop observation
+with a nil error increments neither. **The exempt half is asserted too**: two observations
+differing only in `BatchSize` and `ConsecutiveFailures` produce byte-identical scrapes, so a later
+author who quietly wires one of them into a family reds this test rather than shipping a series
+the register denies. `[derived → AC5, AC8, AC11]`
 
 **Subtask 6 — `internal/health/ingest_test.go`.** Entry points `ObserveUpdate` and `ObserveLoop`.
 Scenarios: one observation per member of `ingest.Outcome`, asserting the closed `outcome` value set
@@ -598,8 +855,10 @@ and that panic, duplicate, unrouted and given-up are each individually visible; 
 `LagKnown` false contributes no lag sample at all**, checked as a count of zero on the lag family and
 a non-zero count on the counter from the same observation, so "no sample" is distinguished from "a
 zero-valued sample"; an observation with `LagKnown` true does contribute one; the empty kind maps to
-the `unknown` label value; a non-nil `Err` increments the undecodable counter. `[derived → AC6, AC7,
-AC10]`
+the `unknown` label value — the one place that value is genuinely observed rather than merely
+declared (D16); a non-nil `Err` increments the undecodable counter. **The exempt half is asserted
+too**: two observations differing only in `Attempt` produce byte-identical scrapes.
+`[derived → AC6, AC7, AC10]`
 
 **Subtask 7 — `internal/health/pool_test.go`.** Entry points `NewPoolCollector` and its `Collect`.
 Scenarios: with an accessor returning a real pool's snapshot, a scrape carries every family of D6's
@@ -658,12 +917,22 @@ the helper this module's config tests already use
 internal/config/repo_root_test.go` → `15:func repoRootPath(t *testing.T, rel string) string {`]. **The walk is proved discriminating before it is
 trusted**: it is run once against a scratch file carrying the banned import and required to fail,
 then that file is removed — a guard that has never gone red is a claim about the guard.
-(b) A registry driven once through every adapter, then gathered: every label name of every family
-belongs to the allow-list, and every enum-valued label's observed value set equals the closed set D6
-names. (c) The same scrape's text contains none of the sentinel secrets its fixture was built with —
+(b) The register guard of D16: reflect over `tg.Observation`, `scheduler.Observation`,
+`scheduler.LoopObservation`, `ingest.Observation` and `ingest.LoopObservation`, and assert in both
+directions that the package's field-disposition table names exactly those fields — a field with no
+row fails, a row naming no field fails — and that every field the table marks exempt has its name
+present in the package's own doc comment, obtained by parsing the package rather than by grepping
+a string. Proved discriminating the same way guard (a) is: run once against a table with one row
+removed and once against a doc comment with one exempt name removed, each required to fail.
+(c) A registry driven once through every adapter, then gathered: every label name of every family
+belongs to the allow-list, and every enum-valued label's **observed** value set equals exactly the
+member set D6 names — the `unknown` branch of `outcome` and `failure` is unreachable from this
+module's code and therefore absent, which is the assertion rather than an exception to it, while
+`kind`'s `unknown` is genuinely observed and is expected (D16). (d) The same scrape's text contains
+none of the sentinel secrets its fixture was built with —
 a bot token, a cloud token, a DSN, a chat id, an update id, a task id, an operation id — each a
-distinctive literal that could only appear by leaking. (d) `testutil.GatherAndLint` over that
-registry reports no problem. `[derived → AC2, AC23, AC24, AC31]`
+distinctive literal that could only appear by leaking. (e) `testutil.GatherAndLint` over that
+registry reports no problem. `[derived → AC2, AC4, AC5, AC6, AC10, AC11, AC23, AC24, AC31]`
 
 **Subtask 11 — no test.** The alert contract is prose; AC26 and AC27 are checked by reading it and by
 the index entry.
