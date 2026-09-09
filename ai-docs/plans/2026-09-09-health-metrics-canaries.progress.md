@@ -1,5 +1,5 @@
 # Progress: health metrics and canaries — ACTIVE
-_Updated: 2026-09-09 16:14_
+_Updated: 2026-09-09 17:38_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,17 +8,16 @@ _Updated: 2026-09-09 16:14_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — subtask 11 of 13 complete (Group B DONE)
-**last_passed_gate:** go build ./..., go test ./internal/health/..., go test -race ./internal/health/..., go vet ./..., golangci-lint fmt -d, golangci-lint run, make comment-refs, go test ./... (whole module) — green (2026-09-09T17:25:20Z, commit e957baf80ca6e7e4abaaf1c9f9eaefa6ae7c1f62)
+**current_step:** Step 8 — subtask 12 of 13 complete (Group C in progress)
+**last_passed_gate:** make comment-refs, the CI relative-markdown-link check, go test ./internal/config/... — green (2026-09-09T17:38:40Z, commit 1af724aeee98389704856b32a4c84f531bce0dc0)
 **entry_args:** 23
 
 ## Next action
 
-**Do this immediately:** Group B (subtasks 7–11) is complete and committed (commits 64a015a,
-a4ba9a2, 6bb8320, 63eb6b3, 4829153, plus `.progress.md`-only commits). Per the design's
-`## Handoff plan`, spawn `/context-reset` § Compaction recovery (re-entry) to hand off into Group C
-(subtasks 12–13: the alert contract and the propagation sweep) with `subagent_type="general-purpose"`
-(no inline model override, effort inherited), fresh context.
+**Do this immediately:** Group C is under way — subtask 12 (the alert contract) is committed at
+1af724a. Subtask 13, the propagation sweep, is next and is the last subtask of the task.
+`ai-docs/context-status.md`'s per-issue entry is deliberately NOT written by this group: it is
+Step 9.5's, and the orchestrator's.
 
 ## Subtasks
 
@@ -33,8 +32,8 @@ a4ba9a2, 6bb8320, 63eb6b3, 4829153, plus `.progress.md`-only commits). Per the d
 - [x] 9. `promhttp` endpoint server
 - [x] 10. The canaries: `Prober`/`ProberFactory`, both legs, the ticker
 - [x] 11. The structural guards (a)–(i)
-- [ ] 12. The alert contract  ← CURRENT (Group C)
-- [ ] 13. Propagation sweep
+- [x] 12. The alert contract
+- [ ] 13. Propagation sweep  ← CURRENT (Group C)
 
 ## Decisions log
 
@@ -243,6 +242,45 @@ a4ba9a2, 6bb8320, 63eb6b3, 4829153, plus `.progress.md`-only commits). Per the d
   `go test -race ./internal/health/...`, `go vet ./...`, `golangci-lint fmt -d` (clean),
   `golangci-lint run` (0 issues), `make comment-refs`, `go test ./...` (whole module, all packages
   ok). Committed at e957baf.
+- **Step 8 subtask 12 (Group C, first)**: `ai-docs/alert-contract.md` written in English under
+  `ai-docs/`, carrying the whole metric catalogue (every family, its type, its labels and each
+  label's value set) plus one section per alert with the metrics it reads, the expression shape,
+  the condition shape and the severity class. Non-trivial choices, each recorded rather than left
+  implicit. (1) **The consecutive-failure alert is not a literal in-a-row detector, and the page
+  says why**: a counter pair records how many probes succeeded and how many failed in a window and
+  does not record their order, so the expressible form is "N failures and no success in a window
+  covering N intervals"; it is written with `unless` rather than `and … == 0` because a leg that has
+  failed since process start has no `success` series at all and a zero-comparison against an absent
+  series yields nothing. (2) **A silence rule is wired beside the update-lag alert**, because a
+  stalled poller feeds the lag histogram no samples at all, so `histogram_quantile` over a `rate`
+  window goes EMPTY rather than high — the level alert cannot fire on the worst case it exists to
+  catch. The spec's "at minimum" wording is what admits it; it is presented as the lag alert's
+  companion condition, not as a freestanding new alert. (3) **Severity classes assigned**: own-leg
+  canary and update lag page, cloud-leg canary tickets, the absence test is a recording/inhibition
+  rule and not a page, since a disabled leg is a supported operating mode. (4) **The placeholder
+  trap is carried in the form the code has, not the form D13 predicted**, and this is the one place
+  the run contradicts its own design. Measured, not reasoned: a throwaway program under `tmp/`
+  (deleted immediately; `git status` re-checked clean) called `health.NewLegs` with the shipped
+  `.env.example` value and printed
+  `token="changeme" legs!=nil=false cloudNil=true err=health: build cloud-reference canary leg:
+  health: build canary client: tg: options: Token: telego: invalid token format`, against
+  `token="123456789:AAAA…"` → both legs built, no error, and `token=""` → own leg built, cloud nil,
+  no error. So the shipped placeholder does NOT make the cloud leg "fail every probe from the first
+  tick" as D13/D14 and `.env.example`'s own comment both state: telego's token regexp
+  (`^\d+:[\w-]{35}$`, read directly from its `bot.go`) rejects it, `internal/tg`'s constructor wraps
+  that as an option error naming `Token`, and `NewLegs` fails wholesale — the OWN leg is not built
+  either and no canary series exists at all. The "fails every probe" case is real but belongs to a
+  well-formed-but-wrong credential. Both cases are named in the contract with the same single fix
+  (set the key empty). (5) **`.env.example`'s comment for that key was corrected in the same
+  commit**, because it asserted the second behaviour for the first case; it is a live surface
+  asserting what an environment variable does, which is squarely inside subtask 13's declared sweep
+  class, and leaving it to contradict the contract for a commit was the worse option. No `.go` file
+  was touched. Re-checked rather than redone: subtask 3's Go-comment half of the propagation
+  obligation did land (`git diff 3616d52..HEAD -- internal/config/config.go internal/config/env.go`
+  shows `Config`'s doc comment and the environment-variable block both rewritten to name the four
+  optional classes). Gates run and green: `make comment-refs` (whole tracked gated set),
+  the CI relative-markdown-link check run locally as its own Python snippet, and
+  `go test ./internal/config/...` (the suite that reads `.env.example`). Committed at 1af724a.
 
 ## Key discoveries (don't re-investigate)
 
@@ -284,6 +322,10 @@ a4ba9a2, 6bb8320, 63eb6b3, 4829153, plus `.progress.md`-only commits). Per the d
 - `internal/health/server.go`, `internal/health/server_test.go` (new)
 - `internal/health/guards_test.go` (new)
 - `internal/health/doc.go` (exempt fields also named by their literal Go identifier, for guard (b))
+- `ai-docs/alert-contract.md` (new — subtask 12)
+- `.env.example` (subtask 12: the cloud-token comment's placeholder-trap claim corrected to the
+  measured behaviour)
+- `ai-docs/learnings.md` (subtask 12: one validation entry)
 
 ## AC Status
 
