@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -152,6 +153,82 @@ func TestServer_SecondShutdownReturnsRatherThanHanging(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("DEADLOCK: second Shutdown never returned within a 3s test guard")
+	}
+}
+
+// TestServer_ShutdownMidFlightBoundsSecondCallerByItsOwnCtx falsifies a
+// second-call block that is bounded only once the first call has already
+// finished: with an active connection held in http.StateActive, the
+// first Shutdown call is still inside the graceful stop when the second
+// arrives. Without the fix, the second call blocks inside
+// sync.Once.Do — which consults no context — rather than on the select
+// that follows it, so it outlives its own short deadline. A guard
+// deadline on the whole test makes a regression fail rather than stall
+// the suite.
+func TestServer_ShutdownMidFlightBoundsSecondCallerByItsOwnCtx(t *testing.T) {
+	t.Parallel()
+	s := NewServer("127.0.0.1:0", NewRegistry())
+
+	handlerEntered := make(chan struct{})
+	release := make(chan struct{})
+	s.httpSrv.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(handlerEntered)
+		<-release
+		w.WriteHeader(http.StatusOK)
+	})
+
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	reqDone := make(chan error, 1)
+	go func() {
+		resp, err := http.Get("http://" + s.Addr() + "/") //nolint:noctx // test-only fixed loopback address this test itself just bound; no user input.
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+		reqDone <- err
+	}()
+
+	select {
+	case <-handlerEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("handler never entered — request did not reach the server")
+	}
+
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- s.Shutdown(context.Background())
+	}()
+
+	// Give the first call a head start into shutdownOnce.Do so the
+	// second call below genuinely arrives while the first is in
+	// progress, not before it.
+	time.Sleep(100 * time.Millisecond)
+
+	secondDone := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+		secondDone <- s.Shutdown(ctx)
+	}()
+
+	select {
+	case err := <-secondDone:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("second Shutdown = %v, want context.DeadlineExceeded from its own 300ms deadline", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("DEADLOCK: second Shutdown never returned within its own deadline plus a 3s test guard")
+	}
+
+	close(release)
+
+	if err := <-firstDone; err != nil {
+		t.Errorf("first Shutdown: %v", err)
+	}
+	if err := <-reqDone; err != nil {
+		t.Errorf("held request: %v", err)
 	}
 }
 

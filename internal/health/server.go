@@ -93,9 +93,12 @@ func (s *Server) Addr() string {
 // http.ErrServerClosed is the expected terminal value of a graceful stop
 // and is not itself reported as a failure. Returns an error rather than
 // panicking when called on a server never started. Idempotent: a second
-// (or later) call never repeats the graceful stop — it waits for the
-// first call's result, bounded by its own ctx, and returns that same
-// result once ready.
+// (or later) call never repeats the graceful stop. sync.Once only ever
+// starts the graceful stop on a goroutine — it never waits inside
+// Do — so every caller, the one that starts the stop included, waits on
+// the shared completion channel racing its own ctx, and every caller's
+// wait is bounded by the ctx it passed, whether or not the graceful stop
+// has finished yet. All callers see the same latched result once ready.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	started := s.started
@@ -107,13 +110,15 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	s.shutdownOnce.Do(func() {
-		shutdownErr := s.httpSrv.Shutdown(ctx)
-		err := <-serveErr
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-		s.shutdownErr = errors.Join(shutdownErr, err)
-		close(done)
+		go func() {
+			shutdownErr := s.httpSrv.Shutdown(ctx)
+			err := <-serveErr
+			if errors.Is(err, http.ErrServerClosed) {
+				err = nil
+			}
+			s.shutdownErr = errors.Join(shutdownErr, err)
+			close(done)
+		}()
 	})
 
 	select {
