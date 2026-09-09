@@ -15,35 +15,42 @@ turn on, which round 2 left unstated and unasserted; D12's scrape guard is re-ke
 `(family, label)` because one label *name* spans disjoint value sets, and gains a panic-source
 guard; D13's KD-27 amendment is narrowed to the two keys the spec authorises; D16's
 unreachability claim is narrowed to the two enums that own it. No AC changed and no scope moved.
-**Amended:** 2026-09-09 — round 4, against the spec at 9396d3c, which narrows AC29 and adds
-Scope 15, AC35 and AC36: the owner widened scope to take the test-helper hoist here rather than
-defer it. D17 designs that package and D18 routes the Go doc comments this change falsifies;
+**Amended:** 2026-09-09 — round 4. The owner directed that the test-helper hoist be taken in this
+task rather than deferred to a follow-up. D17 designs that package and D18 routes the Go doc comments this change falsifies;
 the decomposition grows a leading subtask and the handoff plan grows to three groups. Round 3's
 positive claim that a handler can make `unknown` an observed scheduler `outcome` is **withdrawn
 as false** (D6). D9 names the sink for a collector error and D12's source walk is extended to the
 library's `Must…` spellings, which the round-3 § Risks row wrongly claimed were already covered.
-**Amended:** 2026-09-09 — round 5, against the spec at ca5f71f, which corrects AC35 and Scope 15
-to require an **exported** shared declaration, so D17's divergence note is retired — the spec now
-says what the design does. This round also pays the propagation debt the round-4 scope widening
-left: two sentences still cited the superseded AC29 to claim `cmd/` was untouched. Group A/B is
+**Amended:** 2026-09-09 — round 5. The shared declaration is settled as **exported**, since an
+unexported one is unreachable from another package's test binary. This round also pays the
+propagation debt the round-4 widening left: two sentences still cited a superseded AC29 wording to
+claim `cmd/` was untouched. Group A/B is
 rebalanced so the canary work does not run last in the most-degraded context, D13 decides the
 example-file placeholder trap, and guard (g) gains the detection rule it was missing.
-**Amended:** 2026-09-09 — round 6, the last. The hoist's scope was measured by **identifier** and
-AC35 is written by **behaviour**, so two live repository-root resolvers were missed; D19 records
+**Amended:** 2026-09-09 — round 6. The hoist's scope was measured by **identifier** while the
+class it belongs to is defined by **behaviour**, so two live repository-root resolvers were missed; D19 records
 the widened set and the lesson, subtask 1 takes all of them, and D18's routing extends to the doc
 comments the widened move falsifies. D17 settles the two call-site signatures. Guard (g)'s
 detection rule is widened to the semantic class — one of the missed sites uses an ascent spelling
 the round-5 rule provably could not see — and is validated against the pre-change tree rather
-than only against scratch files it was written to catch. No AC changed; no spec amendment was
-needed, because AC35 as written already required this.
-**Amended:** 2026-09-09 — round 7, the last. Spec 9571152 defines AC35's class by **mechanism**
-rather than by outcome, which resolves the round-6 blocker without an exception list. D19
+than only against scratch files it was written to catch.
+**Amended:** 2026-09-09 — round 7. The helper class is defined by **mechanism** rather than by
+outcome, which resolves the round-6 blocker without an exception list. D19
 withdraws a false claim it made in the same breath as diagnosing the same error — that
 `runtime.Caller` is coextensive with the resolver class — and records the durable form of the
 lesson. Guard (g) is scoped to the mechanism class explicitly and its restore list is corrected.
 Every discriminating proof moves off the working tree onto a `t.TempDir()` copy, which removes a
 guard-against-guard collision and a dirty-tree failure mode the design had stated the halves of
 but never joined.
+**Amended:** 2026-09-09 — round 8, the last, and a standing sweep rather than a redesign. Spec
+d63c7a1 removes the acceptance criteria and the scope item that had encoded the test-helper
+hoist: where the helper lives, what it is called and which guard checks it are design and code,
+never acceptance. **The hoist itself does not move** — D17, subtask 1, `internal/repotest`, the
+derived member set and guard (g) all stand exactly as designed. What changes is their standing:
+they are this design's own decision and this design's own test, carrying their own rationale
+rather than discharging a criterion. Every citation of the removed criteria is gone, the one
+passage that existed only to reconcile with their wording is deleted rather than re-anchored, and
+AC29's remaining citations are re-read against its minimal text.
 
 ## Approach
 
@@ -625,8 +632,7 @@ the last, which it names rather than assumes:
 - **In #24's wiring of `LegsOptions`** — passing the cloud token as `OwnToken`. This one is *not*
   this task's to close, and saying so is the point rather than an omission. The reason is AC29's
   operative clause — **no composition, wiring, start-up or shutdown behaviour moves into this
-  task** — not the superseded "no file under `cmd/` changes", which round 4's scope widening
-  retired and which this bullet went on citing for a round. The mapping in the table above is
+  task** — and wiring `LegsOptions` is composition. The mapping in the table above is
   therefore a boundary obligation handed to #24, named here so it
   arrives as a stated contract instead of an assumption. The field names are the mitigation this
   task can supply, and their doc comments state the source variable for each.
@@ -643,7 +649,8 @@ AC6); a scrape of a registry whose every adapter has been driven once, asserting
 belongs to the allow-list and every closed-set label's **observed** values, **keyed by `(family,
 label)`** (AC10, AC11, AC23); a walk of this package's own non-test source for `panic(`,
 `log.Fatal`, `os.Exit` **and the client library's panicking `Must…` spellings** (AC32); a pair of
-walks over the module for the shared test helper of D17 (AC35, AC36); a file-scoped import guard
+walks over the module holding D17's consolidation of the shared test helper — one that it stayed
+consolidated, one that it stayed test-only; a file-scoped import guard
 keeping the canary's own files free of every database and scheduler symbol (AC21); the same
 scrape asserting the body contains none of the sentinel secrets the fixture was built with — the bot
 token, the cloud token, the DSN, a chat id, an update id, a task id, an operation id (AC23, AC24);
@@ -705,12 +712,16 @@ not just the cheap one: a scratch file carrying a bare `panic(` must red it, and
 file carrying `prometheus.MustRegister(c)` must red it too — the second proof is the one round 3
 lacked, and without it the extension is itself an untested instrument.
 
-**Guard (a) and guard (f) both need the repository root, and the helper that finds it is now
-hoisted rather than copied a fifth time.** Round 3 recorded the ≥3-site duplication, judged the
-remedy blocked by AC29, and routed it to the orchestrator; the owner resolved it the other way —
-spec 9396d3c narrows AC29 to permit exactly the one edit the hoist needs in `cmd/bot/main_test.go`
-and adds Scope 15, AC35 and AC36. So the remedy is taken here: D17 designs the package, subtask 1
-performs the move before any subtask needs it, and guards (g) and (h) hold it. The durable
+**Guard (a) and guard (f) both need the repository root, and the helper that finds it is
+consolidated rather than copied again.** This is the design's own call, and the argument is the
+workspace's own duplication threshold: the helper is already declared independently in several
+test binaries, subtask 11's walks would otherwise add another copy, and consolidating first is
+cheaper than exempting — an exemption would have to be argued once here and again at every future
+site. Round 3 judged the remedy out of reach and routed it to the orchestrator; the owner directed
+that it be taken in this task. So it is: D17 designs the package, subtask 1 performs the move
+before any subtask needs it, and guards (g) and (h) verify that it stayed done. The one edit this
+requires under `cmd/` is to `cmd/bot/main_test.go`, a test file — AC29 governs *production* files
+under `cmd/` and the movement of composition behaviour, and this move is neither. The durable
 statement of which declarations move is subtask 1's own file list, which names each package
 rather than a line number that goes stale on the next commit to touch it. **The scope of that
 list is set by behaviour, not by spelling — see D19, which is where an earlier version of this
@@ -903,13 +914,16 @@ And ingest's `kind` is the one place `unknown` is genuinely *observed* rather th
 because an unrouted update really does carry the zero `Kind` — so the observed-set assertion for
 `kind` includes it, and for `outcome` and `failure` it does not.
 
-**D17 — the shared test helper is a new `internal/repotest`, exporting `RootPath`.** Scope 15
-leaves the layout to this design under three constraints, and each one eliminates a candidate.
+**D17 — the shared test helper is a new `internal/repotest`, exporting `Root` and `RootPath`.**
+Where it lives is this design's call, and three constraints of its own decide it — each one
+eliminating a candidate. It must be importable from the test binary of every package that needs
+it, `cmd/bot`'s included; importing it must drag no machinery a consumer does not use into that
+consumer's test binary; and it must be test-only, never linked into the bot command.
 
 *Not `internal/tgtest`, although its package comment is what names the ≥3-site threshold in the
 first place.* It is a fake Bot API server — `net`, `net/http`, `encoding/json`, a pipe listener
-and a goroutine per server — and Scope 15 forbids dragging machinery a consumer does not use into
-that consumer's test binary. `internal/config`'s test binary resolves a path to the balance file;
+and a goroutine per server — which is exactly the machinery the second constraint refuses to drag
+into a consumer that does not use it. `internal/config`'s test binary resolves a path to the balance file;
 it has no business linking an HTTP server to do it. *Not `internal/testdb` either, and that one is
 sharper:* it provisions PostgreSQL through testcontainers, and one of the call sites is
 `cmd/bot/main_test.go`. Hosting the helper there would pull the container runtime into the bot
@@ -920,7 +934,7 @@ is the smallest import cost any of the call sites can pay.
 
 *The name follows `internal/tgtest`'s own pattern* — `<domain>test` for a shared, test-only
 package that is not itself a `_test.go` file — so the name states the test-only property that
-AC36 then enforces. `repotest.Root(tb)` and `repotest.RootPath(tb, rel)` do not stutter, and read
+guard (h) then enforces. `repotest.Root(tb)` and `repotest.RootPath(tb, rel)` do not stutter, and read
 at the call site as the copies they replace read today.
 
 **Two exported forms, because the tree already wants two, and exactly one of them resolves
@@ -934,10 +948,11 @@ works — `Join(root, ".")` cleans to the root — but it makes the commonest ca
 as a special case of the rarer one, and it preserves a spelling those sites only ever used because
 no better one existed. *Rejected: a single `Root`, with each joined site writing its own
 `filepath.Join`.* That pushes an import and a line into several packages to save one wrapper here.
-**AC35 is satisfied on the reading that matters and on the literal one:** exactly one declaration
-resolves a repository-root path in the module, and guard (g) enforces that behaviourally rather
-than by counting exported names, so `RootPath` — which calls no `runtime.Caller` and performs no
-ascent — is not a second helper by the only definition the guard can act on.
+**The rule this design holds itself to is one resolver, not one exported name:** exactly one
+declaration in the module derives the repository root from its own file's location, and guard (g)
+enforces that behaviourally rather than by counting exported names, so `RootPath` — which calls no
+`runtime.Caller` and performs no ascent — is not a second helper by the only definition the guard
+can act on.
 
 *The mechanism is preserved exactly, not improved.* `runtime.Caller(0)` on the package's own file,
 then three `filepath.Dir` ascents — the package sits two directories below the repository root,
@@ -948,15 +963,11 @@ but it is a behaviour change inside a consolidation whose whole value is that no
 and the fixed ascent's failure mode is a loud failure to open the resolved path, not a silent
 wrong answer. The package comment states the depth requirement so a later mover meets it.
 
-**The exported name is the spec's own requirement, not a divergence from it.** Round 4 raised a
-divergence here: AC35 then asked for one declaration of `repoRootPath`, which an exported helper
-cannot satisfy, since an unexported identifier is unreachable from another package's test binary.
-Spec ca5f71f resolved it in the design's favour — AC35 and Scope 15 now require the shared
-declaration to be **exported** under a new name and require no declaration under the old spelling
-to survive anywhere, this task's own new package included, and spec 9571152 then defined the
-class it applies to by mechanism (D19). The note is retired: the exported `repotest.Root` — the
-one declaration that resolves — is what the spec asks for, `RootPath` joins over it, and guard
-(g) asserts each clause the amended AC states rather than a paraphrase of it.
+**The exported name is forced, and it is worth one sentence because it is the reason the old
+spelling cannot survive the move.** An unexported identifier is unreachable from another
+package's test binary, so `repoRootPath` cannot be what the shared declaration is called; every
+call site therefore changes name as well as location, and no package keeps a local `repoRootPath`
+to fall back on. Guard (g) checks both halves.
 
 **D18 — live Go doc comments assert what this change falsifies, and they belong to subtask 3, not
 to the propagation sweep.** § Decomposition declares the falsification class as "any live
@@ -1017,26 +1028,25 @@ record.
 **D19 — the move is scoped by behaviour, not by spelling, and the correction is recorded because
 the mistake is reusable.** Rounds 3 through 5 measured the duplication with `rg 'func
 repoRootPath'` — an **identifier** search — and every later round inherited that set, D12 going so
-far as to say the measurement "stands as taken and is not re-taken". AC35 is written by
-**behaviour**, so a search keyed to one spelling could not answer it, and two live resolvers fell
-through the gap — `internal/commentref`'s and `internal/testdb`'s, both named `repoRoot` and both
-returning the root itself rather than a joined path.
+far as to say the measurement "stands as taken and is not re-taken". But what is being
+consolidated is a **behaviour**, not a spelling, so a search keyed to one identifier could not
+answer the question, and two live resolvers fell through the gap — `internal/commentref`'s and
+`internal/testdb`'s, both named `repoRoot` and both returning the root itself rather than a
+joined path.
 
-**Spec 9571152 then closed the question properly, by defining the class in the AC by
-*mechanism*.** AC35 now names the **file-location-ascent kind** — a helper that derives the root
-from its own source file's location and ascends a fixed number of directory levels, under whatever
-spelling — and says outright that a resolver obtaining the root another way, by asking git for
-instance, is not of this kind and is neither hoisted nor modified. The members follow from the
-mechanism instead of from an exception list, which is why no member is named in the spec and why
-this design derives them rather than being handed them. Derived that way, the in-class resolvers
-are those of `cmd/bot`, `internal/config`, `internal/ingest`, `internal/tg`, `internal/commentref`
-and `internal/testdb`
-[measured 9571152 · `rg -n 'runtime\.Caller' --type go` → matches in `cmd/bot/main_test.go`,
+**So this design defines the class it is consolidating, by *mechanism*, and derives the members
+from that definition.** The class is the **file-location-ascent kind**: a helper that derives the
+root from its own source file's location and ascends a fixed number of directory levels, under
+whatever spelling. Defining it this way rather than by an exception list is what makes the set
+derivable instead of remembered — and it is what guard (g) can be written against. Derived, the
+in-class resolvers are those of `cmd/bot`, `internal/config`, `internal/ingest`, `internal/tg`,
+`internal/commentref` and `internal/testdb`
+[measured d63c7a1 · `rg -n 'runtime\.Caller' --type go` → matches in `cmd/bot/main_test.go`,
 `internal/ingest/guards_test.go`, `internal/commentref/testhelpers_test.go`,
 `internal/tg/guards_test.go`, `internal/testdb/server_test.go`,
 `internal/config/repo_root_test.go`]. **All of them are in the move**, and subtask 1's file list is
-that set. No spec amendment was needed for their inclusion — AC35 already required it — and
-neither newly-found file sits under `cmd/`, so AC29 is untouched.
+that set. The only one under `cmd/` is a test file, which AC29 — governing production files and
+the movement of composition behaviour — does not reach.
 
 **Out of class, by mechanism and not by exception: the two git-based resolvers in
 `cmd/commentrefs`.** Its production `repoRoot(ctx)` and its test-side `repoRootForTest(t)` both
@@ -1046,8 +1056,9 @@ ask git for the worktree root
 error)` and `func repoRootForTest(t *testing.T) string`, each calling `runGit(…, ".",
 "rev-parse", "--show-toplevel")`]. Neither derives anything from its own file's location, so
 neither is of the file-location-ascent kind; the test-side one deliberately exercises the same git
-mechanism the tool ships, which is the point of it. AC29 forbids touching them in any case, but
-the operative reason is the class definition, not the prohibition.
+mechanism the tool ships, which is the point of it. That is the whole reason they are out: not an
+exemption granted to them, but a class they were never in. (The production one is additionally a
+production file under `cmd/`, which this task does not touch regardless.)
 
 *The self-inflicted part is worth stating plainly, because it is what makes this more than a miss.*
 Guard (g) enforces the behaviour class. Had subtask 1 moved only the identifier-matched set,
@@ -1070,10 +1081,10 @@ repository root". Round 6 diagnosed a proxy failure and committed one in the sam
 *an identifier* proxy; it was *a proxy*, and `runtime.Caller` is a proxy too — for a mechanism,
 one step closer to the behaviour and still not the behaviour. The rule that survives: **a
 measurement that scopes work against a stated behaviour must be run with at least two independent
-mechanisms, or the class must be defined by mechanism in the acceptance criterion itself.** AC35
-now does the latter, which is why this round needed no third enumeration — the class is a
-definition to apply rather than a set to go looking for, and guard (g) can be written against that
-definition instead of against whatever the last search happened to return.
+mechanisms, or the class must be defined by mechanism up front.** This design does the latter, in
+the paragraph above, which is why no third enumeration was needed — the class is a definition to
+apply rather than a set to go looking for, and guard (g) is written against that definition
+instead of against whatever the last search happened to return.
 
 ## Decomposition
 
@@ -1128,8 +1139,8 @@ by the size cap, by dependency order and by homogeneity; naive interleaving is t
 fallback and is not used here. The default maximum is **4** groups per task, and more than 4 is
 surfaced to the user for approval; this design defines **3**.
 
-**Why 3 rather than the 2 of round 3, and why the split is forced rather than chosen.** Scope 15
-adds the test-helper hoist, which is Go test code and therefore a code subtask. The code
+**Why 3 rather than the 2 of round 3, and why the split is forced rather than chosen.** D17's
+test-helper consolidation is Go test code and therefore a code subtask. The code
 change-type now holds subtasks 1–11, which is past the size cap, and the harness's own rule is that
 a change-type with more than 10 subtasks splits into multiple same-model groups of `≤ 10`. So a
 second code group is mandatory, not a clustering preference, and the minimisation rule is satisfied
@@ -1287,7 +1298,8 @@ actually wants** (D17): the sites that took `(t, ".")` and the two that returned
 directly become `repotest.Root(t)`, and only the genuinely joined ones become
 `repotest.RootPath(t, rel)` — converting a root-wanting site to the joined form would preserve a
 spelling those sites only ever used because no better one existed.
-`[derived → AC35, AC36, and the behaviour-preserving claim of D17]`
+`[derived → D17's one-resolver rule and its behaviour-preserving claim, verified by guards (g)
+and (h)]`
 
 **Subtask 3 — `internal/config/health_test.go`.** Entry points `loadHealth` and `Load`. Table
 subtests, `t.Parallel()`: all keys absent yields the compiled-in defaults, and the cloud token is
@@ -1442,8 +1454,9 @@ import path ending in `prometheus/promauto` and no reference to the library's de
 default gatherer. **It obtains the repository root by calling `repotest.Root`** — the root itself,
 which is what a walk wants, per D17's ruling that `RootPath` is for genuinely joined paths —
 **and declares no resolver of its own** — subtask 1 has already deleted the per-package copies, and writing a local
-`runtime.Caller` resolver here would be the very declaration AC35 forbids "including in the
-package this task adds", which the handoff plan bars even transiently. Note that the shared helper
+`runtime.Caller` resolver here would re-create, in the package this task adds, exactly the
+duplication D17 consolidated — and guard (g) would red on it — which the handoff plan bars even
+transiently. Note that the shared helper
 resolves from **its own** file's location, not the caller's, so nothing about this guard's own
 position matters. **The walk is proved discriminating before it is
 trusted**: it is run once against a scratch file carrying the banned import and required to fail,
@@ -1478,26 +1491,30 @@ round 3 got wrong: run once against a scratch file carrying a bare `panic(` and 
 the second is the proof that separates this walk from round 3's, which could not have detected a
 library `Must…` call at all. Both scratch files live in this proof's own temp copy — which is also
 what stops the `MustRegister` one from redding guard (a).
-(g) AC35, over every `.go` file in the module, stated as the specification it is: **zero
-repository-root helpers *of the file-location-ascent kind* outside `internal/repotest`, exactly
-one inside it, and zero declarations anywhere under the old unexported spelling `repoRootPath`.**
+(g) **The design consolidated the helper in subtask 1; this is how it verifies the helper stayed
+consolidated.** Over every `.go` file in the module: **zero repository-root helpers *of the
+file-location-ascent kind* outside `internal/repotest`, exactly one inside it, and zero
+declarations anywhere under the old unexported spelling `repoRootPath`.** Without this the
+consolidation is a one-time tidy that the next test binary needing a root quietly undoes — which
+is precisely how the module reached several copies in the first place.
 **The class qualifier is not decoration — without it the "and no other file" half of the
-validation below is unsatisfiable.** AC35 defines the kind by mechanism: derives the root from its
+validation below is unsatisfiable.** D19 defines the kind by mechanism: derives the root from its
 own source file's location and ascends a fixed number of directory levels. A resolver that obtains
 the root another way is out of class by definition, not by exemption, and `cmd/commentrefs` holds
-two that ask git for it (D19). The guard must not flag them, and would have to if its scope were
+two that ask git for it. The guard must not flag them, and would have to if its scope were
 "resolves the repository root".
 **How the guard recognises "a resolver" is the load-bearing part, and naming it by identifier
 would make the guard green for the case it exists to catch** — a copy called `healthRepoRoot` or
-`rootPath` passes a name-matching rule while violating AC35 outright. So the guard recognises the
+`rootPath` passes a name-matching rule while re-introducing exactly what was consolidated. So the
+guard recognises the
 *behaviour*, over the parsed AST rather than the text: **a function whose result derives from
 `runtime.Caller` and ascends a fixed number of directory levels by any spelling** — a chain of
 `filepath.Dir`, a `filepath.Join` carrying `".."` components, or a mixture of the two. Round 5
 wrote the rule as "repeated `filepath.Dir` ascents", which was itself a green instrument: one of
 the resolvers live in this repository right now spells its ascent
 `filepath.Join(filepath.Dir(file), "..", "..")` and that rule cannot see it (D19). The
-identifier check for `repoRootPath` stays as a second, cheaper half, because AC35 names that
-spelling explicitly. `runtime.Caller` is the cheap first filter, and it is coextensive with **the
+identifier check for `repoRootPath` stays as a second, cheaper half: that spelling is the one the
+module actually carried, so it is the one a half-finished revert would leave behind. `runtime.Caller` is the cheap first filter, and it is coextensive with **the
 file-location-ascent kind** — not with repository-root resolution in general, which is the
 over-claim D19 withdraws — so the AST ascent test refines that filter rather than replacing it,
 and a resolver reaching the root without consulting its own file's location never enters the
@@ -1519,9 +1536,12 @@ directions, with the worktree untouched throughout. The three scratch-file proof
 regression cover for the detection rules themselves —
 `func repoRootPath(...)`, a differently-named `filepath.Dir`-chain clone, and a differently-named
 `filepath.Join(..., "..", "..")` clone, the third being the spelling round 5 could not see.
-(h) AC36: no **non-test** file in the module imports `internal/repotest`, parsed rather than
-grepped so a mention in a comment is not a false positive — the property that keeps the helper out
-of the bot command's link graph.
+(h) No **non-test** file in the module imports `internal/repotest`, parsed rather than
+grepped so a mention in a comment is not a false positive. This holds D17's third constraint: the
+package imports `testing`, so a non-test importer would link the testing package into whatever
+imports it, and the one thing this module already guards against in that direction is machinery
+reaching `cmd/bot`'s link graph. The constraint is the design's own; nothing outside this document
+asserts it, which is why it is asserted here.
 (i) AC21's independence clause, which nothing else asserts: `internal/health/canary.go` and
 `internal/health/probe.go` import no `pgx`, no `pgxpool`, no `internal/store` and no
 `internal/scheduler` symbol. It must be **file-scoped**, not package-scoped, because the same
@@ -1536,7 +1556,9 @@ the tracked file is never edited, which matters more here than for the other pro
 **AC31 is not in this subtask's list and was wrongly claimed there before**: none of these guards
 inspects comments. It is discharged by `make comment-refs`, which rides in AC33's gate run at the
 end of this same subtask.
-`[derived → AC2, AC4, AC5, AC6, AC10, AC11, AC21, AC23, AC24, AC32, AC35, AC36]`
+`[derived → AC2, AC4, AC5, AC6, AC10, AC11, AC21, AC23, AC24, AC32]` — guards (g) and (h) carry no
+AC by design: they verify D17's own consolidation and its test-only property, which are decisions
+this document makes rather than criteria it discharges.
 
 **Subtask 12 — no test.** The alert contract is prose; AC26 and AC27 are checked by reading it and by
 the index entry.
@@ -1561,8 +1583,9 @@ the index entry.
   the infrastructure pass wants a per-update distribution instead of a per-handling one.
 - **`repoRootPath`'s duplication — decided, not open.** Round 3 raised it as a routing question
   between a follow-up issue and a scope widening. The owner took the widening: spec 9396d3c
-  narrows AC29 to permit the one edit the move needs under `cmd/`, and adds Scope 15, AC35 and
-  AC36. The hoist is subtask 1, the package is D17's `internal/repotest`, and guards (g) and (h)
-  hold it. Recorded here as the answer rather than deleted, so a later reader meets the decision
+  directed that it be taken in this task. The consolidation is subtask 1, the package is D17's
+  `internal/repotest`, and guards (g) and (h) hold it. It carries no acceptance criterion and needs
+  none: consolidating a helper the design would otherwise have copied again is a design decision,
+  and guards (g) and (h) are how the design tests its own decision. Recorded here as the answer rather than deleted, so a later reader meets the decision
   instead of re-deriving the question. **`walkGoFiles` is explicitly not part of it** — one
   declaration module-wide triggers no rule, and consolidating it would be scope nobody asked for.
