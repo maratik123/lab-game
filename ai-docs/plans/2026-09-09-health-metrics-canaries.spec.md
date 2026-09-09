@@ -2,7 +2,7 @@
 
 **Source:** issue #23
 **Date:** 2026-09-09
-**Amended:** 2026-09-09 (design-review rounds 1 and 3)
+**Amended:** 2026-09-09 (design-review rounds 1 and 3; AC35 corrected at round 5)
 **Tracked in:** #23
 
 > **Amended after design-review round 1.** The canary families carry an outcome label and a
@@ -26,6 +26,15 @@
 > reaches `cmd/bot`'s test binary and the helper swap alone — composition, wiring, start-up and
 > shutdown remain #24's, and no production file under `cmd/` is touched. Nothing else in this
 > spec is re-opened.
+
+> **AC35 corrected at round 5.** As first written, AC35 required exactly one declaration of
+> `repoRootPath` in a shared package while every package called that one. No implementation can
+> satisfy that: an unexported identifier is unreachable across a package boundary, so the shared
+> declaration must carry an exported name and the old spelling must survive nowhere — a
+> per-package alias under the old name would restore exactly the duplication Scope 15 forbids.
+> The design-writer found it and refused to paper over it. The correction is exactly: AC35's
+> wording, and the sentence of **Scope 15** that carried the same assumption. Approved by the
+> product owner. AC29 and AC36 are untouched, and no other row changes.
 
 This is the health half of observability: a Prometheus registry the bot's already-instrumented
 packages report into, an endpoint that serves it, and the two end-to-end `getMe` canaries the
@@ -108,10 +117,13 @@ constructible components with explicit lifecycles and changes no process assembl
     `ai-docs/context.md` and `ai-docs/agent-docs-index.md` are known members that illustrate the
     class, not its boundary.
 15. **Hoisting the repository-root test helper.** `repoRootPath` is declared independently in
-    several packages' test binaries, and this task's own tests need it again. It moves into **one**
-    shared test-helper package, every existing declaration is replaced by a call into it, and no
-    package keeps a copy — including the package this task adds. Where that helper lives is the
-    design's call, under constraints it must satisfy: importable from the test binary of every
+    several packages' test binaries, and this task's own tests need it again. The helper moves into
+    **one** shared test-helper package and is **exported** there: an unexported identifier is
+    unreachable from another package's test binary, so the shared declaration necessarily carries a
+    new, exported name. Every existing declaration is replaced by a call into it, and no declaration
+    under the old unexported spelling survives — including in the package this task adds. Where that
+    helper lives, and what its exported name is, are the design's call, under constraints it must
+    satisfy: importable from the test binary of every
     package that needs it, `cmd/bot`'s included; importing it drags no machinery a consumer does
     not use into that consumer's test binary; and it is test-only, never linked into the bot
     command. Its package comment describes what it holds after the move.
@@ -287,7 +299,7 @@ cloud-side reference probe, and it gets one.
 | AC32 | Production code added by this task contains no `panic` and no `log.Fatal`; a bind failure and a probe failure are both reported through a returned error. |
 | AC33 | Every gate in AGENTS.md § *Build & Test* is green on the branch, including the race gate and the coverage ratchet at its recorded high-water mark or above. |
 | AC34 | Every live site in the repository whose claim this diff falsifies is updated in the same PR, per AGENTS.md § *Propagation Rule* step 4. |
-| AC35 | Exactly one declaration of `repoRootPath` exists in the module, in a shared test-helper package; every package that resolves a repository-root path in its tests calls that one, and no package — including the package this task adds — declares its own. |
+| AC35 | Exactly one declaration of the repository-root path helper exists in the module — in a shared test-helper package, under an exported name, since an unexported one is unreachable from another package's test binary — and no declaration under the former unexported spelling `repoRootPath` survives anywhere in the module, including in the package this task adds. Every package that resolves a repository-root path in its tests calls the shared declaration. |
 | AC36 | No non-test file in the module imports the shared test-helper package, so the helper never links into the bot command. |
 
 ## Open questions
