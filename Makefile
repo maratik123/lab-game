@@ -80,9 +80,10 @@ test-db-down:
 # whole-module test run still provisions one container per database-backed
 # test binary and passes, exercising the path every other target here has
 # stopped exercising. `-count=1` is what makes that a gate rather than a
-# report: the cleared variable is a stable cache key, so without it a second
-# invocation is served entirely from the test cache and returns green having
-# started no container at all — measured, not feared.
+# report: the DSN variable is read before m.Run() opens the log the go command
+# reads to decide cache validity, so it is in no cache key and this run shares
+# cache entries with the shared-server gates. Without the flag a second
+# invocation returns green having started no container at all — measured.
 test-fallback:
 	LAB_GAME_TEST_DSN= go test -count=1 ./...
 

@@ -111,13 +111,15 @@ go run ./cmd/bot                                        # run the bot (exits non
 > The tolerance is **0.60 pp**, and it is not zero because a few timing-dependent error paths flip
 > between runs — 6 statements today. Two consequences worth carrying: **a recorded mark is one
 > draw, not a property of the tree** (the ratchet only ever raises, so it converges on the luckiest
-> run), and the measurement runs with the Go test cache on — **but a replay is no longer
-> guaranteed, and which way it falls depends on the DSN.** `testdb.Main` consults
-> `LAB_GAME_TEST_DSN`, which puts it in the cache key, so under the wrapper's own anonymous
-> container — a fresh ephemeral port every invocation — the database-backed packages are a
-> cache miss on every commit and their timing-dependent statements are re-drawn each time.
-> A re-run at an unchanged commit replays the previous profile only while the DSN is stable:
-> one you exported, or `make test-db-up`'s reused named container. Re-measure with `-count=1`, in **both**
+> run), and the measurement runs with the Go test cache on, so a re-run at an unchanged commit
+> replays the previous profile instead of drawing again — **and it replays no matter which server
+> the run reached.** Measured: with the test cache cleared, `internal/store` run again under a
+> different `LAB_GAME_TEST_DSN`, and again with the variable cleared entirely, answers `(cached)`
+> both times. The reason is worth carrying, because it applies to any `TestMain` that reads
+> configuration: `testing.M.Run` opens the log `cmd/go` reads to decide cache validity, and
+> `testdb.Main` reads the variable *before* it calls `m.Run()`, so the read is never recorded and
+> the go command never learns the variable was consulted. A changing DSN therefore forces nothing,
+> and the shared and fallback regimes share cache entries. Re-measure with `-count=1`, in **both**
 > environments, before changing the number; the script's header carries the recipe and `git log -p`
 > on it carries why the number is what it is.
 

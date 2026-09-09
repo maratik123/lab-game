@@ -180,7 +180,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - The ratchet's headroom is thin: the shared regime measures below the container regime, and the recorded mark sits close to the floor. Assume the ratchet blocks on the first commit landing this code and lower it in that same commit with the reason.
 - Connection exhaustion is `FATAL: sorry, too many clients already (SQLSTATE 53300)` — the project's own client renders both spellings on one line.
 - No gate enforces KD-20's "imported only from `_test.go` files" clause; `cmd/testpg` importing `internal/testdb` breaks no check, only the prose that subtask 10 owns.
-- Ephemeral host ports mean the shared DSN differs per wrapper invocation, so the database-backed packages are a test-cache miss on every ad-hoc run — including the ratchet's own measurement. Stable again under `--up`'s named container.
+- The DSN variable is in NO `go test` cache key, measured: `testdb.Main` reads it before calling `m.Run()`, and `m.Run()` is where the testing package opens the log the go command reads to decide cache validity. A different DSN, and a cleared one, both replay. So the shared and fallback regimes share cache entries, and no reasoning may treat a changing DSN as forcing a fresh run. (This line previously asserted the opposite; self-review R1-1 measured it.)
 
 ## AC Status
 
