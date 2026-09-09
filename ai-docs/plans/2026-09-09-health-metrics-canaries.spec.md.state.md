@@ -60,7 +60,13 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: ac1667e9338683a66
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "The cloud canary leg calls getMe straight at api.telegram.org. Under which credential? (DESIGN §13.2 asks for the probe; §12.2's runbook keeps the production bot logged out of the cloud; §12.5 already puts a separate test bot there.)"
+    answer: "Separate bot - a second, cloud-side bot token in its own optional config key (the §12.5 test bot). Production session untouched, healthy means a real 200 with ok:true, and the leg self-disables when the key is absent."
+  - round: 1
+    question: "What drives the two canary probes' cadence?"
+    answer: "In-process tick - a goroutine on the configured interval, independent of Postgres, so both legs keep reporting while the database is down. Nothing persisted, no new task type, no scheduler coupling."
 ```

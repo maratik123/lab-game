@@ -52,19 +52,27 @@ constructible components with explicit lifecycles and changes no process assembl
    pool itself.
 8. **Runtime and process collectors** from the client library's `collectors` package: goroutines,
    GC and memory.
-9. **The two canary probes**: `getMe` through our own instance and `getMe` straight at cloud
-   `api.telegram.org`, each with its own metrics so the legs are separable, and a named signal for
-   "own instance sick while cloud is healthy" that the infrastructure pass consumes.
-10. **Configuration keys** for the metrics listen address, the canary interval, per-leg
-    enablement, and whatever credential the cloud leg's decision requires — every one of them
-    optional-with-default, under one new `LAB_GAME_<SUBSYSTEM>_` prefix consistent with the
-    existing transport / scheduler / ingest key groups, loaded and validated in the existing
-    `internal/config` style.
+9. **The two canary probes**, driven by an **in-process ticker** on the configured interval — a
+   goroutine this package owns, touching neither Postgres nor the scheduler, so both legs keep
+   reporting while the database is unreachable. The own-instance leg calls `getMe` with the
+   production bot token against the configured instance base URL, exercising own server → MTProto →
+   DC. The cloud leg calls `getMe` at `api.telegram.org` under a **separate cloud-side bot token**,
+   so the production bot's cloud session is never reopened. Each leg exports its own series so the
+   two are separable, and the cross-leg signal "own instance sick while cloud is healthy" is named
+   for the infrastructure pass to consume.
+10. **Configuration keys** for the metrics listen address, the canary interval, the cloud leg's
+    own bot token and the cloud leg's base URL — every one of them optional-with-default, under one
+    new `LAB_GAME_<SUBSYSTEM>_` prefix consistent with the existing transport / scheduler / ingest
+    key groups, loaded and validated in the existing `internal/config` style. The cloud token is a
+    secret and is carried in the type the config package already uses for the bot token and the
+    DSN. **An absent cloud token disables the cloud leg**: the process starts, the own-instance leg
+    runs, and configuration raises no error.
 11. **The alert contract document**: for each alert the infrastructure pass must wire, the metric
     names, the expression over them, the condition shape and the severity — including the
     N-consecutive-canary-failures alert and the update-lag-growth alert the design names, and the
-    cross-leg expression from Scope 9. It states shapes and names; the numbers are the
-    infrastructure pass's to set.
+    cross-leg expression from Scope 9 — including what that expression means when the cloud leg is
+    configured off, and the absence test that tells a disabled leg from a failing one. It states
+    shapes and names; the numbers are the infrastructure pass's to set.
 12. **The module requirement** `github.com/prometheus/client_golang`, taken with `go get` followed
     by `go mod tidy`, with `git diff go.mod go.sum` read before staging. The design names promhttp
     as the endpoint's implementation, and AGENTS.md § *Dependency Versions* makes an established
@@ -93,6 +101,9 @@ constructible components with explicit lifecycles and changes no process assembl
   server, and graceful shutdown — #24.
 - Product-dashboard work of any kind: no event type, no SQL view, no panel.
 - Alert threshold values. The contract fixes the shapes and the names; the numbers are tuning.
+- Provisioning the cloud-side canary bot: registering it with BotFather and getting its token into
+  the deploy environment are the infrastructure pass's. This task defines the key the token arrives
+  through and the behaviour when it is absent.
 
 ## Deferred
 
@@ -112,7 +123,7 @@ constructible components with explicit lifecycles and changes no process assembl
 | Global registry or an explicit one | An explicit `prometheus.Registry` constructed by the package and passed to every registration. No global default registerer, no `promauto`: a package-level registration is invisible at the call site, collides between tests, and cannot be isolated. |
 | Where the endpoint's lifecycle lives | Here as a constructible server with explicit start and shutdown; #24 starts and stops it. The roadmap lists #23 as a dependency of #24, so the assembly direction is fixed. |
 | Which labels are allowed | Bot API method name, Bot API method class, HTTP status code, scheduler task type, scheduler outcome, scheduler failure kind, ingest update kind, ingest outcome, canary leg, pgx pool state. Each value set is closed by an enum or by the set of methods this module itself calls. |
-| Which labels are forbidden | Chat id, user or player id, update id, task id, operation id, raw error text, request URL, and the bot token in any form. Unbounded or player-identifying — a health series must not become a per-player series, and the product questions are the event log's. |
+| Which labels are forbidden | Chat id, user or player id, update id, task id, operation id, raw error text, request URL, and any bot token in any form. Unbounded or player-identifying — a health series must not become a per-player series, and the product questions are the event log's. |
 | Canary interval | A configuration key, optional-with-default, whose default is the design's once-a-minute cadence [source: 081213a:docs/DESIGN.md § 13.2 · sed -n '/^### 13.2\./,/^### 13.3\./p' docs/DESIGN.md]. |
 | Canary cost against the rate limiters | Nil by construction: each leg gets its own client with its own limiter and a single attempt, so a canary neither draws on the production budget nor mixes into the production transport series. `getMe` classifies as `ClassOther` [source: 081213a:internal/tg/class.go § classifyMethod · sed -n '/^func classifyMethod/,/^}/p' internal/tg/class.go], whose windows are unbounded by default [source: 081213a:internal/config/transport.go § defaultTransport · sed -n '/^func defaultTransport/,/^}/p' internal/config/transport.go]. |
 | Why one attempt, not the production retry policy | A retrying canary measures the retry loop, not the network: the failure it exists to show is masked by the retry and the latency it reports is mostly backoff. |
@@ -120,8 +131,11 @@ constructible components with explicit lifecycles and changes no process assembl
 | Where the alert contract lives, and in which language | Under `ai-docs/`, in English, indexed in `ai-docs/agent-docs-index.md`. AGENTS.md restricts Russian to owner conversation and `docs/**`; the contract is an operations artefact the infrastructure pass reads, not part of the game-design corpus. |
 | Handler panics | Already an ingest outcome (`OutcomePanic`), distinct from a plain failure. It reaches the dashboard as an outcome label value; this task adds no recovery logic of its own. |
 | Idempotency hits | Already an ingest outcome (`OutcomeDuplicate`). Same treatment — duplicates are normal traffic and a spike is the signal. |
-| Which credential the cloud canary leg uses | **Open — round 1, question 1.** See `## Source conflicts`. |
-| What schedules the canary probes | **Open — round 1, question 2.** |
+| Which credential the cloud canary leg uses | A **separate cloud-side bot token**, in its own optional configuration key — the test bot §12.5 already places on the cloud API. The production bot's cloud session stays closed as §12.2's runbook requires, and the leg's health is a real `getMe`: HTTP 200 carrying `ok:true`. Absent key, leg off. *Product owner, round-1 answer 1; see `## Source conflicts`.* |
+| What schedules the canary probes | An **in-process ticker** on the configured interval, owned by this package: no task type, no persisted row, no scheduler coupling. A probe that stops when Postgres stops goes silent exactly during an incident, which is the ambiguity §13.2 exists to remove. *Product owner, round-1 answer 2.* |
+| A disabled leg versus a failing one | A leg configured off exports no probe sample at all, and the alert contract names the absence test the monitoring stack applies. A leg that is off must never read as a leg that is healthy. |
+| The cloud leg's base URL | A configuration value defaulting to the cloud API, not a compiled-in literal. §11 already makes the Bot API base URL a config value on a three-value axis — own instance, cloud, fake server [source: 776b987:docs/DESIGN.md § 11 · sed -n '/^## 11\./,/^## 12\./p' docs/DESIGN.md] — and a hard-wired endpoint would put the probe out of a fake server's reach. |
+| One interval, both legs | A single cadence value drives both probes on the same tick. Reading a sick leg against a reference leg is the whole point, and two independent cadences turn that comparison into a question about sampling. |
 
 ## Technical constraints
 
@@ -149,7 +163,19 @@ constructible components with explicit lifecycles and changes no process assembl
    found by name, never by a pointer from a comment.
 9. **Every gate in AGENTS.md § *Build & Test* applies unchanged**, including the race gate — the
    canary runner and the metrics server are concurrent code — and the coverage ratchet.
-10. **Configuration keeps its existing shape**: keys read only by `internal/config`, every added key
+10. **The canary ticker is independent of Postgres and of the scheduler.** It registers no task
+    type, writes no row, shares no state with `internal/scheduler`, and keeps probing while the
+    database is unreachable. Its lifecycle is an explicit start and shutdown the caller owns, and a
+    shutdown is honoured without waiting out the current interval.
+11. **A disabled leg is silent, never healthy.** With no cloud token configured, the cloud leg
+    produces no probe sample of any kind, and nothing in the exported set lets its absence be read
+    as a success.
+12. **The cloud canary token is a secret.** It is carried in the config package's existing secret
+    type, so a formatted rendering of a configuration value redacts it; it is never a metric name,
+    a label, or a label value.
+13. **The own-instance leg carries the production bot token against the configured instance base
+    URL** — the chain the design asks it to exercise — and opens no session anywhere else.
+14. **Configuration keeps its existing shape**: keys read only by `internal/config`, every added key
     optional-with-default, failures reported as a `*KeyError` naming the variable, and the
     manifest/loader/declared-key-set identity the config package already enforces stays true.
 
@@ -181,8 +207,13 @@ that no second session exists there, and §12.5 already places a *different* bot
 and calls it a second canary. Which credential the cloud leg carries decides a configuration key,
 what "healthy" means for that leg, and whether the probe touches the production session at all.
 
-**Resolution: pending.** Round 1, question 1 puts the choice to the product owner. Nothing in this
-spec resolves it silently in either direction.
+**Resolved by the product owner, round-1 answer 1: the separate cloud-side bot.** The cloud leg
+carries its own cloud-side bot token in its own optional configuration key — the bot §12.5 already
+places on the cloud API — so §13.2's reference probe exists without ever reopening the production
+bot's cloud session, and §12.2's runbook keeps its meaning unchanged. The leg's success condition
+is a real `getMe`: HTTP 200 carrying `ok:true`. With the key absent the leg does not run at all,
+rather than running degraded. No site of the design was rewritten to reach this: §13.2 asked for a
+cloud-side reference probe, and it gets one.
 
 ## Acceptance Criteria
 
@@ -202,21 +233,26 @@ spec resolves it silently in either direction.
 | AC12 | pgx pool occupancy and wait statistics are exported by a collector that reads `pgxpool.Pool.Stat()` during collection, so a scrape reports the pool's state at scrape time rather than a cached snapshot. |
 | AC13 | The Go runtime collector and the process collector from the client library are registered on the same registry, so goroutine, GC and memory series are present in a scrape. |
 | AC14 | Two canary probes exist — own instance and cloud reference — separable in the exported series by a leg label with exactly those two values, each exporting its own outcome counter and its own latency histogram. |
-| AC15 | A canary call makes exactly one attempt, and no canary call contributes a sample to the transport series of AC9. |
-| AC16 | A canary outcome distinguishes success from failure by the Bot API response, and classifies a failure by status code or by transport-error class; no canary failure classification carries raw error text as a label. |
-| AC17 | The canary cadence is a configuration value whose compiled-in default is the design's once-a-minute cadence. |
-| AC18 | The metrics listen address is a configuration value whose compiled-in default binds the loopback interface only. |
-| AC19 | Every label on every metric this task adds belongs to the allowed set enumerated in Key decisions, and no exported metric carries a chat id, a user or player id, an update id, a task id, an operation id, raw error text, a URL, or any part of the bot token as a name, a label or a label value. |
-| AC20 | Every environment variable this task adds is returned by the config package's exported key enumeration and documented in `.env.example`, and the config package's manifest/loader/declared-set identity check passes with them present. |
-| AC21 | An alert-contract document exists under `ai-docs/`, in English, naming for each alert: the metric names it reads, the expression over them, the condition shape, and the severity — covering at minimum the consecutive-canary-failure alert, the update-lag-growth alert, and the cross-leg "own instance sick while cloud healthy" expression. |
-| AC22 | `ai-docs/agent-docs-index.md` lists the alert-contract document. |
-| AC23 | `github.com/prometheus/client_golang` is a require entry of `go.mod`, and module tidiness leaves `go.mod` and `go.sum` unchanged. |
-| AC24 | No file in `cmd/` is modified by this task. |
-| AC25 | Every exported item added by this task carries a doc comment beginning with its name, and every new package carries a package comment. |
-| AC26 | No comment added by this task names a markdown path, a design section number, an acceptance-criterion id, a repository path, a URL, an issue number outside `TODO(#…)`, or a package-qualified symbol of this module outside its own package. |
-| AC27 | Production code added by this task contains no `panic` and no `log.Fatal`; a bind failure and a probe failure are both reported through a returned error. |
-| AC28 | Every gate in AGENTS.md § *Build & Test* is green on the branch, including the race gate and the coverage ratchet at its recorded high-water mark or above. |
-| AC29 | Every live site in the repository whose claim this diff falsifies is updated in the same PR, per AGENTS.md § *Propagation Rule* step 4. |
+| AC15 | The own-instance leg issues `getMe` with the production bot token against the configured instance base URL. |
+| AC16 | The cloud leg issues `getMe` with a cloud-side bot token taken from its own configuration key, against a cloud base URL that is itself a configuration value; the leg counts a probe successful only on an HTTP 200 response carrying `ok:true`. |
+| AC17 | With the cloud leg's token key absent, configuration loads without error, the own-instance leg still runs, and no cloud-leg probe sample of any kind is exported. |
+| AC18 | A canary probe makes exactly one attempt per tick, and no canary call contributes a sample to the transport series of AC9. |
+| AC19 | A canary failure is classified by HTTP status code or by transport-error class, and no canary series carries raw error text as a label value. |
+| AC20 | The canary cadence is a single configuration value driving both legs on the same tick, whose compiled-in default is the design's once-a-minute cadence. |
+| AC21 | The canary runner registers no scheduler task type, writes no database row, and continues probing while the database is unreachable; its shutdown entry point returns without waiting out the current interval. |
+| AC22 | The metrics listen address is a configuration value whose compiled-in default binds the loopback interface only. |
+| AC23 | Every label on every metric this task adds belongs to the allowed set enumerated in Key decisions, and no exported metric carries a chat id, a user or player id, an update id, a task id, an operation id, raw error text, a URL, or any part of any bot token as a name, a label or a label value. |
+| AC24 | The cloud canary token is carried in the config package's secret type, so a default-verb rendering of the value holding it yields that type's redaction placeholder; the token reaches no log line, no metric name, no label and no label value. |
+| AC25 | Every environment variable this task adds is returned by the config package's exported key enumeration and documented in `.env.example`, and the config package's manifest/loader/declared-set identity check passes with them present. |
+| AC26 | An alert-contract document exists under `ai-docs/`, in English, naming for each alert: the metric names it reads, the expression over them, the condition shape, and the severity — covering at minimum the consecutive-canary-failure alert, the update-lag-growth alert, the cross-leg "own instance sick while cloud healthy" expression, what that expression means when the cloud leg is configured off, and the absence test distinguishing a disabled leg from a failing one. |
+| AC27 | `ai-docs/agent-docs-index.md` lists the alert-contract document. |
+| AC28 | `github.com/prometheus/client_golang` is a require entry of `go.mod`, and module tidiness leaves `go.mod` and `go.sum` unchanged. |
+| AC29 | No file in `cmd/` is modified by this task. |
+| AC30 | Every exported item added by this task carries a doc comment beginning with its name, and every new package carries a package comment. |
+| AC31 | No comment added by this task names a markdown path, a design section number, an acceptance-criterion id, a repository path, a URL, an issue number outside `TODO(#…)`, or a package-qualified symbol of this module outside its own package. |
+| AC32 | Production code added by this task contains no `panic` and no `log.Fatal`; a bind failure and a probe failure are both reported through a returned error. |
+| AC33 | Every gate in AGENTS.md § *Build & Test* is green on the branch, including the race gate and the coverage ratchet at its recorded high-water mark or above. |
+| AC34 | Every live site in the repository whose claim this diff falsifies is updated in the same PR, per AGENTS.md § *Propagation Rule* step 4. |
 
 ## Open questions
 
@@ -228,6 +264,9 @@ spec resolves it silently in either direction.
   change later since buckets are not persisted.
 - **Alert threshold values** — how many consecutive canary failures, and what rate of update-lag
   growth. The contract states the shapes; the infrastructure pass sets the numbers.
+- **Whether the cloud canary bot is §12.5's test bot or a third one.** The infrastructure pass
+  provisions it either way; this task only names the key the token arrives through and the
+  behaviour when it is absent.
 - **A readiness endpoint beside `/metrics`.** Not asked for by the design; #24 may want one when it
   owns start-up and shutdown.
 - **The `telegram-bot-api` `/stats` shape** is out of scope here, but the alert contract may want to
