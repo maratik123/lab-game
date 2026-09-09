@@ -315,6 +315,8 @@ measured behaviour rather than the predicted one. The design document itself is 
 
 - **Step 9**: all 34 criteria verified by the orchestrator's own commands; interface satisfaction proven by compiling an assertion program rather than by matching method names. Coverage ratchet 89.74%, unchanged.
 
+- **Step 9.5**: `context.md` needed no orchestrator edit — the Group C sweep had already carried the layout, the status bullet and the contract link. Only the `context-status.md` entry remained, written with the `#TBD-at-Step-12` locator that Step 12 substitutes.
+
 ## Key discoveries (don't re-investigate)
 
 - Six file-location-ascent root resolvers exist, not four: the four `repoRootPath` copies plus `repoRoot` in `internal/commentref` and `internal/testdb`. Found by behaviour (`runtime.Caller`), not by identifier.
