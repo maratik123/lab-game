@@ -8,8 +8,8 @@ _Updated: 2026-09-09 16:14_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — subtask 6 of 13 complete (Group A DONE)
-**last_passed_gate:** go build/test/vet, golangci-lint fmt -d + run, make comment-refs — all green (commit ca44911)
+**current_step:** Step 8 — Group B subtask 10 of 13 complete (pinned order 10, 7, 8, 9, 11)
+**last_passed_gate:** go build/test/vet, go test -race (internal/health), golangci-lint fmt -d + run, make comment-refs — all green (commit 64a015a)
 **entry_args:** 23
 
 ## Next action
@@ -27,10 +27,10 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
 - [x] 4. Package skeleton: registry, labels, buckets, the D16 register
 - [x] 5. Transport adapter (`tg.Observer`)
 - [x] 6. Scheduler adapter (`scheduler.Observer`)
-- [ ] 7. Ingest adapter (`ingest.Observer`), `LagKnown` gate
+- [ ] 7. Ingest adapter (`ingest.Observer`), `LagKnown` gate  ← CURRENT (Group B, pinned order 10, 7, 8, 9, 11)
 - [ ] 8. pgx pool collector
 - [ ] 9. `promhttp` endpoint server
-- [ ] 10. The canaries: `Prober`/`ProberFactory`, both legs, the ticker  ← CURRENT (Group B, pinned order 10, 7, 8, 9, 11)
+- [x] 10. The canaries: `Prober`/`ProberFactory`, both legs, the ticker
 - [ ] 11. The structural guards (a)–(i)
 - [ ] 12. The alert contract
 - [ ] 13. Propagation sweep
@@ -113,6 +113,23 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
   `go build ./...`, `go test ./...` (whole module), `go vet ./...`, `golangci-lint fmt -d` (no target
   file present in its diff), `golangci-lint run` (0 issues), `make comment-refs`. Committed at
   ca44911. **Group A (subtasks 1–6) is complete.**
+- **Step 8, subtask 10 (Group B, first)**: `internal/health/probe.go` and `canary.go` implement the
+  `Prober`/`ProberFactory` seam, `TelegramProber` with its own `statusRecorder` (a private
+  transport-observer, never `TransportObserver`), `classifyFailure`, `LegsOptions`/`NewLegs` (the
+  own/cloud credential-endpoint pairing, asserted by a recording `ProberFactory` in
+  `TestNewLegs_PairingNeverSwapped`), and `Canary`/`NewCanary`/`Start`/`Shutdown` (a
+  `context.WithCancel` run loop, per-tick `context.WithTimeout(ctx, interval)` so a blocked prober is
+  cancelled rather than overlapping the next tick, and a `sync.WaitGroup` driving both legs
+  concurrently per tick). Canary and probe metric family/label-value consts are declared locally in
+  `canary.go`, not in `registry.go`'s existing block, since subtask 10's own file list is
+  `canary.go`/`probe.go` only. Runner tests use `testing/synctest` with fake `Prober`s (no network);
+  prober tests use `internal/tgtest`'s fake server. `make comment-refs` caught nine ac-id/decision-
+  anchor citations and four package-qualified module-symbol mentions (`tg.Observation`, `tg.Client`,
+  `tg.Observer`, `config.Transport`, `tg.New`) across `canary.go`/`probe.go`/`probe_test.go` on first
+  pass — rewritten to prose naming neither. Gates run and green: `go build ./...`,
+  `go test ./internal/health/...`, `go test -race ./internal/health/...`, `go vet ./...`,
+  `golangci-lint fmt -d` (no target file present in its diff), `golangci-lint run` (0 issues),
+  `make comment-refs`. Committed at 64a015a.
 
 ## Key discoveries (don't re-investigate)
 
