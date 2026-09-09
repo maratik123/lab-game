@@ -9,7 +9,7 @@ _Updated: 2026-09-09 17:42_
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
 **current_step:** Step 8 — subtask 13 of 13 complete (Group C DONE; all subtasks complete)
-**last_passed_gate:** go test -race ./internal/health/... | 2026-09-09T19:16:34Z | 21ce76236a0b67db7f11269831e25588036ed431
+**last_passed_gate:** make cover-ratchet | 2026-09-09T19:28:03Z | 0660be2cbe92142a4aa1989583f201c1e4ce1e6c
 **entry_args:** 23
 
 ## Next action
@@ -325,6 +325,8 @@ measured behaviour rather than the predicted one. The design document itself is 
 
 - **Step 11 R2**: the register gate was red for this file's whole life and no commit caught it — the PreToolUse hook reads the index before the command runs, so `git add && git commit` in one call presents an empty index. Filed in harness-gaps; commits of this file now stage and commit in separate calls.
 
+- **Step 10**: APPROVE at round 3. Rounds 1 and 2 rejected; every fix was re-verified by the reviewer's own command, and the two load-bearing ones by mutation. Three below-floor items closed before Step 12, one of them a false count in my own harness-gaps entry.
+
 ## Key discoveries (don't re-investigate)
 
 - Six file-location-ascent root resolvers exist, not four: the four `repoRootPath` copies plus `repoRoot` in `internal/commentref` and `internal/testdb`. Found by behaviour (`runtime.Caller`), not by identifier.
@@ -340,6 +342,11 @@ measured behaviour rather than the predicted one. The design document itself is 
   predicted closure exactly.
 
 ## Files touched
+
+- `ai-docs/harness-gaps.md` — two harness diagnoses raised by this run
+- `ai-docs/coverage-ratchet.txt` — raised to 89.78 by the round-2 fix
+- `ai-docs/context-status.md` — the run's implementation-status entry
+- `ai-docs/plans/2026-09-09-health-metrics-canaries.design.md` — the design, amended nine times
 
 - `internal/repotest/repotest.go`, `internal/repotest/repotest_test.go` (new)
 - `cmd/bot/main_test.go`, `internal/ingest/guards_test.go`, `internal/tg/guards_test.go`,
@@ -408,7 +415,7 @@ measured behaviour rather than the predicted one. The design document itself is 
 | AC30 | PASS — `revive` `exported` + `package-comments` enabled and `golangci-lint run` green |
 | AC31 | PASS — `make comment-refs` green over the whole tracked gated set |
 | AC32 | PASS — no `panic(`, `log.Fatal` or `os.Exit` in `internal/health` or `internal/repotest`; panic index still empty |
-| AC33 | PASS — build, vet, fmt, lint, tidy, comment-refs, `make test` and `make test-race` all green (0 FAIL, 0 DATA RACE); coverage ratchet 89.74% holds against 89.74% |
+| AC33 | PASS — build, vet, fmt, lint, tidy, comment-refs, `make test` and `make test-race` all green (0 FAIL, 0 DATA RACE); coverage ratchet 89.78% holds against 89.78% |
 | AC34 | PASS — propagation sweep touched `.env.example`, `agent-docs-index.md`, `context.md`, `key-decisions.md`, `INDEX.md`; Go-comment half landed in subtask 3 |
 
 ## Review register
@@ -436,6 +443,11 @@ measured behaviour rather than the predicted one. The design document itself is 
 | GUARDS-FILE-SIZE | R2 | — | accepted@2 — `internal/health/guards_test.go` is 879 lines: past the 800 soft band, well under the 1500 hard band a `_test.go` file gets. Nine structural guards plus their discrimination proofs is one responsibility, not a visible mix, and the don't-over-split counter-rule applies. No split asked for. | `wc -l internal/health/guards_test.go` and `make file-limits` |
 | GUARD-D-DISCRIMINATION | R2 | — | accepted@2 — guard (d) ships no `_ProvenDiscriminating` companion, unlike guards (a)/(b)/(f)/(g)/(i). Its instrument was proved capable of going red rather than taken on trust: the gathered text is non-empty and the `strings.Contains` loop reaches it. | add `"labgame_canary_probes_total"` to the sentinel slice in `TestGuard_ScrapeCarriesNoSentinelSecret` — the test must FAIL |
 | PROBE-STATUS-NO-FALSE-FAIL | R2 | — | accepted@2 — the new status gate cannot false-fail a healthy call: the transport caller's success return observes the real HTTP status, read from the response before the envelope is decoded, so a nil error never pairs with a zero status code. Re-read rather than assumed. | `sed -n '89,95p;203,220p' internal/tg/caller.go` |
+| R3-1 | R3 | minor | accepted@3 — below severity floor | replay the register script over every commit of this branch's progress file — `for c in $(git log --format=%h 3616d52..HEAD -- <pf>); do git show $c:<pf> > tmp/pf-$c.md; bash ai-docs/scripts/check-review-register.sh tmp/pf-$c.md >/dev/null 2>&1 && echo "$c ACCEPT" \|\| echo "$c REJECT"; done` — the REJECT count must equal the number the harness-gaps entry states (today: 2 REJECT out of 20, entry says four) |
+| R3-2 | R3 | nit | accepted@3 — below severity floor | `grep -n '^| AC33' ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md` and `cat ai-docs/coverage-ratchet.txt` — the percentage quoted in the AC33 row must equal the recorded mark |
+| R3-3 | R3 | nit | accepted@3 — below severity floor | `git diff --name-only 3616d52..HEAD` against the `## Files touched` list — every path the diff carries must appear there |
+| SHUTDOWN-CTX-CAPTURE | R3 | — | accepted@3 — examined, not a defect. The background graceful stop captures the FIRST caller's ctx, so a short-deadline first caller latches its own `context.DeadlineExceeded` as the result every later caller reads. Deliberate and consistent with the doc comment's "All callers see the same latched result once ready"; it is not a D10 deviation, because D10 fixes the *join* (`errors.Join` of the graceful-stop error with the serve goroutine's terminal error), which the code still performs, and says nothing about a ctx bound. No composition root exists yet — AC29 keeps wiring out of this task. | `sed -n '102,130p' internal/health/server.go` — the goroutine must still `errors.Join` both errors and latch them before `close(done)` |
+| SHUTDOWN-HEADSTART | R3 | — | accepted@3 — examined, not a defect. `internal/health/server_test.go`'s new mid-flight test uses a 100 ms `time.Sleep` head start to make the second `Shutdown` arrive while the first is in progress. That constant is an *instrument* (a patience budget), not the subject, and the conventions page makes an instrument generous rather than exact; the assertion itself is deterministic, since the held handler makes `done` unreachable for the whole 300 ms window. Proved discriminating by mutation and stable over `-count=8` under `-race`. | `go test -race ./internal/health/ -run TestServer_ -count=8` must stay green, and reverting `server.go`'s `go func()` wrapper must turn the mid-flight test red |
 
 ## Self-Review (Round 1)
 
@@ -560,3 +572,97 @@ package and the guard that polices it.
 | 1 | ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md:415-430 (the `## Review register` rows added at `52a26b4`) | major | **Every register id in this run is unparseable to the register-consistency gate, so that gate is RED on this branch and the wired commit hook refuses this file.** `ai-docs/scripts/check-review-register.sh:60` accepts a register id matching `^[A-Za-z]*[0-9]+-[0-9]+$` — free leading letters, then the **round** number, then the finding number (`R1-1`, `SR1-2`); its own header states that join key, and `ai-docs/templates/progress-format.md` shows `R1-3` / `R1-7`. This run's ids are `HEALTH1-1`, `HEALTH1-2`, `HEALTH1-3`, `HEALTH1-4`, `PROC1-5`, `HEALTH1-6`…`PROG1-11` — mnemonic then finding number, no round number — so every row is SKIPPED at line 60, and each of round 1's ten `✅ Fixed` table rows then reports at line 89 as having no register row. Measured, running the exact hook body from `.claude/settings.json` with a `git commit` payload and this file staged: **`hook exit: 2`**, ten lines of `round 1 finding N is marked Fixed and has no register row`. This is the only progress file in the repository where the gate is red — it is GREEN on all ten runs under `ai-docs/plans/ignored/` and on the template. Consequence: the orchestrator cannot commit this progress file at all, and `--no-verify` is no exit (a separate hook refuses it, and this one is `PreToolUse`, not a git hook). Fix: rename each register id to carry its round while keeping its finding number — `HEALTH1-1`, `HEALTH1-2`, `HEALTH1-3`, `HEALTH1-4`, `PROC1-5`, `HEALTH1-6`, `HEALTH1-7`, `HEALTH1-8`, `HEALTH1-9`, `HEALTH1-10`, `PROG1-11` — the leading letters are free, so the mnemonics survive. The `REC1-101`…`REC1-104` rows and this round's three accepted-only rows need no change: they carry no round-table counterpart, and the script skips an unparseable id rather than failing it. | ✅ Fixed |
 | 2 | internal/health/server.go:95-98 | minor | **`Shutdown`'s new idempotency doc comment claims a context bound the concurrent case does not honour.** The comment says a later call "waits for the first call's result, **bounded by its own ctx**, and returns that same result once ready". It is bounded only once the first call has finished, because a second caller arriving while the first is still inside `s.shutdownOnce.Do` blocks *in* `Do`, which consults no context; the `select` on `ctx.Done()` sits after it and is never reached. Measured with one connection held in `StateActive` so the graceful stop cannot complete: `SECOND-BLOCKED: still blocked after 3s despite its own 300ms deadline`. The claim is therefore false in precisely the case where a bound would matter — when the first call has not returned. This is not round 1's HEALTH1-3: that block was unbounded and sequential, and it is fixed and re-verified. No caller exists yet (AC29 keeps composition out of this task), but a composition root pairing a deferred shutdown with a signal-driven one is the shape this would hang. Fix is either sentence or `select`: drop the bound from the comment, or have followers wait in the existing `select` rather than inside `Do`. | ✅ Fixed |
 | 3 | ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md (`## AC Status`, the AC16 row) | nit | The AC Status table still records AC16 as FAIL, citing round-1 finding R1-1. The defect was fixed at `c9b521a` and re-verified this round with a discriminating test; the row is now a false recorded claim in a durable surface. Update it to PASS naming the status gate and its test. | ✅ Fixed |
+
+## Self-Review (Round 3)
+
+**Verdict:** APPROVE
+
+**Spawn prompt.** Five lines, all inside the closed list (invocation, `Spec:`, `Design:`,
+`Progress:`, a commit range). No contamination finding.
+
+**What was checked.** The register scopes this round to the three round-2 rows and to what the
+round-2 fix commits introduced. Each round-2 row was re-verified by running its own recorded
+verifying command against the shipped tree. Read in full: `internal/health/server.go`'s rewritten
+`Shutdown` and its new doc comment, `internal/health/server_test.go`'s new mid-flight test, the
+`ai-docs/harness-gaps.md` entry added at `6c879e5`, the `ai-docs/coverage-ratchet.txt` bump, and
+the progress-file edits at `6c879e5` / `0660be2`. Read as the comparison the round-1 verdict rested
+on: `internal/health/canary.go`'s `Start` / `run` / `tick` / `Shutdown`. Re-read for design
+conformance: D10, and the design's `## Decomposition` table against the shipped file set. Read for
+the hook claim: the `check-review-register` hook body in `.claude/settings.json`,
+`ai-docs/scripts/check-review-register.sh`, and `.claude/skills/task/SKILL.md:220`.
+
+**Round-2 rows, each re-verified by its own recorded command.**
+
+- R2-1 FIXED — `bash ai-docs/scripts/check-review-register.sh <this file>` exits **0**. Every
+  register id now parses, and each round-table `✅ Fixed` row joins a register row that does not
+  read `open`.
+- R2-2 FIXED, and the fix is discriminating rather than taken on trust.
+  `TestServer_ShutdownMidFlightBoundsSecondCallerByItsOwnCtx` passes; reverting `server.go`'s
+  `go func()` wrapper to the pre-fix inline form turns it red —
+  `--- FAIL: TestServer_ShutdownMidFlightBoundsSecondCallerByItsOwnCtx (3.10s) … DEADLOCK: second
+  Shutdown never returned within its own deadline plus a 3s test guard` — and `server.go` was
+  restored from a cp-backup and confirmed byte-identical to `HEAD` (`diff` silent,
+  `git status --porcelain` empty).
+- R2-3 FIXED — the `## AC Status` AC16 row reads PASS; no `FAIL` remains in that table.
+- The three `accepted@2` rows (`GUARDS-FILE-SIZE`, `GUARD-D-DISCRIMINATION`,
+  `PROBE-STATUS-NO-FALSE-FAIL`) are not re-raised: nothing has changed for any of them since the
+  accepting round. `internal/health/guards_test.go` is still 879 lines and `make file-limits` is
+  green.
+
+**Doc-comment claims on the rewritten `Shutdown`, re-derived rather than read.** "every caller's
+wait is bounded by the ctx it passed, whether or not the graceful stop has finished yet" — true,
+and it is the proposition the new test asserts. "All callers see the same latched result once
+ready" — true: the write to the latched field happens before `close(done)`, and every reader takes
+that field only after receiving from the closed channel, so the ordering is established rather than
+assumed. The race detector agrees over eight repetitions.
+
+**Gates re-run against the shipped tree, not quoted from the log.** `go build ./...` GREEN ·
+`go vet ./...` GREEN · `golangci-lint run` GREEN (0 issues) · `make comment-refs` GREEN ·
+`make file-limits` GREEN · `go mod tidy` + `git diff --exit-code go.mod go.sum` CLEAN ·
+`make test` GREEN (exit 0, 14 `ok`, 0 FAIL) · `make test-race` GREEN (exit 0, 0 DATA RACE) ·
+`make cover-ratchet` GREEN — `coverage-ratchet: 89.78% holds against 89.78% (tolerance 0.60 pp)` ·
+`go test -race ./internal/health/ -run TestServer_ -count=8` GREEN (flake probe on the new
+timing-sensitive test) · the register-consistency gate, RED for the whole of round 2, now exits 0.
+No `.sh`, `.yml` or `.yaml` file is in the diff, so `shellcheck` and `actionlint` have no target.
+
+**AC-verification commands re-run against the shipped artefact.** AC2 PASS —
+`rg 'promauto|DefaultRegisterer|MustRegister' --type go -l` returns only
+`internal/health/guards_test.go`, the guard that names them to forbid them. AC28 PASS — tidy leaves
+`go.mod` / `go.sum` unchanged. AC29 PASS — the only `cmd/` path in the whole diff is
+`cmd/bot/main_test.go`, a test file. AC30 PASS — `revive`'s `exported` and `package-comments` rules
+are both enabled (`.golangci.yml:47-48`) and the linter reports 0 issues. AC31 PASS —
+`make comment-refs` over the whole tracked gated set, including the new doc comment naming only
+standard-library symbols. AC32 PASS — the panicking-call sweep over `internal/health`,
+`internal/repotest` and `internal/config/health.go` hits only the guard fixtures inside
+`guards_test.go`. AC33 PASS, per the gate list above, with the ratchet at its raised mark.
+Design conformance: every file of the `## Decomposition` table is present and in the diff, and D10's
+join is still performed by the rewritten `Shutdown`.
+
+**No `blocker` or `major` finding is open.**
+
+**Below the severity floor: 3 items across 2 files** — `ai-docs/harness-gaps.md` (1 `minor`) and
+`ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md` (2 `nit`). Each is entered in the
+register as `accepted@3`, addressable if the orchestrator promotes one; none of them is the
+difference between verdicts.
+
+- `ai-docs/harness-gaps.md`, the 2026-09-09 register-gate entry (`minor`): "four commits of a
+  progress file whose register was in a state the script rejects went through with no complaint"
+  does not reproduce. Replaying the script over this branch's progress file at each of the **20**
+  commits that touch it returns exactly **2** REJECT — `52a26b4` and `e86eff3` — and 18 ACCEPT;
+  the 16 before `52a26b4` carry no `## Self-Review (Round N)` table at all, so there is nothing for
+  the script to disagree with, and `6c879e5` / `0660be2` already carry the renamed ids. The entry's
+  core diagnosis and its proposed edit are unaffected and were independently confirmed (the hook
+  body does read `git diff --cached --name-only` and exits 0 on an empty set, and it is
+  `PreToolUse`), and its quotation of the skill sentence is verbatim — it is only the count that
+  is unsupported, and the entry does not say what it counted.
+- `## AC Status`, the AC33 row (`nit`): "coverage ratchet 89.78% holds against 89.78%" is stale;
+  `ai-docs/coverage-ratchet.txt` now records `89.78` and the gate reports 89.78 against 89.78. The
+  verdict PASS is still correct — only the quoted figure is a recorded claim that has moved.
+- `## Files touched` (`nit`): the list omits four paths the diff now carries —
+  `ai-docs/harness-gaps.md`, `ai-docs/coverage-ratchet.txt`, `ai-docs/context-status.md` and
+  `ai-docs/plans/2026-09-09-health-metrics-canaries.design.md`.
+
+Two further items were examined and ruled **not** defects rather than left as silent judgements;
+both are in the register so the next round does not re-litigate them: the background graceful
+stop's capture of the first caller's ctx (`SHUTDOWN-CTX-CAPTURE`) and the new test's 100 ms head
+start (`SHUTDOWN-HEADSTART`).
