@@ -8,8 +8,8 @@ _Updated: 2026-09-09 16:14_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — subtask 0 of 13 (Group A not yet spawned)
-**last_passed_gate:** not run
+**current_step:** Step 8 — subtask 1 of 13 complete
+**last_passed_gate:** go build/test/vet, golangci-lint fmt -d + run, make comment-refs — all green (commit f57403f)
 **entry_args:** 23
 
 ## Next action
@@ -18,8 +18,8 @@ _Updated: 2026-09-09 16:14_
 
 ## Subtasks
 
-- [ ] 1. `internal/repotest` — the shared root helper, every existing declaration replaced  ← CURRENT
-- [ ] 2. `go get github.com/prometheus/client_golang@v1.24.1`, `go mod tidy`
+- [x] 1. `internal/repotest` — the shared root helper, every existing declaration replaced
+- [ ] 2. `go get github.com/prometheus/client_golang@v1.24.1`, `go mod tidy`  ← CURRENT
 - [ ] 3. The `LAB_GAME_HEALTH_` configuration class
 - [ ] 4. Package skeleton: registry, labels, buckets, the D16 register
 - [ ] 5. Transport adapter (`tg.Observer`)
@@ -37,6 +37,18 @@ _Updated: 2026-09-09 16:14_
 - **Step 7**: design-review never returned GO; the owner directed Step 8 after review round 6 regardless of verdict, and raised the design cap three times (3→4→5→6) along the way.
 - **Step 7**: the test-helper consolidation is the design's own decision, not acceptance for #23. It entered the spec on the orchestrator's instruction after a note-severity finding and was removed again at d63c7a1 / 3616d52; AC29 keeps only what it protects.
 - **Step 8**: group order follows the design — A = 1–6, B = 7–11 pinned as 10, 7, 8, 9, 11, C = 12–13.
+- **Step 8, subtask 1**: the widened D19 member set (six file-location-ascent resolvers, not four)
+  was re-verified by behaviour (`rg -n 'runtime\.Caller' --type go`) before writing `internal/repotest`,
+  confirming `internal/commentref/testhelpers_test.go` and `internal/testdb/server_test.go` are in
+  scope alongside the four `repoRootPath` copies. `cmd/commentrefs`'s two git-based resolvers were
+  confirmed out of scope (`rg -n 'rev-parse.*--show-toplevel' cmd/commentrefs/`) and left untouched.
+  Per D17, `internal/tg/guards_test.go`'s six `repoRootPath(t, ".")` call sites became
+  `repotest.Root(t)`; every other call site with an actual relative path became
+  `repotest.RootPath(t, rel)`. All six original local declarations (and their now-stale doc comments)
+  were deleted rather than left behind. `internal/config/repo_root_test.go` was deleted outright since
+  it declared only the helper. Gates run and green: `go build ./...`, `go test ./...` (whole module),
+  `go vet ./...`, `golangci-lint fmt -d` (no target file present in its diff), `golangci-lint run`
+  (0 issues), `make comment-refs`. Committed at f57403f.
 
 ## Key discoveries (don't re-investigate)
 
