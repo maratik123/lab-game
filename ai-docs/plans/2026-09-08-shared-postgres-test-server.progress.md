@@ -214,7 +214,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 |----|--------|----------|--------|-------------------|
 | R1-1 | round 1 | major | fixed@f4e6e75 | `go clean -testcache; for i in 1 2 3; do go run ./cmd/testpg -- bash -c 'echo "DSN=$LAB_GAME_TEST_DSN"; go test ./internal/store/'; done` |
 | R1-2 | round 1 | major | fixed@a11a5fa | `make test-db-up CLIENTS=1; make test-db-up CLIENTS=2; psql "$(cat tmp/testpg-dsn)" -At -c 'show max_connections'` |
-| R1-3 | round 1 | major | fixed@a11a5fa | `make test-contention CONTENTION_PARALLEL=2; grep -in ceiling tmp/test-contention-race.log tmp/test-contention-load.log` |
+| R1-3 | round 1 | major | fixed@4088c69 | `make test-contention CONTENTION_PARALLEL=4; grep -inE 'ceiling\|clients=\|parallel=' tmp/test-contention.log` → prints both the granted ceiling and the client/parallel pair. The recipe now captures the TARGET's own two streams to a third scratch file and replays them, which is the exit the finding offered ("a file under tmp/"); the two child logs stay the children's own output, since the arithmetic is the target's, not theirs. Coverage half: with `cmd/testpg/run.go`'s ceiling `logf` deleted, `go test -count=1 ./cmd/testpg` goes RED — mutation-run, not assumed |
 | R1-4 | round 1 | minor | fixed@a11a5fa | `DOCKER_HOST=unix:///nonexistent/podman.sock make test-db-up` |
 | R1-5 | round 1 | minor | fixed@f4e6e75 | `grep -n 'redirects to a file under' ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md` |
 | R1-6 | round 1 | nit | accepted@1 — shape only; the thirteen cases span three entry points and assert structurally different things (seam untouched / stop ran / ceiling arithmetic / usage error), so a table would need a per-case closure field, which separate test functions already are | `grep -c '^func Test' cmd/testpg/run_test.go` |
@@ -227,6 +227,15 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | R1-A5 | round 1 | — | accepted@1 — KD-20's corrected consequence clause is true on the shipped tree | `go list -deps ./cmd/bot \| grep -c testcontainers` → 0 |
 | R1-A6 | round 1 | — | accepted@1 — both new `at:` SHAs in `learnings.md` resolve; the third is the deliberately-preserved wrong value its successor entry corrects | `git cat-file -t 56857fb314b73e180f9c9132ccd4e0c488b8b994 b8951419d4848f807f1fe105cd152fdb537e4a55` |
 | R1-A7 | round 1 | — | accepted@1 — the ratchet holds on a cold cache with headroom, so the recorded 89.44 is not a lucky replay | `go clean -testcache && make cover-ratchet` → 90.04% >= 89.44% |
+| R2-1 | round 2 | nit | fixed@4088c69 | `grep -n 'testdb: %v' internal/testdb/testdb.go` against `grep -n 'testdb: starting' internal/testdb/server.go` |
+| R2-2 | round 2 | nit | fixed@4088c69 | `grep -n 'os.Setenv' cmd/testpg/run.go` against `grep -n 't.Parallel' cmd/testpg/run_test.go` at the --up/--down tests |
+| R2-A1 | round 2 | — | accepted@2 — R1-1's correction re-measured independently on the shipped tree: the DSN is in no cache key, so all four corrected documents are true | `go run ./cmd/testpg -- go test -count=1 ./internal/store/` then `LAB_GAME_TEST_DSN='postgres://labgame:labgame@127.0.0.1:1/labgame_test?sslmode=disable' go test ./internal/store/` → `(cached)` |
+| R2-A2 | round 2 | — | accepted@2 — `internal/ingest`'s untouched 2 s / 5 s budgets: subtask 8's mandate was to CLASSIFY every wall-clock constant, and these were classified and recorded; the probe is green with `internal/ingest` at 4.194s under load | `grep -rn 'time.Sleep\|WithTimeout\|time.After' internal/ingest/*_test.go` |
+| R2-A3 | round 2 | — | accepted@2 — `schemaMaxConns`'s `max_connections = 100` comment is still true of the path it describes; the design reserves the image default for the fallback explicitly | `grep -n -B 3 'schemaMaxConns = 4' internal/testdb/testdb.go` |
+| R2-A4 | round 2 | — | accepted@2 — `TestBinaries_matchesTree` compares counts and prints the found package names, so it does fail by name; a name-set manifest would need a second constant | `grep -n -A 4 'if len(got) != Binaries' internal/testdb/server_test.go` |
+| R2-A5 | round 2 | — | accepted@2 — AC9 re-derived on the shipped file list: every changed path is `**/*.go`, `Makefile`, `.githooks/**`, `ai-docs/**`, `AGENTS.md` or `.github/workflows/**`, all named in the filter | `git diff --name-only dbff3d8..HEAD` against `.github/workflows/ci.yml:38-79` |
+| R2-A6 | round 2 | — | accepted@2 — R1-6's objection upheld: a nit with a specific, technically accurate reason; the "thirteen"/"three entry points" counts are loose (14 functions, `runChild` + `run --up` + `run --down`) but the ground holds | `grep -c '^func Test' cmd/testpg/run_test.go` → 14 |
+| R2-A7 | round 2 | — | accepted@2 — R1-2, R1-4, R1-5, R1-7, R1-8 each re-verified fixed on the shipped tree; no container and no locator file left behind by any probe | see the round-2 § What was checked |
 
 ## Files touched
 
@@ -281,3 +290,69 @@ round 2 is scoped by it: the AC11 demonstration's own control (R1-A1), the panic
 sweep (R1-A2), the domain-invariant sweep (R1-A3), AC9's change-filter comparison (R1-A4),
 KD-20's corrected import-graph consequence (R1-A5), the two new `learnings.md` `at:` SHAs
 (R1-A6), and the cold-cache ratchet draw (R1-A7).
+
+## Self-Review (Round 2)
+
+**Verdict:** REJECT
+
+**What was checked.** `AGENTS.md`; the spec's `## Acceptance Criteria` (AC1–AC18); the design's
+Approach, D1–D12, Decomposition, Handoff plan, Risks, Test Design and Open questions. Diff
+`dbff3d8..HEAD` (27 files, 40 commits). Round-2 scope taken from the `## Review register` per
+instruction 7a. The spawn prompt carried only the five permitted lines — no contamination.
+
+Re-run against the shipped tree, never accepted from the progress file: `go vet ./...` (0),
+`golangci-lint run` (0 issues), `golangci-lint fmt -d` (clean), `make comment-refs` (0),
+`make file-limits` (0), `make shellcheck` (0), `make actionlint` (0), `make tidy-check` (0),
+`bash ai-docs/scripts/check-script-shape.sh` (0), **`make verify` GREEN**,
+`make cover-ratchet` → **89.88% >= 89.44%** with the recorded mark unchanged, and
+`make test-contention CONTENTION_PARALLEL=2` → **GREEN**, every package `ok`, exhaustion scan
+(`sorry, too many clients already` / `SQLSTATE 53300`) clean on both captured logs — AC10 PASS.
+
+Per-row re-verification of the round-1 register:
+
+- **R1-1 (fixed@f4e6e75) — confirmed, and independently re-measured rather than read.**
+  Mechanism read out of the toolchain: `$GOROOT/src/testing/testing.go:2434` (`m.Run` calls
+  `m.before()`) and `:2674` (`m.before()` calls `m.deps.StartTestLog`), against
+  `internal/testdb/testdb.go:46` where `Main` reads the variable above its `m.Run()`.
+  Behaviour: `go run ./cmd/testpg -- go test -count=1 ./internal/store/` → `1.122s` on an
+  ephemeral-port server, then the same package under a **different, unreachable** DSN →
+  `(cached)`. The corrected sentences in `AGENTS.md`, `ai-docs/go-test-conventions.md`,
+  `ai-docs/context-status.md` and design D7 are true.
+- **R1-2 (fixed@a11a5fa) — confirmed.** `make test-db-up CLIENTS=1` → `capacity 352 admits the
+  352 needed`, `show max_connections` = 352; `make test-db-up CLIENTS=2` → exit 1,
+  `the shared server's capacity is 352, below the 672 needed for clients=2 parallel=16 … take it
+  down and bring it up again to resize`. `ai-docs/go-test-conventions.md:44` documents that
+  remedy, so KD-20's shorter "size it" clause is not left standing alone.
+- **R1-3 (fixed@a11a5fa) — RE-OPENED.** See the table below.
+- **R1-4 (fixed@a11a5fa) — confirmed.** `AGENTS.md:100` and `.githooks/coverage-ratchet.sh:119-121`
+  now lead with `LAB_GAME_TEST_DSN` and demote `make test-db-up` to the slow-suite answer.
+- **R1-5 (fixed@f4e6e75) — confirmed.** The AC15 recipe now says redirecting to `tmp/` is what
+  the two multi-child gates do, not a property of every target.
+- **R1-6 — objection upheld** (nit, specific and technically accurate reason; register R2-A6).
+- **R1-7 (fixed@a11a5fa) — confirmed.** `internal/scheduler/reconcile_test.go:356-388` now polls
+  the row count on a 10 ms tick under a 5 s ceiling and cancels as soon as the row appears, so the
+  widened instrument is no longer paid in wall clock.
+- **R1-8 (fixed@a11a5fa) — confirmed by observation.** `podman ps -a` immediately after
+  `make test-db-down` lists only the machine's pre-existing unrelated container: no reaper.
+
+Also read/derived in this round: AC9's change-filter comparison on the shipped file list (R2-A5);
+AC18 swept over the whole non-plan diff — the only host literals are `postgres://stub/…` fixtures
+and a deliberately unreachable `127.0.0.1:1` (`internal/testdb/server_test.go:113`); the
+panic-index sweep (`grep` over every changed non-test Go file → no hit, so no row is owed); the
+domain-invariant sweep (no balance moves, no mechanic, no schema or enum touched); the progress
+file's required re-entry fields (`current_step`, `last_passed_gate`, `entry_args` present;
+`parent_skill` correctly omitted — conditional per the canonical template). Every mutation probe
+was taken over a `cp` backup and the working tree confirmed clean (`git status --short` empty)
+afterwards; no container and no locator file was left behind.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| R1-3 | `Makefile:102-114`, design `:563-565` | major | **RE-OPENED. D12 requires the target to echo the granted ceiling, the client count and the pinned parallelism *into the log*; none of the three reaches either scratch log, and the round-1 fix that added the echo is untested.** Measured on the shipped tree: `make test-contention CONTENTION_PARALLEL=2` → GREEN, then `grep -inE 'ceiling|clients=|parallel=' tmp/test-contention-race.log tmp/test-contention-load.log` → **no output, exit 1**. The wrapper's new line (`cmd/testpg/run.go:150`) and the recipe's own `echo` (`Makefile:112`) both write to the terminal stream; the two files the same D12 paragraph names as "both logging to files under the scratch directory" carry none of it, so a red run's arithmetic is unreadable from the run's own artefacts — which is the sentence's stated purpose. Decomposition row 3's narrower "the granted ceiling echoed to stderr" **is** met: `testpg: started a server, ceiling 112 (clients=2, parallel=2)` appears in the make-output capture. Second half, mutation-confirmed: deleting `run.go:150` leaves `go test -count=1 ./cmd/testpg/` **fully green**, so the deliverable ships with zero coverage. Two exits, and the choice is the orchestrator's: change the recipe so the three values land in a file under `tmp/` (plus a test over the echo), or treat it as a **Design Amendment trigger** — design doc `ai-docs/plans/2026-09-08-shared-postgres-test-server.design.md:563-565` (D12) contradicts the implementation; recipe at `.claude/skills/task/SKILL.md` Step 11 fail-loud table. If the doc route is taken, spawn the `design-writer` Subagent to amend it — never an orchestrator `Edit`. | ✅ Fixed |
+| R2-1 | `internal/testdb/testdb.go:48` | nit | `Main` prints `"testdb: %v"` over an error `StartServer` has already prefixed (`internal/testdb/server.go:132`, `"testdb: starting %s: %w"`), so a runtime failure now reads `testdb: testdb: starting docker.io/library/postgres:18: …`. The stutter is new in this diff — the pre-change line was `"testdb: starting %s: %v"` — and design D3a cites exactly this message as the one that names its cause. | ✅ Fixed |
+| R2-2 | `cmd/testpg/run.go:239`, `:306` | nit | `runUp` and `runDown` mutate the process environment with `os.Setenv("TESTCONTAINERS_RYUK_DISABLED", …)`, and `cmd/testpg/run_test.go:269` and `:301` reach both from `t.Parallel()` tests. Harmless today — nothing in this package reads that variable and `-race` is clean — but it is precisely the mutation `t.Setenv` refuses in a parallel test, and it leaks into every later test in the binary. | ✅ Fixed |
+
+**Recorded, not raised** — each is an `accepted@2` register row rather than a finding, so round 3
+is scoped by it: R1-1's independent re-measurement (R2-A1), `internal/ingest`'s classified-but-
+unchanged budgets (R2-A2), `schemaMaxConns`'s image-default comment (R2-A3),
+`TestBinaries_matchesTree`'s count-plus-names shape (R2-A4), AC9's re-derivation (R2-A5), R1-6's
+upheld objection (R2-A6), and the five round-1 fixes re-verified green (R2-A7).

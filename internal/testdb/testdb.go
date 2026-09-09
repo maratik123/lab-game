@@ -50,7 +50,10 @@ func Main(m *testing.M) int {
 
 	server, err := StartServer(ctx, ServerOptions{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "testdb: %v\n", err)
+		// No prefix of its own: every error the provisioner returns already
+		// names this package, and a second copy buries the cause the message
+		// exists to surface.
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return 1
 	}
 	baseDSN = server.DSN()

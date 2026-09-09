@@ -138,6 +138,16 @@ func TestRunChild_noDSNNoLocator_seamCalled_stopRunsOnPass(t *testing.T) {
 	if !stub.stopCalled {
 		t.Errorf("stop was not called after a passing child")
 	}
+	// The granted ceiling is echoed on the path that grants it: a run's own
+	// log is the only place the arithmetic it relied on can be read
+	// afterwards, since the terms come from the host's core count.
+	want, err := testdb.Ceiling(1, 1)
+	if err != nil {
+		t.Fatalf("Ceiling: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "ceiling "+strconv.Itoa(want)) {
+		t.Errorf("stderr = %q, want the granted ceiling %d echoed", stderr.String(), want)
+	}
 }
 
 func TestRunChild_noDSNNoLocator_stopRunsOnFailingChild(t *testing.T) {
@@ -266,9 +276,10 @@ func TestRunChild_ceilingMatchesTheFormula(t *testing.T) {
 	}
 }
 
+// Not parallel, and neither is the undersized-reuse case below: both reach the
+// code that disables the reaper, which is a process-wide setting written to the
+// environment. Two such tests running at once would race each other's writes.
 func TestRun_upDown_useTheSeamWithNoRuntime(t *testing.T) {
-	t.Parallel()
-
 	// probeMaxConns stands for a server whose capacity admits the need: --up
 	// reads the capacity back rather than reporting the one it asked for.
 	stub := &stubSeam{provisionDSN: "postgres://shared/db", probeMaxConns: 100000}
@@ -299,8 +310,6 @@ func TestRun_upDown_useTheSeamWithNoRuntime(t *testing.T) {
 }
 
 func TestRun_upOnAnUndersizedExistingServer_failsNamingTheCapacity(t *testing.T) {
-	t.Parallel()
-
 	// A container already running under the shared name keeps the capacity it
 	// was created with, so provisioning "succeeds" while granting less than
 	// this invocation asked for. Reporting the requested number here would

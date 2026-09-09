@@ -95,12 +95,18 @@ test-fallback:
 # packages' own tests (-count=1, so it cannot be served from the test
 # cache — a loop without it loads nothing past its first iteration) and
 # foregrounds the race gate, both logging to files under the ignored
-# scratch directory. The foreground's status is captured explicitly rather
-# than letting the shell's -e abort the script before the load loop is
-# killed; the wrapper itself never reads either log, and the exit status
-# crosses no pipe.
+# scratch directory. The target's OWN output — the granted ceiling the
+# wrapper echoes, the client count and the pinned parallelism — is captured
+# to a third file there and replayed to the terminal afterwards, so the
+# arithmetic a run relied on outlives the scrollback it was printed in; a
+# terminal is not a record. The foreground's status is captured explicitly
+# rather than letting the shell's -e abort the script before the load loop
+# is killed, and the wrapper's own status is captured around the capture for
+# the same reason; the wrapper reads none of the three logs, and no exit
+# status crosses a pipe.
 test-contention:
 	mkdir -p tmp
+	status=0; \
 	go run ./cmd/testpg --clients 2 --parallel $(CONTENTION_PARALLEL) -- bash -c '\
 	  set -eu -o pipefail; \
 	  ( while true; do go test -count=1 -parallel $(CONTENTION_PARALLEL) ./internal/ingest/... ./internal/scheduler/... ./internal/store/... ./internal/testdb/...; done ) >tmp/test-contention-load.log 2>&1 & \
@@ -111,7 +117,9 @@ test-contention:
 	  wait "$$load_pid" 2>/dev/null || true; \
 	  echo "test-contention: clients=2 parallel=$(CONTENTION_PARALLEL)"; \
 	  exit "$$fg_status" \
-	'
+	' > tmp/test-contention.log 2>&1 || status=$$?; \
+	cat tmp/test-contention.log; \
+	exit "$$status"
 
 # `git diff -- go.sum` exits 128 while the module has no dependencies and the
 # file therefore does not exist, so ask git about worktree state instead — that
