@@ -8,16 +8,17 @@ _Updated: 2026-09-09 16:14_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — Group B subtask 9 of 13 complete (pinned order 10, 7, 8, 9, 11)
-**last_passed_gate:** go build/test/vet, go test -race (internal/health), golangci-lint fmt -d + run, make comment-refs — all green (commit 63eb6b3)
+**current_step:** Step 8 — subtask 11 of 13 complete (Group B DONE)
+**last_passed_gate:** make verify (full, incl. coverage ratchet) — green (commit 4829153)
 **entry_args:** 23
 
 ## Next action
 
-**Do this immediately:** Group A (subtasks 1–6) is complete and committed (commits f57403f, 4c9e9ff,
-c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per the design's
-`## Handoff plan`, spawn `/context-reset` § Compaction recovery (re-entry) to hand off into Group B
-(subtasks 7–11, pinned order 10, 7, 8, 9, 11) with `subagent_type="code-writer"`, fresh context.
+**Do this immediately:** Group B (subtasks 7–11) is complete and committed (commits 64a015a,
+a4ba9a2, 6bb8320, 63eb6b3, 4829153, plus `.progress.md`-only commits). Per the design's
+`## Handoff plan`, spawn `/context-reset` § Compaction recovery (re-entry) to hand off into Group C
+(subtasks 12–13: the alert contract and the propagation sweep) with `subagent_type="general-purpose"`
+(no inline model override, effort inherited), fresh context.
 
 ## Subtasks
 
@@ -31,8 +32,8 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
 - [x] 8. pgx pool collector
 - [x] 9. `promhttp` endpoint server
 - [x] 10. The canaries: `Prober`/`ProberFactory`, both legs, the ticker
-- [ ] 11. The structural guards (a)–(i)  ← CURRENT (Group B, pinned order 10, 7, 8, 9, 11)
-- [ ] 12. The alert contract
+- [x] 11. The structural guards (a)–(i)
+- [ ] 12. The alert contract  ← CURRENT (Group C)
 - [ ] 13. Propagation sweep
 
 ## Decisions log
@@ -172,6 +173,41 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
   and green: `go build ./...`, `go test ./internal/health/...` and the whole module,
   `go test -race ./internal/health/...`, `go vet ./...`, `golangci-lint fmt -d` (no target file
   present in its diff), `golangci-lint run` (0 issues), `make comment-refs`. Committed at 63eb6b3.
+- **Step 8, subtask 11 (Group B, last)**: implemented guards (a)–(i) in `internal/health/guards_test.go`.
+  Deviations from the design's own mechanism, each recorded here rather than silently:
+  (1) guard (b)'s "proved discriminating" requirement was met by factoring the check into a plain
+  function (`registerOffenses`) and calling it with a mutated table/doc-text in a second test,
+  rather than mutating real files — the design's own text allows this for (b) since it does no file
+  walk. (2) guards (a)/(f)/(i)'s discriminating proofs use a fresh, unrelated `t.TempDir()` (not a
+  copy of the real tree plus a scratch file) since the walks all take an explicit root/dir parameter
+  — a fresh temp directory avoids any possible collision with a sibling guard just as the design's
+  own copy-based protocol does, with less code. (3) guard (g)'s pre-change-tree proof resolves the
+  six pre-move files' content via `git show f57403f~1:<path>` (a hardcoded revision — subtask 1's
+  own commit, already merged history on this branch by construction) rather than "the subtask-1
+  parent commit" resolved dynamically; re-verified directly that each of the six files still
+  declares its old resolver at that revision and that `cmd/commentrefs`'s two git-based resolvers
+  are unaffected by the move. (4) `internal/health/doc.go` needed a same-commit fix: its exempt-field
+  prose named the batch-size, consecutive-failures and attempt fields only in kebab-case English
+  ("batch-size field"), which contains no substring identical to the Go identifier guard (b) checks
+  for — confirmed by `grep -n` finding zero literal occurrences before the fix — so guard (b) would
+  have reported a false "not named in the package doc comment" for all three. Fixed by adding each
+  literal identifier alongside the existing prose; this is subtask 4's file but the falsification is
+  subtask 11's own guard, so the fix landed in this commit per the same reasoning design decision
+  D18 states for a comment a later subtask's own change falsifies.
+  `make comment-refs` caught the widest set yet in this task — repo-path matches on bare `.go`
+  mentions in comment prose (any word ending in a gated extension is a repo-path finding regardless
+  of context), on `cmd/`/`internal/`-prefixed phrases, and on the shared root-resolving package
+  named directly in a comment, plus module-symbol matches and one decision-anchor citation — all
+  rewritten to prose naming no path/symbol/id; the string literals inside `t.Errorf`/`os.WriteFile`
+  calls are exempt since the gate scans only `//`/`/* */` comments, not runtime string literals.
+  `golangci-lint run`'s `noctx` flagged a bare `os/exec.Command` in the guard's own git-show helper
+  — fixed with `exec.CommandContext`. Sentinel canary tokens for guard (d) had to match telego's own
+  token format (a digit run, a colon, then exactly 35 word/hyphen characters) rather than being
+  freely-chosen strings, since the client validates format at construction; padded each sentinel to
+  the exact length. Ran the whole `make verify` (fmt check, build, vet, lint, file-limits,
+  `go test ./...` and `-race` both through the shared-server route, `go mod tidy` delta,
+  `actionlint`, `shellcheck`, `make comment-refs`) plus the coverage ratchet, all green — Group B
+  (subtasks 7–11) is complete. Committed at 4829153.
 
 ## Key discoveries (don't re-investigate)
 
@@ -206,6 +242,13 @@ c68390c, 9407fd4, f5b9b4e, ca44911, plus three `.progress.md`-only commits). Per
   `internal/health/labels.go`, `internal/health/labels_test.go` (new)
 - `internal/health/transport.go`, `internal/health/transport_test.go` (new)
 - `internal/health/scheduler.go`, `internal/health/scheduler_test.go`, `internal/health/gather_test.go` (new)
+- `internal/health/canary.go`, `internal/health/probe.go`, `internal/health/canary_test.go`,
+  `internal/health/probe_test.go` (new)
+- `internal/health/ingest.go`, `internal/health/ingest_test.go` (new)
+- `internal/health/pool.go`, `internal/health/pool_test.go` (new)
+- `internal/health/server.go`, `internal/health/server_test.go` (new)
+- `internal/health/guards_test.go` (new)
+- `internal/health/doc.go` (exempt fields also named by their literal Go identifier, for guard (b))
 
 ## AC Status
 
