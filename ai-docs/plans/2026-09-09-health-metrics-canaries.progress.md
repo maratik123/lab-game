@@ -9,7 +9,7 @@ _Updated: 2026-09-09 16:14_
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
 **current_step:** Step 8 — subtask 11 of 13 complete (Group B DONE)
-**last_passed_gate:** go build ./..., go test ./internal/health/..., go test -race ./internal/health/..., go vet ./..., golangci-lint fmt -d, golangci-lint run, make comment-refs, go test ./... (whole module) — green (2026-09-09T17:25:20Z, commit PENDING-COMMIT)
+**last_passed_gate:** go build ./..., go test ./internal/health/..., go test -race ./internal/health/..., go vet ./..., golangci-lint fmt -d, golangci-lint run, make comment-refs, go test ./... (whole module) — green (2026-09-09T17:25:20Z, commit e957baf80ca6e7e4abaaf1c9f9eaefa6ae7c1f62)
 **entry_args:** 23
 
 ## Next action
@@ -242,7 +242,7 @@ a4ba9a2, 6bb8320, 63eb6b3, 4829153, plus `.progress.md`-only commits). Per the d
   Gates run and green: `go build ./...`, `go test ./internal/health/...`,
   `go test -race ./internal/health/...`, `go vet ./...`, `golangci-lint fmt -d` (clean),
   `golangci-lint run` (0 issues), `make comment-refs`, `go test ./...` (whole module, all packages
-  ok). Committed at PENDING-SHA (updated in the following `.progress.md`-only commit).
+  ok). Committed at e957baf.
 
 ## Key discoveries (don't re-investigate)
 
