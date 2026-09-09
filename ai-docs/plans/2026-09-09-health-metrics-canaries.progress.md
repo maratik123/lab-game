@@ -1,5 +1,5 @@
 # Progress: health metrics and canaries — ACTIVE
-_Updated: 2026-09-09 17:38_
+_Updated: 2026-09-09 17:42_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,16 +8,19 @@ _Updated: 2026-09-09 17:38_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — subtask 12 of 13 complete (Group C in progress)
-**last_passed_gate:** make comment-refs, the CI relative-markdown-link check, go test ./internal/config/... — green (2026-09-09T17:38:40Z, commit 1af724aeee98389704856b32a4c84f531bce0dc0)
+**current_step:** Step 8 — subtask 13 of 13 complete (Group C DONE; all subtasks complete)
+**last_passed_gate:** make comment-refs, the CI relative-markdown-link check, the citation-namespace guard — green (2026-09-09T17:42:24Z, commit 311ca88d25e05932e1dbfd3d6cdb385eefbd3bb8)
 **entry_args:** 23
 
 ## Next action
 
-**Do this immediately:** Group C is under way — subtask 12 (the alert contract) is committed at
-1af724a. Subtask 13, the propagation sweep, is next and is the last subtask of the task.
-`ai-docs/context-status.md`'s per-issue entry is deliberately NOT written by this group: it is
-Step 9.5's, and the orchestrator's.
+**Do this immediately:** Group C is complete (subtask 12 at 1af724a, subtask 13 at 311ca88), and
+with it every subtask of Step 8. The orchestrator's next steps are Step 9 / 9.5 / 10 —
+`ai-docs/context-status.md`'s per-issue entry was deliberately NOT written by this group, because it
+is Step 9.5's. One finding for Step 9's attention is recorded in the subtask-12 Decisions-log entry:
+the run's own measurement contradicts design decisions D13/D14 about what the shipped
+`.env.example` placeholder does, and both the alert contract and `.env.example` now state the
+measured behaviour rather than the predicted one. The design document itself is unedited.
 
 ## Subtasks
 
@@ -33,7 +36,7 @@ Step 9.5's, and the orchestrator's.
 - [x] 10. The canaries: `Prober`/`ProberFactory`, both legs, the ticker
 - [x] 11. The structural guards (a)–(i)
 - [x] 12. The alert contract
-- [ ] 13. Propagation sweep  ← CURRENT (Group C)
+- [x] 13. Propagation sweep
 
 ## Decisions log
 
@@ -281,6 +284,34 @@ Step 9.5's, and the orchestrator's.
   optional classes). Gates run and green: `make comment-refs` (whole tracked gated set),
   the CI relative-markdown-link check run locally as its own Python snippet, and
   `go test ./internal/config/...` (the suite that reads `.env.example`). Committed at 1af724a.
+- **Step 8 subtask 13 (Group C, last)**: the propagation sweep, re-run against the finished diff
+  rather than against the design's illustrative file list. Surfaces touched, four:
+  `ai-docs/agent-docs-index.md` (the alert contract indexed, beside the key-decisions row);
+  `ai-docs/context.md` (the layout paragraph gains `internal/health` and `internal/repotest`; the
+  three clauses reading "the observation seam #23 reads" now name the package that reads it — the
+  design predicted exactly this falsification; the status bullet records the health surface, its key
+  class and the contract, its heading date moves, and the `cmd/bot` sentence is corrected, since
+  nothing constructs a metrics server or a canary either and the reason for those two is the
+  composition root rather than the missing queue); `ai-docs/key-decisions.md` (KD-27's member
+  enumeration gains its fourth scope, plus an amendment clause naming the cloud canary token and the
+  cloud canary base URL as exceptions to its required-with-no-default sentence, each carrying the
+  reason, with the clause left standing for every other secret and base URL and the generalisation
+  an earlier draft proposed recorded as refused); and `ai-docs/plans/INDEX.md` (the row's status off
+  "spec only"). Deliberately untouched, each for a stated reason: `ai-docs/context-status.md`, whose
+  per-issue entry belongs to Step 9.5 and whose three existing entries are history; `ai-docs/
+  learnings.md`, `ai-docs/harness-gaps.md` and `ai-docs/plans/done/**` as history surfaces; and
+  `docs/DESIGN.md` § 13, which prescribes this surface rather than describing it, so nothing there
+  is falsified — its `/metrics` line is now satisfied, not contradicted. Two near-misses inspected
+  and left alone rather than silently skipped: KD-28's "an idempotency-hit count that nothing
+  exposes until #23" is a prediction now satisfied rather than a false claim, and
+  `ai-docs/domain-invariants.md`'s "lag by task type belongs on the health dashboard" is still true
+  and now exportable. The sweep command was
+  `rg -l -i "LAB_GAME_HEALTH_|internal/health|internal/repotest|alert-contract|observation seam|observation point|/metrics" --glob '*.md'`
+  over the tree with the plans, both learning logs and `tmp/` excluded; its only remaining matches
+  are the history surfaces above, the unrelated `ai-docs/metrics/` task-telemetry file, and
+  `docs/DESIGN.md`'s own prescription. Gates run and green: `make comment-refs`, the CI
+  relative-markdown-link check run locally, the citation-namespace guard
+  (`check-citations.sh`, PASS), and `realpath -e` on both new relative links. Committed at 311ca88.
 
 ## Key discoveries (don't re-investigate)
 
@@ -326,6 +357,8 @@ Step 9.5's, and the orchestrator's.
 - `.env.example` (subtask 12: the cloud-token comment's placeholder-trap claim corrected to the
   measured behaviour)
 - `ai-docs/learnings.md` (subtask 12: one validation entry)
+- `ai-docs/agent-docs-index.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md`,
+  `ai-docs/plans/INDEX.md` (subtask 13: the propagation sweep)
 
 ## AC Status
 
