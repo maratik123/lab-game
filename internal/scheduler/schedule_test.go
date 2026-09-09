@@ -65,7 +65,7 @@ func TestSchedule_payloadRoundTrip(t *testing.T) {
 	// The other half: the payload must survive the claim and reach the
 	// handler. Asserting only the stored row leaves the claim code free to
 	// hand every handler something else entirely.
-	w, err := New(Options{Pool: pool, Registry: reg, Config: testConfig()})
+	w, err := New(Options{Pool: pool, Registry: reg, Config: contentionSafeConfig()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

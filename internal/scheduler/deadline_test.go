@@ -69,7 +69,10 @@ func (h *ctxIgnoringHandler) Execute(_ context.Context, tx pgx.Tx, _ Task) (Outc
 // until id's row can be locked FOR NO KEY UPDATE SKIP LOCKED — i.e. the
 // abandoned transaction's connection has been closed and the server has
 // released its locks (the deadline defence's second layer, or the
-// watchdog's close).
+// watchdog's close). timeout is an instrument, a patience budget for the
+// poll — never the deadline defence itself, which every caller here
+// already asserts separately — so callers give it slack well past
+// anything cross-package load can add to how long the drain takes.
 func waitLockFree(t *testing.T, pool *pgxpool.Pool, id TaskID, timeout time.Duration) {
 	t.Helper()
 	ctx := context.Background()
@@ -130,7 +133,7 @@ func TestDeadline_blockedHandler_rowClaimableWithinBound(t *testing.T) {
 		t.Fatalf("observations = %+v, want one Failed/FailureDeadline observation", tasks)
 	}
 
-	waitLockFree(t, pool, id, 2*cfg.TaskTimeout+2*time.Second)
+	waitLockFree(t, pool, id, 2*cfg.TaskTimeout+10*time.Second)
 }
 
 // TestDeadline_breachIsSettledNotMerelyAbandoned is the round-6 finding:
@@ -160,7 +163,7 @@ func TestDeadline_breachIsSettledNotMerelyAbandoned(t *testing.T) {
 	if err := w.RunOnce(ctx); err != nil {
 		t.Fatalf("RunOnce (breach): %v", err)
 	}
-	waitLockFree(t, pool, id, 2*cfg.TaskTimeout+2*time.Second)
+	waitLockFree(t, pool, id, 2*cfg.TaskTimeout+10*time.Second)
 
 	var drainInstant time.Time
 	if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&drainInstant); err != nil {
@@ -230,7 +233,7 @@ func TestDeadline_successiveBreaches_growingDelay(t *testing.T) {
 		if err := w.RunOnce(ctx); err != nil {
 			t.Fatalf("RunOnce (breach %d): %v", attempt, err)
 		}
-		waitLockFree(t, pool, id, 2*cfg.TaskTimeout+2*time.Second)
+		waitLockFree(t, pool, id, 2*cfg.TaskTimeout+10*time.Second)
 
 		var drainInstant time.Time
 		if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&drainInstant); err != nil {
@@ -329,7 +332,7 @@ func TestDeadline_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 		if err := w.RunOnce(ctx); err != nil {
 			t.Fatalf("RunOnce (breach %d): %v", attempt, err)
 		}
-		waitLockFree(t, pool, id, 2*cfg.TaskTimeout+2*time.Second)
+		waitLockFree(t, pool, id, 2*cfg.TaskTimeout+10*time.Second)
 
 		var drainInstant time.Time
 		if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&drainInstant); err != nil {
@@ -385,7 +388,7 @@ func TestDeadline_recurrenceSettlesIntoFuture(t *testing.T) {
 	if err := w.RunOnce(ctx); err != nil {
 		t.Fatalf("RunOnce (breach): %v", err)
 	}
-	waitLockFree(t, pool, id, 2*cfg.TaskTimeout+2*time.Second)
+	waitLockFree(t, pool, id, 2*cfg.TaskTimeout+10*time.Second)
 
 	var drainInstant time.Time
 	if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&drainInstant); err != nil {
@@ -435,7 +438,7 @@ func TestDeadline_oneShotGivesUpWithinCap(t *testing.T) {
 		if err := w.RunOnce(ctx); err != nil {
 			t.Fatalf("RunOnce (breach %d): %v", attempt, err)
 		}
-		waitLockFree(t, pool, id, 2*cfg.TaskTimeout+2*time.Second)
+		waitLockFree(t, pool, id, 2*cfg.TaskTimeout+10*time.Second)
 		if err := w.RunOnce(ctx); err != nil {
 			t.Fatalf("RunOnce (drain %d): %v", attempt, err)
 		}
@@ -485,7 +488,7 @@ func TestDeadline_recurrenceNeverGivesUp(t *testing.T) {
 		if err := w.RunOnce(ctx); err != nil {
 			t.Fatalf("RunOnce (breach %d): %v", attempt, err)
 		}
-		waitLockFree(t, pool, id, 2*cfg.TaskTimeout+2*time.Second)
+		waitLockFree(t, pool, id, 2*cfg.TaskTimeout+10*time.Second)
 		if err := w.RunOnce(ctx); err != nil {
 			t.Fatalf("RunOnce (drain %d): %v", attempt, err)
 		}
@@ -529,7 +532,7 @@ func TestDeadline_deferredGuard_rowAlreadyMoved(t *testing.T) {
 	if err := w.RunOnce(ctx); err != nil {
 		t.Fatalf("RunOnce (breach): %v", err)
 	}
-	waitLockFree(t, pool, id, 2*cfg.TaskTimeout+2*time.Second)
+	waitLockFree(t, pool, id, 2*cfg.TaskTimeout+10*time.Second)
 
 	// Simulate a second worker having finished the row entirely.
 	if _, err := pool.Exec(ctx, `DELETE FROM scheduled_task WHERE id = $1`, int64(id)); err != nil {
@@ -757,5 +760,5 @@ func TestDeadline_ctxIgnoringHandler_negativeCase(t *testing.T) {
 	}
 
 	close(h.release)
-	waitLockFree(t, pool, id, 2*time.Second)
+	waitLockFree(t, pool, id, 10*time.Second)
 }

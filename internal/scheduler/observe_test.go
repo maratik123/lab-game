@@ -17,7 +17,7 @@ func TestObserve_collectsOneObservationPerExecutedTask(t *testing.T) {
 
 	pool := newScheduler(t)
 	ctx := context.Background()
-	cfg := testConfig()
+	cfg := contentionSafeConfig()
 
 	doneH := &writingHandler{outcome: OutcomeDone, reason: "obs-done"}
 	noopH := &writingHandler{outcome: OutcomeNoop, reason: "obs-noop"}
@@ -96,7 +96,7 @@ func TestObserve_oneShotGiveUp_carriesFinalFailureCount(t *testing.T) {
 
 	pool := newScheduler(t)
 	ctx := context.Background()
-	cfg := testConfig()
+	cfg := contentionSafeConfig()
 	h := &writingHandler{outcome: OutcomeFailed, err: errBoom, reason: "obs-giveup"}
 	reg, err := NewRegistry(Declaration{Type: "obs.giveup", Handler: h})
 	if err != nil {
@@ -130,7 +130,7 @@ func TestObserve_repeatedlyFailingRecurrence(t *testing.T) {
 
 	pool := newScheduler(t)
 	ctx := context.Background()
-	cfg := testConfig()
+	cfg := contentionSafeConfig()
 	h := &writingHandler{outcome: OutcomeFailed, err: errBoom, reason: "obs-recurrent-fail"}
 	reg, err := NewRegistry(Declaration{
 		Type: "obs.recurrent", Handler: h,
@@ -180,7 +180,7 @@ func TestObserve_nilObserver(t *testing.T) {
 	}
 	dueNow(t, pool, reg, Request{Type: "test.oneshot"})
 
-	w, err := New(Options{Pool: pool, Registry: reg, Config: testConfig()})
+	w, err := New(Options{Pool: pool, Registry: reg, Config: contentionSafeConfig()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestObserve_nonDefaultTuning_changesObservedBehaviour(t *testing.T) {
 		dueNow(t, pool, reg, Request{Type: "test.oneshot"})
 	}
 
-	cfg := testConfig()
+	cfg := contentionSafeConfig()
 	cfg.ClaimLimit = 2
 	obs := &recordingObserver{}
 	w, err := New(Options{Pool: pool, Registry: reg, Config: cfg, Observer: obs})
@@ -227,7 +227,7 @@ func TestObserve_nonDefaultTuning_changesObservedBehaviour(t *testing.T) {
 	}
 
 	// A one-shot with a lower attempt cap gives up sooner.
-	lowCapCfg := testConfig()
+	lowCapCfg := contentionSafeConfig()
 	lowCapCfg.RetryMaxAttempts = 1
 	fh := &writingHandler{outcome: OutcomeFailed, err: errBoom, reason: "low-cap"}
 	reg2, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: fh})
@@ -262,7 +262,7 @@ func TestRun_shortPollInterval_picksUpFreshlyInsertedTask(t *testing.T) {
 		t.Fatalf("NewRegistry: %v", err)
 	}
 
-	cfg := testConfig()
+	cfg := contentionSafeConfig()
 	cfg.PollInterval = 20 * time.Millisecond
 	obs := &recordingObserver{}
 	w, err := New(Options{Pool: pool, Registry: reg, Config: cfg, Observer: obs})
@@ -278,7 +278,7 @@ func TestRun_shortPollInterval_picksUpFreshlyInsertedTask(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 	dueNow(t, pool, reg, Request{Type: "test.oneshot"})
 
-	deadline := time.After(2 * time.Second)
+	deadline := time.After(10 * time.Second)
 	for h.seenCount() == 0 {
 		select {
 		case <-deadline:
@@ -294,7 +294,7 @@ func TestRun_shortPollInterval_picksUpFreshlyInsertedTask(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("Run returned %v, want context.Canceled", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatalf("Run did not return after ctx cancellation")
 	}
 }

@@ -43,6 +43,12 @@ go build ./...                                          # whole module
 go test ./...                                           # all tests
 go test ./internal/raid/ -run TestName                  # filter
 go test -race ./...                                     # race gate (required for concurrent code)
+make test                                               # the whole suite against ONE shared Postgres
+make test-race                                          # the race gate on that same route
+make test-db-up                                         # bring up a long-lived shared test server (CLIENTS=N sizes it)
+make test-db-down                                       # remove it — no reaper will
+make test-fallback                                      # the per-binary container path's own gate
+make test-contention                                    # the race gate under induced cross-package load
 go vet ./...                                            # vet (also inside golangci-lint)
 golangci-lint run                                       # strict lint gate
 golangci-lint fmt                                       # apply every enabled formatter
@@ -53,6 +59,18 @@ actionlint .github/workflows/<file>.yml                 # required gate for any 
 shellcheck <script>.sh                                  # required gate for any new/modified shell script
 go run ./cmd/bot                                        # run the bot (exits non-zero unless .env.example's variables are exported)
 ```
+
+> **`make test` and `make test-race` provision ONE Postgres for the whole run**, through
+> `cmd/testpg`: it uses a `LAB_GAME_TEST_DSN` you exported as it stands, otherwise a
+> long-lived server from `make test-db-up` if that one answers and admits the run, otherwise
+> an anonymous container it sizes, starts and removes itself on every exit path. The
+> coverage ratchet takes the same route, after its skip decision. A **bare** `go test ./...`
+> is unchanged and still starts one container per database-backed test binary — that is the
+> designed fallback, and `make test-fallback` is the gate that keeps it executed now that no
+> default gate reaches it. The connection arithmetic, the contention rule for wall-clock
+> constants and the `make test-contention` probe:
+> [`ai-docs/go-test-conventions.md`](ai-docs/go-test-conventions.md) and
+> [`ai-docs/key-decisions.md`](ai-docs/key-decisions.md) KD-20.
 
 > **AXIOM — `actionlint` MUST pass before `git add` on any modified `.github/workflows/*.yml`; `shellcheck` MUST pass before `git add` on any modified `*.sh`.**
 > Required gates, **same status as `go build ./...` and `golangci-lint run`.** Never bypass.
@@ -79,7 +97,7 @@ go run ./cmd/bot                                        # run the bot (exits non
 > |---|---|
 > | No `.go` / `.sql` / `go.mod` / `go.sum` staged | Skipped, silently — coverage cannot have moved. Most commits in a `/task` run cost nothing. |
 > | Unstaged edits to such files | **Blocked.** The measurement is taken on the working tree, so with them present it describes neither the commit nor the tree. |
-> | Suite not green | **Blocked** — coverage is not measurable. Container runtime missing? `LAB_GAME_TEST_DSN` points the suite at a running server. |
+> | Suite not green | **Blocked** — coverage is not measurable. The measurement provisions its own shared server through `cmd/testpg`. Container runtime missing? `LAB_GAME_TEST_DSN` points the suite at a server you already run — `make test-db-up` needs the same runtime, so it is the answer to a slow suite, not to an absent runtime. |
 > | `go` not on `$PATH` | Skipped, loud. Named fail direction: a machine with no Go toolchain cannot measure Go coverage. |
 > | Coverage fell past the tolerance | **Blocked**, with the uncovered functions listed. |
 > | Ratchet file absent | Initialised at the measured value and staged. There is no separate setup step. |
@@ -94,7 +112,14 @@ go run ./cmd/bot                                        # run the bot (exits non
 > between runs — 6 statements today. Two consequences worth carrying: **a recorded mark is one
 > draw, not a property of the tree** (the ratchet only ever raises, so it converges on the luckiest
 > run), and the measurement runs with the Go test cache on, so a re-run at an unchanged commit
-> replays the previous profile instead of drawing again. Re-measure with `-count=1`, in **both**
+> replays the previous profile instead of drawing again — **and it replays no matter which server
+> the run reached.** Measured: with the test cache cleared, `internal/store` run again under a
+> different `LAB_GAME_TEST_DSN`, and again with the variable cleared entirely, answers `(cached)`
+> both times. The reason is worth carrying, because it applies to any `TestMain` that reads
+> configuration: `testing.M.Run` opens the log `cmd/go` reads to decide cache validity, and
+> `testdb.Main` reads the variable *before* it calls `m.Run()`, so the read is never recorded and
+> the go command never learns the variable was consulted. A changing DSN therefore forces nothing,
+> and the shared and fallback regimes share cache entries. Re-measure with `-count=1`, in **both**
 > environments, before changing the number; the script's header carries the recipe and `git log -p`
 > on it carries why the number is what it is.
 

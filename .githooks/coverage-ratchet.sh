@@ -109,12 +109,16 @@ fi
 
 mkdir -p tmp
 
-if ! go test -covermode=atomic -coverprofile="$PROFILE" ./... > tmp/coverage-run.log 2>&1; then
+# Routed through the provisioning wrapper: it reuses an already-set DSN or
+# an already-running long-lived server unchanged, and otherwise provisions
+# and removes its own sized, anonymous container for this one measurement.
+if ! go run ./cmd/testpg -- go test -covermode=atomic -coverprofile="$PROFILE" ./... > tmp/coverage-run.log 2>&1; then
   printf 'coverage-ratchet: BLOCKED — the test suite is not green, so coverage is not measurable.\n' >&2
   printf 'Log: tmp/coverage-run.log\n' >&2
   grep -E '^(FAIL|---|ok)' tmp/coverage-run.log >&2
-  printf '\nIf this is a container-runtime failure rather than a test failure, point the\n' >&2
-  printf 'suite at a running server: export LAB_GAME_TEST_DSN=postgres://...\n' >&2
+  printf '\nIf no container runtime is reachable, point the suite at a server you already run:\n' >&2
+  printf '  export LAB_GAME_TEST_DSN=postgres://...\n' >&2
+  printf 'With a runtime but a slow suite, hold one server across commits: make test-db-up\n' >&2
   exit 1
 fi
 
