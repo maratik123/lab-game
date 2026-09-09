@@ -60,7 +60,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 3
+round: 4
 agent_id: ac1667e9338683a66
 prior_qa:
   - round: 1
@@ -72,4 +72,10 @@ prior_qa:
   - round: 2
     question: "Design-review round 1 (Issue 2, major): AC23 makes the Key-decisions label allow-list binding, but it enumerates only 'canary leg' while AC14 requires a canary outcome counter and AC19 requires a failure classification. Fold the reason values into the existing 'HTTP status code' member, amend the allow-list, or restructure the metrics to avoid the labels?"
     answer: "Amend the spec. Add 'canary outcome' and 'canary failure reason' to the Which-labels-are-allowed enumeration. AC14/AC19 already mandate both, so the list was written before the metric shapes existed; cardinality stays disciplined - outcome has two values, reason is bounded by HTTP status codes plus the three transport-error classes, and neither is player-identifying."
+  - round: 3
+    question: "Design-review round 3 returned ITERATE with two verified majors, exhausting the 3-round design cap. Raise the cap, fix without re-review, or accept as-is and fold into Step 8?"
+    answer: "Raise the cap to 4 - one more design round plus one review round. cap: 4 (was 3)."
+  - round: 3
+    question: "repoRootPath is duplicated across four test binaries and this task adds a fifth, tripping the project's three-site rule; AC29 forbids touching cmd/, where one site lives. Follow-up issue, widen scope now, or document an exception?"
+    answer: "Widen scope now. Amend the spec to relax AC29 so this task hoists repoRootPath into a shared test-helper package and updates all five call sites, cmd/bot/main_test.go included. The owner chose this over the recommended follow-up-issue routing."
 ```

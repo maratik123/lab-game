@@ -2,7 +2,7 @@
 
 **Source:** issue #23
 **Date:** 2026-09-09
-**Amended:** 2026-09-09 (design-review round 1)
+**Amended:** 2026-09-09 (design-review rounds 1 and 3)
 **Tracked in:** #23
 
 > **Amended after design-review round 1.** The canary families carry an outcome label and a
@@ -15,6 +15,17 @@
 > are, and the **Which labels are forbidden** row separates a classified reason from raw error
 > text in one clause. Approved by the product owner. No acceptance criterion changes, no scope
 > moves, and nothing else in this spec is re-opened.
+
+> **Amended after design-review round 3.** The helper that resolves a path relative to the
+> repository root is declared independently in several packages' test binaries, and this task's
+> own tests would have added one more. AC29 — "no file in `cmd/` is modified by this task" —
+> blocked the consolidation, because one of those declarations lives in `cmd/bot`'s test binary.
+> The product owner chose to widen this task rather than defer the hoist. The amendment is
+> exactly: **Scope 15**, one clause on the `cmd/bot` **Out of scope** bullet, two **Key
+> decisions** rows, a narrowed **AC29**, and the new **AC35** and **AC36**. The relaxation
+> reaches `cmd/bot`'s test binary and the helper swap alone — composition, wiring, start-up and
+> shutdown remain #24's, and no production file under `cmd/` is touched. Nothing else in this
+> spec is re-opened.
 
 This is the health half of observability: a Prometheus registry the bot's already-instrumented
 packages report into, an endpoint that serves it, and the two end-to-end `getMe` canaries the
@@ -96,6 +107,14 @@ constructible components with explicit lifecycles and changes no process assembl
     what the bot exposes, what environment variables it reads, or which packages exist"; `.env.example`,
     `ai-docs/context.md` and `ai-docs/agent-docs-index.md` are known members that illustrate the
     class, not its boundary.
+15. **Hoisting the repository-root test helper.** `repoRootPath` is declared independently in
+    several packages' test binaries, and this task's own tests need it again. It moves into **one**
+    shared test-helper package, every existing declaration is replaced by a call into it, and no
+    package keeps a copy — including the package this task adds. Where that helper lives is the
+    design's call, under constraints it must satisfy: importable from the test binary of every
+    package that needs it, `cmd/bot`'s included; importing it drags no machinery a consumer does
+    not use into that consumer's test binary; and it is test-only, never linked into the bot
+    command. Its package comment describes what it holds after the move.
 
 ## Out of scope
 
@@ -110,7 +129,8 @@ constructible components with explicit lifecycles and changes no process assembl
 - Notification-queue depth, send lag and failures. The queue is #43 and declares its own telemetry
   in its own PR, per the telemetry-with-the-mechanic invariant.
 - `cmd/bot` assembly: constructing the pool, starting the loops, starting or stopping the metrics
-  server, and graceful shutdown — #24.
+  server, and graceful shutdown — #24. Scope 15 reaches `cmd/bot`'s test binary only, where it
+  swaps a duplicated helper for the shared one; composition stays #24's.
 - Product-dashboard work of any kind: no event type, no SQL view, no panel.
 - Alert threshold values. The contract fixes the shapes and the names; the numbers are tuning.
 - Provisioning the cloud-side canary bot: registering it with BotFather and getting its token into
@@ -147,6 +167,8 @@ constructible components with explicit lifecycles and changes no process assembl
 | What schedules the canary probes | An **in-process ticker** on the configured interval, owned by this package: no task type, no persisted row, no scheduler coupling. A probe that stops when Postgres stops goes silent exactly during an incident, which is the ambiguity §13.2 exists to remove. *Product owner, round-1 answer 2.* |
 | A disabled leg versus a failing one | A leg configured off exports no probe sample at all, and the alert contract names the absence test the monitoring stack applies. A leg that is off must never read as a leg that is healthy. |
 | The cloud leg's base URL | A configuration value defaulting to the cloud API, not a compiled-in literal. §11 already makes the Bot API base URL a config value on a three-value axis — own instance, cloud, fake server [source: 776b987:docs/DESIGN.md § 11 · sed -n '/^## 11\./,/^## 12\./p' docs/DESIGN.md] — and a hard-wired endpoint would put the probe out of a fake server's reach. |
+| The duplicated repository-root test helper | Hoisted by this task into one shared test-helper package, with every existing declaration replaced by a call into it. The alternative — a follow-up issue leaving this task's approved scope untouched — was offered and declined. *Product owner, design-review round 3.* |
+| How far the `cmd/` relaxation goes | To `cmd/bot`'s test binary, and within it to the helper swap alone. AC29 exists because #24 owns `cmd/bot` composition; this decision transfers no composition, wiring, start-up or shutdown to this task, and a general licence to modify `cmd/` was neither granted nor implied. |
 | One interval, both legs | A single cadence value drives both probes on the same tick. Reading a sick leg against a reference leg is the whole point, and two independent cadences turn that comparison into a question about sampling. |
 
 ## Technical constraints
@@ -259,12 +281,14 @@ cloud-side reference probe, and it gets one.
 | AC26 | An alert-contract document exists under `ai-docs/`, in English, naming for each alert: the metric names it reads, the expression over them, the condition shape, and the severity — covering at minimum the consecutive-canary-failure alert, the update-lag-growth alert, the cross-leg "own instance sick while cloud healthy" expression, what that expression means when the cloud leg is configured off, and the absence test distinguishing a disabled leg from a failing one. |
 | AC27 | `ai-docs/agent-docs-index.md` lists the alert-contract document. |
 | AC28 | `github.com/prometheus/client_golang` is a require entry of `go.mod`, and module tidiness leaves `go.mod` and `go.sum` unchanged. |
-| AC29 | No file in `cmd/` is modified by this task. |
+| AC29 | Under `cmd/`, this task modifies `cmd/bot/main_test.go` and no other file, and the only change to that file is the replacement of its own `repoRootPath` declaration with a call into the shared test helper; no production file under `cmd/` changes, and no composition, wiring, start-up or shutdown behaviour moves into this task. |
 | AC30 | Every exported item added by this task carries a doc comment beginning with its name, and every new package carries a package comment. |
 | AC31 | No comment added by this task names a markdown path, a design section number, an acceptance-criterion id, a repository path, a URL, an issue number outside `TODO(#…)`, or a package-qualified symbol of this module outside its own package. |
 | AC32 | Production code added by this task contains no `panic` and no `log.Fatal`; a bind failure and a probe failure are both reported through a returned error. |
 | AC33 | Every gate in AGENTS.md § *Build & Test* is green on the branch, including the race gate and the coverage ratchet at its recorded high-water mark or above. |
 | AC34 | Every live site in the repository whose claim this diff falsifies is updated in the same PR, per AGENTS.md § *Propagation Rule* step 4. |
+| AC35 | Exactly one declaration of `repoRootPath` exists in the module, in a shared test-helper package; every package that resolves a repository-root path in its tests calls that one, and no package — including the package this task adds — declares its own. |
+| AC36 | No non-test file in the module imports the shared test-helper package, so the helper never links into the bot command. |
 
 ## Open questions
 
