@@ -2,7 +2,7 @@
 
 **Source:** issue #23
 **Date:** 2026-09-09
-**Amended:** 2026-09-09 (design-review rounds 1 and 3; AC35 corrected at round 5)
+**Amended:** 2026-09-09 (design-review rounds 1, 3, 5 and 6)
 **Tracked in:** #23
 
 > **Amended after design-review round 1.** The canary families carry an outcome label and a
@@ -34,6 +34,17 @@
 > per-package alias under the old name would restore exactly the duplication Scope 15 forbids.
 > The design-writer found it and refused to paper over it. The correction is exactly: AC35's
 > wording, and the sentence of **Scope 15** that carried the same assumption. Approved by the
+> product owner. AC29 and AC36 are untouched, and no other row changes.
+
+> **AC35's class re-scoped at round 6.** A repository-root resolver living in a test binary
+> escaped every earlier sweep: it asks git for the root instead of ascending from its own source
+> file's location, so both a search for the identifier and a search for the ascent mechanism were
+> blind to it. AC35's behaviour clause reached that resolver while AC29 forbade touching it. The
+> failure was the proxy, not the particular proxy — a class stated as "every resolver" and
+> measured through one mechanism keeps turning up a member outside the measurement — so AC35 now
+> defines its class **by mechanism**: file-location ascent. A resolver that asks git falls outside
+> the class by construction rather than by a named exception, because a named exception invites
+> the next unnamed one. The correction is exactly: AC35's wording and Scope 15's. Approved by the
 > product owner. AC29 and AC36 are untouched, and no other row changes.
 
 This is the health half of observability: a Prometheus registry the bot's already-instrumented
@@ -116,14 +127,17 @@ constructible components with explicit lifecycles and changes no process assembl
     what the bot exposes, what environment variables it reads, or which packages exist"; `.env.example`,
     `ai-docs/context.md` and `ai-docs/agent-docs-index.md` are known members that illustrate the
     class, not its boundary.
-15. **Hoisting the repository-root test helper.** `repoRootPath` is declared independently in
-    several packages' test binaries, and this task's own tests need it again. The helper moves into
-    **one** shared test-helper package and is **exported** there: an unexported identifier is
-    unreachable from another package's test binary, so the shared declaration necessarily carries a
-    new, exported name. Every existing declaration is replaced by a call into it, and no declaration
-    under the old unexported spelling survives — including in the package this task adds. Where that
-    helper lives, and what its exported name is, are the design's call, under constraints it must
-    satisfy: importable from the test binary of every
+15. **Hoisting the repository-root test helper.** Several packages' test binaries each declare
+    their own helper that derives the repository root from its own source file's location and
+    ascends a fixed number of directory levels — `repoRootPath` is one spelling of it, not the only
+    one — and this task's own tests need one again. That kind of helper moves into **one** shared
+    test-helper package and is **exported** there: an unexported identifier is unreachable from
+    another package's test binary, so the shared declaration necessarily carries a new, exported
+    name. Every declaration of that kind is replaced by a call into it, and no declaration under the
+    old unexported spelling survives — including in the package this task adds. **A resolver that
+    obtains the root by a different mechanism — asking git, for instance — is not of this kind and
+    is not touched by this task.** Where that helper lives, and what its exported name is, are the
+    design's call, under constraints it must satisfy: importable from the test binary of every
     package that needs it, `cmd/bot`'s included; importing it drags no machinery a consumer does
     not use into that consumer's test binary; and it is test-only, never linked into the bot
     command. Its package comment describes what it holds after the move.
@@ -299,7 +313,7 @@ cloud-side reference probe, and it gets one.
 | AC32 | Production code added by this task contains no `panic` and no `log.Fatal`; a bind failure and a probe failure are both reported through a returned error. |
 | AC33 | Every gate in AGENTS.md § *Build & Test* is green on the branch, including the race gate and the coverage ratchet at its recorded high-water mark or above. |
 | AC34 | Every live site in the repository whose claim this diff falsifies is updated in the same PR, per AGENTS.md § *Propagation Rule* step 4. |
-| AC35 | Exactly one declaration of the repository-root path helper exists in the module — in a shared test-helper package, under an exported name, since an unexported one is unreachable from another package's test binary — and no declaration under the former unexported spelling `repoRootPath` survives anywhere in the module, including in the package this task adds. Every package that resolves a repository-root path in its tests calls the shared declaration. |
+| AC35 | Exactly one declaration exists in the module of a repository-root helper of the file-location-ascent kind — one that derives the root from its own source file's location and ascends a fixed number of directory levels, under whatever spelling — and it lives in a shared test-helper package under an exported name, since an unexported one is unreachable from another package's test binary. No declaration under the former unexported spelling `repoRootPath` survives anywhere in the module, including in the package this task adds, and every package whose tests resolve the repository root by that mechanism calls the shared declaration. A resolver that obtains the root by a different mechanism — asking git, for instance — is not of this kind, and this task neither hoists nor modifies it. |
 | AC36 | No non-test file in the module imports the shared test-helper package, so the helper never links into the bot command. |
 
 ## Open questions
