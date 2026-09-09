@@ -9,7 +9,7 @@ _Updated: 2026-09-09 17:42_
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
 **current_step:** Step 8 — subtask 13 of 13 complete (Group C DONE; all subtasks complete)
-**last_passed_gate:** make comment-refs, the CI relative-markdown-link check, the citation-namespace guard — green (2026-09-09T17:42:24Z, commit 311ca88d25e05932e1dbfd3d6cdb385eefbd3bb8)
+**last_passed_gate:** golangci-lint run | 2026-09-09T18:52:32Z | c9b521add4a931bb99936dedf40f3c4806427fc6
 **entry_args:** 23
 
 ## Next action
@@ -317,6 +317,10 @@ measured behaviour rather than the predicted one. The design document itself is 
 
 - **Step 9.5**: `context.md` needed no orchestrator edit — the Group C sweep had already carried the layout, the status bullet and the contract link. Only the `context-status.md` entry remained, written with the `#TBD-at-Step-12` locator that Step 12 substitutes.
 
+- **Step 10**: self-review round 1 REJECT — 5 major, plus minors. My Step-9 AC16 PASS was false: I verified the token-transmission test and never exercised the success condition, so the check could not detect the defect it was recorded against.
+
+- **Step 11**: ten of eleven rows fixed at c9b521a. PROC-5 objected, not fixed: `self-review.md` instruction 2 forbids reviewing the progress file's field content ("do NOT review their content for correctness; their lifecycle is the calling skill's responsibility"), and line 166 defines a Design Amendment trigger as a finding whose resolution REQUIRES editing the design — this one audits the order of an amendment already made. Surfaced to the owner verbatim; awaiting their ruling.
+
 ## Key discoveries (don't re-investigate)
 
 - Six file-location-ascent root resolvers exist, not four: the four `repoRootPath` copies plus `repoRoot` in `internal/commentref` and `internal/testdb`. Found by behaviour (`runtime.Caller`), not by identifier.
@@ -383,7 +387,7 @@ measured behaviour rather than the predicted one. The design document itself is 
 | AC13 | PASS — `collectors.NewGoCollector()` and `NewProcessCollector` registered on the same registry |
 | AC14 | PASS — two legs, `leg` label with exactly `own`/`cloud`, outcome counter and latency histogram each |
 | AC15 | PASS — `TestNewTelegramProber_TransmitsItsOwnToken` green — asserts the token on the transmitted request path |
-| AC16 | PASS — same test for the cloud leg; success requires HTTP 200 with `ok:true` |
+| AC16 | FAIL — recorded PASS at Step 9 in error. `Probe` returns success on `err == nil` and never reads the recorded status; `tg.Caller` succeeds on `resp.Ok` with no status gate, so a 500 carrying `ok:true` counts as a healthy probe. Self-review round 1, R1-1. |
 | AC17 | PASS — `TestNewLegs_EmptyCloudTokenDisablesCloudLeg` and `TestCanary_DisabledCloudLegExportsNoSeries` green |
 | AC18 | PASS — `TestTelegramProber_NeverWritesToATransportRegistry` green; one attempt per tick per leg |
 | AC19 | PASS — failures classified by status code or transport-error class; guard (c) rejects raw error text |
@@ -407,6 +411,67 @@ measured behaviour rather than the predicted one. The design document itself is 
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
+| HEALTH-1 | R1 | major | fixed@c9b521a | add a `tgtest` handler answering `500` with `{"ok":true,...}`, call `TelegramProber.Probe`; the probe must return a non-nil error |
+| HEALTH-2 | R1 | major | fixed@c9b521a | `grep -nE 'OwnToken\|CloudToken\|Token ' internal/health/canary.go internal/health/probe.go` — each token field must read `config.Secret` |
+| HEALTH-3 | R1 | major | fixed@c9b521a | `Start`, `Shutdown(ctx)`, then `Shutdown(ctx2)` with a 500ms deadline on `*health.Server`; the second call must return, not block |
+| HEALTH-4 | R1 | major | fixed@c9b521a | `git diff 3616d52..HEAD -- '*.go' \| grep -nE '^\+.*//.*([Ss]ee \|pinned by) '` must print nothing |
+| PROC-5 | R1 | major | open | `git log --format='%h %s' 3616d52..HEAD -- ai-docs/plans/*.design.md` and `grep -n '^\*\*Amended:' ai-docs/plans/2026-09-09-health-metrics-canaries.design.md` — the amendment must carry its own round header and a recorded design-review verdict |
+| HEALTH-6 | R1 | minor | fixed@c9b521a | `grep -n 'sentinelChatID\|sentinelUpdateID\|sentinelTaskID\|sentinelOperationID' internal/health/guards_test.go` — each must appear in a fixture write, not only in the final assertion loop |
+| HEALTH-7 | R1 | minor | fixed@c9b521a | write any `.go` file under `tmp/`, then `go test ./internal/health/ -run 'TestGuard_SingleRepoRootResolver_RealTree\|TestGuard_NoRepoRootPathIdentifierAnywhere' -count=1` must stay green |
+| HEALTH-8 | R1 | minor | fixed@c9b521a | `grep -n 'unreachable in an observed series' internal/health/labels.go` — the scheduler-outcome mapper must not carry the claim D16 declines |
+| HEALTH-9 | R1 | minor | fixed@c9b521a | `go doc github.com/maratik123/lab-game/internal/health TransportObserver` — the doc must state its concurrency contract |
+| HEALTH-10 | R1 | nit | fixed@c9b521a | `grep -n 'defaultHealthMetricsAddr =' internal/config/health.go` — one plain literal, no concatenation |
+| PROG-11 | R1 | nit | fixed@c9b521a | `grep -c '^## Files touched' ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md` must print `1` |
+| REC-A | R1 | — | accepted@1 — every return path in the transport caller calls `observe`, so `statusRecorder.take()` can never hand back a stale observation; the never-reset field is safe as written | `grep -c 'c.client.observe(' internal/tg/caller.go` |
+| REC-B | R1 | — | accepted@1 — `.env.example` ships `changeme` for the cloud token; the value is a placeholder in a file whose every value must be non-empty, and the loader's present-but-empty clause is the documented way off. Not a tracked secret. | `grep -n 'CANARY_CLOUD_TOKEN' .env.example` |
+| REC-C | R1 | — | accepted@1 — `promAutoOffenses` matches only the `prometheus` identifier, so an aliased import escapes guard (a). No such alias exists in the module and the `promauto` import path check is alias-proof. | `rg -n 'client_golang/prometheus"' --type go` |
+| REC-D | R1 | — | accepted@1 — `PoolCollector.Describe` sends no descriptor (unchecked collector). Deliberate per D9 and documented at the method. | `grep -n 'func (c \*PoolCollector) Describe' -A 1 internal/health/pool.go` |
 
-## Files touched
+## Self-Review (Round 1)
+
+**Verdict:** REJECT
+
+**What was checked.** The whole diff `3616d52..HEAD` (53 files, +4986/-149). Read in full:
+every non-test file of `internal/health` (`doc.go`, `registry.go`, `labels.go`, `transport.go`,
+`scheduler.go`, `ingest.go`, `pool.go`, `server.go`, `canary.go`, `probe.go`),
+`internal/config/health.go`, `internal/repotest/repotest.go`, the whole of
+`internal/health/guards_test.go`, `.env.example`'s new block, `ai-docs/alert-contract.md`, and the
+`context.md` / `key-decisions.md` / `agent-docs-index.md` / `INDEX.md` propagation edits. Read as
+upstream context: `internal/tg/caller.go`, `internal/tg/observe.go`,
+`internal/scheduler/observe.go`, `internal/ingest/observe.go`, `internal/config/config.go`.
+Design decisions re-read against the code: D1, D3, D5, D6, D7, D8, D9, D10, D11, D12, D13, D14,
+D16, D17.
+
+**Gates re-run against the shipped tree, not quoted from the log:** `go build ./...` GREEN ·
+`go vet ./...` GREEN · `golangci-lint run` GREEN (0 issues) · `make comment-refs` GREEN ·
+`make file-limits` GREEN · `go mod tidy` + `git diff --exit-code go.mod go.sum` CLEAN ·
+`make test` GREEN · `make test-race` GREEN (0 DATA RACE) · `make cover-ratchet` GREEN
+(89.74% holds against 89.74%).
+
+**AC verification commands re-run against the shipped artefact.** AC2 PASS
+(`rg 'promauto|DefaultRegisterer|MustRegister' --type go` hits only `guards_test.go`, which names
+them to forbid them). AC28 PASS (`go.mod` line 11 requires `client_golang v1.24.1`; tidy leaves no
+delta). AC29 PASS (the only `cmd/` path in the diff is `cmd/bot/main_test.go`). AC31 PASS
+(`make comment-refs` over the whole tracked gated set). AC32 PASS
+(`grep -rnE '(^|[^[:alnum:]_.])(panic\(|log\.(Fatal|Panic)[a-z]*\(|os\.Exit\()' internal/health
+internal/repotest internal/config/health.go` hits only guard fixtures inside `guards_test.go`;
+`ai-docs/panic-index.md` still carries its `| — | — | — |` body row). AC33 PASS (the gate list
+above). AC34 PASS (the metric catalogue in `ai-docs/alert-contract.md` was diffed name-for-name
+against the 30 `namePrefix + …` constants in the source: zero names in the code are missing from
+the document, and the only document-only token is the derived `_bucket` suffix). **AC16 FAILS —
+finding 1.**
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | internal/health/probe.go:112-120 | major | **AC16 is not implemented, and the doc comment asserts the missing half as a fact.** AC16: the leg "counts a probe successful only on an HTTP 200 response carrying `ok:true`"; D11: "a probe reports success **only** when `GetMe` returned no error *and* the recorded status code is 200 — `ok:true` from the caller, `200` from the recorder". `Probe` never reads `obs.StatusCode` for the success decision — it returns `err` alone, and `internal/tg/caller.go:88` returns success on `attemptErr == nil && resp != nil && resp.Ok` with **no** status gate, while `doAttempt` decodes the envelope for any status. Falsified by running it: a `tgtest` handler answering `500` with `{"ok":true,…}` yields `Probe -> status=500 err=<nil>`, i.e. the canary counts a **success** with `outcome="success"` and a latency sample, on a leg that is returning 500. Fix: gate success on `obs.StatusCode == http.StatusOK` as well, and add the falsifying case as a test — no test in the suite covers it (`TestTelegramProber_Success` asserts 200 on the happy path; `_OkFalse` and `_ServerError` both vary the other axis). | ✅ Fixed |
+| 2 | internal/health/canary.go:41,47 · internal/health/probe.go:41 | major | **D11's stated secret protection is absent — a `%v` of the options struct prints the production bot token in full.** The design says, at design line 613: "Both token fields are `config.Secret`, so a `%v` of the options struct redacts them." The shipped `LegsOptions.OwnToken`, `LegsOptions.CloudToken` and `TelegramProberOptions.Token` are all plain `string`; `grep -rn 'config.Secret' internal/health/*.go` returns nothing but one test name. `config.Secret` exists precisely for this (`String`/`GoString` render `[redacted]`), `internal/health` already imports `internal/config` for `config.Transport`, and the composition root this package hands `LegsOptions` to carries the **production** bot token in `OwnToken`. Deviating from a design decision without triggering the amendment recipe is forbidden by `.claude/skills/task/SKILL.md:131`. Fix: declare all three fields `config.Secret` and `Reveal()` at the `tg.New` call site. | ✅ Fixed |
+| 3 | internal/health/server.go:92-107 | major | **`Server.Shutdown` deadlocks on a second call and ignores its own context while doing it.** `serveErr` is a one-shot buffered channel that is never closed and `started` is never cleared, so the second `Shutdown` blocks forever on the bare `err := <-serveErr` receive — a plain receive, so the `ctx` it was handed is not consulted. Demonstrated: `Start` → `Shutdown(ctx)` → `Shutdown(ctx2)` with a 500ms deadline on `ctx2` reports `DEADLOCK: second Shutdown never returned (blocked on the drained serve-error channel), despite its own context expiring after 500ms` after a 3s test guard. The asymmetry is the tell: `Start` guards its own second call and returns an error, and the sibling `Canary.Shutdown` is idempotent because it selects on a **closed** `done` channel. A composition root that pairs a `defer srv.Shutdown(ctx)` with an explicit shutdown hangs the process. Fix: latch the terminal serve error under `s.mu` on first read (or `select` on `ctx.Done()`), and return the latched value thereafter. | ✅ Fixed |
+| 4 | internal/config/health.go:53,70,80 · internal/health/canary.go:51 | major | **Four bare-name pointers — the review-judged half of DOC-4** (`ai-docs/doc-convention.md` § DOC-4 → *What the gate decides, and what review decides*, second bullet: "A bare unqualified name used as a pointer — 'see such-and-such' … It is banned, and it is refused in review rather than by the gate"). The sites: `health.go:53` "See defaultHealthMetricsAddr for the compiled-in default **and the reasoning behind it**"; `health.go:70` "(see defaultHealthCanaryCloudBaseURL)"; `health.go:80` "pinned by TestDefaultHealth_CloudBaseURLParses" (a test is not a contract symbol, so no exemption reaches it); `canary.go:51` "(see NewTelegramProber)" — the weakest of the four, since that constructor is arguably the field's guarantor, but it is still written in the banned pointer form. DOC-4's own remedy applies: "Where a sentence exists only to carry the reference, the sentence goes with it" — state the default and the reason in place rather than sending the reader. `make comment-refs` cannot see any of these; that is what makes them review's. | ✅ Fixed |
+| 5 | ai-docs/plans/2026-09-09-health-metrics-canaries.design.md (commit ed3e778) | major | **A design amendment landed after the deviation shipped, with no recorded design-review re-run and no amendment header.** Subtask 12 measured that D13/D14 were factually wrong about the shipped placeholder and committed the corrected behaviour into `.env.example` and `ai-docs/alert-contract.md` at `1af724a` — the progress file's own subtask-12 entry says so and adds "this is the one place the run contradicts its own design". The design was corrected only afterwards, at `ed3e778`. `.claude/skills/task/SKILL.md:129` requires the reverse order (stop the step, surface, spawn `design-writer`, **re-run Step 7 design-review**, resume on GO) and `:131` names the shipped order FORBIDDEN; `:136` makes the re-review unconditional, exempt only by the owner's explicit word per instance. Two checkable facts back this: the `## Decisions log` carries an entry for every other commit in the run and **none** for `ed3e778`, and `ed3e778` adds no `**Amended:** … round 9` line while all eight prior amendments carry one. **Design Amendment trigger** — surface to the owner with this wording quoted, per SKILL.md:216's two-exits rule; if the re-review did happen, record it in the Decisions log and add the round header via the `design-writer` Subagent (the orchestrator must not edit `*.design.md` directly). | ⬜ Open — objected, see register |
+| 6 | internal/health/guards_test.go:420-494 | minor | **Four of guard (d)'s seven sentinels are structurally unreachable, so those four assertions cannot go red** (AGENTS.md § *Patterns* 2). `sentinelChatID`, `sentinelUpdateID`, `sentinelTaskID` and `sentinelOperationID` are declared and then asserted absent, but nothing in the fixture ever writes them anywhere: the test drives only two canary legs and a pool collector. D12 describes this guard as asserting the body carries none of "the sentinel secrets **the fixture was built with**" — it was built with three of them. Confirmed structural: `tg.Observation` has no chat field, `ingest.Observation` no update id, `scheduler.Observation` no task id, so no observation can carry one. Either drive a value that *can* reach a label (`scheduler.Observation.Type` and `ingest.Kind` are the two caller-supplied strings that pass through verbatim) or delete the four constants and say in the comment that those categories are closed by the observation structs' own field sets, not by this scrape. | ✅ Fixed |
+| 7 | internal/health/guards_test.go:654,680,789 | minor | **Guards (g)/(h) walk `tmp/`, the workspace's own mandated scratch directory, and red on a legitimate probe.** `walkGoFilesUnder` prunes only `.git`. AGENTS.md § *Build & Test* designates `tmp/` as "the one ignored scratch directory" for "a throwaway probe", and this very run used it (subtask 12's Decisions-log entry). Demonstrated: a `tmp/probe/main.go` declaring a `runtime.Caller`-based `repoRootPath` reds both guards — `file-location-ascent resolver outside internal/repotest: tmp/probe/main.go` and `repoRootPath still declared at: [tmp/probe/main.go]`. The module's own `file-limits` recipe already prunes `./tmp` for exactly this reason, and sibling guard (a) already filters to `cmd`/`internal`. Fix: prune `tmp` in `walkGoFilesUnder`, or apply guard (a)'s top-level filter to these two walks. | ✅ Fixed |
+| 8 | internal/health/labels.go:42-46 · ai-docs/alert-contract.md:66-69 | minor | **Both artefacts make the scheduler-outcome unreachability claim D16 deliberately declines to make.** `schedulerOutcomeLabel`'s doc comment: "The default branch is unreachable in an observed series — the worker refuses an out-of-range outcome before ever building an observation"; the alert contract § 2: "For the scheduler and ingest outcome labels it is a declared-only branch that the shipped code has no path to produce". D16 states the opposite framing outright: "The claim is deliberately **not** made for `scheduler.Outcome`, which a consumer-declared `Handler` supplies and the worker passes through unnormalised (D6): there `unknown` is reachable in principle". The claim rests on another package's internal control flow, which is exactly why the design refused it — and a durable comment asserting it is the rot shape DOC-4 exists to prevent. Restrict the strong claim to `ingest.Outcome` and `scheduler.FailureKind` (the two the ACs bind and D16 does clear), and give the scheduler-outcome mapper the conservative wording. | ✅ Fixed |
+| 9 | internal/health/transport.go:15 · internal/health/pool.go:53 | minor | **No concurrency contract on types whose upstream seam guarantees concurrent calls.** `tg.Observer`'s own declaration states "ObserveCall runs on the calling goroutine", so `TransportObserver` is called from every goroutine that makes a Bot API call; `PoolCollector.Collect` is called by the registry on scrape goroutines. Neither doc comment says whether the type is safe for concurrent use, and `ai-docs/doc-convention.md`'s concurrency rule makes silence mean "assume it is not safe" — which is wrong here (the client library's vecs are goroutine-safe) and will mislead the composition root into serialising or into doubting the seam. One sentence per type. | ✅ Fixed |
+| 10 | internal/config/health.go:27 | nit | `defaultHealthMetricsAddr = "127.0.0.1" + ":" + "9095"` splits a value that has no reason to be split. The subtask-3 Decisions-log entry attributes the split to `make comment-refs`, but that gate reads `//` and `/* */` comments only, never a Go string literal — measured: substituting the plain `"127.0.0.1:9095"` literal and running `go run ./cmd/commentrefs internal/config/health.go` reports **CREFS-GREEN**. The split obscures the address in review and in `go doc` for nothing. | ✅ Fixed |
+| 11 | ai-docs/plans/2026-09-09-health-metrics-canaries.progress.md:334,411 | nit | The progress file carries two `## Files touched` headings; the second (line 411) is empty. Delete the stray. | ✅ Fixed |
 
