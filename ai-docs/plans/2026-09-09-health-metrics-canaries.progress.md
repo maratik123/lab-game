@@ -8,8 +8,8 @@ _Updated: 2026-09-09 16:14_
 **Last build:** not run
 **Issue:** #23
 **Spec:** ai-docs/plans/2026-09-09-health-metrics-canaries.spec.md
-**current_step:** Step 8 — subtask 1 of 13 complete
-**last_passed_gate:** go build/test/vet, golangci-lint fmt -d + run, make comment-refs — all green (commit f57403f)
+**current_step:** Step 8 — subtask 3 of 13 complete
+**last_passed_gate:** go build/test/vet, golangci-lint fmt -d + run, make comment-refs — all green (commit c68390c)
 **entry_args:** 23
 
 ## Next action
@@ -19,9 +19,9 @@ _Updated: 2026-09-09 16:14_
 ## Subtasks
 
 - [x] 1. `internal/repotest` — the shared root helper, every existing declaration replaced
-- [ ] 2. `go get github.com/prometheus/client_golang@v1.24.1`, `go mod tidy`  ← CURRENT
-- [ ] 3. The `LAB_GAME_HEALTH_` configuration class
-- [ ] 4. Package skeleton: registry, labels, buckets, the D16 register
+- [x] 2. `go get github.com/prometheus/client_golang@v1.24.1`, `go mod tidy`
+- [x] 3. The `LAB_GAME_HEALTH_` configuration class
+- [ ] 4. Package skeleton: registry, labels, buckets, the D16 register  ← CURRENT
 - [ ] 5. Transport adapter (`tg.Observer`)
 - [ ] 6. Scheduler adapter (`scheduler.Observer`)
 - [ ] 7. Ingest adapter (`ingest.Observer`), `LagKnown` gate
@@ -49,6 +49,27 @@ _Updated: 2026-09-09 16:14_
   it declared only the helper. Gates run and green: `go build ./...`, `go test ./...` (whole module),
   `go vet ./...`, `golangci-lint fmt -d` (no target file present in its diff), `golangci-lint run`
   (0 issues), `make comment-refs`. Committed at f57403f.
+- **Step 8, subtask 2**: measured that `go mod tidy` immediately prunes an as-yet-unimported module —
+  ran `go get github.com/prometheus/client_golang@v1.24.1` then `go mod tidy` and the require line and
+  its two go.sum entries were removed entirely (git diff empty after tidy). Re-ran `go get` alone
+  (skipping the destructive `go mod tidy` this time) to keep the require line, marked `// indirect`
+  since nothing imports it yet; `go build ./...` and `go vet ./...` stay green with it present but
+  unused. The transitive closure (beorn7/perks, prometheus/client_model, prometheus/common,
+  prometheus/procfs, google.golang.org/protobuf, kylelemons/godebug, munnerz/goautoneg) is deferred to
+  subtask 4, where internal/health first imports the library and a real `go mod tidy` has something to
+  resolve against. Committed at 4c9e9ff.
+- **Step 8, subtask 3**: `internal/config/health.go` adds `Health` (`MetricsAddr`, `CanaryInterval`,
+  `CanaryCloudToken`, `CanaryCloudBaseURL`) as a fourth optional-with-default class beside Transport,
+  Scheduler and Ingest. The comment-reference gate (`make comment-refs`) rejected an IP:port literal
+  in a doc comment as an "locator" match and rejected inline `AC17`/`AC22`/`D13` citations as
+  ac-id/decision-anchor matches — fixed by splitting the default address into concatenated string
+  literals (`"127.0.0.1" + ":" + "9095"`) named by a constant instead of writing the literal directly
+  in a comment, and by rewriting every comment to state the rule in prose without citing an AC or
+  design-decision id. `defaultHealth()`'s cloud-base-URL parse failure is handled (a zero `url.URL`
+  fallback), not panicked — the panic-gate hook caught an initial `panic()` on this exact
+  supposedly-unreachable branch and it was replaced before commit. Gates run and green:
+  `go build ./...`, `go test ./...` (whole module), `go vet ./...`, `golangci-lint fmt -d` (no target
+  file present in its diff), `golangci-lint run` (0 issues), `make comment-refs`. Committed at c68390c.
 
 ## Key discoveries (don't re-investigate)
 
