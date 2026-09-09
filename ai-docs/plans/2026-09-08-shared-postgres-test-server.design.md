@@ -376,19 +376,38 @@ Two consequences, both binding:
   `[measured eef4c4e:cmd/bot/main.go:19-21,cmd/commentrefs/main.go:8-10 · grep -n -A 2 '^func main' cmd/bot/main.go cmd/commentrefs/main.go → each main is one os.Exit(run(…)) statement]`
   `[derived → the § Test Design entries for subtasks 2 and 4]`.
 
-**One more consequence, and it depends on which provisioning path the run took.** The
-ad-hoc container takes an ephemeral host port, so its DSN differs on every wrapper
-invocation — and `testdb.Main` consults that variable, which puts it in the cache key. The
-database-backed packages are therefore a **cache miss on every run** under the ad-hoc path,
-the ratchet's own measurement included
-`[measured eef4c4e · go help test → tests that consult environment variables "only match future runs in which the files and environment variables are unchanged"; -coverprofile is itself a cacheable flag]`
-`[measured eef4c4e:.githooks/coverage-ratchet.sh:112 · sed -n '112p' .githooks/coverage-ratchet.sh → the measurement is a plain go test -covermode=atomic -coverprofile ./... with no -count]`.
-That cuts two ways: the timing-dependent statements the tolerance exists for are **re-drawn
-every commit** rather than replayed, which makes the band matter more, not less; and under
-`--up`'s reused named container the DSN is stable and the replay behaviour returns — a second
-reason the D4 pair earns its place. The workspace's own description of the ratchet states the
-replay behaviour unconditionally today, so it is a member of D10's propagation class
-`[derived → AC14]`.
+**The provisioning path does not change what the test cache does, and an earlier revision of
+this design said it did.** The claim was that the ad-hoc container's ephemeral port puts a
+different DSN in the cache key on every invocation, so the database-backed packages miss the
+cache every run. It is false, and the correction is worth carrying because the true mechanism
+is stronger than the error it replaces.
+
+`testdb.Main` reads the variable with `os.Getenv` and *then* returns `m.Run()`
+`[measured eef4c4e:internal/testdb/testdb.go:75-81 · sed -n '75,81p' internal/testdb/testdb.go → Main's dsnEnv read precedes the m.Run() it returns]`.
+`m.Run` calls `m.before()`, and `m.before()` is where `StartTestLog` opens the log `cmd/go`
+reads to decide whether a cached result is still valid
+`[measured go1.26.5:$GOROOT/src/testing/testing.go:2434,2674 · sed -n '2434p;2674p' testing.go → m.Run calls m.before(); m.before() calls m.deps.StartTestLog(f)]`.
+The read therefore happens before the log exists, so `cmd/go` never learns the variable was
+consulted at all. **A `TestMain` that reads its configuration before delegating to `m.Run()`
+is invisible to the test cache by construction** — and the consequence is not merely that a
+changing DSN fails to invalidate, but that the shared regime and the fallback regime **share
+cache entries**
+`[measured 1a3ee3a · go clean -testcache, then go test ./internal/store four times — same DSN, same DSN again, a different DSN, then the variable cleared → 1.003s, (cached), (cached), (cached)]`.
+
+Three things follow, and none of them is the one the earlier revision drew:
+
+- **The replay behaviour the workspace already documents for the ratchet is intact**, on
+  every provisioning path. It is not restored by `--up`, because it was never lost — so it is
+  not a reason the D4 pair earns its place, and the workspace's sentence saying so is **not** a
+  member of D10's propagation class. It was true before this change and stays true.
+- **The tolerance's drifting statements are not re-drawn every commit.** They replay exactly as
+  they did, which is the condition the tolerance was sized under — so D7's argument rests on
+  the regime shift and on this task's own added statements, and on nothing about cache misses.
+- **Whether any gate should defeat the cache is a scope question, and the owner's answer is
+  no.** `make test`, `make test-race` and the ratchet measurement keep replaying: a cached pass
+  is a real pass from an identical earlier run. `test-fallback` is the exception, for the
+  reason D8 gives — and that reason is now *stronger*, because the entry it would replay can
+  have been produced by a completely different provisioning regime `[derived → AC14, AC17]`.
 
 No figure is carried here to copy: the implementor measures on the final tree with
 `-count=1` in the shared regime, and re-measures in the CI environment, whose core count
@@ -403,10 +422,11 @@ as the coverage ratchet is not
 `[measured eef4c4e:Makefile:71-75 · sed -n '71,75p' Makefile → the cover-ratchet target is check-only and deliberately outside verify]` `[derived → AC3]`.
 
 **"Bare" describes the provisioning, not the flags: the target carries `-count=1`, and
-without it this gate cannot fail.** A cleared variable is not an absent one — it is a
-*stable* one, and a stable consulted environment variable is a stable cache key, so a second
-invocation is served from the test cache and returns green having started no container at
-all. That is the gate's own purpose defeated: it would report on the last run that really
+without it this gate cannot fail.** The reason is sharper than a stable key: the DSN never
+reaches the cache key at all, because `testdb.Main` reads it before `m.Run()` opens the log
+`cmd/go` records consulted variables in (D7). So a fallback invocation can be served an entry
+produced under the **shared** regime — a green report about a run that started no container,
+in a gate whose entire purpose is to prove that containers still get started. That is the gate's own purpose defeated: it would report on the last run that really
 happened rather than test the path it exists to keep alive. Amended against the shipped
 target, which carries the flag and the reason
 `[measured 1a3ee3a:Makefile § test-fallback · grep -n -B 6 -A 3 '^test-fallback:' Makefile → "LAB_GAME_TEST_DSN= go test -count=1 ./...", above it the comment "`-count=1` is what makes that a gate rather than a report"]`
@@ -470,10 +490,13 @@ lists are recorded rather than only the conclusion
 **Members** — each states something this diff falsifies: `ai-docs/key-decisions.md` § KD-20
 (the provisioning story and the importer clause, which is also where AC13's arithmetic
 lands); `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres*;
-`AGENTS.md` § *Build & Test* (the target list, the coverage-ratchet table's
-container-runtime row, and the sentence stating that the measurement replays a cached profile
-at an unchanged commit, which holds only while the DSN is stable — D7
-`[measured eef4c4e:AGENTS.md:96-97 · sed -n '96,97p' AGENTS.md → "the measurement runs with the Go test cache on, so a re-run at an unchanged commit replays the previous profile instead of drawing again"]`); `.githooks/coverage-ratchet.sh`'s runtime advice; and
+`AGENTS.md` § *Build & Test* (the target list and the coverage-ratchet table's
+container-runtime row — **and deliberately not** its sentence about the measurement replaying
+a cached profile at an unchanged commit, which this change does not falsify and must be left
+standing
+`[measured eef4c4e:AGENTS.md:96-97 · sed -n '96,97p' AGENTS.md → "the measurement runs with the Go test cache on, so a re-run at an unchanged commit replays the previous profile instead of drawing again"]`
+— D7 records why an earlier revision wrongly listed it); `.githooks/coverage-ratchet.sh`'s
+runtime advice; and
 `ai-docs/context.md`, whose layout paragraph describes `internal/testdb` as PostgreSQL
 provisioning **for package tests**
 `[measured eef4c4e:ai-docs/context.md:27 · grep -n 'LAB_GAME_TEST_DSN' ai-docs/context.md → "internal/testdb — PostgreSQL provisioning for package tests (a postgres:18 container or LAB_GAME_TEST_DSN, one schema per test)"]`
@@ -510,10 +533,9 @@ killing the load run afterwards and exiting on the foreground gate's status. The
 the database-backed packages' own tests repeated — cross-package load by construction,
 needing no second implementation of "work that hits Postgres". **The load run carries
 `-count=1`**, and that is not decoration: `go test` replays a cached result whenever the
-binary, the cacheable flags and the consulted environment variables all match, and both
-children of one wrapper invocation see the same DSN, so a load loop without it would exert
-load on its first iteration and hit the cache on every one after — an instrument that cannot
-load anything
+binary and the cacheable flags match, and the DSN the children run against does not enter
+that decision at all (D7), so a load loop without it would exert load on its first iteration
+and hit the cache on every one after — an instrument that cannot load anything
 `[measured eef4c4e · go help test → the cacheable flag set is -benchtime, -coverprofile, -cpu, -failfast, -fullpath, -list, -outputdir, -parallel, -run, -short, -skip, -timeout and -v; "the idiomatic way to disable test caching explicitly is to use -count=1"; tests that consult environment variables "only match future runs in which the files and environment variables are unchanged"]`.
 D12's revert-first protocol would catch a load-less probe anyway — it comes back green at the
 revert step, which is defined as a STOP — but a backstop is not a reason to ship a broken
@@ -587,7 +609,7 @@ STOP, not a pass — the project has run exactly this protocol before
 | 9 | The AC11 demonstration: revert one widened instrument over a `cp` backup, require `make test-contention` RED, scan both logs for the connection-exhaustion class and reject the run if it is there, restore, record the RED before any green | `internal/scheduler/*_test.go` (restored) | 8 |
 | 10 | `ai-docs/key-decisions.md`: KD-20 amendment — the shared configuration's connection arithmetic, and the corrected consequence clause about who may import `internal/testdb` | `ai-docs/key-decisions.md` | 9 |
 | 11 | `ai-docs/go-test-conventions.md` § *Postgres is tested against Postgres*: the provisioning story, both paths | `ai-docs/go-test-conventions.md` | 9 |
-| 12 | `AGENTS.md` § *Build & Test*: the new targets, the coverage-ratchet table's container-runtime row, and the cache-replay sentence, which now holds only on a stable DSN (D7) | `AGENTS.md` | 9 |
+| 12 | `AGENTS.md` § *Build & Test*: the new targets and the coverage-ratchet table's container-runtime row. The cache-replay sentence is **left alone** — this change does not falsify it (D7) | `AGENTS.md` | 9 |
 | 13 | The propagation sweep of D10's class over the whole live tree, with the two stated exclusions | live `*.md` the sweep finds | 10, 11, 12 |
 
 **The coverage ratchet is not a row in this table, and that is deliberate (D7).** Its
@@ -790,10 +812,13 @@ run, not of an assertion, so each gets a recipe rather than a test function:
   after it, with the measurement's log naming the shared DSN `[derived → AC6]`.
 - **AC8** — read the workflow in the diff: it declares no service container, and the Test
   job's steps invoke the same sub-targets a local run invokes `[derived → AC8]`.
-- **AC15** — read the diff for a gate whose exit status crosses a pipe: every gate this
-  change adds or edits redirects to a file under `tmp/` and is read from there. The
-  workspace's own `PreToolUse` guard refuses the shape independently, so this is a review
-  read rather than a command `[derived → AC15]`.
+- **AC15** — read the diff for a gate whose exit status crosses a pipe: none does. That is
+  what AC15 requires; redirecting to a file under `tmp/` is not a property of every target
+  but what the two gates with more than one child do — the ratchet's measurement and
+  `test-contention`'s pair — because there the status has to outlive the output. The
+  single-child targets write to the terminal and pass their status straight up. The
+  workspace's own `PreToolUse` guard refuses the piped shape independently, so this is a
+  review read rather than a command `[derived → AC15]`.
 - **AC16** — `make shellcheck` over every tracked script, `bash ai-docs/scripts/check-script-shape.sh`
   for the help-flag shape and the shebang-extension pairing — the gate CI's Harness-guards
   job runs
