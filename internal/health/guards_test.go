@@ -6,7 +6,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -23,11 +22,17 @@ import (
 	"github.com/maratik123/lab-game/internal/ingest"
 	"github.com/maratik123/lab-game/internal/repotest"
 	"github.com/maratik123/lab-game/internal/scheduler"
+	"github.com/maratik123/lab-game/internal/srcguard"
 	"github.com/maratik123/lab-game/internal/tg"
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
 
 // --- shared walk plumbing -------------------------------------------------
+//
+// The enumerate/parse mechanics live in the shared source-walk guard
+// package; this file keeps thin package-local aliases so the guards
+// below read the same as they did before the move — every predicate
+// they check stays here.
 
 // walkGoFilesUnder calls fn with the path of every Go source file under
 // root, skipping version-control directories a real repository root
@@ -37,52 +42,19 @@ import (
 // this guard polices.
 func walkGoFilesUnder(t *testing.T, root string, fn func(path string)) {
 	t.Helper()
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if d.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			if path == filepath.Join(root, "tmp") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.HasSuffix(path, ".go") {
-			fn(path)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("WalkDir(%s): %v", root, err)
-	}
+	srcguard.WalkSubtree(t, root, fn)
 }
 
 // parseGoFile parses path with comments retained.
 func parseGoFile(t *testing.T, path string) *ast.File {
 	t.Helper()
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-	if err != nil {
-		t.Fatalf("ParseFile(%s): %v", path, err)
-	}
-	return f
+	return srcguard.ParseFile(t, path)
 }
 
 // importPaths returns f's own imports, unquoted.
 func importPaths(t *testing.T, f *ast.File) []string {
 	t.Helper()
-	paths := make([]string, 0, len(f.Imports))
-	for _, imp := range f.Imports {
-		v, err := strconv.Unquote(imp.Path.Value)
-		if err != nil {
-			t.Fatalf("Unquote(%s): %v", imp.Path.Value, err)
-		}
-		paths = append(paths, v)
-	}
-	return paths
+	return srcguard.ImportPaths(t, f)
 }
 
 // --- guard (a): no promauto import, no reference to the client library's

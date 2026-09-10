@@ -2,8 +2,6 @@ package ingest
 
 import (
 	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -14,25 +12,14 @@ import (
 	"github.com/mymmrac/telego"
 
 	"github.com/maratik123/lab-game/internal/repotest"
+	"github.com/maratik123/lab-game/internal/srcguard"
 )
 
 // ingestNonTestFiles returns every non-test Go source file's path in
 // this package.
 func ingestNonTestFiles(t *testing.T) []string {
 	t.Helper()
-	dir := repotest.RootPath(t, filepath.Join("internal", "ingest"))
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("ReadDir(%s): %v", dir, err)
-	}
-	var paths []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		paths = append(paths, filepath.Join(dir, e.Name()))
-	}
-	return paths
+	return srcguard.PackageFiles(t, repotest.RootPath(t, filepath.Join("internal", "ingest")))
 }
 
 // walkIngestSource calls fn with each non-test file's path and raw
@@ -51,16 +38,7 @@ func walkIngestSource(t *testing.T, fn func(path string, content []byte)) {
 // parseIngestSource parses every non-test file into an *ast.File.
 func parseIngestSource(t *testing.T) map[string]*ast.File {
 	t.Helper()
-	fset := token.NewFileSet()
-	out := make(map[string]*ast.File)
-	for _, path := range ingestNonTestFiles(t) {
-		f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-		if err != nil {
-			t.Fatalf("ParseFile(%s): %v", path, err)
-		}
-		out[path] = f
-	}
-	return out
+	return srcguard.ParseFiles(t, ingestNonTestFiles(t))
 }
 
 // TestGuard_NoPanicLogFatalOrOsExit asserts that the package's non-test
