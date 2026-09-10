@@ -74,16 +74,20 @@ _Updated: 2026-09-10 19:27_
 | AC2, AC3 | PASS | `ai-docs/process-lifecycle.md` carries the 14-row start-up table with a failure-mode column, and the migration policy in full |
 | AC4 | PASS | `go test -run 'TestAssemble_(MissingConfiguration\|UnreachableDatabase\|TelegramClientStep\|CanaryStep)' ./cmd/bot/` |
 | AC5, AC7 | PASS | `go test -run 'TestMigrate_ConcurrentApplyUnderSameLockIDAppliesOnce' ./internal/store/`; start-up order step 9 precedes the runners |
-| AC6, AC8, AC9 | PASS | `go test -run 'TestAssemble_AutoApplyDisabledWithPendingMigration' ./cmd/bot/`; the key is in `EnvKeys()` and `.env.example` |
+| AC6, AC8 | PASS |
+| AC9 | NOT_TESTED | `go test -run 'TestAssemble_AutoApplyDisabledWithPendingMigration' ./cmd/bot/`; the key is in `EnvKeys()` and `.env.example` |
 | AC10 | PASS | `go test -run 'TestMigrateOnly_' ./cmd/bot/` |
 | AC11 | PASS | `internal/store/migrations/00005_process_liveness.sql`; `go test -run 'TestMigrate_ProcessLivenessSeededWithNullInstant' ./internal/store/` |
 | AC12 | PASS | `go test -run 'TestLiveness_RunWritesOncePerInterval' ./internal/scheduler/` |
 | AC13, AC15, AC16, AC17 | PASS | `go test -run 'TestAbsorbDowntime_' ./internal/scheduler/` (overdue shifted, none stored, within threshold, ledger untouched, concurrent-once) |
 | AC14 | PASS | `go test -run 'TestGuard_LivenessSourceCallsNoGoClock' ./internal/scheduler/` — AST guard with a proven-discriminating twin |
 | AC18 | PASS | `go test -run 'TestProcess_ObserveDowntimeSetsTheRestartGauges' ./internal/health/` |
-| AC19, AC20 | PASS | `go test -run 'TestAssemble_' ./cmd/bot/` — every failure step fatal, closers unwound backwards |
-| AC21, AC22 | PASS | `go test -run 'TestServer_Readyz\|TestReadiness_' ./internal/health/ ./cmd/bot/` |
-| AC23, AC26 | PASS | `go test -run 'TestNewProcess_' ./internal/health/` |
+| AC19 | PASS |
+| AC20 | NOT_TESTED | `go test -run 'TestAssemble_' ./cmd/bot/` — every failure step fatal, closers unwound backwards |
+| AC21 | PASS |
+| AC22 | NOT_TESTED | `go test -run 'TestServer_Readyz\|TestReadiness_' ./internal/health/ ./cmd/bot/` |
+| AC23 | PASS | `go test -run 'TestNewProcess_' ./internal/health/` |
+| AC26 | PASS | `go test -run 'TestServe_RunnerIgnoresStop_BudgetExpires_ExitNonZero' ./cmd/bot/` — the earlier citation of `TestNewProcess_` was wrong: that set tests the identity collector and asserts nothing about the shutdown bound (self-review R1-8) |
 | AC24 | PASS | `go test -run 'TestVersion_LinkTimeOverrideReachesTheIdentityLine' ./cmd/bot/` |
 | AC25, AC27, AC28 | PASS | `go test -run 'TestServe_' ./cmd/bot/` — two subject-timing cases inside a `synctest` bubble |
 | AC29 | PASS | `goleak.VerifyNone` in the smoke condition |
@@ -91,4 +95,76 @@ _Updated: 2026-09-10 19:27_
 | AC32 | PASS | `go test -run 'TestSmoke_' ./cmd/bot/` |
 | AC33, AC34 | PASS | `make import-guard`; `go test ./cmd/importguard/`; the gate is in CI's Build job and listed in AGENTS.md |
 | AC35 | PASS | `grep -n 'go run ./cmd/bot' AGENTS.md` — the claim is replaced by the measured start-up behaviour |
-| AC36 | PASS | `go test -run 'TestGuard_ScrapeAndLogCarryNoSentinelSecret' ./cmd/bot/` |
+| AC36 | NOT_TESTED | `go test -run 'TestGuard_ScrapeAndLogCarryNoSentinelSecret' ./cmd/bot/` |
+
+> **Step 9's own record was wrong on four rows.** Self-review round 1 mutation-proved that AC20, AC22, AC9 and
+> AC36's primary clause each survive a deliberate break of the behaviour they name, so the PASS this table
+> carried for them was recorded on the existence of a passing test rather than on a test that can fail. They
+> are NOT_TESTED until round 2 lands a discriminating case; AC26's row cited the wrong command outright.
+
+## Self-Review (Round 1)
+
+**Verdict:** REJECT
+
+**What was checked.** `AGENTS.md`; the spec's 36 ACs; the design's § Approach, § Decomposition and
+§ Test Design T1–T13; the whole diff `bcd5bb0..HEAD` (79 files). Gates re-run against the shipped
+tree in this round, all green: `go build ./...`, `go vet ./...`, `golangci-lint run`,
+`make comment-refs`, `make file-limits`, `make import-guard`, `make test` (whole module, shared
+Postgres, exit 0). Every verifying command in the `## AC Status` table above was resolved with
+`go test -list` — each names at least one test that exists (4/1/3/1/1/7/2/1/3/5/7/1/6/1/1/4
+matches respectively), so none is a vacuous `-run` pattern. AC1's grep is empty; AC34's
+`make import-guard` is in `AGENTS.md` § *Build & Test* and in CI's Build job
+(`.github/workflows/ci.yml:113`); AC35's measured claim was re-measured live in this round and
+reproduces verbatim (`set -a; . ./.env.example; set +a; go run ./cmd/bot` → identity on stderr,
+`lab-game bot: database: failed to connect … password authentication failed for user "user"
+(SQLSTATE 28P01)`, exit 1, stdout empty). Read in full: `cmd/bot/{main,run,readiness,assemble,serve,migrate}.go`,
+`internal/scheduler/liveness.go`, the `Worker`/`Loop` stop seams, `internal/health/{process,server}.go`,
+`internal/config/process.go`, `internal/store/migrate.go`, `00005_process_liveness.sql`,
+`internal/srcguard/srcguard.go`, `cmd/importguard/run.go`, `ai-docs/process-lifecycle.md` (§§1–7
+checked clause by clause against the code — accurate). Domain invariants (`ai-docs/domain-invariants.md`
+§§1–4): no ledger bypass, no basis-document change, no balance constant in Go source, no schema
+break (new table only), the allowlist gate is wired and asserted, the shift is pure-SQL with a
+proven-discriminating clock guard, no secret in a tracked file. Panic audit over every changed
+non-test file: zero hits, so no `ai-docs/panic-index.md` row is owed.
+
+Four findings below are **mutation-proven**, not inspected: each was produced by editing production
+code and re-running the suite, then restoring the file (`git status --porcelain` clean after each).
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | cmd/bot/serve.go:72 · cmd/bot/serve_test.go:106 | major | **AC22's fourth clause has no discriminating test.** Moving `a.readiness.setDraining()` from `drain`'s FIRST statement to its LAST — after every `runner.stop`, after the join, and after the whole closer walk including the health listener's `Shutdown` — leaves `go run ./cmd/testpg -- go test -count=1 ./cmd/bot/...` **green, 3/3 runs**. `serve_test.go:106` reads the latch only after `serve` has returned, and `smoke_test.go`'s `raceDrainingLatchAgainstServeDone` checks the latch before `serveDone` on each 1 ms tick, so it too passes with the latch set last. The design assigns this exactly (design.md:1082-1090): "the shutdown order is asserted by recording the draining latch … **the draining latch first** … so a latch set after the runner join fails this case through a stop that observed 'not draining' **rather than through a separate assertion nothing orders**". The shipped shape is the one that sentence rejects. | ⬜ Open |
+| 2 | cmd/bot/assemble.go:121 · cmd/bot/assemble_test.go:214,237 | major | **AC20 (unwind on a late start-up failure) has no discriminating test.** Replacing `unwind`'s backwards closer walk with a no-op leaves `go run ./cmd/testpg -- go test -count=1 -run 'TestAssemble\|TestRun\|TestReadiness\|TestMigrateOnly' ./cmd/bot/` **green (exit 0)** — a shipped process that never releases the listener, the pool or the signal registration after a `telegram client` / `canary` failure passes every test. Both late-failure cases assert only `se.step`. Design T9c (design.md:1057) names the observation the tree lacks: "a failure at a step after the listener bound → the error names that step **and the listener's port is free again**, which is how 'the started subsystems were shut down' is observed". `## AC Status` line 84 records AC20 PASS on `go test -run 'TestAssemble_'`, which does not test it. | ⬜ Open |
+| 3 | cmd/bot/assemble.go:243-251 · progress.md:77 | major | **AC9 has no test at all, and is recorded PASS against a command that exercises the opposite case.** Making the auto-apply-off branch refuse unconditionally (`_ = pending; return unwind(...)`) — i.e. breaking AC9 outright while leaving AC8 intact — leaves the same run **green (exit 0)**. `grep -rn MIGRATE_ON_START --include='*_test.go' .` returns only `assemble_test.go:191,209`, both inside `TestAssemble_AutoApplyDisabledWithPendingMigration`, whose subject is AC8's refusal. `## AC Status` line 77 cites that test for AC9 ("auto-apply disabled and **no** migration pending → the process starts normally"). Design T9c (design.md:1046) lists the missing case verbatim. | ⬜ Open |
+| 4 | cmd/bot/guards_test.go:211,217,241,247 | major | **AC36's bot-token half is vacuous.** The test declares `sentinelBotToken = "1:SENTINEL-BOT-TOKEN-VALUE-----------"` (:211) and its own doc comment says it "assembles with a sentinel bot token", but :217 sets `env["LAB_GAME_BOT_TOKEN"] = tgtest.Token`. The sentinel string is therefore never anywhere in the process, so both assertions on it (:241 scrape, :247 log) pass for every possible implementation. Proven: adding `logger.Info("DELIBERATE LEAK", "bot_token", cfg.BotToken.Reveal(), "dsn", cfg.DSN.Reveal())` to `assemble` and running `go test -count=1 -run TestGuard_ScrapeAndLogCarryNoSentinelSecret -v ./cmd/bot/` fails with **only** `guards_test.go:251: process log carries the sentinel DSN password` — neither bot-token assertion fires against a cleartext bot-token leak. AC36 names the bot token first; this is the guard's primary case. | ⬜ Open |
+| 5 | internal/srcguard/srcguard.go:82 | minor | `TestFilesOnly(path) bool` returns true for a **non**-test file (its own doc says so, and `cmd/bot/guards_test.go:31` uses it as `if TestFilesOnly(path) { keep }`). The exported name of a shared support package asserts the opposite of its predicate. Rename to `NonTestFile` (or invert). | ⬜ Open |
+| 6 | cmd/bot/assemble.go:33 · internal/config/process.go:16 | minor | `"LAB_GAME_PROCESS_MIGRATE_ON_START"` is a duplicated string literal in two packages, and nothing keeps them in sync — a rename in `internal/config` leaves AC8's refusal naming a key that no longer exists, with every gate green. Export the name from the config package (or assert equality against `config.EnvKeys()` in a test). | ⬜ Open |
+| 7 | cmd/bot/assemble.go:123 | minor | `unwind` discards every closer's error (`_ = a.closers[i].close(ctx)`) while `drain` reports each by name (`serve.go:120-125`). A listener or pool that failed to release during a start-up unwind is silent; the asymmetry is undocumented in the design. | ⬜ Open |
+| 8 | progress.md:86 | minor | `\| AC23, AC26 \| PASS \| go test -run 'TestNewProcess_' ./internal/health/ \|` — AC26 is the whole-shutdown bound; `TestNewProcess_*` tests the process-identity collector and asserts nothing about it. AC26's real cover is `TestServe_RunnerIgnoresStop_BudgetExpires_ExitNonZero`, cited one row down under AC25/27/28. A recorded verification that names the wrong command is a claim, not a record. | ⬜ Open |
+| 9 | design.md:1071 · progress.md:55 | minor | **Design Amendment trigger** — design doc `ai-docs/plans/2026-09-10-cmd-bot-composition-root.design.md:1071` states every T10a case runs "inside a `testing/synctest` bubble so the budget is virtual and exact"; the tree runs two of six there, by an owner ruling recorded only in this progress file's subtask-10 correction. Spawn the `design-writer` Subagent to amend T10a with the subject/instrument split the ruling fixed; recipe at `.claude/skills/task/SKILL.md` Step 11 fail-loud table. | ⬜ Open |
+| 10 | cmd/bot/run_test.go:100 | nit | `flag := flag` is a pre-Go-1.22 loop-variable copy; `go.mod` declares `go 1.26.0`. | ⬜ Open |
+
+**Note on findings 1–4.** They are one shape, not four: each is an AC whose *primary* clause is
+carried by an assertion that cannot fail. The suite is otherwise unusually strong — `internal/scheduler`'s
+`TestAbsorbDowntime_*` set guards its own fixture (`if dt.Shifted == 0 { t.Fatalf("test fixture did not
+exercise a shift") }`), `TestGuard_ImportGraphDiscrimination` fails loudly if its own positive control
+goes empty, and every structural guard ships a `_ProvenDiscriminating` twin. That is exactly why these
+four stand out: they are the places where the same discipline was not applied.
+
+## Review register
+
+| id | raised | severity | status | verifying command |
+|----|--------|----------|--------|-------------------|
+| R1-1 | round 1 | major | open | Move `a.readiness.setDraining()` to `drain`'s last statement, then `go run ./cmd/testpg -- go test -count=1 ./cmd/bot/...` — must FAIL. It passes today (3/3). |
+| R1-2 | round 1 | major | open | Replace `unwind`'s closer loop with a no-op, then `go run ./cmd/testpg -- go test -count=1 -run 'TestAssemble' ./cmd/bot/` — must FAIL. It passes today. |
+| R1-3 | round 1 | major | open | Replace `if pending { return unwind(...) }` with an unconditional `return unwind(...)`, then `go run ./cmd/testpg -- go test -count=1 -run 'TestAssemble' ./cmd/bot/` — must FAIL. It passes today. |
+| R1-4 | round 1 | major | open | Add `logger.Info("LEAK", "bot_token", cfg.BotToken.Reveal())` to `assemble`, then `go test -count=1 -run TestGuard_ScrapeAndLogCarryNoSentinelSecret ./cmd/bot/` — must FAIL. It passes today. |
+| R1-5 | round 1 | minor | open | `grep -n 'func TestFilesOnly' internal/srcguard/srcguard.go` |
+| R1-6 | round 1 | minor | open | `grep -rn 'LAB_GAME_PROCESS_MIGRATE_ON_START' --include='*.go' cmd internal \| grep -v _test.go` — must report one declaration site, not two. |
+| R1-7 | round 1 | minor | open | `grep -n '_ = a.closers\[i\].close' cmd/bot/assemble.go` |
+| R1-8 | round 1 | minor | open | `grep -n 'AC23, AC26' ai-docs/plans/2026-09-10-cmd-bot-composition-root.progress.md` |
+| R1-9 | round 1 | minor | open | `grep -n 'synctest.*bubble so the budget is virtual' ai-docs/plans/2026-09-10-cmd-bot-composition-root.design.md` |
+| R1-10 | round 1 | nit | open | `grep -n 'flag := flag' cmd/bot/run_test.go` |
+| R1-11 | round 1 | minor | accepted@1 — permitted exit, reason stated per lowering commit | `ai-docs/coverage-ratchet.txt` falls 89.78 → 89.42 net (-0.36 pp) across a diff adding ~2 000 production lines. `AGENTS.md` § *Build & Test* names lowering-with-a-reason as one of the two legitimate exits, and each lowering commit states it (unreachable constructor error branches). Not a defect. Command: `git diff bcd5bb0..HEAD -- ai-docs/coverage-ratchet.txt` |
+| R1-12 | round 1 | minor | accepted@1 — satisfied by inspection; nothing renamed or removed | AC21's family-set clause has no mechanical manifest test, but the diff renames and removes no metric family (`internal/health/labels.go` only adds `labelVersion`; no family constant changed), so the clause holds by construction. Command: `git diff bcd5bb0..HEAD -- internal/health/ \| grep -E '^-.*family[A-Z]'` → empty |
+| R1-13 | round 1 | minor | accepted@1 — established project practice, operational not balance | The `LAB_GAME_PROCESS_` compiled-in defaults (`true`/`30s`/`30s`/`5m`) live in `internal/config/process.go:69-76` as Go literals. `AGENTS.md` § *Code Style*'s balance-constant rule targets game tuning (stamina cap, step cost, shop rates, dice); the four optional-with-default classes already shipped (`Transport`, `Scheduler`, `Ingest`, `Health`) hold their defaults the same way. Command: `grep -n 'ClaimLimit:\|TaskTimeout:' internal/config/scheduler.go` |
+| R1-14 | round 1 | minor | accepted@1 — re-resolved locator, not a doc defect | Design § Approach sketches `(*app).serve(ctx) int`; the tree ships `serve(ctx, shutdownTimeout, stderr) int`. A prose sketch's argument list, not a design decision — no amendment owed. Command: `grep -n '(\*app).serve' ai-docs/plans/2026-09-10-cmd-bot-composition-root.design.md` |
