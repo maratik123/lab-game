@@ -78,7 +78,7 @@ _Updated: 2026-09-10 21:01_
 | AC2, AC3 | PASS | `ai-docs/process-lifecycle.md` carries the 14-row start-up table with a failure-mode column, and the migration policy in full |
 | AC4 | PASS | `go test -run 'TestAssemble_(MissingConfiguration\|UnreachableDatabase\|TelegramClientStep\|CanaryStep)' ./cmd/bot/` |
 | AC5, AC7 | PASS | `go test -run 'TestMigrate_ConcurrentApplyUnderSameLockIDAppliesOnce' ./internal/store/`; start-up order step 9 precedes the runners |
-| AC6, AC8 | PASS |
+| AC6, AC8 | PASS | `go test -run 'TestAssemble_AutoApplyDisabledWithPendingMigration' ./cmd/bot/`; the key is returned by `config.EnvKeys()` and documented in `.env.example`, which `TestEnvExample_MatchesLoaderAndEnvKeys` enforces |
 | AC9 | PASS | `go test -run 'TestAssemble_AutoApplyDisabledWithNoPendingMigrationSucceeds' ./cmd/bot/` — mutation-proven discriminating (self-review round 1, finding 3) |
 | AC10 | PASS | `go test -run 'TestMigrateOnly_' ./cmd/bot/` |
 | AC11 | PASS | `internal/store/migrations/00005_process_liveness.sql`; `go test -run 'TestMigrate_ProcessLivenessSeededWithNullInstant' ./internal/store/` |
@@ -86,9 +86,9 @@ _Updated: 2026-09-10 21:01_
 | AC13, AC15, AC16, AC17 | PASS | `go test -run 'TestAbsorbDowntime_' ./internal/scheduler/` (overdue shifted, none stored, within threshold, ledger untouched, concurrent-once) |
 | AC14 | PASS | `go test -run 'TestGuard_LivenessSourceCallsNoGoClock' ./internal/scheduler/` — AST guard with a proven-discriminating twin |
 | AC18 | PASS | `go test -run 'TestProcess_ObserveDowntimeSetsTheRestartGauges' ./internal/health/` |
-| AC19 | PASS |
+| AC19 | PASS | `go test -run 'TestAssemble_(MissingConfiguration\|UnreachableDatabase\|TelegramClientStep\|CanaryStep)' ./cmd/bot/` — every start-up step's failure stops the process naming that step, the canary included |
 | AC20 | PASS | `go test -run 'TestAssemble_UnwindReleasesTheHealthListenerOnLateFailure' ./cmd/bot/` — mutation-proven discriminating (self-review round 1, finding 2): a late failure's unwind actually frees the health listener's port |
-| AC21 | PASS |
+| AC21 | PASS | `go test -run 'TestServer_(Readyz\|MetricsPathServes200\|OtherPathIs404)' ./internal/health/` — readiness answers on a path distinct from the metrics path, and the metrics path's exposition is unchanged |
 | AC22 | PASS | `go test -run 'TestServer_Readyz\|TestReadiness_\|TestServe_DrainLatchesReadinessBeforeStoppingRunners' ./internal/health/ ./cmd/bot/` — the ordering clause is mutation-proven discriminating (self-review round 1, finding 1) |
 | AC23 | PASS | `go test -run 'TestNewProcess_' ./internal/health/` |
 | AC26 | PASS | `go test -run 'TestServe_RunnerIgnoresStop_BudgetExpires_ExitNonZero' ./cmd/bot/` — the earlier citation of `TestNewProcess_` was wrong: that set tests the identity collector and asserts nothing about the shutdown bound (self-review R1-8) |
@@ -145,7 +145,7 @@ code and re-running the suite, then restoring the file (`git status --porcelain`
 | 6 | cmd/bot/assemble.go:33 · internal/config/process.go:16 | minor | `"LAB_GAME_PROCESS_MIGRATE_ON_START"` is a duplicated string literal in two packages, and nothing keeps them in sync — a rename in `internal/config` leaves AC8's refusal naming a key that no longer exists, with every gate green. Export the name from the config package (or assert equality against `config.EnvKeys()` in a test). | ✅ Fixed |
 | 7 | cmd/bot/assemble.go:123 | minor | `unwind` discards every closer's error (`_ = a.closers[i].close(ctx)`) while `drain` reports each by name (`serve.go:120-125`). A listener or pool that failed to release during a start-up unwind is silent; the asymmetry is undocumented in the design. | ✅ Fixed |
 | 8 | progress.md:86 | minor | `\| AC23, AC26 \| PASS \| go test -run 'TestNewProcess_' ./internal/health/ \|` — AC26 is the whole-shutdown bound; `TestNewProcess_*` tests the process-identity collector and asserts nothing about it. AC26's real cover is `TestServe_RunnerIgnoresStop_BudgetExpires_ExitNonZero`, cited one row down under AC25/27/28. A recorded verification that names the wrong command is a claim, not a record. | ✅ Fixed |
-| 9 | design.md:1071 · progress.md:55 | minor | **Design Amendment trigger** — design doc `ai-docs/plans/2026-09-10-cmd-bot-composition-root.design.md:1071` states every T10a case runs "inside a `testing/synctest` bubble so the budget is virtual and exact"; the tree runs two of six there, by an owner ruling recorded only in this progress file's subtask-10 correction. Spawn the `design-writer` Subagent to amend T10a with the subject/instrument split the ruling fixed; recipe at `.claude/skills/task/SKILL.md` Step 11 fail-loud table. | ⬜ Open |
+| 9 | design.md:1071 · progress.md:55 | minor | **Design Amendment trigger** — design doc `ai-docs/plans/2026-09-10-cmd-bot-composition-root.design.md:1071` states every T10a case runs "inside a `testing/synctest` bubble so the budget is virtual and exact"; the tree runs two of six there, by an owner ruling recorded only in this progress file's subtask-10 correction. Spawn the `design-writer` Subagent to amend T10a with the subject/instrument split the ruling fixed; recipe at `.claude/skills/task/SKILL.md` Step 11 fail-loud table. | ✅ Fixed (design amended) |
 | 10 | cmd/bot/run_test.go:100 | nit | `flag := flag` is a pre-Go-1.22 loop-variable copy; `go.mod` declares `go 1.26.0`. | ✅ Fixed |
 
 **Note on findings 1–4.** They are one shape, not four: each is an AC whose *primary* clause is
@@ -198,6 +198,50 @@ invocation: `go build ./...`, `go vet ./...`, `golangci-lint run`, `golangci-lin
 `make comment-refs`, whole-module `go run ./cmd/testpg -- go test -count=1 ./cmd/bot/...`,
 `make test-race`.
 
+## Self-Review (Round 2)
+
+**Verdict:** REJECT
+
+**What was checked.** `AGENTS.md`; the spec's 36 ACs; the design's § Approach → *Shutdown*,
+§ Decomposition rows 10/12 and § Test Design T10a; the prompt's whole window
+`bcd5bb0..HEAD`, with the round-scoping rule applied — the register's `fixed@…` rows were
+re-examined only over the diff since their sha (`e9cccba`, `01aaf45`, `fcee508`) and its
+`accepted@1` rows were not re-raised. The code-bearing part of that residual window is
+`ee9639b..b07c9c6`: `cmd/bot/serve.go`, `cmd/bot/serve_test.go`, `ai-docs/process-lifecycle.md`,
+the design doc and one `learnings.md` entry, all read in full.
+
+Gates re-run against the shipped tree in this round, all green: `go build ./...`, `go vet ./...`,
+`golangci-lint run`, `golangci-lint fmt -d`, `make comment-refs`, `make file-limits`,
+`make import-guard`, `make test-race` (whole module, exit 0, no `FAIL` line in the saved log).
+`ai-docs/scripts/check-review-register.sh` PASS; `check-ac-shape.sh` / `check-spec-shape.sh` PASS.
+Panic audit over all 26 changed non-test `.go` files: zero hits, so no `ai-docs/panic-index.md`
+row is owed. AC greps re-run against the shipped artefact: AC1 (`grep -rn '^func init()'` over
+`cmd internal` minus tests) empty; AC34 (`make import-guard` in `AGENTS.md:58` and
+`.github/workflows/ci.yml:113`) present; AC35 (`grep -n 'go run ./cmd/bot' AGENTS.md`) shows the
+replaced claim at `:61-62`. Every register verifying command for a `fixed@…` row was executed and
+each reports what its row says.
+
+**Two register rows were re-verified by mutation rather than taken from the record** (§ *Patterns* 1
+— a claim of a fix is a claim): re-adding `exitCode = 1` to `drain`'s closer walk failed **both**
+subtests of `TestServe_FailingCloserReportedNotFatal` (`serve() = 1, want 0`), confirming OR-1;
+removing `exitCode = 1` from `drain`'s post-stop join loop failed
+`TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero` (`serve() = 0, want non-zero`), confirming
+RA-2. `cmd/bot/serve.go` was restored from a cp-backup after each and confirmed byte-identical;
+`git status --porcelain` is empty.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | cmd/bot/serve_test.go:16-18,120,129,215,221 · design.md:1095-1104 | major | **The amended T10a instrument rule is not implemented — the file still has one constant where the design binds two.** Commit `71226f4`, inside this diff window, wrote the rule into the design as a decision: this file "needs **two** of them, in a fixed order" — a `serve` shutdown budget "set deliberately large enough never to fire" and a give-up ceiling, where "**the ceiling is strictly greater than the budget it has to outlast, and they are two separately named constants for exactly that reason:** a single constant filling both roles makes the ceiling equal to the deadline it is supposed to survive, so a drain that is merely slower than expected trips the ceiling first and the case reports 'serve did not return in time' — withholding the exit code and the stderr that would have named the cause." The tree ships **one**: `const patience = 2 * time.Second` (:18) is passed to `a.serve` as the shutdown budget (:120, :215, :320, :353, :394) *and* used as the give-up ceiling (`case <-time.After(patience)`, :129 and :221). Ceiling == budget is the rejected shape verbatim. `patience`'s own doc comment (:16-17) already asserts the relationship the design requires — "well inside the test's own shutdownTimeout budget" — and is false of the constant it documents. Worse in the three synchronous cases (:320, :353, :394): they call `a.serve` on the test goroutine with **no** ceiling at all, so a hung drain there runs to the package test timeout reporting neither the exit code nor the captured stderr. That is the same diagnostic blindness this run already spent a full diagnosis cycle on in `smoke_test.go` (§ *Decisions log*, "Step 9 gate-run defect"). Fix: two named constants with the ceiling strictly greater, and a ceiling on the synchronous cases. | ⬜ Open |
+| 2 | cmd/bot/serve.go:108-114 · design.md:278-281 · ai-docs/process-lifecycle.md:38,283-286 | major | **Design Amendment trigger** — the shipped `drain` has a fourth non-zero exit cause that no live durable artefact lists. A runner that honoured `stop` and then returned a non-nil error during the join sets `exitCode = 1` on a drain that completed inside its budget with no second signal. The design's § Approach → *Shutdown*, amended in this window by `71226f4`, states the opposite **as a decision**: "The exit code carries one proposition and only one: whether the drain completed. Zero means it completed; non-zero means it was abandoned — the budget expired, a second signal arrived, or a runner returned on its own before any signal." `ai-docs/process-lifecycle.md:38` enumerates those same three causes for exit `1`, and its § 6 step 3 (:283-286) makes the join non-zero **only** when abandoned. AC28's first clause ("A completed graceful shutdown exits zero") reads against the code; `ai-docs/key-decisions.md` KD-33 ("the exit code is read off the runner contract rather than from a per-runner exception") reads for it. Three live artefacts disagree, and this is not a locator drift — it is a changed decision boundary. The branch is reachable in production: `Worker.Run` returns `Reconcile`'s wrapped error and `Liveness.Run` returns `Refresh`'s error once its tolerance is spent, either of which can land after `Stop`. `b07c9c6` added `TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero`, which locks the undocumented behaviour in (mutation-confirmed in this round: removing the branch gives `serve() = 0, want non-zero`). Resolution: **spawn the `design-writer` Subagent to amend** `ai-docs/plans/2026-09-10-cmd-bot-composition-root.design.md` § Approach → *Shutdown* so its exit-code enumeration names the join-error cause, then bring `ai-docs/process-lifecycle.md`'s exit-code table and § 6 step 3 into agreement — **or**, if the design's sentence is the intended rule, drop `exitCode = 1` from the join loop and re-shape the new test. Recipe at `.claude/skills/task/SKILL.md` Step 11 fail-loud table. | ⬜ Open |
+| 3 | progress.md:148 · progress.md:257 | minor | Round 1's table row 9 still reads `⬜ Open` while register row `R1-9` reads `fixed@01aaf45`, and R1-9's own verifying command confirms the fix (no match for `synctest.*bubble so the budget is virtual` in the design). `check-review-register.sh` gates only the ✅ Fixed→`open` direction, so this passes the hook while every downstream loop that reads the Status column by the `⬜ Open` substring still advertises a discharged finding as outstanding work. | ⬜ Open |
+| 4 | progress.md:81 · progress.md:89 | minor | `## AC Status` rows `\| AC6, AC8 \| PASS \|` and `\| AC19 \| PASS \|` carry no *Verifying command* cell at all — two-cell rows in a three-column table. A PASS with no command is exactly the claim the third column exists to replace (`AGENTS.md` § *Communication*: a recorded result is a claim, not a completion). Both ACs do have cover in the tree (`TestAssemble_AutoApplyDisabledWithPendingMigration` for AC8; the four `TestAssemble_*Step*` failure cases for AC19) — the record simply does not name it. AC21's blank cell is already carried by `R1-12` and is not re-raised here. | ⬜ Open |
+
+**Note on findings 1 and 2.** Both are the same round-trip failure in opposite directions: a design
+amendment landed in this window (`71226f4`) and the implementation was not brought with it (finding 1),
+while an implementation behaviour that predates the amendment was left out of the decision the
+amendment wrote down (finding 2). Neither is a coordinate that moved; both are a document and a
+binary that now say different things about the same rule.
+
 ## Review register
 
 | id | raised | severity | status | verifying command |
@@ -221,3 +265,9 @@ invocation: `go build ./...`, `go vet ./...`, `golangci-lint run`, `golangci-lin
 | OR-1 | owner ruling | major | fixed (uncommitted at authoring time) | `TestServe_FailingCloserReportedNotFatal` (both subtests) asserts a failing closer never flips the exit code; re-applying the removed `exitCode = 1` branch against this diff makes it FAIL on both subtests, restoring makes it PASS — both measured. `go test -count=1 -run TestServe_FailingCloserReportedNotFatal ./cmd/bot/` |
 | OR-2 | owner ruling | major | fixed (uncommitted at authoring time) | `grep -n 'a closer other than the liveness final write' ai-docs/process-lifecycle.md` — no match. |
 | OR-3 | owner ruling | major | fixed (uncommitted at authoring time) | `grep -n 'TestServe_OtherClosingFailure_IsFatal\|TestServe_FailingFinalLivenessWrite_ReportedNotFatal' cmd/bot/serve_test.go` — no match; `grep -n 'func TestServe_FailingCloserReportedNotFatal' cmd/bot/serve_test.go` — one match. |
+| R2-1 | round 2 | major | open | Design § Test Design T10a binds this file to two separately named instrument constants with the ceiling strictly greater than the budget. Today: `grep -c 'time\.Second\|time\.Millisecond' cmd/bot/serve_test.go` finds one package-level constant, `patience`, filling both roles. Fixed when `grep -nE '^const [a-z]+ = [0-9]+ \* time\.' cmd/bot/serve_test.go` reports two names and no `a.serve(` call is passed the same constant that its own `time.After(...)` ceiling uses. |
+| R2-2 | round 2 | major | open | `go test -count=1 -run TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero ./cmd/bot/` passes today, proving a completed drain exits non-zero when a stopped runner errors; `grep -n 'non-zero means it was abandoned' ai-docs/plans/2026-09-10-cmd-bot-composition-root.design.md` and `sed -n 38p ai-docs/process-lifecycle.md` both enumerate three causes that do not include it. Fixed when the test, the design sentence and the lifecycle exit-code table name the same set. |
+| R2-3 | round 2 | minor | open | `awk '/^## Self-Review \(Round 1\)/,/^## Design Amendment/' ai-docs/plans/2026-09-10-cmd-bot-composition-root.progress.md \| grep '^\| 9 \|'` must not report `⬜ Open` while `grep '^\| R1-9 ' …` reports `fixed@`. |
+| R2-4 | round 2 | minor | open | `grep -n '^\| AC' ai-docs/plans/2026-09-10-cmd-bot-composition-root.progress.md \| awk -F'\|' 'NF<5'` → two rows today (`AC6, AC8` and `AC19`); fixed when it reports only the already-accepted `AC21` row or none. |
+| R2-5 | round 2 | minor | accepted@2 — re-resolved locator, not a doc defect | Design § Decomposition row 10 lists `cmd/bot/drain.go` among the files; `drain` shipped as a method in `cmd/bot/serve.go` and no `drain.go` exists. A file-list coordinate, not a design decision, so no amendment is owed — re-resolved here to `cmd/bot/serve.go`. The citation carries no commit pin. Command: `ls cmd/bot/ \| grep -c '^drain\.go$'` → 0 |
+| R2-6 | round 2 | minor | accepted@2 — verified genuine by mutation, no defect | The register's two `fixed (uncommitted at authoring time)` rows were re-verified in this round rather than read: re-adding `exitCode = 1` to `drain`'s closer walk failed both subtests of `TestServe_FailingCloserReportedNotFatal` (OR-1); removing it from the post-stop join loop failed `TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero` (RA-2). `cmd/bot/serve.go` restored byte-identical after each. Command: `git status --porcelain -- cmd/bot/serve.go` → empty |
