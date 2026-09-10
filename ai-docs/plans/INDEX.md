@@ -15,6 +15,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | [2026-09-08 — comment reference ban: doc comments stay, outward references go](done/2026-09-08-comment-reference-ban.spec.md) | ✅ implemented | #68 | — |
 | [2026-09-08 — shared PostgreSQL test server: one server per run, containers as the fallback](done/2026-09-08-shared-postgres-test-server.spec.md) | ✅ implemented | #67 | the ledger core (2026-09-02) |
 | [2026-09-09 — health metrics and canaries: `/metrics`, update and scheduler lag, dual `getMe`](done/2026-09-09-health-metrics-canaries.spec.md) | ✅ implemented | #23 | #19 · #20 · #22 |
+| [2026-09-10 — `cmd/bot` composition root: wiring, migration policy, graceful shutdown](2026-09-10-cmd-bot-composition-root.spec.md) | 🟢 in progress | #24 | #18 · #19 · #20 · #22 · #23 |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 
