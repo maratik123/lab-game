@@ -60,6 +60,15 @@ type app struct {
 	healthSrv *health.Server
 	cfg       *config.Config
 
+	// client, router and taskRegistry are the constructed subsystems a
+	// test observes directly, independent of the runner/closer seam: the
+	// Telegram client every outbound call passes through, and the
+	// router/registry the ingest loop and the scheduler worker were each
+	// constructed from — never re-derived from what New was called with.
+	client       *tg.Client
+	router       *ingest.Router
+	taskRegistry *scheduler.Registry
+
 	signals chan os.Signal
 
 	runners []runner
@@ -270,6 +279,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	if err != nil {
 		return unwind(ctx, a, "scheduler", err)
 	}
+	a.taskRegistry = taskRegistry
 	worker, err := scheduler.New(scheduler.Options{
 		Pool:     pool,
 		Registry: taskRegistry,
@@ -296,6 +306,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	if err != nil {
 		return unwind(ctx, a, "telegram client", err)
 	}
+	a.client = client
 
 	// Step 12: ingest loop — the router is wired empty; this task
 	// declares that legal and adds no placeholder route.
@@ -303,6 +314,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	if err != nil {
 		return unwind(ctx, a, "ingest loop", err)
 	}
+	a.router = router
 	loop, err := ingest.New(ingest.Options{
 		Client:   client,
 		Pool:     pool,

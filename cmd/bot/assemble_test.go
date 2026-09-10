@@ -5,12 +5,17 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mymmrac/telego"
+
 	"github.com/maratik123/lab-game/internal/config"
+	"github.com/maratik123/lab-game/internal/ingest"
 	"github.com/maratik123/lab-game/internal/repotest"
+	"github.com/maratik123/lab-game/internal/scheduler"
 	"github.com/maratik123/lab-game/internal/testdb"
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
@@ -91,6 +96,33 @@ func TestAssemble_HappyPath(t *testing.T) {
 		if a.closers[i].name != name {
 			t.Errorf("closers[%d].name = %q, want %q (full: %v)", i, a.closers[i].name, name, closerNames(a))
 		}
+	}
+
+	// A message-delivering call to a chat outside the configured
+	// allowlist is refused, whatever code path issues it — driven
+	// through the assembled client itself, not a gate the test builds.
+	const disallowedChatID = -999999999
+	_, sendErr := a.client.API().SendMessage(context.Background(), &telego.SendMessageParams{
+		ChatID: telego.ChatID{ID: disallowedChatID},
+		Text:   "outside the allowlist",
+	})
+	if !errors.Is(sendErr, ingest.ErrChatRefused) {
+		t.Errorf("SendMessage to a disallowed chat: err = %v, want ingest.ErrChatRefused in its chain", sendErr)
+	}
+
+	// The assembled loop's router carries no route, and the assembled
+	// worker's registry no declaration — observed through what each
+	// was constructed from, not by re-asserting what New was called
+	// with.
+	if kinds := a.router.Kinds(); len(kinds) != 0 {
+		t.Errorf("router.Kinds() = %v, want none", kinds)
+	}
+	emptyRegistry, err := scheduler.NewRegistry()
+	if err != nil {
+		t.Fatalf("scheduler.NewRegistry() (reference empty registry): %v", err)
+	}
+	if !reflect.DeepEqual(a.taskRegistry, emptyRegistry) {
+		t.Errorf("taskRegistry = %#v, want it deeply equal to an empty registry (no declarations)", a.taskRegistry)
 	}
 }
 
