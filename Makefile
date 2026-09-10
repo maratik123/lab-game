@@ -36,9 +36,9 @@ GO_MAX_TEST_LINES ?= 1500
 CLIENTS ?= 1
 CONTENTION_PARALLEL ?= $(shell nproc 2>/dev/null || echo 4)
 
-.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet comment-refs test-db-up test-db-down test-fallback test-contention
+.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet comment-refs import-guard test-db-up test-db-down test-fallback test-contention
 
-verify: fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs
+verify: fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs import-guard
 
 fmt-check:
 	golangci-lint fmt -d
@@ -183,3 +183,10 @@ cover-ratchet:
 # a gated file carries an outward reference.
 comment-refs:
 	go run ./cmd/commentrefs
+
+# The transitive-dependency gate: a package named in the rule table's
+# non-test dependency graph never carries a forbidden module prefix —
+# today, that the bot process never reaches the container-runtime
+# module provisioning a test-only database depends on.
+import-guard:
+	go run ./cmd/importguard

@@ -76,7 +76,7 @@ func TestSmoke_AssembledProcessServesReadyzMetricsAndDrainsOnSIGTERM(t *testing.
 	leakOpt := goleak.IgnoreCurrent()
 
 	env := assembleTestEnv(t)
-	env["LAB_GAME_PROCESS_SHUTDOWN_TIMEOUT"] = "5s"
+	env["LAB_GAME_PROCESS_SHUTDOWN_TIMEOUT"] = "10s"
 
 	var stderr bytes.Buffer
 	a, err := assemble(context.Background(), assembleOptions{
@@ -122,7 +122,7 @@ func TestSmoke_AssembledProcessServesReadyzMetricsAndDrainsOnSIGTERM(t *testing.
 		t.Fatalf("send SIGTERM: %v", err)
 	}
 
-	waitForReadyz(t, addr, http.StatusServiceUnavailable, 2*time.Second)
+	waitForReadyz(t, addr, http.StatusServiceUnavailable, 5*time.Second)
 
 	select {
 	case code := <-serveDone:

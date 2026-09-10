@@ -110,6 +110,7 @@ jobs:
       - run: make build
       - run: make vet
       - run: make tidy-check
+      - run: make import-guard
 
   test:
     name: Test
