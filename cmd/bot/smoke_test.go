@@ -65,6 +65,15 @@ func (c *smokeCapture) all() []getUpdatesBody {
 // is exercised separately in run_test.go. Not parallel: it sends a
 // real signal to the test process, and the leak check is the last
 // assertion.
+// smokePatience is this file's patience budget: how long a poll waits
+// for a condition it expects to become true. It is an instrument, not a
+// subject — widening it changes no proposition this test asserts — and
+// it is sized for the whole-module race gate, where sixteen packages
+// contend for one Postgres server and the race detector stretches every
+// goroutine handoff. The drain's own bound stays the configured
+// shutdown budget, asserted separately below.
+const smokePatience = 30 * time.Second
+
 func TestSmoke_AssembledProcessServesReadyzMetricsAndDrainsOnSIGTERM(t *testing.T) {
 	capture := &smokeCapture{}
 	srv := tgtest.New(t, capture.handler())
@@ -94,7 +103,7 @@ func TestSmoke_AssembledProcessServesReadyzMetricsAndDrainsOnSIGTERM(t *testing.
 	go func() { serveDone <- a.serve(context.Background(), a.cfg.Process.ShutdownTimeout, &stderr) }()
 
 	addr := a.healthSrv.Addr()
-	waitForReadyz(t, addr, http.StatusOK, 5*time.Second)
+	waitForReadyz(t, addr, http.StatusOK, smokePatience)
 
 	// Step 1's own proof: /metrics carries a Go-runtime family, a
 	// process collector family, a pool family and every
@@ -108,7 +117,7 @@ func TestSmoke_AssembledProcessServesReadyzMetricsAndDrainsOnSIGTERM(t *testing.
 
 	// The assembled loop's getUpdates request carries the reserved
 	// sentinel substituted for an empty route set.
-	waitForCapture(t, capture, 5*time.Second)
+	waitForCapture(t, capture, smokePatience)
 	reqs := capture.all()
 	if len(reqs) == 0 {
 		t.Fatal("no getUpdates request observed")
@@ -122,7 +131,7 @@ func TestSmoke_AssembledProcessServesReadyzMetricsAndDrainsOnSIGTERM(t *testing.
 		t.Fatalf("send SIGTERM: %v", err)
 	}
 
-	waitForReadyz(t, addr, http.StatusServiceUnavailable, 5*time.Second)
+	waitForReadyz(t, addr, http.StatusServiceUnavailable, smokePatience)
 
 	select {
 	case code := <-serveDone:
@@ -133,7 +142,7 @@ func TestSmoke_AssembledProcessServesReadyzMetricsAndDrainsOnSIGTERM(t *testing.
 		if elapsed >= a.cfg.Process.ShutdownTimeout {
 			t.Errorf("serve took %s, want well under the %s shutdown budget", elapsed, a.cfg.Process.ShutdownTimeout)
 		}
-	case <-time.After(a.cfg.Process.ShutdownTimeout + 5*time.Second):
+	case <-time.After(a.cfg.Process.ShutdownTimeout + smokePatience):
 		t.Fatal("serve did not return within the shutdown budget plus slack")
 	}
 
