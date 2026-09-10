@@ -28,7 +28,7 @@ func guardWalkRoots(tb testing.TB) []string {
 	var paths []string
 	for _, sub := range []string{"cmd", "internal"} {
 		srcguard.WalkSubtree(tb, root+"/"+sub, func(path string) {
-			if srcguard.TestFilesOnly(path) {
+			if srcguard.NonTestFile(path) {
 				paths = append(paths, path)
 			}
 		})
@@ -214,7 +214,13 @@ func TestGuard_ScrapeAndLogCarryNoSentinelSecret(t *testing.T) {
 
 	srv := tgtest.New(t, tgtest.Success(nil))
 	env := assembleTestEnv(t)
-	env["LAB_GAME_BOT_TOKEN"] = tgtest.Token
+	// The fake server never validates the token it receives (it answers
+	// every request with the installed handler regardless of path), so
+	// the sentinel itself — not this package's own ordinary fake token —
+	// can be the token the process actually carries: only then does its
+	// absence from the scrape and the log test the bot-token half for
+	// real, rather than vacuously.
+	env["LAB_GAME_BOT_TOKEN"] = sentinelBotToken
 	// Splice the sentinel into an application_name query parameter on
 	// the already-provisioned schema DSN — Postgres accepts (and
 	// ignores, for auth purposes) an arbitrary application_name, so the

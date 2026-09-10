@@ -5,15 +5,23 @@ import (
 	"time"
 )
 
-// Environment variable names for the composition root's own process
-// tuning: the migration-apply policy, the whole-shutdown budget, the
-// liveness heartbeat cadence and the restart-hygiene downtime threshold.
-// Every one of these is optional: an absent value takes the compiled-in
-// default named alongside it below — the same optional-with-default
-// class Transport, Scheduler, Ingest and Health already established, and
-// the fifth such class this package now carries.
+// EnvProcessMigrateOnStart is the environment variable naming the
+// migrate-on-start policy. It is exported — unlike this file's other
+// three process keys — because the composition root's own migrations
+// step names it in a refusal message when the policy is disabled and a
+// migration is pending; a caller outside this package reads the literal
+// through this constant rather than carrying its own copy that could
+// drift out of sync with the key loadProcess actually reads.
+const EnvProcessMigrateOnStart = "LAB_GAME_PROCESS_MIGRATE_ON_START"
+
+// Environment variable names for the composition root's own remaining
+// process tuning: the whole-shutdown budget, the liveness heartbeat
+// cadence and the restart-hygiene downtime threshold. Every one of
+// these is optional: an absent value takes the compiled-in default
+// named alongside it below — the same optional-with-default class
+// Transport, Scheduler, Ingest and Health already established, and the
+// fifth such class this package now carries.
 const (
-	envProcessMigrateOnStart   = "LAB_GAME_PROCESS_MIGRATE_ON_START"
 	envProcessShutdownTimeout  = "LAB_GAME_PROCESS_SHUTDOWN_TIMEOUT"
 	envProcessLivenessInterval = "LAB_GAME_PROCESS_LIVENESS_INTERVAL"
 	envProcessDowntimeThresh   = "LAB_GAME_PROCESS_DOWNTIME_THRESHOLD"
@@ -25,7 +33,7 @@ const (
 // schedulerEnvKeys', ingestEnvKeys' and healthEnvKeys' rule.
 func processEnvKeys() []string {
 	return []string{
-		envProcessMigrateOnStart,
+		EnvProcessMigrateOnStart,
 		envProcessShutdownTimeout,
 		envProcessLivenessInterval,
 		envProcessDowntimeThresh,
@@ -87,7 +95,7 @@ func loadProcess(lookup Lookup) (*Process, error) {
 	var errs []error
 	p := defaultProcess()
 
-	if b, ok, err := lookupBool(lookup, envProcessMigrateOnStart); err != nil {
+	if b, ok, err := lookupBool(lookup, EnvProcessMigrateOnStart); err != nil {
 		errs = append(errs, err)
 	} else if ok {
 		p.MigrateOnStart = b

@@ -28,10 +28,6 @@ import (
 // now rather than after an unbounded hang.
 const pingTimeout = 5 * time.Second
 
-// envProcessMigrateOnStart is the environment variable naming the
-// migrate-on-start policy — the literal text an operator sets.
-const envProcessMigrateOnStart = "LAB_GAME_PROCESS_MIGRATE_ON_START"
-
 // runner is one of the long-running subsystems serve starts and drain
 // stops: the ingest loop, the scheduler worker, the liveness heartbeat.
 // name is what a failure message and a drain timeout report.
@@ -114,13 +110,20 @@ func (e *stepError) Unwrap() error {
 	return e.cause
 }
 
-// unwind walks a's closers from the last appended to the first,
-// ignoring each close's own error — a failure mid-unwind must not stop
-// the rest of the unwind — and returns the step/cause pair as a
-// *stepError. Called once assemble has decided to fail.
-func unwind(ctx context.Context, a *app, step string, cause error) (*app, error) {
+// unwind walks a's closers from the last appended to the first. A
+// failing closer is reported on stderr by name — the same
+// logStep drain itself uses for a shutdown closer failure — but never
+// stops the rest of the unwind: a listener or a pool that failed to
+// release during start-up is exactly the kind of operational fact an
+// operator needs on stderr, the same reasoning drain already applies to
+// every one of its own closer failures. unwind returns the step/cause
+// pair as a *stepError. Called once assemble has decided to fail.
+func unwind(ctx context.Context, a *app, stderr io.Writer, step string, cause error) (*app, error) {
 	for i := len(a.closers) - 1; i >= 0; i-- {
-		_ = a.closers[i].close(ctx)
+		c := a.closers[i]
+		if err := c.close(ctx); err != nil {
+			logStep(stderr, c.name, err)
+		}
 	}
 	return nil, &stepError{step: step, cause: cause}
 }
@@ -154,7 +157,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	// Step 2: configuration.
 	cfg, err := config.Load(opts.Lookup)
 	if err != nil {
-		return unwind(ctx, a, "configuration", err)
+		return unwind(ctx, a, opts.Stderr, "configuration", err)
 	}
 	a.cfg = cfg
 
@@ -165,11 +168,11 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	// Step 4: database.
 	poolCfg, err := pgxpool.ParseConfig(cfg.DSN.Reveal())
 	if err != nil {
-		return unwind(ctx, a, "database", err)
+		return unwind(ctx, a, opts.Stderr, "database", err)
 	}
 	pool, err := store.NewPool(ctx, poolCfg)
 	if err != nil {
-		return unwind(ctx, a, "database", err)
+		return unwind(ctx, a, opts.Stderr, "database", err)
 	}
 	a.pool = pool
 	a.closers = append(a.closers, closer{
@@ -183,7 +186,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	err = pool.Ping(pingCtx)
 	cancel()
 	if err != nil {
-		return unwind(ctx, a, "database", err)
+		return unwind(ctx, a, opts.Stderr, "database", err)
 	}
 
 	// Step 5: readiness — before the registry, since NewProcess takes
@@ -194,22 +197,22 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	// Step 6: metrics registry.
 	reg := health.NewRegistry()
 	if err := health.RegisterRuntime(reg); err != nil {
-		return unwind(ctx, a, "metrics registry", err)
+		return unwind(ctx, a, opts.Stderr, "metrics registry", err)
 	}
 	transportObs, err := health.NewTransportObserver(reg)
 	if err != nil {
-		return unwind(ctx, a, "metrics registry", err)
+		return unwind(ctx, a, opts.Stderr, "metrics registry", err)
 	}
 	schedulerObs, err := health.NewSchedulerObserver(reg)
 	if err != nil {
-		return unwind(ctx, a, "metrics registry", err)
+		return unwind(ctx, a, opts.Stderr, "metrics registry", err)
 	}
 	ingestObs, err := health.NewIngestObserver(reg)
 	if err != nil {
-		return unwind(ctx, a, "metrics registry", err)
+		return unwind(ctx, a, opts.Stderr, "metrics registry", err)
 	}
 	if _, err := health.NewPoolCollector(reg, pool.Stat); err != nil {
-		return unwind(ctx, a, "metrics registry", err)
+		return unwind(ctx, a, opts.Stderr, "metrics registry", err)
 	}
 	process, err := health.NewProcess(reg, health.ProcessOptions{ //nolint:contextcheck // labgame_ready's GaugeFunc derives its own bounded context per scrape, by design — it takes no ctx here
 		Version:   opts.Version,
@@ -217,7 +220,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		Ready:     ready.Ready,
 	})
 	if err != nil {
-		return unwind(ctx, a, "metrics registry", err)
+		return unwind(ctx, a, opts.Stderr, "metrics registry", err)
 	}
 
 	// Step 7: health listener.
@@ -227,10 +230,10 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		Ready:    ready.Ready,
 	})
 	if err != nil {
-		return unwind(ctx, a, "health listener", err)
+		return unwind(ctx, a, opts.Stderr, "health listener", err)
 	}
 	if err := healthSrv.Start(); err != nil { //nolint:contextcheck // Start binds a long-lived listener and takes no ctx by design — it outlives the assemble call that starts it
-		return unwind(ctx, a, "health listener", err)
+		return unwind(ctx, a, opts.Stderr, "health listener", err)
 	}
 	a.healthSrv = healthSrv
 	a.closers = append(a.closers, closer{name: "health listener", close: healthSrv.Shutdown})
@@ -238,15 +241,15 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	// Step 8: migrations.
 	if cfg.Process.MigrateOnStart {
 		if err := store.Migrate(ctx, pool, logger, store.WithAdvisoryLock(store.ProcessLockID)); err != nil {
-			return unwind(ctx, a, "migrations", err)
+			return unwind(ctx, a, opts.Stderr, "migrations", err)
 		}
 	} else {
 		pending, err := store.HasPendingMigrations(ctx, pool, logger)
 		if err != nil {
-			return unwind(ctx, a, "migrations", err)
+			return unwind(ctx, a, opts.Stderr, "migrations", err)
 		}
 		if pending {
-			return unwind(ctx, a, "migrations", fmt.Errorf("%s is disabled and migrations are pending", envProcessMigrateOnStart))
+			return unwind(ctx, a, opts.Stderr, "migrations", fmt.Errorf("%s is disabled and migrations are pending", config.EnvProcessMigrateOnStart))
 		}
 	}
 	ready.setMigrated()
@@ -258,11 +261,11 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		DowntimeThreshold: cfg.Process.DowntimeThreshold,
 	})
 	if err != nil {
-		return unwind(ctx, a, "restart hygiene", err)
+		return unwind(ctx, a, opts.Stderr, "restart hygiene", err)
 	}
 	downtime, err := liveness.AbsorbDowntime(ctx)
 	if err != nil {
-		return unwind(ctx, a, "restart hygiene", err)
+		return unwind(ctx, a, opts.Stderr, "restart hygiene", err)
 	}
 	process.ObserveDowntime(downtime.Gap, downtime.Shifted)
 	a.closers = append(a.closers, closer{
@@ -277,7 +280,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	// rule, rather than an early return from Worker.Run mid-life.
 	taskRegistry, err := scheduler.NewRegistry()
 	if err != nil {
-		return unwind(ctx, a, "scheduler", err)
+		return unwind(ctx, a, opts.Stderr, "scheduler", err)
 	}
 	a.taskRegistry = taskRegistry
 	worker, err := scheduler.New(scheduler.Options{
@@ -287,10 +290,10 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		Observer: schedulerObs,
 	})
 	if err != nil {
-		return unwind(ctx, a, "scheduler", err)
+		return unwind(ctx, a, opts.Stderr, "scheduler", err)
 	}
 	if err := worker.Reconcile(ctx); err != nil {
-		return unwind(ctx, a, "scheduler", err)
+		return unwind(ctx, a, opts.Stderr, "scheduler", err)
 	}
 
 	// Step 11: Telegram client.
@@ -304,7 +307,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		HTTPClient: opts.HTTPClient,
 	})
 	if err != nil {
-		return unwind(ctx, a, "telegram client", err)
+		return unwind(ctx, a, opts.Stderr, "telegram client", err)
 	}
 	a.client = client
 
@@ -312,7 +315,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	// declares that legal and adds no placeholder route.
 	router, err := ingest.NewRouter()
 	if err != nil {
-		return unwind(ctx, a, "ingest loop", err)
+		return unwind(ctx, a, opts.Stderr, "ingest loop", err)
 	}
 	a.router = router
 	loop, err := ingest.New(ingest.Options{
@@ -323,7 +326,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		Observer: ingestObs,
 	})
 	if err != nil {
-		return unwind(ctx, a, "ingest loop", err)
+		return unwind(ctx, a, opts.Stderr, "ingest loop", err)
 	}
 
 	// Step 13: canary.
@@ -336,17 +339,17 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		HTTPClient:   opts.HTTPClient,
 	})
 	if err != nil {
-		return unwind(ctx, a, "canary", err)
+		return unwind(ctx, a, opts.Stderr, "canary", err)
 	}
 	canary, err := health.NewCanary(reg, health.CanaryOptions{
 		Legs:     legs,
 		Interval: cfg.Health.CanaryInterval,
 	})
 	if err != nil {
-		return unwind(ctx, a, "canary", err)
+		return unwind(ctx, a, opts.Stderr, "canary", err)
 	}
 	if err := canary.Start(); err != nil { //nolint:contextcheck // Start begins a long-lived tick loop and takes no ctx by design — it outlives the assemble call that starts it
-		return unwind(ctx, a, "canary", err)
+		return unwind(ctx, a, opts.Stderr, "canary", err)
 	}
 	a.closers = append(a.closers, closer{name: "canary", close: canary.Shutdown})
 

@@ -75,11 +75,11 @@ func WalkSubtree(tb testing.TB, root string, fn func(path string)) {
 	}
 }
 
-// TestFilesOnly reports whether path is a non-test Go source file —
-// the filter a WalkSubtree caller applies when it wants the same
+// NonTestFile reports whether path is a non-test Go source file — the
+// filter a WalkSubtree caller applies when it wants the same
 // test-excluded scope PackageFiles already applies for a single
 // directory.
-func TestFilesOnly(path string) bool {
+func NonTestFile(path string) bool {
 	return strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go")
 }
 

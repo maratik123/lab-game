@@ -60,9 +60,9 @@ func TestWalkSubtree_SkipsGitAndTmp(t *testing.T) {
 	}
 }
 
-// TestTestFilesOnly_FiltersTestFiles pins the filter a WalkSubtree
+// TestNonTestFile_FiltersTestFiles pins the filter a WalkSubtree
 // caller applies to reach PackageFiles' own test-excluded scope.
-func TestTestFilesOnly_FiltersTestFiles(t *testing.T) {
+func TestNonTestFile_FiltersTestFiles(t *testing.T) {
 	t.Parallel()
 	cases := map[string]bool{
 		"a.go":      true,
@@ -70,8 +70,8 @@ func TestTestFilesOnly_FiltersTestFiles(t *testing.T) {
 		"a.txt":     false,
 	}
 	for path, want := range cases {
-		if got := srcguard.TestFilesOnly(path); got != want {
-			t.Errorf("TestFilesOnly(%q) = %v, want %v", path, got, want)
+		if got := srcguard.NonTestFile(path); got != want {
+			t.Errorf("NonTestFile(%q) = %v, want %v", path, got, want)
 		}
 	}
 }

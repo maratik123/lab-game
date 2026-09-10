@@ -33,7 +33,7 @@ func TestLoadProcess_DefaultMigrateOnStartIsTrue(t *testing.T) {
 func TestLoadProcess_ValuesParsed(t *testing.T) {
 	t.Parallel()
 	env := map[string]string{
-		envProcessMigrateOnStart:   "false",
+		EnvProcessMigrateOnStart:   "false",
 		envProcessShutdownTimeout:  "45s",
 		envProcessLivenessInterval: "10s",
 		envProcessDowntimeThresh:   "10m",
@@ -60,7 +60,7 @@ func TestLoadProcess_MigrateOnStartAcceptsEveryParseBoolSpelling(t *testing.T) {
 	t.Parallel()
 	trueSpellings := []string{"1", "t", "T", "TRUE", "true", "True"}
 	for _, v := range trueSpellings {
-		p, err := loadProcess(mapLookup(map[string]string{envProcessMigrateOnStart: v}))
+		p, err := loadProcess(mapLookup(map[string]string{EnvProcessMigrateOnStart: v}))
 		if err != nil {
 			t.Fatalf("loadProcess(%q): unexpected error: %v", v, err)
 		}
@@ -70,7 +70,7 @@ func TestLoadProcess_MigrateOnStartAcceptsEveryParseBoolSpelling(t *testing.T) {
 	}
 	falseSpellings := []string{"0", "f", "F", "FALSE", "false", "False"}
 	for _, v := range falseSpellings {
-		p, err := loadProcess(mapLookup(map[string]string{envProcessMigrateOnStart: v}))
+		p, err := loadProcess(mapLookup(map[string]string{EnvProcessMigrateOnStart: v}))
 		if err != nil {
 			t.Fatalf("loadProcess(%q): unexpected error: %v", v, err)
 		}
@@ -87,7 +87,7 @@ func TestLoadProcess_MalformedValuesRejected(t *testing.T) {
 		key  string
 		val  string
 	}{
-		{"malformed migrate-on-start", envProcessMigrateOnStart, "not-a-bool"},
+		{"malformed migrate-on-start", EnvProcessMigrateOnStart, "not-a-bool"},
 		{"malformed shutdown timeout", envProcessShutdownTimeout, "not-a-duration"},
 		{"non-positive shutdown timeout", envProcessShutdownTimeout, "0s"},
 		{"malformed liveness interval", envProcessLivenessInterval, "not-a-duration"},

@@ -4,18 +4,22 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"net"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mymmrac/telego"
 
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/ingest"
 	"github.com/maratik123/lab-game/internal/repotest"
 	"github.com/maratik123/lab-game/internal/scheduler"
+	"github.com/maratik123/lab-game/internal/store"
 	"github.com/maratik123/lab-game/internal/testdb"
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
@@ -211,6 +215,50 @@ func TestAssemble_AutoApplyDisabledWithPendingMigration(t *testing.T) {
 	}
 }
 
+// TestAssemble_AutoApplyDisabledWithNoPendingMigrationSucceeds asserts
+// the case distinct from the one above: auto-apply disabled AND no
+// migration pending starts the process normally. The schema is
+// pre-migrated directly, before assemble itself ever runs — exactly the
+// state an operator who applies migrations out of band leaves behind —
+// with LAB_GAME_PROCESS_MIGRATE_ON_START=false.
+func TestAssemble_AutoApplyDisabledWithNoPendingMigrationSucceeds(t *testing.T) {
+	t.Parallel()
+	dsn := testdb.SchemaDSN(t)
+
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatalf("parse DSN: %v", err)
+	}
+	pool, err := store.NewPool(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("new pool: %v", err)
+	}
+	if err := store.Migrate(context.Background(), pool, slog.New(slog.DiscardHandler)); err != nil {
+		t.Fatalf("pre-migrate: %v", err)
+	}
+	pool.Close()
+
+	srv := tgtest.New(t, tgtest.Success(nil))
+	env := assembleTestEnv(t)
+	env["LAB_GAME_DSN"] = dsn
+	env["LAB_GAME_PROCESS_MIGRATE_ON_START"] = "false"
+
+	var stderr bytes.Buffer
+	a, err := assemble(context.Background(), assembleOptions{
+		Lookup:     mapLookup(env),
+		Stderr:     &stderr,
+		HTTPClient: srv.Client(),
+	})
+	if err != nil {
+		t.Fatalf("assemble: %v (stderr: %s)", err, stderr.String())
+	}
+	t.Cleanup(func() { teardown(t, a) })
+
+	if err := a.readiness.Ready(context.Background()); err != nil {
+		t.Errorf("readiness after assemble: %v, want nil", err)
+	}
+}
+
 func TestAssemble_TelegramClientStepFailsOnPlaceholderToken(t *testing.T) {
 	t.Parallel()
 	env := assembleTestEnv(t)
@@ -232,6 +280,56 @@ func TestAssemble_TelegramClientStepFailsOnPlaceholderToken(t *testing.T) {
 	if se.step != "telegram client" {
 		t.Errorf("step = %q, want %q (full: %v)", se.step, "telegram client", err)
 	}
+}
+
+// TestAssemble_UnwindReleasesTheHealthListenerOnLateFailure asserts the
+// real clause a late start-up failure must satisfy: a failure at a step
+// after the health listener has bound leaves the listener's port free
+// again, not merely a *stepError naming the step. The address is
+// reserved and released first so it can be passed to assemble as a
+// fixed (non-ephemeral) health metrics address — an ephemeral ":0"
+// address never exposes the bound port back to the caller on a failed
+// assemble, since a is nil.
+func TestAssemble_UnwindReleasesTheHealthListenerOnLateFailure(t *testing.T) {
+	t.Parallel()
+	var lc net.ListenConfig
+	l, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve a port: %v", err)
+	}
+	addr := l.Addr().String()
+	if err := l.Close(); err != nil {
+		t.Fatalf("release the reserved port: %v", err)
+	}
+
+	env := assembleTestEnv(t)
+	env["LAB_GAME_HEALTH_METRICS_ADDR"] = addr
+	// A placeholder token fails at the telegram client step — Step 11,
+	// well after the health listener (Step 7) has already bound addr.
+	env["LAB_GAME_BOT_TOKEN"] = "changeme"
+
+	var stderr bytes.Buffer
+	a, err := assemble(context.Background(), assembleOptions{
+		Lookup: mapLookup(env),
+		Stderr: &stderr,
+	})
+	if err == nil {
+		teardown(t, a)
+		t.Fatal("assemble: expected an error")
+	}
+	var se *stepError
+	if !errors.As(err, &se) {
+		t.Fatalf("assemble error = %v, want a *stepError", err)
+	}
+	if se.step != "telegram client" {
+		t.Fatalf("step = %q, want %q (full: %v) — this test needs the failure to land after the health listener step", se.step, "telegram client", err)
+	}
+
+	l2, err := lc.Listen(context.Background(), "tcp", addr)
+	if err != nil {
+		t.Fatalf("port %s is still bound after unwind: %v — the health listener was not released", addr, err)
+	}
+	_ = l2.Close()
 }
 
 func TestAssemble_CanaryStepFailsOnMalformedCloudToken(t *testing.T) {

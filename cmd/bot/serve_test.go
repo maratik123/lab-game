@@ -133,6 +133,67 @@ func TestServe_SignalCleanStopExitZero(t *testing.T) {
 	}
 }
 
+// drainObservingRunner returns a runner whose stop records, into
+// *observed (guarded by mu), whether a's readiness was already latched
+// draining at the moment stop was called — before returning promptly
+// once stopped.
+func drainObservingRunner(a *app, mu *sync.Mutex, observed *bool, name string) runner {
+	stopCh := make(chan struct{})
+	var once sync.Once
+	return runner{
+		name: name,
+		run: func(ctx context.Context) error {
+			select {
+			case <-stopCh:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+		stop: func() {
+			mu.Lock()
+			*observed = a.readiness.draining.Load()
+			mu.Unlock()
+			once.Do(func() { close(stopCh) })
+		},
+	}
+}
+
+// TestServe_DrainLatchesReadinessBeforeStoppingRunners asserts the
+// ORDER drain's own doc comment names — readiness.draining is latched
+// before any runner.stop is called — by observing the latch from
+// inside a runner's own stop, not by re-checking the latch after serve
+// has already returned (which cannot distinguish "latched first" from
+// "latched last": both leave the latch set by the time serve returns).
+func TestServe_DrainLatchesReadinessBeforeStoppingRunners(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var observedDraining bool
+
+	a := &app{
+		readiness: newReadiness(nil),
+		signals:   make(chan os.Signal, 2),
+	}
+	a.runners = []runner{drainObservingRunner(a, &mu, &observedDraining, "ingest loop")}
+
+	done := make(chan int, 1)
+	go func() { done <- a.serve(context.Background(), patience, &bytes.Buffer{}) }()
+
+	a.signals <- syscall.SIGTERM
+
+	select {
+	case <-done:
+	case <-time.After(patience):
+		t.Fatal("serve did not return in time")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !observedDraining {
+		t.Error("runner.stop observed readiness.draining not yet latched — the latch must be set before any runner.stop is called")
+	}
+}
+
 // TestServe_RunnerIgnoresStop_BudgetExpires_ExitNonZero asserts a
 // duration — the drain must abandon exactly at the shutdown budget,
 // not merely "eventually" — so it runs inside a synctest bubble

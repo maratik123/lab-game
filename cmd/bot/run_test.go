@@ -97,7 +97,6 @@ func TestRun_UnknownSubcommand(t *testing.T) {
 func TestRun_HelpFlags(t *testing.T) {
 	t.Parallel()
 	for _, flag := range []string{"-h", "--help"} {
-		flag := flag
 		t.Run(flag, func(t *testing.T) {
 			t.Parallel()
 			var stderr, stdout bytes.Buffer
