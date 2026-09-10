@@ -35,10 +35,11 @@ func (s Secret) Reveal() string {
 // Config is lab-game's fully validated runtime configuration: the process
 // environment's secrets, runtime settings and file paths, plus the balance
 // file's decoded constants. Every field is populated by Load or Load
-// returns an error naming every rejected key. Transport and Scheduler are
-// the two exceptions: their fields are individually optional-with-default,
-// so an absent LAB_GAME_TG_ or LAB_GAME_SCHEDULER_ variable never fails
-// Load — every other field has no compiled-in fallback.
+// returns an error naming every rejected key. Transport, Scheduler, Ingest
+// and Health are the exceptions: their fields are individually
+// optional-with-default, so an absent LAB_GAME_TG_, LAB_GAME_SCHEDULER_,
+// LAB_GAME_INGEST_ or LAB_GAME_HEALTH_ variable never fails Load — every
+// other field has no compiled-in fallback.
 // Treat the returned value as read-only; Config is not defended against
 // mutation by the type system.
 type Config struct {
@@ -70,6 +71,10 @@ type Config struct {
 	// Ingest holds the update-ingest loop's long-poll, batch and retry tuning
 	// (LAB_GAME_INGEST_*), each field optional-with-default.
 	Ingest Ingest
+	// Health holds the health-metrics endpoint's listen address and the
+	// canary probes' cadence and cloud-leg configuration (LAB_GAME_HEALTH_*),
+	// each field optional-with-default.
+	Health Health
 }
 
 // Load reads and validates lab-game's whole configuration through lookup —
@@ -110,6 +115,11 @@ func Load(lookup Lookup) (*Config, error) {
 	}
 
 	ingest, err := loadIngest(lookup)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	health, err := loadHealth(lookup)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -155,6 +165,7 @@ func Load(lookup Lookup) (*Config, error) {
 		Transport:      *transport,
 		Scheduler:      *scheduler,
 		Ingest:         *ingest,
+		Health:         *health,
 	}, nil
 }
 

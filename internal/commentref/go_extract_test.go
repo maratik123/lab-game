@@ -2,6 +2,8 @@ package commentref
 
 import (
 	"testing"
+
+	"github.com/maratik123/lab-game/internal/repotest"
 )
 
 func TestExtractGo(t *testing.T) {
@@ -88,7 +90,7 @@ func TestExtractGo_ReportsSomething(t *testing.T) {
 // source rather than only fixtures.
 func TestExtractGo_WholeTree(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
+	root := repotest.Root(t)
 	files := gitLsFiles(t, root, "*.go")
 	if len(files) == 0 {
 		t.Fatal("git ls-files reported no .go files")

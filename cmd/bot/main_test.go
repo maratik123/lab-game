@@ -2,26 +2,12 @@ package main
 
 import (
 	"bytes"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/maratik123/lab-game/internal/config"
+	"github.com/maratik123/lab-game/internal/repotest"
 )
-
-// repoRootPath resolves rel against the repository root, derived from this
-// test file's own location — two directories below the root — rather than
-// os.Getwd, matching this module's own config-loading test helpers.
-func repoRootPath(t *testing.T, rel string) string {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("repoRootPath: runtime.Caller failed")
-	}
-	root := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
-	return filepath.Join(root, filepath.FromSlash(rel))
-}
 
 func mapLookup(m map[string]string) config.Lookup {
 	return func(key string) (string, bool) {
@@ -39,8 +25,8 @@ func validEnv(t *testing.T) map[string]string {
 		"LAB_GAME_DSN":              "postgres://user:pass@localhost/db",
 		"LAB_GAME_BOT_API_BASE_URL": "https://api.telegram.org",
 		"LAB_GAME_ALLOWED_CHAT_IDS": "-100123456789",
-		"LAB_GAME_BALANCE_PATH":     repoRootPath(t, "config/balance.yaml"),
-		"LAB_GAME_WORLD_PATH":       repoRootPath(t, "config/world"),
+		"LAB_GAME_BALANCE_PATH":     repotest.RootPath(t, "config/balance.yaml"),
+		"LAB_GAME_WORLD_PATH":       repotest.RootPath(t, "config/world"),
 	}
 }
 

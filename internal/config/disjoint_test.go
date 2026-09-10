@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/joho/godotenv"
+
+	"github.com/maratik123/lab-game/internal/repotest"
 )
 
 // recordingLookup wraps base, recording every key ever queried through it
@@ -36,7 +38,7 @@ func recordingLookup(base Lookup) (lookup Lookup, recorded func() []string) {
 // keys and values.
 func readEnvExampleKeys(t *testing.T) map[string]string {
 	t.Helper()
-	m, err := godotenv.Read(repoRootPath(t, ".env.example"))
+	m, err := godotenv.Read(repotest.RootPath(t, ".env.example"))
 	if err != nil {
 		t.Fatalf("godotenv.Read(.env.example): %v", err)
 	}
@@ -126,8 +128,8 @@ func rewriteExamplePaths(t *testing.T, example map[string]string) map[string]str
 	for k, v := range example {
 		out[k] = v
 	}
-	out[envBalancePath] = repoRootPath(t, filepath.ToSlash(example[envBalancePath]))
-	out[envWorldPath] = repoRootPath(t, filepath.ToSlash(example[envWorldPath]))
+	out[envBalancePath] = repotest.RootPath(t, filepath.ToSlash(example[envBalancePath]))
+	out[envWorldPath] = repotest.RootPath(t, filepath.ToSlash(example[envWorldPath]))
 	return out
 }
 

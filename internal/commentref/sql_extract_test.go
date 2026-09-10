@@ -1,6 +1,10 @@
 package commentref
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/maratik123/lab-game/internal/repotest"
+)
 
 func TestExtractSQL(t *testing.T) {
 	t.Parallel()
@@ -47,7 +51,7 @@ func TestExtractSQL(t *testing.T) {
 // no error.
 func TestExtractSQL_WholeTree(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
+	root := repotest.Root(t)
 	files := gitLsFiles(t, root, "*.sql")
 	if len(files) == 0 {
 		t.Fatal("git ls-files reported no .sql files")

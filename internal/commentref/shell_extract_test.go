@@ -1,6 +1,10 @@
 package commentref
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/maratik123/lab-game/internal/repotest"
+)
 
 func TestExtractShell(t *testing.T) {
 	t.Parallel()
@@ -68,7 +72,7 @@ func TestExtractShell_ReportsSomething(t *testing.T) {
 // repository and asserts no parse error.
 func TestExtractShell_WholeTree(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
+	root := repotest.Root(t)
 	files := gitLsFiles(t, root, "*.sh")
 	if len(files) == 0 {
 		t.Fatal("git ls-files reported no .sh files")

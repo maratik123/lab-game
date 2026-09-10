@@ -2,6 +2,8 @@ package config
 
 import (
 	"testing"
+
+	"github.com/maratik123/lab-game/internal/repotest"
 )
 
 // TestBalanceFile_LoadsAndAgrees is the tracked balance file's agreement
@@ -17,7 +19,7 @@ import (
 // test deliberately does not assert on their text.
 func TestBalanceFile_LoadsAndAgrees(t *testing.T) {
 	t.Parallel()
-	path := repoRootPath(t, "config/balance.yaml")
+	path := repotest.RootPath(t, "config/balance.yaml")
 	if _, err := loadBalance(path); err != nil {
 		t.Fatalf("loadBalance(%s): %v — the tracked balance file and the schema have drifted apart", path, err)
 	}

@@ -1,6 +1,10 @@
 package commentref
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/maratik123/lab-game/internal/repotest"
+)
 
 func TestExtractEnvExample(t *testing.T) {
 	t.Parallel()
@@ -47,7 +51,7 @@ func TestExtractEnvExample(t *testing.T) {
 // example environment file and asserts no error.
 func TestExtractEnvExample_TrackedFile(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
+	root := repotest.Root(t)
 	content := readRepoFile(t, root, ".env.example")
 	if _, err := ExtractEnvExample(content); err != nil {
 		t.Errorf("ExtractEnvExample(.env.example): %v", err)
