@@ -9,7 +9,9 @@ package testdb
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -121,4 +123,30 @@ func Schema(tb testing.TB) *pgxpool.Config {
 	cfg.MaxConns = schemaMaxConns
 
 	return cfg
+}
+
+// SchemaDSN creates a fresh schema exactly as Schema does — the same
+// drop-on-cleanup registration — and returns it as a connection string
+// rather than a *pgxpool.Config, for a caller outside this package (the
+// composition root's own pool construction) that takes a DSN. The
+// string carries both the search_path that isolates the schema and the
+// pool_max_conns cap Schema already gives every schema-scoped pool, so
+// a pool the caller builds from it lands inside the same
+// connection-count arithmetic Schema's own callers do, rather than
+// beside it.
+func SchemaDSN(tb testing.TB) string {
+	tb.Helper()
+
+	cfg := Schema(tb)
+	name := cfg.ConnConfig.RuntimeParams["search_path"]
+
+	u, err := url.Parse(baseDSN)
+	if err != nil {
+		tb.Fatalf("testdb: parse base DSN: %v", err)
+	}
+	q := u.Query()
+	q.Set("search_path", name)
+	q.Set("pool_max_conns", strconv.Itoa(schemaMaxConns))
+	u.RawQuery = q.Encode()
+	return u.String()
 }
