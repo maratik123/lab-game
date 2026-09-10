@@ -14,6 +14,7 @@ require (
 	github.com/shopspring/decimal v1.4.0
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
+	go.uber.org/goleak v1.3.0
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/sync v0.22.0
 	mvdan.cc/sh/v3 v3.14.1

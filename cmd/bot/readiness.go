@@ -2,19 +2,30 @@ package main
 
 import (
 	"context"
-	"errors"
 	"sync/atomic"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// readinessReason is a readiness-refusal reason, as a named string
+// constant rather than a package-level error var — this package
+// declares no package-level var beyond the link-time version string,
+// held structurally by a guard, so every sentinel here is a const
+// implementing error through a value-receiver method instead.
+type readinessReason string
+
+// Error implements error.
+func (r readinessReason) Error() string {
+	return string(r)
+}
+
 // Readiness reasons — never rendered to a probe response or a scrape;
 // the readiness-func contract the metrics and readiness listener
 // consumes keeps the underlying error out of both.
-var (
-	errNotReadyMigrating = errors.New("migrating")
-	errNotReadyDraining  = errors.New("draining")
-	errNotReadyDatabase  = errors.New("database unreachable")
+const (
+	errNotReadyMigrating = readinessReason("migrating")
+	errNotReadyDraining  = readinessReason("draining")
+	errNotReadyDatabase  = readinessReason("database unreachable")
 )
 
 // readiness is the one definition of "ready" this process exports
