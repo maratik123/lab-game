@@ -8,8 +8,8 @@ _Updated: 2026-09-10 14:26_
 **Last build:** not run
 **Issue:** #24
 **Spec:** ai-docs/plans/2026-09-10-cmd-bot-composition-root.spec.md
-**current_step:** Step 8 — subtask 2 of 15 complete
-**last_passed_gate:** go build/test/vet/lint GREEN | subtask 2 commit (this commit)
+**current_step:** Step 8 — subtask 3 of 15 complete
+**last_passed_gate:** go build/test/vet/lint GREEN (internal/store against real Postgres) | subtask 3 commit (this commit)
 **entry_args:** 24
 
 ## Next action
@@ -20,8 +20,8 @@ _Updated: 2026-09-10 14:26_
 
 - [x] 1. `internal/srcguard` — shared source-walk guard support
 - [x] 2. `internal/config` — the `LAB_GAME_PROCESS_` optional-with-default class
-- [ ] 3. `internal/store` — liveness migration, `MigrateOption`/`WithAdvisoryLock`, `ProcessLockID`, pending query  ← CURRENT
-- [ ] 4. `internal/scheduler` — `Liveness` (`AbsorbDowntime`, `Refresh`, `Run`, `Stop`)
+- [x] 3. `internal/store` — liveness migration, `MigrateOption`/`WithAdvisoryLock`, `ProcessLockID`, pending query
+- [ ] 4. `internal/scheduler` — `Liveness` (`AbsorbDowntime`, `Refresh`, `Run`, `Stop`)  ← CURRENT
 - [ ] 5. `internal/scheduler` — `(*Worker).Stop()`
 - [ ] 6. `internal/ingest` — `(*Loop).Stop()` + the `getUpdates`-scoped cancel
 - [ ] 7. `internal/health` — `ReadyFunc`, `ServerOptions`, `/readyz`, the `Process` collector
@@ -39,6 +39,7 @@ _Updated: 2026-09-10 14:26_
 - **Step 8**: groups are A=1–8, B=9–13 (both `code-writer`, model pinned by frontmatter), C=14–15 (`general-purpose`, inherit) — taken from the design's `## Handoff plan`, not re-derived.
 - **Subtask 1**: `internal/srcguard` — `PackageFiles`/`WalkSubtree`/`TestFilesOnly`/`ParseFile`/`ParseFiles`/`ImportPaths`/`WriteScratchFile`/`WriteScratchFileIn`. `internal/health` and `internal/ingest` guard plumbing (`walkGoFilesUnder`/`parseGoFile`/`importPaths`, `ingestNonTestFiles`/`walkIngestSource`/`parseIngestSource`) now delegate to it; every predicate unchanged. Commit 803e694. Comment-refs required removing bare-extension/example-path literals (`.go`, `_test.go`, `internal/ingest`, etc.) from doc comments — the gate is stricter than a first `make comment-refs` pass over already-committed content suggested, since the pre-commit hook runs against the newly staged content.
 - **Subtask 2**: `internal/config/process.go` — `Process` struct (`MigrateOnStart`, `ShutdownTimeout`, `LivenessInterval`, `DowntimeThreshold`), `processEnvKeys()`, `defaultProcess()`, `loadProcess()`, all four `LAB_GAME_PROCESS_*` keys with the design's defaults (`true`, `30s`, `30s`, `5m`). Added `lookupBool` to `transport.go`'s lookup-helper family. Wired into `EnvKeys()`, `Config.Process` and `Load` in `config.go`/`env.go`; `.env.example` gained the four rows. Every existing disjointness/manifest test (`TestEnvExample_MatchesLoaderAndEnvKeys`, `TestLoad_ExampleEnvironmentSucceeds`) covers the new class automatically.
+- **Subtask 3**: `internal/store/migrations/00005_process_liveness.sql` — the `process_liveness` guarded singleton (NULL-seeded `seen_at`), the `ingest_offset` shape. `migrate.go` gained `MigrateOption`/`WithAdvisoryLock(id)` (goose `lock.NewPostgresSessionLocker`/`WithLockID`), `ProcessLockID = lock.DefaultLockID`, and `HasPendingMigrations` (`Provider.HasPending`, which goose documents as ignoring a configured locker). Updated `migrate_test.go`'s exact base-table set (+`process_liveness`) and the re-apply `goose_db_version` count (5→6, one row per migration file plus goose's own version-0 bootstrap row, now 6 files). New `migrate_process_test.go`: NULL-seed assertion, singleton-CHECK refusal, `HasPendingMigrations` true→false across `Migrate`, `HasPendingMigrations` unblocked by a held advisory lock, and two concurrent `Migrate` calls under one shared **test-local** lock id applying the migration set exactly once (never `ProcessLockID`, which is deliberately database-wide). `go mod tidy` confirmed no `go.mod`/`go.sum` delta (`goose/v3/lock` is already part of the existing goose dependency). Full `internal/store` suite green against a real Postgres container.
 
 ## Key discoveries (don't re-investigate)
 
