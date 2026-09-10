@@ -25,7 +25,22 @@ These values carry the whole design:
   shutdown order is written down.** `assemble` appends an entry the moment a step in the order below
   takes something that has to be given back — the signal registration, the pool, the health
   listener, the liveness row's final write, the canary — and nothing else in this design writes that
-  list. The unwind of a failed start-up (AC20) and the drain's ordered stop (AC25) are then the same
+  list. **Decision: an entry is appended only after the call that acquires its resource has
+  returned nil, never before it.** For the pool that call is the constructor, so a failed `Ping`
+  still unwinds the pool the constructor handed back; for the health listener and the canary it is
+  `Start`, which is what binds the listener and what begins the canary's ticking — the
+  constructors produce neither
+  [measured f6d0c28 · go doc ./internal/health Server.Start → "Start binds the listener synchronously, returning a bind error before spawning the serve goroutine"; go doc ./internal/health Canary.Start → "Start begins ticking: the first probe fires immediately, and one more fires per Interval thereafter, until Shutdown."].
+  So a failure *at* step 7 or step 13 does not unwind that step's own resource, and the table's
+  last column says exactly that. The alternative — appending before `Start` and suppressing the
+  close error an unstarted value returns — is rejected: both entry points refuse an unstarted
+  value with an error rather than panicking
+  [measured f6d0c28:internal/health/server.go:109 · sed -n '109p' internal/health/server.go → "		return errors.New(\"health: server not started\")"]
+  [measured f6d0c28:internal/health/canary.go:248 · sed -n '248p' internal/health/canary.go → "		return errors.New(\"health: canary not started\")"],
+  so that shape would print a manufactured `not started` beside the real bind error under the
+  "a `close` that returns an error is reported by name" rule below, and suppressing it would mean
+  matching another package's error text. The unwind of a failed start-up (AC20) and the drain's
+  ordered stop (AC25) are then the same
   list walked backwards rather than two hand-maintained parallel orders: the start-up table's last
   column becomes a consequence of the data structure instead of a claim beside it, and `serve`'s
   ordered shutdown is drivable by a test that hands an `app` fake closers (§ Test Design T10a).
@@ -37,7 +52,9 @@ These values carry the whole design:
   entry receives is the drain's bounded one, so no close can outlast the budget, and a `close` that
   returns an error is reported by name.
 - **`readiness`** — the `migrated` and `draining` latches plus the pool. It is the *one* definition
-  AC22 asks for, consumed by both the HTTP path and the metrics gauge.
+  AC22 asks for, consumed by both the HTTP path and the metrics gauge. Each latch has exactly one
+  writer and is one-way: `migrated` is set by start-up step 8, `draining` by `drain`'s **first**
+  action, ahead of every stop and every close (§ *Shutdown*).
 
 Entry points:
 
@@ -86,13 +103,13 @@ way out (AC20).
 | 4 | database | `pgxpool.ParseConfig` over the DSN, `store.NewPool`, then one `Ping` bounded by `pingTimeout` — a named constant in `cmd/bot`, **5s**, not a configuration key: a database that has not answered a trivial round trip in that long is not one this process can serve against, and the all-fatal rule wants the failure now rather than after an unbounded hang; retrying a cold host is the supervisor's job, which the spec defers | an unparsable DSN; a database that does not answer inside `pingTimeout` | `database` | the pool, the signal registration |
 | 5 | readiness | the `readiness` value: both latches unset, over the pool step 4 built. It is constructed **before** the registry because `NewProcess` takes the `Ready` func the `labgame_ready` gauge calls, and that func is this value's method | none | — | — |
 | 6 | metrics registry | `health.NewRegistry`, `RegisterRuntime`, the transport, scheduler and ingest observers, `NewPoolCollector`, `NewProcess` over the readiness value step 5 built | a family the registry refuses | `metrics registry` | the pool, the signal registration |
-| 7 | health listener | `health.NewServer(ServerOptions{Addr, Gatherer, Ready})`, then `Start` | a nil option field; an address already in use — `Start` binds synchronously and returns the bind error rather than losing it on a goroutine [measured f33b2bf:internal/health/server.go:54-57 · sed -n '54,57p' internal/health/server.go → "// Start binds the listener synchronously, returning a bind error before", "// spawning the serve goroutine — so a bind failure is always reported", "// through a returned error, never discovered later on a background", "// goroutine. Returns an error rather than panicking on a second call."] | `health listener` | the listener, the pool, the signal registration |
+| 7 | health listener | `health.NewServer(ServerOptions{Addr, Gatherer, Ready})`, then `Start` | a nil option field; an address already in use — `Start` binds synchronously and returns the bind error rather than losing it on a goroutine [measured f33b2bf:internal/health/server.go:54-57 · sed -n '54,57p' internal/health/server.go → "// Start binds the listener synchronously, returning a bind error before", "// spawning the serve goroutine — so a bind failure is always reported", "// through a returned error, never discovered later on a background", "// goroutine. Returns an error rather than panicking on a second call."] | `health listener` | the pool, the signal registration |
 | 8 | migrations | with auto-apply on, `store.Migrate` under `WithAdvisoryLock`; with it off, `HasPendingMigrations` plus a refusal naming the disabling key when anything is pending; then the `migrated` latch | a migration that fails to apply; auto-apply off with a migration pending (AC8) | `migrations` | the listener, the pool, the signal registration |
 | 9 | restart hygiene | `scheduler.NewLiveness`, `AbsorbDowntime`, and `Process.ObserveDowntime` over what it returns | the transaction fails | `restart hygiene` | the listener, the pool, the signal registration |
 | 10 | scheduler | `scheduler.New` over the empty registry, then `Reconcile` | an option the constructor refuses; a reconcile that fails | `scheduler` | the final liveness write, the listener, the pool, the signal registration |
 | 11 | telegram client | `ingest.NewPoolGate(cfg.AllowedChatIDs, pool)` — the package's own documented wiring shape, taking the pool step 4 built, which is why the gate is constructed here and not before it [measured ad410c3:internal/ingest/gate.go:75-77 · sed -n '75,77p' internal/ingest/gate.go → "// NewPoolGate builds a Gate whose PlayerLookup reads pool directly — the", "// wiring shape this package uses: gate, then client, then loop.", "func NewPoolGate(allowedChatIDs []int64, pool *pgxpool.Pool) *Gate {"] — then `tg.New` over the token, the base URL, that gate, the transport tuning and the transport observer. `NewGate` with a hand-supplied lookup is **not** used: its `Gate` dereferences the lookup on the first non-allowlisted destination with no nil guard, so a nil there is a production panic against a zero-row panic index [measured ad410c3:internal/ingest/gate.go:119 · sed -n '119p' internal/ingest/gate.go → "	exists, err := g.lookup.PlayerExists(ctx, id)"] | an option the constructor refuses — including a token telego's own format check rejects, which is what the example file's placeholder is [measured f33b2bf:.env.example:19 · sed -n '19p' .env.example → "LAB_GAME_BOT_TOKEN=changeme"; go doc github.com/mymmrac/telego.ErrInvalidToken → "ErrInvalidToken bot token is invalid according to token regexp"] | `telegram client` | the final liveness write, the listener, the pool, the signal registration |
 | 12 | ingest loop | `ingest.New` over the client, the pool, the empty router and the ingest observer | an option the constructor refuses | `ingest loop` | the final liveness write, the listener, the pool, the signal registration |
-| 13 | canary | `health.NewLegs` with the process HTTP client, `NewCanary`, then `Start` | a leg option the constructor refuses; a canary already started | `canary` | the canary, the final liveness write, the listener, the pool, the signal registration |
+| 13 | canary | `health.NewLegs` with the process HTTP client, `NewCanary`, then `Start` | a leg option the constructor refuses; a canary already started | `canary` | the final liveness write, the listener, the pool, the signal registration |
 | 14 | runners | the `[]runner` values — ingest loop, scheduler worker, liveness heartbeat — constructed here, started by `serve` | none | — | — |
 
 Three of those orderings are load-bearing rather than tidy:
@@ -142,8 +159,9 @@ Phases:
 
 - **`assemble(ctx, opts) (*app, error)`** — register the signal channel, construct everything, and
   start the subsystems whose start can fail or has an external effect (the health listener, then the
-  canary), appending a `closer` at each step that takes something back. On any failure it walks the
-  closers it has appended so far **backwards**, then returns the error naming the step. That is
+  canary), appending a `closer` once a step has taken something that must be given back. On any
+  failure it walks the closers it has appended so far **backwards**, then returns the error
+  naming the step. That is
   AC20, and it is the closer list that implements it — one traversal, not a shutdown call per
   failure site, which is why the table's last column can be read off the list rather than kept in
   step with it by hand. The one entry whose close is not a release is the liveness row's final
@@ -151,9 +169,10 @@ Phases:
   in effect, and the alternative — a second, unwind-only list — would reintroduce exactly the
   parallel ordering this seam removes.
 - **`(*app).serve(ctx) int`** — start the runners, wait on `app`'s registered signal channel or the
-  first runner return, drain, walk the closers backwards. The channel is a field of `app` rather
-  than a parameter, because it is the registration `assemble` made and the closer list already owns;
-  a test drives the same field (§ Test Design T10a).
+  first runner return, drain — which begins by latching `readiness.draining` — then walk the
+  closers backwards. The channel is a field of `app` rather than a parameter, because it is the
+  registration `assemble` made and the closer list already owns; a test drives the same field
+  (§ Test Design T10a).
 
 Every failure at either phase is fatal: a message on stderr naming the step and the cause, a
 non-zero exit, nothing on stdout. The canaries are included with no exception, which is the owner's
@@ -241,7 +260,14 @@ first error, while the decision to begin the drain stays in `serve`, where AC25'
 `errgroup.WithContext` would instead cancel the siblings the moment one returns, aborting exactly
 the in-flight work the drain exists to fund.
 
-**The drain has one written order and it is the closer list, backwards.** `drain` calls each
+**The drain has one written order, it begins with the readiness latch, and the rest of it is the
+closer list backwards.** `drain`'s **first** action — before any `runner.stop`, and so before
+anything else in the sequence — is setting `readiness.draining`. The placement is load-bearing
+rather than tidy: the health listener is itself a closer, so it keeps serving throughout the
+drain, and a latch set anywhere after the runner join would leave `/readyz` answering 200 while
+polling had already stopped. AC22's "not ready from the moment shutdown begins" is therefore a
+property of *where* the latch is set rather than of the readiness definition alone, and § Test
+Design T10a's ordered log asserts it in that position. `drain` then calls each
 `runner.stop`, joins the group (cancelling the run context first if the budget expired or a second
 signal arrived), and only then walks `app.closers` from the last appended to the first: the canary,
 the liveness row's final write, the health listener, the pool, the signal deregistration. That is
@@ -321,6 +347,32 @@ artefact to build and ship. `cmd/testpg` already establishes argv handling in a 
 `run(argv, …)` signature in this module
 [measured 71ce0e4:cmd/testpg/run.go:73 · sed -n '73p' cmd/testpg/run.go → "func run(argv []string, lookup envLookup, sm seam, stdout, stderr io.Writer) int {"].
 `bot` needs no flags, so the dispatch is a `switch` over `argv`, not a `FlagSet`.
+
+**Decision: `bot migrate` does not register the signals, and the default disposition is the right
+answer for a one-shot command.** Step 1 of the serving order registers them because a `SIGTERM`
+arriving mid-assembly must be *buffered* for a `serve` that will read it; this path has no
+`serve`, no runner set and nothing to drain, so a registration here would have no reader — and a
+registration with no reader does not delay a signal, it swallows it: `Notify` disables the
+default behaviour and delivers to the channel instead
+[measured f6d0c28 · go doc os/signal → "Notify disables the default behavior for a given set of asynchronous signals and instead delivers them over one or more registered channels."],
+and the delivery never blocks
+[measured f6d0c28 · go doc os/signal.Notify → "Package signal will not block sending to c: the caller must ensure that c has sufficient buffer space to keep up with the expected signal rate."],
+so an operator's `Ctrl-C` would become a no-op for as long as the lock wait runs and the operator
+would escalate to the `SIGKILL` that the default disposition delivers immediately and honestly.
+The lock wait is the same window the serving path's step 8 can sit in — this command passes the
+same `store.ProcessLockID`, over goose's retry window § *Migration policy* measures — so the
+window is real; what differs is that dying inside it costs nothing here. Every migration in this
+package runs inside a transaction, goose's default, because none carries the annotation that opts
+out
+[measured f6d0c28 · grep -rn 'NO TRANSACTION' internal/store/migrations/*.sql || echo "no match" → "no match"]
+[measured f6d0c28 · sed -n '298p' "$(go env GOMODCACHE)"/github.com/pressly/goose/v3@v3.27.3/README.md → "By default, all migrations are run within a transaction. Some statements like `CREATE DATABASE`,"],
+so a killed process rolls back the migration in flight and leaves the applied set consistent; the
+lock is session-level and dies with the connection
+[measured f6d0c28 · go doc github.com/pressly/goose/v3/lock.SessionLocker → "SessionLocker is the interface to lock and unlock the database for the duration of a session. The session is defined as the duration of a single connection and both methods must be called on the same connection."],
+so nothing survives to block the next run; and migrations are forward-only here — no migration in
+this package carries a down section, as § *Restart hygiene* measures — so the operator's answer
+is to run the command again. The serving path is unaffected — its migration step runs under
+the registration step 1 made.
 
 ### Restart hygiene lives in `internal/scheduler`
 
@@ -464,9 +516,13 @@ Families, under the module's one prefix
 | `labgame_restart_shifted_tasks` | gauge | `Downtime.Shifted` |
 
 `labgame_start_time_seconds` is exported rather than left to the client library's own
-`process_start_time_seconds`, for two reasons: that one is the OS process start read from `/proc`
-and is absent on platforms with no procfs, and this one is the instant *this* module began
-assembling, which is what an operator correlates with a deploy.
+`process_start_time_seconds`, for two reasons. That one comes from the process collector
+`RegisterRuntime` installs
+[measured f6d0c28:internal/health/registry.go:58 · sed -n '58p' internal/health/registry.go → "	if err := reg.Register(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{})); err != nil {"],
+which collects nothing at all outside a Linux-style procfs and Windows
+[measured f6d0c28 · go doc github.com/prometheus/client_golang/prometheus/collectors.NewProcessCollector → "The collector only works on operating systems with a Linux-style proc filesystem and on Microsoft Windows. On other operating systems, it will not collect any metrics."].
+And this one is the instant *this* module began assembling, which is what an operator correlates
+with a deploy rather than with the moment the kernel started the binary.
 
 `version` is not in the label ceiling today, so the ceiling gains it
 [measured 71ce0e4:internal/health/labels.go:12,20,24 · sed -n '12p;20p;24p' internal/health/labels.go → "	labelMethod  = \"method\"", "	labelState   = \"state\"", "var allowedLabelNames = []string{"].
@@ -775,6 +831,14 @@ marked with its implementor model and effort below. **(h)** 3 groups, within the
   `make test-contention`'s concurrent runs.** Mitigation: the metrics address is configured as
   `127.0.0.1:0` and the bound address is read back from the assembled value, so no port is ever
   guessed — [derived → the smoke test (T12b)].
+- **Subtask 13 modifies `.github/workflows/ci.yml`, which binds the `actionlint` AXIOM to that
+  subtask's commit.** `actionlint` MUST pass before `git add` on any modified workflow file, at
+  the same standing as `go build ./...`
+  [measured f6d0c28:AGENTS.md:75 · sed -n '75p' AGENTS.md → "> **AXIOM — `actionlint` MUST pass before `git add` on any modified `.github/workflows/*.yml`; `shellcheck` MUST pass before `git add` on any modified `*.sh`.**"].
+  It is named here rather than left to be rediscovered mid-group: every other gate this section
+  enumerates is Go-side, and subtask 13's workflow edit is the one diff in this task that no Go
+  gate reaches. Mitigation: the group-B implementor runs `actionlint` on the changed workflow file
+  before staging it — [derived → subtask 13's own gate run at commit time].
 - **The project holds zero production panics and the index is empty**
   [measured 71ce0e4:ai-docs/panic-index.md · tail -1 ai-docs/panic-index.md → "| — | — | — |"].
   Nothing in this design adds a panicking call: `main` exits non-zero, which needs no row, and every
@@ -980,7 +1044,16 @@ prose the repository's own link, citation and shape gates check.
   [derived → AC19]; the example file's placeholder bot token → the Telegram-client step named
   [derived → AC19, AC35]; auto-apply disabled with a migration pending → both the disabling key and
   the pending state named [derived → AC8]; auto-apply disabled with nothing pending → assembly
-  succeeds [derived → AC9]; a failure at a step after the listener bound → the error names that step
+  succeeds [derived → AC9]; a non-empty cloud-canary token that telego's format check rejects — the
+  value the example file carries
+  [measured f6d0c28:.env.example:165 · sed -n '165p' .env.example → "LAB_GAME_HEALTH_CANARY_CLOUD_TOKEN=changeme"] —
+  is refused by the leg builder, which builds the cloud leg exactly when that token is non-empty
+  [measured f6d0c28 · go doc ./internal/health NewLegs → "NewLegs builds the own-instance leg and, when CloudToken is non-empty, the cloud reference leg — each leg's own credential paired with its own endpoint, never swapped."],
+  so `assemble` fails at the **canary** step: stderr names that step, the exit is non-zero, stdout
+  is empty and nothing serves — no degraded start. It is the case AC19's canary clause asks for,
+  the owner's round-1 answer that a canary failure keeps the bot down until the operator fixes the
+  credential; without it that clause's only cover is the generic post-listener case that follows
+  [derived → AC19]; a failure at a step after the listener bound → the error names that step
   **and** the listener's port is free again, which is how "the started subsystems were shut down" is
   observed, the walk being the closer list backwards rather than a per-failure shutdown call
   [derived → AC20].
@@ -1007,9 +1080,13 @@ prose the repository's own link, citation and shape gates check.
   fake runner returns on its own with **no** signal sent → the same drain runs in the same order,
   that runner's name and its error reach stderr, and the exit code is non-zero [derived → the
   runner-exit rule § Approach → *Shutdown* fixes, under AC26's budget]; the shutdown order is
-  asserted by recording each fake's stop and each closer's call into one ordered log — runners
-  stopped, runners joined, then the closer list backwards: canary, final liveness write, listener,
-  pool, signal deregistration [derived → AC25]; and, because that order is the reverse of the order
+  asserted by recording the draining latch, each fake's stop and each closer's call into one
+  ordered log — **the draining latch first**, then runners stopped, runners joined, then the
+  closer list backwards: canary, final liveness write, listener, pool, signal deregistration
+  [derived → AC22, AC25]; each fake's `stop` and each fake `closer` additionally records what the
+  readiness value answered at the moment it ran, so a latch set after the runner join fails this
+  case through a stop that observed "not draining" rather than through a separate assertion
+  nothing orders [derived → AC22]; and, because that order is the reverse of the order
   `assemble` appended the entries in, the same case asserts the log is exactly the reverse of the
   list it was handed rather than a hand-written expected sequence [derived → AC20, AC25]; a stopped
   runner returning an error is reported with its own name; a failing final liveness write is reported
