@@ -8,7 +8,7 @@ _Updated: 2026-09-10 19:27_
 **Last build:** PASS
 **Issue:** #24
 **Spec:** ai-docs/plans/2026-09-10-cmd-bot-composition-root.spec.md
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** golangci-lint run | 2026-09-10T17:10:13Z | c345f64
 **entry_args:** 24
 

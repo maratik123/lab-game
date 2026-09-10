@@ -443,3 +443,10 @@ wrong-surface text by message twelve.
 **at:** 27c9194
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-10 — process — left my own uncommitted write in the tree while a delegate was live and committing the same file
+**What happened:** At the Step 9 boundary I rewrote the progress file's `current_step`, `last_passed_gate` and the whole `AC Status` table, and did not commit them. A `code-writer` delegate was still live on the same branch, finishing a diagnosis I had sent it; when it committed its own append-only Decisions-log line it staged the progress file and my three uncommitted edits rode into its commit. Nothing was lost and the content is correct, but a commit whose subject is "record the smoke-test draining-latch diagnosis" now also carries another step's boundary write and its acceptance table, and the branch is already pushed, so the attribution is not worth a history rewrite to repair.
+**Rule:** The delegation hand-off rule — leave the index clean or your staged work lands in the delegate's commit — is not only about the index and not only about the moment of spawning. It binds for as long as a delegate is live on the branch, and it covers the working tree, because a delegate that runs `git add` on a shared file picks up whatever is sitting in it. The progress file is the file every delegate writes, so it is the one most likely to collide: commit a boundary write before handing control back, not after the delegate returns.
+**at:** d7dcc90
+**Kind:** correction
+**Escalated?** no
