@@ -3,9 +3,6 @@
 **Issue:** #24
 **Date:** 2026-09-10
 
-Every `[measured …]` tag below pins commit `71ce0e4`, taken with `git rev-parse --short HEAD`
-in the same turn as every read this document cites.
-
 ## Approach
 
 ### The shape
@@ -40,16 +37,39 @@ existing contract, kept
 
 ### Start-up: one written order, all-fatal, unwinding
 
-The order below is the artefact AC2 requires; it lands in a new page, `ai-docs/process-lifecycle.md`,
-one row per step with its failure mode. The orderings below are load-bearing rather than tidy:
+The table below **is** the order. Subtask 9 implements it and subtask 14 writes it into a new page,
+`ai-docs/process-lifecycle.md` — the artefact AC2 and AC3 require — so it is fixed here once instead
+of being derived twice, in two groups, from two constraints. One row per step: what it constructs or
+starts, how it fails, the step name its stderr line carries (AC4), and what the unwind stops on the
+way out (AC20).
 
-1. **The health listener binds before the migration step**, not after. Readiness is only observable
-   as a *signal* while the listener is up; binding after migrations would make "starting" mean
+| # | Step | Constructs / starts | Failure mode | stderr step name | A failure here unwinds |
+|---|---|---|---|---|---|
+| 1 | configuration | `config.Load(lookup)` | a missing or malformed key, reported as the joined per-key error the package already returns | `configuration` | nothing has started |
+| 2 | logger | the process `slog.Logger` over stderr | none: no key is read and no I/O is done at construction | — | — |
+| 3 | database | `pgxpool.ParseConfig` over the DSN, `store.NewPool`, then one `Ping` under a bounded context — the ping is what makes an unreachable database *this* step's failure rather than the migration step's | an unparsable DSN; a database that does not answer the ping | `database` | the pool |
+| 4 | metrics registry | `health.NewRegistry`, `RegisterRuntime`, the transport, scheduler and ingest observers, `NewPoolCollector`, `NewProcess` | a family the registry refuses | `metrics registry` | the pool |
+| 5 | readiness | the `readiness` value: both latches unset, over the pool | none | — | — |
+| 6 | health listener | `health.NewServer(ServerOptions{Addr, Gatherer, Ready})`, then `Start` | a nil option field; an address already in use — `Start` binds synchronously and returns the bind error rather than losing it on a goroutine [measured f33b2bf:internal/health/server.go:54-57 · sed -n '54,57p' internal/health/server.go → "// Start binds the listener synchronously, returning a bind error before", "// spawning the serve goroutine — so a bind failure is always reported", "// through a returned error, never discovered later on a background", "// goroutine. Returns an error rather than panicking on a second call."] | `health listener` | the listener, the pool |
+| 7 | migrations | with auto-apply on, `store.Migrate` under `WithAdvisoryLock`; with it off, `HasPendingMigrations` plus a refusal naming the disabling key when anything is pending; then the `migrated` latch | a migration that fails to apply; auto-apply off with a migration pending (AC8) | `migrations` | the listener, the pool |
+| 8 | restart hygiene | `scheduler.NewLiveness`, `AbsorbDowntime`, and `Process.ObserveDowntime` over what it returns | the transaction fails | `restart hygiene` | the listener, the pool |
+| 9 | scheduler | `scheduler.New` over the empty registry, then `Reconcile` | an option the constructor refuses; a reconcile that fails | `scheduler` | the listener, the pool |
+| 10 | telegram client | `tg.New` over the token, the base URL, the allowlist gate, the transport tuning and the transport observer | an option the constructor refuses — including a token telego's own format check rejects, which is what the example file's placeholder is [measured f33b2bf:.env.example:19 · sed -n '19p' .env.example → "LAB_GAME_BOT_TOKEN=changeme"; go doc github.com/mymmrac/telego.ErrInvalidToken → "ErrInvalidToken bot token is invalid according to token regexp"] | `telegram client` | the listener, the pool |
+| 11 | ingest loop | `ingest.New` over the client, the pool, the empty router and the ingest observer | an option the constructor refuses | `ingest loop` | the listener, the pool |
+| 12 | canary | `health.NewLegs` with the process HTTP client, `NewCanary`, then `Start` | a leg option the constructor refuses; a canary already started | `canary` | the canary, the listener, the pool |
+| 13 | runners | the `[]runner` values — ingest loop, scheduler worker, liveness heartbeat — constructed here, started by `serve` | none | — | — |
+
+Two of those orderings are load-bearing rather than tidy:
+
+1. **The health listener binds before the migration step** — step 6 before step 7, not after.
+   Readiness is only observable as a *signal* while the listener is up; binding after migrations
+   would make "starting" mean
    "connection refused" rather than 503, and AC22 asks a probe to distinguish starting, serving and
    draining. It also answers the spec's open question about scraping while not ready: the endpoint
    serves throughout.
-2. **Restart hygiene runs after migrations and before `Reconcile`**, and `Reconcile` is called
-   explicitly during assembly rather than left to `Worker.Run`. The scheduler package documents that
+2. **Restart hygiene runs after migrations and before `Reconcile`** — step 8 before step 9 — and
+   `Reconcile` is called explicitly during assembly rather than left to `Worker.Run`. The scheduler
+   package documents that
    a composition root may legitimately call it before any worker starts
    [measured 71ce0e4:internal/scheduler/reconcile.go:38-46 · sed -n '38,46p' internal/scheduler/reconcile.go → "It is idempotent — safe to call more than once, and safe for concurrent callers — so Run calls it once before its first cycle and a composition root may legitimately call it again before any worker starts."],
    and calling it here turns a reconcile failure into a *start-up* failure under the all-fatal rule
@@ -64,7 +84,8 @@ Phases:
   start can fail or has an external effect (the health listener, then the canary). On any failure it
   shuts down, in reverse order, whatever it already started, then returns the error naming the step.
   That is AC20, implemented once rather than per call site.
-- **`(*app).serve(ctx, signals) int`** — start the runners, wait, drain, close.
+- **`(*app).serve(ctx, signals) int`** — start the runners, wait for a signal or the first runner
+  return, drain, close.
 
 Every failure at either phase is fatal: a message on stderr naming the step and the cause, a
 non-zero exit, nothing on stdout. The canaries are included with no exception, which is the owner's
@@ -91,6 +112,52 @@ So both packages grow a second lever:
 Both are a `sync.Once`-guarded channel closed once and selected on beside `ctx.Done()`; `Run`
 returns `nil` when stopped and `ctx.Err()` when cancelled, which is what lets the drain tell a
 completed shutdown from an abandoned one (AC28).
+
+**The stop-driven cancel is scoped to the `getUpdates` call and to nothing else.** `PollOnce` takes
+one context today and hands that same one to the offset read, to the API call and to every
+`processUpdate` in the batch
+[measured f33b2bf:internal/ingest/loop.go:145,148,160,167 · grep -n 'func (l \*Loop) PollOnce\|readOffset(ctx\|GetUpdates(ctx\|processUpdate(ctx' internal/ingest/loop.go → "145:func (l *Loop) PollOnce(ctx context.Context) error {", "148:	offset, err := readOffset(ctx, l.pool)", "160:	updates, err := l.client.API().GetUpdates(ctx, params)", "167:		if err := l.processUpdate(ctx, raw); err != nil {"],
+so a `Stop` that cancelled *that* context would abort update handling mid-batch — the outcome the
+*Rejected* paragraph below rules out. `PollOnce` therefore derives one child context per cycle,
+cancelled when either its own `ctx` is done or `Stop` was called, and passes it to `GetUpdates`
+**only**; `readOffset` and every `processUpdate` keep the parent `ctx` and run to completion. The
+resulting shape, which tests drive directly because `PollOnce` is itself an exported entry point:
+
+```
+PollOnce(ctx):
+    offset  := readOffset(ctx)                   // parent ctx
+    pollCtx := per-cycle child of ctx, also cancelled by Stop
+    updates := GetUpdates(pollCtx, params)       // the only stop-cancellable call
+    cancel pollCtx and join its watcher before the batch is touched
+    for each update: processUpdate(ctx, update)  // parent ctx — the batch settles
+```
+
+A `getUpdates` that failed **because** `Stop` cancelled it, with the parent context still live, is a
+discarded poll and not a failed one: the cycle reports its one `LoopObservation` with no `Err`, and
+`PollOnce` returns an exported sentinel a caller can match. That distinction is not cosmetic — the
+health package increments the poll-error counter on exactly `LoopObservation.Err`
+[measured f33b2bf:internal/health/ingest.go:92-97 · sed -n '92,97p' internal/health/ingest.go → "func (o *IngestObserver) ObserveLoop(obs ingest.LoopObservation) {", "	o.pollDuration.Observe(obs.Duration.Seconds())", "	o.pollBatch.Observe(float64(obs.BatchSize))", "	if obs.Err != nil {", "		o.pollErrors.Inc()", "	}"] —
+so without it every graceful shutdown would mint one poll error that never happened.
+
+**A runner returning before a signal is itself a shutdown trigger.** After `Stop`, a return is the
+success path; before it, a return means that subsystem is gone — `Worker.Run` returns outright when
+its opening `Reconcile` fails, and the liveness heartbeat returns when its tolerance is spent (§
+*Restart hygiene* below). `serve` therefore waits on two things, not one: a signal, and the first
+runner return — the wrapper the group runs around each `run` publishes `{name, err}` to a buffered
+channel as it returns, and `serve` selects on that channel beside the signal channel; one slot per
+runner, so a late return never blocks on a `serve` that has already moved on. A runner that returns
+first begins the same graceful shutdown a signal begins, in the
+same order and under the same budget, reports that runner's name and its error on stderr, and makes
+the exit code non-zero — a process that has lost a subsystem must not go on looking healthy, and
+AC19's all-fatal posture at start-up would be hollow if mid-life loss were silent. It is also why
+the group joining the runners is a plain `errgroup.Group`: `Wait` supplies the drain's join and its
+first error, while the decision to begin the drain stays in `serve`, where AC25's ordering lives.
+`errgroup.WithContext` would instead cancel the siblings the moment one returns, aborting exactly
+the in-flight work the drain exists to fund.
+
+The drain's own final liveness write is best-effort: a failure there is reported and does not change
+the exit code, because the next start then measures its gap from the last successful heartbeat,
+which is one interval old at worst and far below the downtime threshold.
 
 Rejected: driving `PollOnce`/`RunOnce` from the composition root and dropping `Run` — it duplicates
 each package's tick loop in `cmd/bot`, leaves `Run` dead in production, and moves `Reconcile`'s
@@ -162,15 +229,63 @@ type Liveness struct{ … }
 func NewLiveness(opts LivenessOptions) (*Liveness, error)   // Pool, Interval, DowntimeThreshold
 func (l *Liveness) AbsorbDowntime(ctx) (Downtime, error)    // the start-up step
 func (l *Liveness) Refresh(ctx) error                       // one heartbeat write
-func (l *Liveness) Run(ctx) error                           // Refresh at Interval until ctx is done
+func (l *Liveness) Run(ctx) error                           // Refresh at Interval until ctx is done or the tolerance is spent
 type Downtime struct{ Gap time.Duration; Shifted int; Seeded bool }
 ```
 
 One type rather than two, because the persisted instant exists for exactly one reason and the shift
-is that reason. `AbsorbDowntime` is one transaction: read the stored instant and `now()` together,
-compute the gap **in SQL**, move every pending row whose `run_at` is already past by that interval
-when the gap exceeds the threshold, then write the new instant. No Go clock value is an input or an
-output of the decision — `Downtime.Gap` is a value the database computed and Go only reports.
+is that reason. `AbsorbDowntime` is one transaction whose **first** touch of the liveness row is a
+locking one:
+
+```
+BEGIN
+  SELECT seen_at, now() - seen_at AS gap FROM <liveness> WHERE id = 1 FOR UPDATE
+      seen_at IS NULL  ->  never run here: nothing moves, Seeded is true
+      gap  > threshold ->  UPDATE scheduled_task SET run_at = run_at + gap
+                             WHERE state = 'pending' AND run_at <= now()   -> Shifted
+      gap <= threshold ->  nothing moves
+  UPDATE <liveness> SET seen_at = now() WHERE id = 1
+COMMIT
+```
+
+The gap is computed **in SQL**, and the shift's predicate is the one the scheduler's own partial
+index is built on
+[measured f33b2bf:internal/store/migrations/00002_scheduler.sql:19 · sed -n '19p' internal/store/migrations/00002_scheduler.sql → "CREATE INDEX scheduled_task_due_idx ON scheduled_task (run_at) WHERE state = 'pending';"].
+No Go clock value is an input or an output of the decision — `Downtime.Gap` is a value the database
+computed and Go only reports.
+
+**Atomicity is not mutual exclusion, and the row lock is what supplies the second.** The premise that
+made the migration step take a lock — two processes starting at once — applies here unchanged, and
+under Postgres' default READ COMMITTED two concurrent readers would each see the pre-shift instant
+and each apply the shift, moving every overdue row by twice the gap. `FOR UPDATE` on the singleton
+row removes that: the second transaction waits for the first and then re-reads what the first one
+wrote — *"In the case of `SELECT FOR UPDATE` and `SELECT FOR SHARE`, this means it is the updated
+version of the row that is locked and returned to the client"*
+(https://www.postgresql.org/docs/18/transaction-iso.html § Read Committed). The loser therefore
+measures a gap of about zero and moves nothing, which is the correct answer rather than a suppressed
+one. An advisory lock is deliberately *not* used here: it is database-wide while this table is
+per-schema, so it would serialise unrelated schemas' fixtures on the one shared test server — the
+same trap the migration lock is opt-in to avoid.
+
+**A failed `Refresh`, and what bounds the damage.** The two sibling runners tolerate a failed cycle
+and keep going
+[measured f33b2bf:internal/ingest/loop.go:177 · sed -n '177p' internal/ingest/loop.go → "// returning ctx.Err(). Run does not stop on a PollOnce"]
+[measured f33b2bf:internal/scheduler/worker.go:140 · sed -n '140p' internal/scheduler/worker.go → "// picked up on start-up. Run does not stop on a RunOnce error — each"],
+and `Liveness.Run` tolerates one too — but not indefinitely, because this failure is silent and its
+consequence lands on persisted rows: a heartbeat that died while the process kept serving makes the
+*next* start measure a gap that was never downtime and shift every overdue row by it. So the
+tolerance is bounded, and bounded by the one quantity that makes the stored instant meaningful:
+`Run` counts consecutive failed refreshes and returns the last error once that count reaches
+`DowntimeThreshold / Interval` rounded up — the point at which the stored instant has aged past the
+threshold and a restart would begin shifting rows. One success resets the count. Under the defaults
+below that is a database this process has been unable to write to for about the threshold; it could
+not have claimed a task or read an offset either, so stopping is both honest and self-correcting —
+the gap the next start measures is then real downtime, and shifting by it is exactly right. `serve`
+turns that return into the drain, per the runner-exit rule in § *Shutdown*.
+
+The count is a count and the cadence is the ticker's, so nothing here reads a Go clock and the
+liveness source stays free of `time.Now` / `time.Since` / `time.Until` — which is what keeps the
+AC14 guard (§ Test Design T3) a whole-file walk.
 
 `Every overdue pending row` is the literal reading the spec fixed, with no narrowing by task class:
 the reconcile that follows pulls a pushed recurrence back, and `instance_key` is not a recurrence
@@ -179,15 +294,25 @@ marker anyway. The shift writes `scheduled_task` and nothing else — the task b
 at posting time
 [measured 71ce0e4:internal/store/migrations/00002_scheduler.sql:23 · sed -n '23p' internal/store/migrations/00002_scheduler.sql → "    task_id      bigint,                      -- by value; deliberately NOT a foreign key"].
 
-**The forward migration, and what a deploy window sees.** The liveness surface is a new singleton
-table in a new numbered migration, created **empty** — no seed row, because "this database has never
-had a live process" is a state the design has to distinguish and an absent row is how it does. No
-row of any kind exists under this name before the migration, so nothing reads a prior shape and no
-dual-shape read is needed during a deploy: a binary from before the migration never queries the
-table, and one from after it treats an empty table exactly as it treats a database it has not run
-against — it seeds and shifts nothing. Rollback is the project's forward-only migration rule: there
-is no down section anywhere in the package, and a mistake here is corrected by the next forward
-migration, not by reversing this one.
+**The forward migration, and what a deploy window sees.** The liveness surface is a new guarded
+singleton table in a new numbered migration, seeded by that migration with its instant **NULL** —
+the shape `ingest_offset` already establishes in this package: a one-row table with a primary key, a
+singleton `CHECK`, and its row inserted by the migration itself
+[measured f33b2bf:internal/store/migrations/00004_ingest.sql:12-18 · sed -n '12,18p' internal/store/migrations/00004_ingest.sql → "CREATE TABLE ingest_offset (", "    id             integer NOT NULL DEFAULT 1,", "    next_update_id bigint  NOT NULL,", "    CONSTRAINT ingest_offset_pkey PRIMARY KEY (id),", "    CONSTRAINT ingest_offset_singleton CHECK (id = 1)", ");", "INSERT INTO ingest_offset (id, next_update_id) VALUES (1, 0);"].
+A NULL instant is "this database has never had a live process" — the state the design has to
+distinguish, and the reason the column is nullable. The row exists from the migration rather than
+from the first start because that is what lets `AbsorbDowntime` take its lock on its first
+statement: an empty table has no row to lock, and the serialisation above would then rest on
+concurrent-insert behaviour the manual describes as *might* block rather than on the READ COMMITTED
+rule it states outright
+(https://www.postgresql.org/docs/18/sql-insert.html § Notes). Nothing exists under this name before
+the migration, so nothing reads a prior shape and no dual-shape read is needed during a deploy: a
+binary from before the migration never queries the table, and one from after it treats a NULL
+instant exactly as it treats a database it has not run against — it seeds, and shifts nothing.
+Rollback is the project's forward-only migration rule: no migration in this package carries a down
+section
+[measured f33b2bf:internal/store/migrations · grep -rn 'goose Down' internal/store/migrations/*.sql || echo "no match" → "no match"],
+and a mistake here is corrected by the next forward migration, not by reversing this one.
 
 **Telemetry: metrics, no events, no postings.** The shift moves no balance, so it has no basis
 document, no posting signature and no ledger participation to declare — it rewrites a `run_at` on
@@ -290,7 +415,8 @@ for one reason: a gate nobody has seen go red is a claim about the gate.
   [measured 71ce0e4 · go mod why -m golang.org/x/sync → "github.com/maratik123/lab-game/internal/store → github.com/pressly/goose/v3 → github.com/pressly/goose/v3/internal/sqlparser → golang.org/x/sync/errgroup"],
   so the promotion adds no module to the build. It expresses "start N named runners, wait for all,
   keep the first error" precisely; the plain `errgroup.Group` is used, never `WithContext`, because
-  a runner's terminal error must not tear down its siblings outside the drain.
+  a runner's terminal error must not tear down its siblings outside the drain — `serve`, not the
+  group, decides when the drain begins (§ *Shutdown*).
 - **`go.uber.org/goleak`** — a new **test-only** direct requirement, for AC29. Its checksums are
   already recorded and nothing imports it today
   [measured 71ce0e4 · grep goleak go.mod || echo "no match" → "no match"; grep goleak go.sum | sort | head -1 → "go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE="].
@@ -316,12 +442,12 @@ legal and neither gets a placeholder to make the wiring look populated.
 | 4 | `internal/scheduler`: `(*Worker).Stop()` — `Run` returns after the cycle in flight, `nil` when stopped and `ctx.Err()` when cancelled | `internal/scheduler/worker.go`, `internal/scheduler/worker_test.go` | — |
 | 5 | `internal/ingest`: `(*Loop).Stop()` — same contract, plus cancelling the in-flight `getUpdates` so a long poll does not hold the drain | `internal/ingest/loop.go`, `internal/ingest/loop_test.go` | — |
 | 6 | `internal/health`: `ReadyFunc`; `ServerOptions` + `NewServer` returning an error; the `/readyz` path; the `Process` collector and its families; `version` in the label ceiling; `LegsOptions.HTTPClient`; guard-fixture and package-doc updates | `internal/health/server.go`, `internal/health/process.go`, `internal/health/labels.go`, `internal/health/canary.go`, `internal/health/probe.go`, `internal/health/doc.go`, `internal/health/server_test.go`, `internal/health/process_test.go`, `internal/health/guards_test.go`, `internal/health/gather_test.go` | — |
-| 7 | `internal/testdb`: `SchemaDSN` (a fresh schema as a connection string, carrying the per-pool cap); raise `Binaries` to the value the manifest test derives from the tree, and move the ceiling worked-example comment with it | `internal/testdb/testdb.go`, `internal/testdb/server.go`, `internal/testdb/server_test.go`, `internal/testdb/testdb_test.go` | — |
-| 8 | `cmd/bot`: argv dispatch, usage, the process logger, `version` as a settable variable, the package comment | `cmd/bot/main.go`, `cmd/bot/run.go` | 1 |
+| 7 | `internal/testdb`: `SchemaDSN` — one fresh schema handed to a caller outside this package as a connection string, carrying both the `search_path` that isolates it and the per-test pool cap the ceiling arithmetic assumes, so the consumer's own pool lands inside that arithmetic rather than beside it; the schema's drop stays on the same registered cleanup. `Binaries` is deliberately untouched here — the constant moves in subtask 12, the step that adds the caller | `internal/testdb/testdb.go`, `internal/testdb/testdb_test.go` | — |
+| 8 | `cmd/bot`: argv dispatch, usage, the process logger, `version` as a settable variable, the package comment. `run` grows its argv parameter, so the existing `run` cases move to `cmd/bot/run_test.go` against the new signature **in this same step** and `cmd/bot/main_test.go` goes with them — subtask 12 recreates that file holding only `TestMain` | `cmd/bot/main.go`, `cmd/bot/run.go`, `cmd/bot/run_test.go`, `cmd/bot/main_test.go` | 1 |
 | 9 | `cmd/bot`: `readiness` (the latches plus the pool round trip) and `assemble` — the whole start-up order, all-fatal, unwinding what it started | `cmd/bot/readiness.go`, `cmd/bot/assemble.go` | 1, 2, 3, 6, 8 |
-| 10 | `cmd/bot`: the signal watcher, the `runner` set, `serve`, `drain` (budget, second signal, exit codes), the final liveness write and the pool close; the migrate-only subcommand | `cmd/bot/serve.go`, `cmd/bot/drain.go`, `cmd/bot/migrate.go` | 4, 5, 9 |
+| 10 | `cmd/bot`: the signal watcher, the `runner` set, `serve` (a signal **or** the first runner return begins the drain), `drain` (budget, second signal, exit codes), the best-effort final liveness write and the pool close; the migrate-only subcommand. `errgroup` becomes a direct requirement here, so `go mod tidy`'s delta on the module files lands in this step | `cmd/bot/serve.go`, `cmd/bot/drain.go`, `cmd/bot/migrate.go`, `go.mod`, `go.sum` | 4, 5, 9 |
 | 11 | `cmd/bot` tests: readiness latch, drain under `synctest` with fake runners, argv dispatch, start-up failure paths, the secret-scrape guard, the import-graph discrimination proof | `cmd/bot/readiness_test.go`, `cmd/bot/drain_test.go`, `cmd/bot/run_test.go`, `cmd/bot/guards_test.go` | 10 |
-| 12 | `cmd/bot` end-to-end: `TestMain` over the shared test server, the in-process smoke test against a fake Bot API with a real `SIGTERM` and a leak check, and the subprocess link-time-version test | `cmd/bot/main_test.go`, `cmd/bot/smoke_test.go`, `cmd/bot/version_test.go`, `go.mod`, `go.sum` | 7, 10 |
+| 12 | `cmd/bot` end-to-end: `TestMain` over the shared test server — which adds this command to the set of `testdb.Main` callers, so `Binaries` is raised to the value the manifest test derives from the tree and the ceiling worked-example comment moves with it **in this same commit**, the manifest test going red→green here rather than sitting red across a group boundary — the in-process smoke test against a fake Bot API with a real `SIGTERM` and a leak check, and the subprocess link-time-version test | `cmd/bot/main_test.go`, `cmd/bot/smoke_test.go`, `cmd/bot/version_test.go`, `internal/testdb/server.go`, `internal/testdb/server_test.go`, `go.mod`, `go.sum` | 7, 10 |
 | 13 | `cmd/importguard` and its gate wiring: the rule table, the classifier, its unit tests, `make import-guard`, the `verify` aggregate, the CI Build-job step | `cmd/importguard/main.go`, `cmd/importguard/run.go`, `cmd/importguard/run_test.go`, `Makefile`, `.github/workflows/ci.yml` | — |
 | 14 | The lifecycle document (AC2 + AC3): the start-up order with a failure mode per step, and the migration policy in full — the default, the opt-out key, the migrate-only entry point, the lock that serialises concurrent starts, and what happens with auto-apply off and a migration pending — plus restart hygiene, readiness, the shutdown sequence and exit codes; its index row and the plans-index row | `ai-docs/process-lifecycle.md`, `ai-docs/agent-docs-index.md`, `ai-docs/plans/INDEX.md` | — |
 | 15 | Propagation, per `AGENTS.md` § *Propagation Rule* step 4 — every live site whose claim this diff falsifies | `AGENTS.md`, `ai-docs/key-decisions.md`, `ai-docs/context.md`, `ai-docs/context-status.md`, `ai-docs/claude-tools-hierarchy.md`, `ai-docs/alert-contract.md`, `ai-docs/domain-invariants.md`, `ai-docs/code-style.md`, `ai-docs/go-test-conventions.md`, `.claude/skills/task/SKILL.md`, `.claude/skills/task/reference.md`, `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/SKILL.md` | 13, 14 |
@@ -409,7 +535,8 @@ marked with its implementor model and effort below. **(h)** 3 groups, within the
   disagrees
   [measured 71ce0e4:internal/testdb/server.go:198 · sed -n '198p' internal/testdb/server.go → "const Binaries = 4"]
   [measured 71ce0e4:internal/testdb/server_test.go:171-172,175 · sed -n '171,172p;175p' internal/testdb/server_test.go → "// TestBinaries_matchesTree keeps the Binaries constant honest against the", "// tree: a package added or removed from the set of testdb.Main callers must", "func TestBinaries_matchesTree(t *testing.T) {"].
-  Mitigation: subtask 7 raises it to the value that test derives and moves the ceiling worked example with it, and
+  Mitigation: the raise lands in **subtask 12**, the step that adds the caller, so the constant and
+  the tree change in one commit and the manifest test is never left red across a group boundary;
   `testdb.SchemaDSN` embeds the per-pool cap so the composition root's own pool stays inside the
   arithmetic the ceiling assumes.
 - **A production-shaped advisory lock taken by an ordinary test fixture would serialise the whole
@@ -456,8 +583,9 @@ T12, and subtasks 14–15 write prose the repository's own link, citation and sh
 ### T2 — `internal/store` (`internal/store/migrate_test.go`, against a real Postgres)
 
 - Entry points: `Migrate`, `WithAdvisoryLock`, `HasPendingMigrations`.
-- Scenarios: (a) the exact base-table set gains the liveness table and no other, and the new table
-  is created **empty** — no seed row, because absence is what the never-run-before case is; (b)
+- Scenarios: (a) the exact base-table set gains the liveness table and no other, and the migration
+  leaves it holding its singleton row with a **NULL** instant — the never-run-before state, and the
+  row `AbsorbDowntime` locks on its first statement; the singleton `CHECK` refuses a second row; (b)
   `HasPendingMigrations` is true on a fresh schema and false after `Migrate`; (c) two concurrent
   `Migrate` calls under the *same* caller-supplied lock id against the same schema both return nil
   and the migration set applies once — the loser proceeds to a normal return rather than an error;
@@ -484,9 +612,18 @@ T12, and subtasks 14–15 write prose the repository's own link, citation and sh
   - **the task basis tables and the ledger are untouched** — row counts of `deferred_task`,
     `recurrent_task`, `journal_entry` and `posting` are identical either side of a shift that moved
     rows [derived → AC17];
+  - **two starts at once** → two `AbsorbDowntime` calls against one schema, released together, with
+    a stored instant far in the past and overdue rows present: the rows move **once** and by **one**
+    gap, one call reports the shift and the other measures a gap at or below the threshold and moves
+    nothing — the serialisation § Approach names, observed rather than reasoned about
+    [derived → AC13];
   - `Run` writes the instant once per configured interval — asserted by counting writes across a
     span of several intervals, not by timing one — and returns when its context is done, leaving no
-    goroutine [derived → AC12].
+    goroutine [derived → AC12];
+  - **a heartbeat that keeps failing** → `Run` against a pool whose liveness write fails returns the
+    last error once the derived tolerance is spent and **not before**, and one success between
+    failures resets the count — the mid-life policy § Approach fixes, so a dead heartbeat cannot
+    ride along silently until the next start reads a stale instant [derived → AC12, AC13].
 - **The clock-independence proof (AC14) is structural, because a test cannot make the two clocks
   disagree.** A guard in this package parses the liveness source file and asserts it calls no
   `time.Now` / `time.Since` / `time.Until`, and — to prove the guard discriminates rather than
@@ -505,7 +642,13 @@ T12, and subtasks 14–15 write prose the repository's own link, citation and sh
   returns `ctx.Err()`, the existing contract.
 - Ingest only: `Stop` while a `getUpdates` is parked in the fake server's long poll → the call
   returns and `Run` returns without waiting out the long-poll window; the offset row is unchanged
-  by the discarded poll; the per-cycle cancellation helper leaves no goroutine behind.
+  by the discarded poll; the discarded cycle's `LoopObservation` carries no `Err`, so a graceful
+  shutdown mints no poll error; the per-cycle cancellation helper leaves no goroutine behind.
+- Ingest only, the other half of the two-context split: **`Stop` while a batch is mid-`processUpdate`**
+  → every update in that batch settles before `Run` returns — each one's offset advance is visible
+  afterwards — and `Run` returns `nil`; `Stop` never cancels the parent context, which is the whole
+  point of scoping the cancel to `getUpdates`. Fixture: a handler that blocks until the test releases
+  it, so `Stop` lands provably inside the batch [derived → AC25].
 - Fixtures: the ingest suite's existing in-process fake Bot API server and its delayed handler; the
   scheduler suite's existing schema-scoped pool. Timing assertions are patience budgets, generous by
   construction — the asserted proposition is "returns without waiting out the window", so the budget
@@ -516,8 +659,12 @@ T12, and subtasks 14–15 write prose the repository's own link, citation and sh
 - Entry points: `NewServer`, `NewProcess`, the `/readyz` handler, `NewLegs`.
 - Scenarios:
   - `NewServer` refuses a nil gatherer and a nil `Ready` with an error naming the field; a valid one
-    binds, serves `/metrics` byte-for-byte as before, serves `/readyz`, and 404s everything else
-    [derived → AC21];
+    binds, serves `/readyz`, and 404s everything else. `/metrics` is asserted as **unchanged
+    serving**, never as a byte-for-byte body: the same handler on the same path with the same
+    content type, and every family the registry carried before this task still present under the
+    same names and label sets. A golden of the body would be falsified by AC23's own additive
+    families, so the assertion is about the path and the surviving families
+    [derived → AC21, AC23];
   - `/readyz` answers 200 with a fixed body when `Ready` returns nil and 503 with a fixed reason
     token when it returns an error, and the error's own text never reaches the body [derived → AC22, AC36];
   - `NewProcess` registers the families § Approach names; `labgame_build_info` carries the version as a label
@@ -536,9 +683,9 @@ T12, and subtasks 14–15 write prose the repository's own link, citation and sh
 - Entry point: `SchemaDSN`.
 - Scenarios: the returned string parses; its runtime parameters name the fresh schema; its pool cap
   equals the per-test cap the ceiling arithmetic assumes; a pool opened from it lands in that schema
-  and the registered cleanup drops it. The binary-count manifest test is what proves the constant
-  moved with the tree — it is already written and must go from red to green in the same commit
-  [derived → the manifest test named in § Risks].
+  and the registered cleanup drops it [derived → the shape subtask 12's fixture consumes]. The
+  binary-count manifest constant is *not* touched in this subtask — it moves with its caller, in
+  subtask 12.
 
 ### T11 — `cmd/bot` unit level (`readiness_test.go`, `drain_test.go`, `run_test.go`, `guards_test.go`)
 
@@ -553,8 +700,10 @@ T12, and subtasks 14–15 write prose the repository's own link, citation and sh
   runner ignores `stop` and returns only on cancellation → the budget expires, the run context is
   cancelled, the runners are joined, the exit code is non-zero [derived → AC26, AC28]; a second
   signal arrives mid-drain → the wait ends at once, well inside the budget, exit code non-zero
-  [derived → AC27]; the shutdown order is asserted by recording each fake's stop and each
-  subsystem shutdown into one ordered log — runners stopped, runners joined, canary, listener, final
+  [derived → AC27]; a fake runner returns on its own with **no** signal sent → the same drain runs
+  in the same order, that runner's name and its error reach stderr, and the exit code is non-zero
+  [derived → the runner-exit rule § Approach → *Shutdown* fixes, under AC26's budget]; the shutdown
+  order is asserted by recording each fake's stop and each subsystem shutdown into one ordered log — runners stopped, runners joined, canary, listener, final
   liveness write, pool [derived → AC25]; a stopped runner returning an error is reported with its
   own name. Bubble rules: `synctest.Test` sits inside each subtest and `t.Parallel()` outside it.
 - **T11c — dispatch and start-up failures.** Entry point: `run(argv, lookup, stderr, stdout)`.
@@ -568,9 +717,21 @@ T12, and subtasks 14–15 write prose the repository's own link, citation and sh
   a failure at a step after the listener bound → the process exits non-zero **and** the listener's
   port is free again, which is how "the started subsystems were shut down" is observed
   [derived → AC20].
-- **T11d — guards.** A sentinel-secret scrape-and-log guard: assemble with a sentinel bot token and
-  a sentinel DSN password, drive one scrape and capture the process log writer, assert neither
-  sentinel appears in either [derived → AC36]. An import-graph discrimination proof: the non-test
+- **T11d — guards.** The composition-root shape, which is AC1's negative half and the one claim
+  § Test Design otherwise assigned nowhere: a source walk over the non-test `.go` files under `cmd/`
+  and `internal/` asserts that none declares a `func init()` — none does today
+  [measured f33b2bf · grep -rn '^func init()' --include='*.go' cmd internal | grep -v _test || echo "no match" → "no match"] —
+  and, so the walk is an instrument rather than a tautology, the same walk over a scratch file in
+  `t.TempDir()` that *does* declare one must report it, the shape the AC14 clock guard uses. A second
+  assertion, scoped to this package because this is where the risk concentrates: `cmd/bot` declares
+  no package-level `var` beyond the link-time `version` string. The AC's remaining clause — that no
+  package holds a package-level **mutable subsystem instance** — is **review-judged, and stated here
+  as such**: deciding whether a package-level value *is* a subsystem instance needs types and
+  judgment, while the property this task actually installs (every subsystem constructed in
+  `assemble` and handed to its user) is what T12a observes end to end [derived → AC1].
+  A sentinel-secret scrape-and-log guard: assemble with a sentinel bot token and a sentinel DSN
+  password, drive one scrape and capture the process log writer, assert neither sentinel appears in
+  either [derived → AC36]. An import-graph discrimination proof: the non-test
   dependency list of this command carries no container-runtime path, **and** its test dependency list
   does — the second half is what makes the first half evidence rather than a tautology
   [derived → AC33].
@@ -582,9 +743,11 @@ T12, and subtasks 14–15 write prose the repository's own link, citation and sh
 
 ### T12 — `cmd/bot` end to end
 
-- **T12a — the in-process smoke condition.** `TestMain` provisions the shared server; the fixture
-  takes a fresh schema DSN, starts the in-process fake Bot API server, and assembles the process with
-  its HTTP client, `LAB_GAME_HEALTH_METRICS_ADDR=127.0.0.1:0` and an empty cloud-canary token.
+- **T12a — the in-process smoke condition.** `TestMain` provisions the shared server — which is
+  what puts this command in the set of `testdb.Main` callers, so the raised `Binaries` constant and
+  this fixture land in one commit, with the manifest test going red→green there
+  [derived → the manifest test named in § Risks]. The fixture takes a fresh schema DSN, starts the
+  in-process fake Bot API server, and assembles the process with its HTTP client, `LAB_GAME_HEALTH_METRICS_ADDR=127.0.0.1:0` and an empty cloud-canary token.
   Assertions, in order: `assemble` returns with the schema migrated and **no** request yet at the
   fake Bot API and **no** scheduler row seeded — migrations precede the loop and the worker
   [derived → AC5]; `/readyz` answers 200 [derived → AC22]; a `/metrics` scrape carries a
