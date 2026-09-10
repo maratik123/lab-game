@@ -71,6 +71,33 @@ func stubbornRunner(name string) runner {
 	}
 }
 
+// erroringStopper returns a runner that honours stop promptly but
+// reports runErr from its run when it does — the join's res.err != nil
+// branch in drain's post-stop for range remaining loop, not the
+// trigger path (a runner returning before any signal reaches serve)
+// and not the abandonment path (a runner that ignores stop and forces
+// the budget or a second signal). stubbornRunner never returns until
+// ctx is cancelled, and stoppingRunner always returns nil, so neither
+// can stand in for this case.
+func erroringStopper(name string, runErr error) runner {
+	stopCh := make(chan struct{})
+	var once sync.Once
+	return runner{
+		name: name,
+		run: func(ctx context.Context) error {
+			select {
+			case <-stopCh:
+				return runErr
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+		stop: func() {
+			once.Do(func() { close(stopCh) })
+		},
+	}
+}
+
 func TestServe_SignalCleanStopExitZero(t *testing.T) {
 	t.Parallel()
 	var mu sync.Mutex
@@ -294,6 +321,43 @@ func TestServe_RunnerReturnsOnOwnWithNoSignal(t *testing.T) {
 
 	if code == 0 {
 		t.Error("serve() = 0, want non-zero — a runner returned on its own")
+	}
+	if !strings.Contains(stderr.String(), "scheduler worker") || !strings.Contains(stderr.String(), wantErr.Error()) {
+		t.Errorf("stderr = %q, want it to name the runner and its error", stderr.String())
+	}
+}
+
+// TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero covers drain's
+// join branch (the for range remaining loop reading results after
+// every runner.stop has been called) — a different path from a
+// runner's own unprompted return (the trigger argument, covered by
+// TestServe_RunnerReturnsOnOwnWithNoSignal) and from an abandoned
+// drain (covered by TestServe_RunnerIgnoresStop_BudgetExpires_ExitNonZero).
+// erroringStopper honours stop promptly and still errors, so the join
+// completes well inside the budget — the non-zero exit code is
+// attributable to the runner's error and to nothing else.
+func TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero(t *testing.T) {
+	t.Parallel()
+	wantErr := errors.New("stop cleanup failed")
+
+	a := &app{
+		readiness: newReadiness(nil),
+		signals:   make(chan os.Signal, 2),
+		runners:   []runner{erroringStopper("scheduler worker", wantErr)},
+	}
+
+	var stderr bytes.Buffer
+	go func() { a.signals <- syscall.SIGTERM }()
+
+	start := time.Now()
+	code := a.serve(context.Background(), patience, &stderr)
+	elapsed := time.Since(start)
+
+	if code == 0 {
+		t.Error("serve() = 0, want non-zero — a stopped runner returned an error during the join")
+	}
+	if elapsed >= patience/2 {
+		t.Errorf("serve took %s, want well inside the %s budget — the drain must complete on its own so the non-zero code is attributable to the runner's error, not to abandonment", elapsed, patience)
 	}
 	if !strings.Contains(stderr.String(), "scheduler worker") || !strings.Contains(stderr.String(), wantErr.Error()) {
 		t.Errorf("stderr = %q, want it to name the runner and its error", stderr.String())

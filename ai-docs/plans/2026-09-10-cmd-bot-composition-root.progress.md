@@ -8,8 +8,8 @@ _Updated: 2026-09-10 21:01_
 **Last build:** PASS
 **Issue:** #24
 **Spec:** ai-docs/plans/2026-09-10-cmd-bot-composition-root.spec.md
-**current_step:** Step 9.5 — self-review round 1 findings 1–8 and 10 fixed (finding 9 is a Design Amendment, left open); round 2 finding 1 (T10a ordered-log rule) fixed; owner ruling (a closer's error never changes the exit code) applied — see § *Owner ruling*
-**last_passed_gate:** go test -race ./cmd/bot/... | 2026-09-10T21:32:44Z | uncommitted
+**current_step:** Step 9.5 — self-review round 1 findings 1–8 and 10 fixed (finding 9 is a Design Amendment, left open); round 2 finding 1 (T10a ordered-log rule) fixed; owner ruling (a closer's error never changes the exit code) applied; T10a re-check finding 2 (the join's error branch, `TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero`) fixed — see § *Owner ruling* and § *Design Amendment review — T10a*
+**last_passed_gate:** make test-race | 2026-09-10T18:41:23Z | uncommitted
 **entry_args:** 24
 
 ## Next action
@@ -163,6 +163,7 @@ four stand out: they are the places where the same discipline was not applied.
 | # | File:line | Severity | Finding | Status |
 |---|-----------|----------|---------|--------|
 | 1 | cmd/bot/serve_test.go:127 · design.md:1114-1115 | minor | **T10a's ordered-log rule is not followed.** T10a states the ordered-log case asserts "the log is exactly the reverse of the list it was handed rather than a hand-written expected sequence." `TestServe_SignalCleanStopExitZero` built `wantTail := []string{"close:health listener", "close:pool"}` by hand and compared only the last two log entries against it — a sequence that has to be updated by hand whenever `a.closers` changes, and silently stops covering an added closer until someone remembers to. | ✅ Fixed |
+| 2 | cmd/bot/serve.go:108-113 | minor | **T10a's amended words name a case the tree never had.** T10a now states the stopped-runner-returns-an-error case is "the join's error branch, a different path from the unprompted-return trigger" — `drain`'s `for range remaining { res := <-results; if res.err != nil { … exitCode = 1 } }`. `stoppingRunner` always returns `nil`, and `stubbornRunner`'s `ctx.Err()` only surfaces once `abandoned` has already forced `exitCode = 1`, so no existing case could tell the branch from a no-op. Added `erroringStopper` (a fake that honours `stop` promptly and still returns a non-nil error) and `TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero`, asserting the runner's name and error reach stderr, the exit code is non-zero, and the drain completes well inside the budget (ruling out the abandonment path as the source of the non-zero code). | ✅ Fixed |
 
 ## Owner ruling — a closer's error never changes the exit code (not a self-review round)
 
@@ -188,6 +189,15 @@ failed on both subtests (`liveness_final_write` and `pool`) — `serve() = 1, wa
 cp-backup (`cp`, never `git checkout --`), confirmed the restored file byte-identical (`diff` empty),
 re-ran — both subtests green.
 
+**Finding 2 mutation proof (T10a re-check).** Removed `exitCode = 1` from `drain`'s post-stop
+`for range remaining` loop (`res.err != nil` still logs but no longer flips the exit code):
+`go test -count=1 -run TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero ./cmd/bot/` failed —
+`serve() = 0, want non-zero`. Restored via a cp-backup (`cp`, never `git checkout --`), confirmed
+the restored file byte-identical (`diff` empty), re-ran — green. Gates re-run and green in this
+invocation: `go build ./...`, `go vet ./...`, `golangci-lint run`, `golangci-lint fmt -d`,
+`make comment-refs`, whole-module `go run ./cmd/testpg -- go test -count=1 ./cmd/bot/...`,
+`make test-race`.
+
 ## Review register
 
 | id | raised | severity | status | verifying command |
@@ -207,6 +217,7 @@ re-ran — both subtests green.
 | R1-13 | round 1 | minor | accepted@1 — established project practice, operational not balance | The `LAB_GAME_PROCESS_` compiled-in defaults (`true`/`30s`/`30s`/`5m`) live in `internal/config/process.go:69-76` as Go literals. `AGENTS.md` § *Code Style*'s balance-constant rule targets game tuning (stamina cap, step cost, shop rates, dice); the four optional-with-default classes already shipped (`Transport`, `Scheduler`, `Ingest`, `Health`) hold their defaults the same way. Command: `grep -n 'ClaimLimit:\|TaskTimeout:' internal/config/scheduler.go` |
 | R1-14 | round 1 | minor | accepted@1 — re-resolved locator, not a doc defect | Design § Approach sketches `(*app).serve(ctx) int`; the tree ships `serve(ctx, shutdownTimeout, stderr) int`. A prose sketch's argument list, not a design decision — no amendment owed. Command: `grep -n '(\*app).serve' ai-docs/plans/2026-09-10-cmd-bot-composition-root.design.md` |
 | RA-1 | T10a amendment | minor | fixed@fcee508 | `TestServe_SignalCleanStopExitZero` now derives `wantTail` from `a.closers` itself (reversed) and asserts the whole closer segment of the log against it; re-applying a mutation to `drain` (the closer walk changed to run forwards instead of backwards) against this commit makes it FAIL, restoring the file makes it PASS — both measured. `go test -count=1 -run TestServe_SignalCleanStopExitZero ./cmd/bot/` |
+| RA-2 | T10a amendment | minor | fixed (uncommitted at authoring time) | `TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero` uses `erroringStopper` (honours `stop`, still errors) to cover drain's post-stop join branch; re-applying a mutation to `drain` (`exitCode = 1` removed from the `res.err != nil` arm of the `for range remaining` loop) against this diff makes it FAIL, restoring the file makes it PASS — both measured. `go test -count=1 -run TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero ./cmd/bot/` |
 | OR-1 | owner ruling | major | fixed (uncommitted at authoring time) | `TestServe_FailingCloserReportedNotFatal` (both subtests) asserts a failing closer never flips the exit code; re-applying the removed `exitCode = 1` branch against this diff makes it FAIL on both subtests, restoring makes it PASS — both measured. `go test -count=1 -run TestServe_FailingCloserReportedNotFatal ./cmd/bot/` |
 | OR-2 | owner ruling | major | fixed (uncommitted at authoring time) | `grep -n 'a closer other than the liveness final write' ai-docs/process-lifecycle.md` — no match. |
 | OR-3 | owner ruling | major | fixed (uncommitted at authoring time) | `grep -n 'TestServe_OtherClosingFailure_IsFatal\|TestServe_FailingFinalLivenessWrite_ReportedNotFatal' cmd/bot/serve_test.go` — no match; `grep -n 'func TestServe_FailingCloserReportedNotFatal' cmd/bot/serve_test.go` — one match. |
