@@ -379,11 +379,13 @@ func TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero(t *testing.T) {
 
 // TestServe_FailingCloserReportedNotFatal covers what used to be two
 // cases with opposite verdicts — "liveness final write" as the one
-// best-effort exception, every other closer as fatal. The exit code
-// now carries only whether the drain itself completed, so a failing
-// closer is reported by name and never flips it, whichever closer it
-// is; the liveness write and an arbitrary other closer now exercise
-// the identical proposition, so one table-driven test replaces both.
+// best-effort exception, every other closer as fatal. A closer runs
+// after the exit code is already settled by the drain and by the
+// runners' trigger and join outcomes, so its failure is cleanup
+// diagnostic rather than work: it is reported by name and never flips
+// the code, whichever closer it is. The liveness write and an
+// arbitrary other closer now exercise the identical proposition, so
+// one table-driven test replaces both.
 func TestServe_FailingCloserReportedNotFatal(t *testing.T) {
 	t.Parallel()
 

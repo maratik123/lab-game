@@ -65,7 +65,11 @@ parses the package's own non-test files, not by a grep in a `Makefile`.
   had grown their own copies and had already drifted apart in shape; the shared package owns the
   mechanical half — listing a package's non-test files, walking a subtree, parsing, and writing a
   scratch package into `t.TempDir()`. **Every predicate stays in the package that owns the
-  proposition**, so a rule has exactly one place to look for it.
+  proposition**, so a rule has exactly one place to look for it. *Scoped exception:*
+  `internal/tg/guards_test.go`'s `walkGoFiles` is the third package's copy and was deliberately left
+  hand-rolled — migrating it was out of the scope of the task that introduced `internal/srcguard`
+  and only `internal/health` and `internal/ingest` moved onto it. The rule records no violation
+  where the tree has not been migrated yet.
 - **The repository root arrives as an argument**, resolved by `internal/repotest` — the module's
   one file-location-ascent resolver, itself held by a whole-tree walk that fails on any second one.
 - **Prove the guard discriminating in the same file.** A guard that returns clean is a claim about

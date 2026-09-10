@@ -118,14 +118,14 @@ func (a *app) drain(
 	for i := len(a.closers) - 1; i >= 0; i-- {
 		c := a.closers[i]
 		if err := c.close(shutdownCtx); err != nil {
-			// A closer's error is a diagnostic, never a second verdict: the
-			// process is already leaving, and the exit code carries only
-			// whether the drain itself completed (budget honoured, no second
-			// signal). The liveness final write is the clearest instance —
-			// the next start measures its gap from the last successful
-			// heartbeat, so a lost final write is self-healing — but every
-			// closer is the same case: reported by name here, on stderr, and
-			// nothing more.
+			// A closer's error is a diagnostic, never a second verdict: exitCode
+			// is already fixed above, by the drain (abandoned) and by the
+			// runners' trigger and join outcomes, and closing runs only after
+			// that verdict is settled. The liveness final write is the clearest
+			// instance — the next start measures its gap from the last
+			// successful heartbeat, so a lost final write is self-healing —
+			// but every closer is the same case: reported by name here, on
+			// stderr, and nothing more.
 			logStep(stderr, c.name, err)
 		}
 	}
