@@ -62,7 +62,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 3
+round: 4
 agent_id: aa819bf6502b63262
 prior_qa:
   - round: 1
@@ -83,4 +83,7 @@ prior_qa:
   - round: 2
     question: "Что именно снести раундом 3? (после того, как владелец разобрал AC на две группы: пересказ стоячих правил и предписания «как реализовать»)"
     answer: "A целиком, срезать B (кроме AC46), а еще AC не должны дублировать то, что и так ловится механическими гейтами/линтерами"
+  - round: 3
+    question: "Одобряешь спек и кросс-линк на #24? (после раунда 3: 49 AC срезаны до 36; орchestrator вынес три пережившие ruling строки вне таблицы — две в Key decisions с хвостом «never as a literal in a handler» и одну в Technical constraints с пересказом panic-запрета)"
+    answer: "Распространить на не-AC — применить то же правило к Key decisions и Technical constraints."
 ```
