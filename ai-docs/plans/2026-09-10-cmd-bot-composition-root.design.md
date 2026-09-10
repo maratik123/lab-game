@@ -73,7 +73,7 @@ way out (AC20).
 | 7 | migrations | with auto-apply on, `store.Migrate` under `WithAdvisoryLock`; with it off, `HasPendingMigrations` plus a refusal naming the disabling key when anything is pending; then the `migrated` latch | a migration that fails to apply; auto-apply off with a migration pending (AC8) | `migrations` | the listener, the pool |
 | 8 | restart hygiene | `scheduler.NewLiveness`, `AbsorbDowntime`, and `Process.ObserveDowntime` over what it returns | the transaction fails | `restart hygiene` | the listener, the pool |
 | 9 | scheduler | `scheduler.New` over the empty registry, then `Reconcile` | an option the constructor refuses; a reconcile that fails | `scheduler` | the listener, the pool |
-| 10 | telegram client | `tg.New` over the token, the base URL, the allowlist gate, the transport tuning and the transport observer | an option the constructor refuses — including a token telego's own format check rejects, which is what the example file's placeholder is [measured f33b2bf:.env.example:19 · sed -n '19p' .env.example → "LAB_GAME_BOT_TOKEN=changeme"; go doc github.com/mymmrac/telego.ErrInvalidToken → "ErrInvalidToken bot token is invalid according to token regexp"] | `telegram client` | the listener, the pool |
+| 10 | telegram client | `ingest.NewPoolGate(cfg.AllowedChatIDs, pool)` — the package's own documented wiring shape, taking the pool step 3 built, which is why the gate is constructed here and not before it [measured ad410c3:internal/ingest/gate.go:75-77 · sed -n '75,77p' internal/ingest/gate.go → "// NewPoolGate builds a Gate whose PlayerLookup reads pool directly — the", "// wiring shape this package uses: gate, then client, then loop.", "func NewPoolGate(allowedChatIDs []int64, pool *pgxpool.Pool) *Gate {"] — then `tg.New` over the token, the base URL, that gate, the transport tuning and the transport observer. `NewGate` with a hand-supplied lookup is **not** used: its `Gate` dereferences the lookup on the first non-allowlisted destination with no nil guard, so a nil there is a production panic against a zero-row panic index [measured ad410c3:internal/ingest/gate.go:119 · sed -n '119p' internal/ingest/gate.go → "	exists, err := g.lookup.PlayerExists(ctx, id)"] | an option the constructor refuses — including a token telego's own format check rejects, which is what the example file's placeholder is [measured f33b2bf:.env.example:19 · sed -n '19p' .env.example → "LAB_GAME_BOT_TOKEN=changeme"; go doc github.com/mymmrac/telego.ErrInvalidToken → "ErrInvalidToken bot token is invalid according to token regexp"] | `telegram client` | the listener, the pool |
 | 11 | ingest loop | `ingest.New` over the client, the pool, the empty router and the ingest observer | an option the constructor refuses | `ingest loop` | the listener, the pool |
 | 12 | canary | `health.NewLegs` with the process HTTP client, `NewCanary`, then `Start` | a leg option the constructor refuses; a canary already started | `canary` | the canary, the listener, the pool |
 | 13 | runners | the `[]runner` values — ingest loop, scheduler worker, liveness heartbeat — constructed here, started by `serve` | none | — | — |
@@ -117,7 +117,8 @@ today have exactly one lever — the context — and cancelling it stops the cyc
 inside it
 [measured 71ce0e4:internal/ingest/loop.go:183,189-190,194 · sed -n '183p;189,190p;194p' internal/ingest/loop.go → "func (l *Loop) Run(ctx context.Context) error {", "		case <-ctx.Done():", "			return ctx.Err()", "		_ = l.PollOnce(ctx)"]
 [measured 71ce0e4:internal/scheduler/worker.go:154-155,159 · sed -n '154,155p;159p' internal/scheduler/worker.go → "		case <-ctx.Done():", "			return ctx.Err()", "		_ = w.RunOnce(ctx)"].
-So both packages grow a second lever:
+So **every runner in the set carries a second lever — the two existing ones grow it, the new one is
+born with it, and all three share one contract**:
 
 - `(*Loop).Stop()` — `Run` returns after the cycle in flight, **and** the in-flight `getUpdates` is
   cancelled. Without the second half every graceful shutdown would wait out the long-poll window,
@@ -127,10 +128,26 @@ So both packages grow a second lever:
   guarded, monotone database row, so a discarded poll simply re-arrives.
 - `(*Worker).Stop()` — `Run` returns after the cycle in flight; the claimed batch finishes. No
   poll-cancel counterpart, because a scheduler cycle parks in no long window.
+- `(*Liveness).Stop()` — `Run` returns after the heartbeat in flight; no poll-cancel counterpart
+  either, because a heartbeat is one bounded write.
 
-Both are a `sync.Once`-guarded channel closed once and selected on beside `ctx.Done()`; `Run`
+All three are a `sync.Once`-guarded channel closed once and selected on beside `ctx.Done()`; `Run`
 returns `nil` when stopped and `ctx.Err()` when cancelled, which is what lets the drain tell a
 completed shutdown from an abandoned one (AC28).
+
+**Decision: the liveness heartbeat gets the same `Stop()` as its two siblings, rather than a
+composition-root wrapper that cancels a per-runner context.** The wrapper was the alternative — it
+would leave `internal/scheduler`'s `Liveness` API untouched and let `serve` synthesise a `stop` for
+it — and it is rejected because it makes a *stopped* runner return `context.Canceled`, which is the
+value the drain reads to mean **abandoned**. `serve` would then need a second rule mapping one
+runner's `context.Canceled` to a zero exit while its siblings' means non-zero, and AC28's whole
+distinction would rest on a per-runner exception rather than on the `nil`-vs-`ctx.Err()` contract.
+Three consequences of the chosen form, all load-bearing: `runner.stop` is total, so `serve` has no
+per-runner special case; a clean `SIGTERM` returns every runner promptly and `errgroup.Wait` joins
+inside the budget, so the drain never runs to `LAB_GAME_PROCESS_SHUTDOWN_TIMEOUT` on the ordinary
+path and AC28's zero exit is reachable in the assembled process; and the stop contract is one
+contract with one scenario list, exercised identically for all three runners (§ Test Design T4 and
+T5/T6).
 
 **The stop-driven cancel is scoped to the `getUpdates` call and to nothing else.** `PollOnce` takes
 one context today and hands that same one to the offset read, to the API call and to every
@@ -160,8 +177,9 @@ so without it every graceful shutdown would mint one poll error that never happe
 
 **A runner returning before a signal is itself a shutdown trigger.** After `Stop`, a return is the
 success path; before it, a return means that subsystem is gone — `Worker.Run` returns outright when
-its opening `Reconcile` fails, and the liveness heartbeat returns when its tolerance is spent (§
-*Restart hygiene* below). `serve` therefore waits on two things, not one: a signal, and the first
+its opening `Reconcile` fails, and the liveness heartbeat returns when its failure tolerance is
+spent (§ *Restart hygiene* below), which is its one *unprompted* exit and is distinct from the
+`nil` a `Stop` produces. `serve` therefore waits on two things, not one: a signal, and the first
 runner return — the wrapper the group runs around each `run` publishes `{name, err}` to a buffered
 channel as it returns, and `serve` selects on that channel beside the signal channel; one slot per
 runner, so a late return never blocks on a `serve` that has already moved on. A runner that returns
@@ -260,7 +278,8 @@ type Liveness struct{ … }
 func NewLiveness(opts LivenessOptions) (*Liveness, error)   // Pool, Interval, DowntimeThreshold
 func (l *Liveness) AbsorbDowntime(ctx) (Downtime, error)    // the start-up step
 func (l *Liveness) Refresh(ctx) error                       // one heartbeat write
-func (l *Liveness) Run(ctx) error                           // Refresh at Interval until ctx is done or the tolerance is spent
+func (l *Liveness) Run(ctx) error                           // Refresh at Interval until stopped, ctx is done, or the tolerance is spent
+func (l *Liveness) Stop()                                   // the drain's lever: Run returns nil after the heartbeat in flight
 type Downtime struct{ Gap time.Duration; Shifted int; Seeded bool }
 ```
 
@@ -308,7 +327,10 @@ consequence lands on persisted rows: a heartbeat that died while the process kep
 tolerance is bounded, and bounded by the one quantity that makes the stored instant meaningful:
 `Run` counts consecutive failed refreshes and returns the last error once that count reaches
 `DowntimeThreshold / Interval` rounded up — the point at which the stored instant has aged past the
-threshold and a restart would begin shifting rows. One success resets the count. Under the defaults
+threshold and a restart would begin shifting rows. `Stop` is the other, prompted exit: `Run` returns
+`nil` after the heartbeat in flight, on the `sync.Once`-channel contract § *Shutdown* fixes for all
+three runners, and a spent tolerance never masquerades as a clean stop because the two return
+different values. One success resets the count. Under the defaults
 below that is a database this process has been unable to write to for about the threshold; it could
 not have claimed a task or read an offset either, so stopping is both honest and self-correcting —
 the gap the next start measures is then real downtime, and shifting by it is exactly right. `serve`
@@ -506,7 +528,7 @@ legal and neither gets a placeholder to make the wiring look populated.
 | 1 | `internal/srcguard`: the shared source-walk guard support — non-test file enumeration for one package directory and for a subtree, parsing, and the `t.TempDir()` scratch-package writer the discriminating half needs; the repository root arrives as an argument (from `internal/repotest`), never from an ascent of its own. `internal/health`'s and `internal/ingest`'s hand-rolled copies migrate onto it **in this same step**, each package keeping every predicate of its own | `internal/srcguard/srcguard.go`, `internal/srcguard/srcguard_test.go`, `internal/health/guards_test.go`, `internal/ingest/guards_test.go` | — |
 | 2 | The `LAB_GAME_PROCESS_` optional-with-default class: `Process` struct, the keys and defaults § Approach tabulates, `lookupBool`, `EnvKeys()` membership, `Config.Process`, `.env.example` rows (non-empty values), doc-comment updates | `internal/config/process.go`, `internal/config/process_test.go`, `internal/config/transport.go`, `internal/config/env.go`, `internal/config/config.go`, `internal/config/doc.go`, `.env.example` | — |
 | 3 | `internal/store`: the forward migration adding the liveness singleton; `MigrateOption` + `WithAdvisoryLock`; the `ProcessLockID` constant both production callers pass; `HasPendingMigrations`; update every exact-set schema assertion in the package | `internal/store/migrations/00005_process_liveness.sql`, `internal/store/migrate.go`, `internal/store/migrate_test.go`, `internal/store/schema_test.go`, `internal/store/views_test.go`, `internal/store/fkcover_test.go` | — |
-| 4 | `internal/scheduler`: `Liveness` — `NewLiveness`, `AbsorbDowntime`, `Refresh`, `Run`, `Downtime`; the all-SQL gap computation and the overdue shift; the no-Go-clock source guard, written against `internal/srcguard` | `internal/scheduler/liveness.go`, `internal/scheduler/liveness_test.go`, `internal/scheduler/doc.go` | 1, 3 |
+| 4 | `internal/scheduler`: `Liveness` — `NewLiveness`, `AbsorbDowntime`, `Refresh`, `Run`, `Stop`, `Downtime`; the all-SQL gap computation and the overdue shift; `Stop` on the `sync.Once`-channel contract § Approach → *Shutdown* fixes for all three runners (subtasks 5 and 6 give `Worker` and `Loop` the same one, independently), so the drain's lever is total over the runner set; the no-Go-clock source guard, written against `internal/srcguard` | `internal/scheduler/liveness.go`, `internal/scheduler/liveness_test.go`, `internal/scheduler/doc.go` | 1, 3 |
 | 5 | `internal/scheduler`: `(*Worker).Stop()` — `Run` returns after the cycle in flight, `nil` when stopped and `ctx.Err()` when cancelled | `internal/scheduler/worker.go`, `internal/scheduler/worker_test.go` | — |
 | 6 | `internal/ingest`: `(*Loop).Stop()` — same contract, plus cancelling the in-flight `getUpdates` so a long poll does not hold the drain | `internal/ingest/loop.go`, `internal/ingest/loop_test.go` | — |
 | 7 | `internal/health`: `ReadyFunc`; `ServerOptions` + `NewServer` returning an error; the `/readyz` path; the `Process` collector and its families; `version` in the label ceiling; `LegsOptions.HTTPClient`; guard-fixture and package-doc updates, the source-walk half now driven through `internal/srcguard` | `internal/health/server.go`, `internal/health/process.go`, `internal/health/labels.go`, `internal/health/canary.go`, `internal/health/probe.go`, `internal/health/doc.go`, `internal/health/server_test.go`, `internal/health/process_test.go`, `internal/health/guards_test.go`, `internal/health/gather_test.go` | 1 |
@@ -539,8 +561,7 @@ deferral in § 6 that this task discharges
 [measured 71ce0e4:ai-docs/alert-contract.md:377-378 · sed -n '377,378p' ai-docs/alert-contract.md → "- A readiness endpoint beside `/metrics`, if start-up and shutdown\n  orchestration ever wants one."];
 `domain-invariants.md`'s "`cmd/bot` constructs no client" sentence; `code-style.md`'s "every gate"
 sentence; the `/task` gate checklist and verify list; and the CI-failure skills' class tables. A
-new key decision block starts at **KD-32** — KD-31 is the highest today
-[measured 71ce0e4:ai-docs/key-decisions.md · grep -o 'KD-[0-9]*' ai-docs/key-decisions.md | sort -t- -k2 -n | tail -1 → "KD-31"].
+new key decision block starts at the next unused KD number.
 There is no `README.md` in this repository, so the repo-root user-facing sweep has no member
 [measured 71ce0e4 · git ls-files | grep -i readme || echo "no match" → "no match"].
 
@@ -636,6 +657,23 @@ marked with its implementor model and effort below. **(h)** 3 groups, within the
   the production id is a single named constant both production callers pass; `store.Migrate`'s
   default path is unchanged, so every existing fixture keeps its current behaviour — [derived → the
   store tests that call Migrate with no options, and the concurrent-apply case (T3c)].
+  **The opposite direction is real and is accepted, not avoided: `cmd/bot`'s own production-path
+  cases contend on `ProcessLockID` by construction.** T9b, T9c, T10b, T12a and T12b each hold cases
+  that drive the assembled start-up with auto-apply on, and every one of those takes the
+  database-wide production lock on the one shared test server — against every other such case,
+  across the concurrent whole-module runs `CLIENTS=N` sizes and under `make test-contention`. They
+  cannot opt out: taking that exact id is the thing AC7 makes these cases assert about. (The
+  auto-apply-*off* cases are the exception, and for the reason § *Migration policy* already gives:
+  `HasPendingMigrations` deliberately bypasses a configured locker, so they neither take the lock
+  nor wait for it.) Correctness is unaffected, because goose retries rather than failing, and the
+  bound is its documented default window — 5s between attempts, 60 attempts, 300s total
+  [measured ad410c3 · go doc github.com/pressly/goose/v3/lock.WithLockTimeout → "By default, the lock timeout is 300s (5min), where the lock is retried every 5 seconds (period) up to 60 times (failure threshold)."] —
+  and the loser then finds nothing pending and returns. Throughput is affected: these cases
+  serialise against each other, so a `make test-contention` run that got slower after this task is
+  that serialisation rather than a regression, and the window above is the number to compare it
+  against. Stated here so it is diagnosed from the design rather than rediscovered from a
+  stopwatch — [derived → T9b, T9c, T10b, T12a and T12b, whose fixtures all drive the production
+  migration step].
 - **A secret can reach a log line or a label the moment the composition root starts logging.**
   Mitigation: the bot token and the DSN stay inside the redacting secret type everywhere they are
   carried, the readiness body carries a fixed reason token rather than the underlying error, and a
@@ -706,7 +744,7 @@ prose the repository's own link, citation and shape gates check.
 
 ### T4 — `internal/scheduler` liveness and the shift (`internal/scheduler/liveness_test.go`)
 
-- Entry points: `AbsorbDowntime`, `Refresh`, `Run`.
+- Entry points: `AbsorbDowntime`, `Refresh`, `Run`, `Stop`.
 - Scenarios:
   - **no stored instant** → nothing moves, one instant is written, `Downtime.Seeded` is true
     [derived → AC15];
@@ -733,7 +771,16 @@ prose the repository's own link, citation and shape gates check.
   - **a heartbeat that keeps failing** → `Run` against a pool whose liveness write fails returns the
     last error once the derived tolerance is spent and **not before**, and one success between
     failures resets the count — the mid-life policy § Approach fixes, so a dead heartbeat cannot
-    ride along silently until the next start reads a stale instant [derived → AC12, AC13].
+    ride along silently until the next start reads a stale instant [derived → AC12, AC13];
+  - **the stop seam** → the shared scenario list § Test Design T5/T6 states is required of
+    `Liveness.Run` too, case for case: `Stop` before `Run`; `Stop` during the inter-heartbeat wait;
+    `Stop` twice; and a context cancelled instead of stopped. It is one contract across the three
+    runners, so it is one list, and this is the case that makes the drain's lever total rather than
+    two-thirds present — without it `errgroup.Wait` cannot return on a clean signal and AC28's zero
+    exit is unreachable in the assembled process [derived → AC28, and the drain ordering in T10a];
+  - **a spent tolerance is not a stop** → `Run` that exhausted its failure tolerance returns its
+    last error, while a stopped `Run` returns `nil`, so the drain's completed-versus-abandoned
+    reading cannot confuse them [derived → AC28].
 - **The clock-independence proof (AC14) is structural, because a test cannot make the two clocks
   disagree.** A guard in this package walks the liveness source through `internal/srcguard` and
   asserts it calls no `time.Now` / `time.Since` / `time.Until`, and — to prove the guard
@@ -746,10 +793,14 @@ prose the repository's own link, citation and shape gates check.
 ### T5 / T6 — the stop seams (`internal/scheduler/worker_test.go`, `internal/ingest/loop_test.go`)
 
 - Entry points: `(*Worker).Stop` + `Run`, `(*Loop).Stop` + `Run`.
-- Scenarios, for each: `Stop` before `Run` → `Run` returns `nil` without starting a cycle; `Stop`
+- **Shared scenarios — the stop contract is one contract over the three runners, so this list is
+  required of `Liveness.Run` as well** (§ Test Design T4 states it there, in that package's own
+  suite): `Stop` before `Run` → `Run` returns `nil` without starting a cycle; `Stop`
   during the inter-cycle wait → `Run` returns `nil` promptly, well inside the poll interval; `Stop`
   called twice → no panic, no double close; context cancelled instead of stopped → `Run` still
-  returns `ctx.Err()`, the existing contract.
+  returns `ctx.Err()`, the existing contract. A runner missing any of them is a runner `serve`
+  cannot drain, which is why the list is stated once and applied three times
+  [derived → AC25, AC28].
 - Ingest only: `Stop` while a `getUpdates` is parked in the fake server's long poll → the call
   returns and `Run` returns without waiting out the long-poll window; the offset row is unchanged
   by the discarded poll; the discarded cycle's `LoopObservation` carries no `Err`, so a graceful
@@ -862,6 +913,14 @@ prose the repository's own link, citation and shape gates check.
   runner returning an error is reported with its own name; a failing final liveness write is reported
   and leaves the exit code alone. Bubble rules: `synctest.Test` sits inside each subtest and
   `t.Parallel()` outside it.
+  **Why fakes here and the real runner set in T12b.** The ordered log is an assertion about
+  `serve`'s sequence, and a deterministic sequence needs the bubble's virtual clock and a stop
+  each fake honours on command — a real ingest loop, worker and heartbeat carry their own timing and
+  their own database. So T10a proves the *ordering and the exit-code mapping* over fakes, and T12b
+  proves that the **real** three-runner set returns on `stop` inside the budget, end to end. The
+  seam between them is the shared stop contract T4 and T5/T6 assert per runner: each real runner is
+  shown to behave as the fakes do, and `serve` is shown to do the right thing with runners that
+  behave that way [derived → AC25, AC26, AC27, AC28].
 - **T10b — migrate-only.** Entry point: the migrate-only path. Scenarios: it applies pending
   migrations under `ProcessLockID` and returns zero; a second invocation is a no-op and returns zero;
   no listener is bound (the configured metrics port stays free), no Bot API request reaches the fake
@@ -886,13 +945,31 @@ prose the repository's own link, citation and shape gates check.
   [measured f33b2bf · grep -rn '^func init()' --include='*.go' cmd internal | grep -v _test || echo "no match" → "no match"] —
   and, so the walk is an instrument rather than a tautology, the same walk over a scratch package
   `srcguard` wrote into `t.TempDir()` that *does* declare one must report it, the shape the AC14
-  clock guard uses. A second assertion, scoped to this package because this is where the risk
-  concentrates: `cmd/bot` declares no package-level `var` beyond the link-time `version` string. The
-  AC's remaining clause — that no package holds a package-level **mutable subsystem instance** — is
-  **review-judged, and stated here as such**: deciding whether a package-level value *is* a subsystem
-  instance needs types and judgment, while the property this task actually installs (every subsystem
-  constructed in `assemble` and handed to its user) is what T9b and T12b observe end to end
-  [derived → AC1].
+  clock guard uses.
+  **AC1's package-level-`var` clause is mechanical too, on the same walk and at the same scope.**
+  It is not narrowed to `cmd/bot` and it is not left review-judged: the walk already visits every
+  non-test `.go` file under `cmd/` and `internal/`, so the guard adds one predicate over each
+  `GenDecl` of token `var` at file scope — **flag it when its initialiser is a call whose callee is
+  a `New…` identifier that is either unqualified or qualified by a package name the file's own
+  import block resolves to a path carrying this module's prefix.** That is a syntactic test needing
+  no type checker, and it is the honest proxy for "holds a package-level mutable subsystem
+  instance": in this module a subsystem is reached through its package's `New…` constructor, so a
+  package-level `var` initialised from one is the shape the AC forbids, and a package-level `var`
+  initialised from anything else is not a subsystem instance. Nothing under `cmd/` or `internal/`
+  matches today — the only `New…` callees among package-level `var` initialisers there resolve
+  outside this module
+  [measured ad410c3 · grep -rnE '^var[[:space:]].*=.*\bNew' --include='*.go' cmd internal | grep -v '_test.go' | sed -E 's/.*=[[:space:]]*//;s/\(.*//' | sort -u → "decimal.New", "errors.New"] —
+  and the guard is discriminated the same way the `init()` half is, by re-running the walk over a
+  scratch package `srcguard` wrote into `t.TempDir()` that *does* declare such a `var`, requiring a
+  hit. `cmd/bot`'s own tighter rule stays beside it, because this is where the risk concentrates:
+  after this task the package is to declare no package-level `var` at all beyond the link-time
+  `version` string subtask 9 installs, and the guard asserts exactly that.
+  Deliberately **not** flagged by the predicate, and the reason each is not a subsystem instance:
+  an `errors.New` sentinel and a `decimal.New` bound are immutable values, and a
+  `var _ Iface = (*T)(nil)` compile-time assertion binds no instance to a name. The whole-process
+  property the AC is really about — every subsystem constructed in `assemble` and handed to its
+  user — is what T9b and T12b observe end to end; this guard is what stops a *later* package
+  reintroducing the package-level form the AC forbids [derived → AC1].
   A sentinel-secret scrape-and-log guard: assemble with a sentinel bot token and a sentinel DSN
   password, drive one scrape and capture the process log writer, assert neither sentinel appears in
   either [derived → AC36]. An import-graph discrimination proof: the non-test
@@ -905,7 +982,12 @@ prose the repository's own link, citation and shape gates check.
   family [derived → AC32]; the `getUpdates` the fake server received carries the reserved sentinel
   the ingest package substitutes for an empty route set [derived → AC31]; a real `SIGTERM` sent to
   the test process begins the drain, `/readyz` answers 503 while it drains, and `run` returns exit
-  code zero within the budget [derived → AC25, AC28]; a leak check taken against a snapshot from
+  code zero within the budget — **this is the real three-runner stop set's proof**, because the zero
+  exit is reachable only when the ingest loop, the scheduler worker *and* the liveness heartbeat each
+  returned on `stop` rather than on the budget's cancel, and the assertion is additionally taken
+  **well inside** `LAB_GAME_PROCESS_SHUTDOWN_TIMEOUT` rather than merely within it, so a runner
+  without a stop lever fails here by elapsed time as well as by exit code
+  [derived → AC25, AC28]; a leak check taken against a snapshot from
   before assembly reports nothing left running [derived → AC29]. Not parallel, and the leak check is
   the last assertion. This is the one case that drives a real signal through a real handler; the
   second-signal behaviour is T10a's, where the budget is virtual.
