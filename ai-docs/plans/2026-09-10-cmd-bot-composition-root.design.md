@@ -1067,40 +1067,72 @@ prose the repository's own link, citation and shape gates check.
 
 - **T10a — serve and drain.** Entry point: `serve`, on an `app` value the in-package test builds
   directly — fake `runner` entries, a signal channel the test itself writes to, and a `closer` list
-  whose entries record their name and return what the case wants them to — inside a
-  `testing/synctest` bubble so the budget is virtual and exact. The `closer` seam § Approach names is
-  what makes this case buildable at all: the subsystems `drain` walks are entries in a list rather
-  than concrete fields, so no case here needs a real listener or a real pool, and the bubble stays
-  free of the network its own guidelines exclude. Scenarios: a signal arrives and every
-  runner returns promptly on
-  `stop` → exit code zero and no cancellation of the run context [derived → AC28]; one runner ignores
-  `stop` and returns only on cancellation → the budget expires, the run context is cancelled, the
-  runners are joined, the exit code is non-zero [derived → AC26, AC28]; a second signal arrives
-  mid-drain → the wait ends at once, well inside the budget, exit code non-zero [derived → AC27]; a
-  fake runner returns on its own with **no** signal sent → the same drain runs in the same order,
-  that runner's name and its error reach stderr, and the exit code is non-zero [derived → the
-  runner-exit rule § Approach → *Shutdown* fixes, under AC26's budget]; the shutdown order is
-  asserted by recording the draining latch, each fake's stop and each closer's call into one
-  ordered log — **the draining latch first**, then runners stopped, runners joined, then the
+  whose entries record their name and return what the case wants them to. The `closer` seam
+  § Approach names is what makes this case buildable at all: the subsystems `drain` walks are
+  entries in a list rather than concrete fields, so no case here needs a real listener or a real
+  pool.
+  **The clock rule — per case, not per file: the subject is exact, the instrument is generous.**
+  This module treats every wall-clock constant in a database-backed test binary as one of two
+  things, and treats the two oppositely
+  [measured 2bbeacf:ai-docs/go-test-conventions.md · sed -n 47p ai-docs/go-test-conventions.md → "Every wall-clock constant in a database-backed suite is one of two things, and they are treated oppositely."],
+  and this binary is database-backed — its `TestMain` provisions the shared server, so every case
+  here runs while sibling packages contend for it
+  [measured 2bbeacf:cmd/bot/assemble_test.go · rg --no-line-number -o 'testdb\.Main\(m\)' cmd/bot/*_test.go → "cmd/bot/assemble_test.go:testdb.Main(m)"].
+  An **instrument** is a patience budget — how long a case waits for `serve` to return before it
+  gives up, or a `serve` budget deliberately large enough never to fire. It stays generous
+  wall-clock time under one named package-level constant, and widening it changes no proposition any
+  case asserts, so this design fixes neither its value nor a bracket around it
+  [measured 2bbeacf:cmd/bot/serve_test.go · rg --no-line-number -o 'const patience\b' cmd/bot/serve_test.go → "const patience"].
+  A **subject** is a duration that is itself the asserted property, and it must stay exact — which
+  is what a wall clock under that contention cannot deliver. Hence the rule this design binds:
+  **a case enters a `testing/synctest` bubble exactly when a duration is its subject, and nowhere
+  else.** Inside the bubble the timing assertion is an equality rather than a bracket, because a
+  virtual clock makes it bit-exact rather than merely bounded. Outside it, a case that asserts no
+  duration buys nothing from the bubble and would still pay its cost — the bubble excludes the
+  network its own guidelines exclude, and it constrains what the case may reach. The earlier draft
+  of this section put every case in a bubble; that was the instrument half of the split being
+  charged for a subject it never had.
+  **Subject cases — inside a bubble, asserting an exact duration**
+  [measured 2bbeacf:cmd/bot/serve_test.go · rg -U --no-line-number -o 'func (TestServe_[A-Za-z_]+)\(t \*testing\.T\) \{\n\tt\.Parallel\(\)\n\tsynctest\.Test' -r '$1' cmd/bot/serve_test.go → "TestServe_RunnerIgnoresStop_BudgetExpires_ExitNonZero", "TestServe_SecondSignalMidDrain_EndsAtOnce"]:
+  one runner ignores `stop` and returns only on cancellation → the run context is cancelled, the
+  runners are joined, the exit code is non-zero, and the drain is abandoned **at exactly the
+  budget** [derived → AC26, AC28]; a second signal arrives mid-drain against a budget deliberately
+  far larger → the wait ends **at exactly the instant the second signal arrived**, exit code
+  non-zero [derived → AC27]. The equality is the point in both: a bracket ("well inside the budget")
+  also passes for a drain that ended for the wrong reason, and exactness is what the virtual clock
+  buys [measured 2bbeacf:cmd/bot/serve_test.go · rg --no-line-number -o 'elapsed != [a-zA-Z]+' cmd/bot/serve_test.go → "elapsed != budget", "elapsed != secondSignalAt"].
+  Bubble rules: `synctest.Test` sits inside the test function and `t.Parallel()` outside it — the
+  shape `internal/health`'s canary test already establishes in this module
+  [measured 2bbeacf:internal/health/canary_test.go · rg --no-line-number -o 'synctest\.Test' internal/health/canary_test.go → "synctest.Test"].
+  **Instrument cases — no bubble, one generous patience budget**
+  [measured 2bbeacf:cmd/bot/serve_test.go · comm -23 <(rg --no-line-number -o 'func (TestServe_[A-Za-z_]+)' -r '$1' cmd/bot/serve_test.go | sort) <(rg -U --no-line-number -o 'func (TestServe_[A-Za-z_]+)\(t \*testing\.T\) \{\n\tt\.Parallel\(\)\n\tsynctest\.Test' -r '$1' cmd/bot/serve_test.go | sort) → "TestServe_DrainLatchesReadinessBeforeStoppingRunners", "TestServe_FailingFinalLivenessWrite_ReportedNotFatal", "TestServe_OtherClosingFailure_IsFatal", "TestServe_RunnerReturnsOnOwnWithNoSignal", "TestServe_SignalCleanStopExitZero"]:
+  a signal arrives and every runner returns promptly on `stop` → exit code zero and no cancellation
+  of the run context [derived → AC28], and the shutdown order is asserted by recording each fake's
+  `stop` and each closer's call into one ordered log — runners stopped, runners joined, then the
   closer list backwards: canary, final liveness write, listener, pool, signal deregistration
-  [derived → AC22, AC25]; each fake's `stop` and each fake `closer` additionally records what the
-  readiness value answered at the moment it ran, so a latch set after the runner join fails this
-  case through a stop that observed "not draining" rather than through a separate assertion
-  nothing orders [derived → AC22]; and, because that order is the reverse of the order
-  `assemble` appended the entries in, the same case asserts the log is exactly the reverse of the
-  list it was handed rather than a hand-written expected sequence [derived → AC20, AC25]; a stopped
-  runner returning an error is reported with its own name; a failing final liveness write is reported
-  and leaves the exit code alone, and so does any other closer's error. Bubble rules:
-  `synctest.Test` sits inside each subtest and
-  `t.Parallel()` outside it.
+  [derived → AC25]; and, because that order is the reverse of the order `assemble` appended the
+  entries in, the same case asserts the log is exactly the reverse of the list it was handed rather
+  than a hand-written expected sequence [derived → AC20, AC25]. The draining latch is latched
+  **before any runner's `stop`**, and that gets a case of its own, which reads the readiness value
+  from inside a fake runner's own `stop` as it runs: a re-check taken after `serve` has returned
+  cannot distinguish "latched first" from "latched last", because both leave the latch set by then,
+  so the proposition needs an observer positioned mid-drain rather than a trailing assertion nothing
+  orders [derived → AC22]. A fake runner returns on its own with **no** signal sent → the same drain
+  runs in the same order, that runner's name and its error reach stderr, and the exit code is
+  non-zero [derived → the runner-exit rule § Approach → *Shutdown* fixes, under AC26's budget]. A
+  failing final liveness write is reported and leaves the exit code alone; any other closer's error
+  is fatal. The criterion that keeps this group out of a bubble is uniform: not one of these
+  propositions is a duration — each is an exit code, an ordering, a latch reading or a stderr
+  substring — so each is decided by the fake the case handed `serve` rather than by how long
+  anything took, and the patience budget covering them may be widened without review.
   **Why fakes here and the real runner set in T12b.** The ordered log is an assertion about
-  `serve`'s sequence, and a deterministic sequence needs the bubble's virtual clock and a stop
-  each fake honours on command — a real ingest loop, worker and heartbeat carry their own timing and
-  their own database. So T10a proves the *ordering and the exit-code mapping* over fakes, and T12b
-  proves that the **real** three-runner set returns on `stop` inside the budget, end to end. The
-  seam between them is the shared stop contract T4 and T5/T6 assert per runner: each real runner is
-  shown to behave as the fakes do, and `serve` is shown to do the right thing with runners that
-  behave that way [derived → AC25, AC26, AC27, AC28].
+  `serve`'s sequence, and a deterministic sequence needs a `stop` each fake honours on command — a
+  real ingest loop, worker and heartbeat carry their own timing and their own database. So T10a
+  proves the *ordering and the exit-code mapping* over fakes, and T12b proves that the **real**
+  three-runner set returns on `stop` inside the budget, end to end. The seam between them is the
+  shared stop contract T4 and T5/T6 assert per runner: each real runner is shown to behave as the
+  fakes do, and `serve` is shown to do the right thing with runners that behave that way
+  [derived → AC25, AC26, AC27, AC28].
 - **T10b — migrate-only.** Entry point: the migrate-only path. Scenarios: it applies pending
   migrations under `ProcessLockID` and returns zero; a second invocation is a no-op and returns zero;
   no listener is bound (the configured metrics port stays free), no Bot API request reaches the fake
