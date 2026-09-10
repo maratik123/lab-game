@@ -141,15 +141,15 @@ place, exposes readiness, and shuts the whole thing down cleanly on a signal.
 | Restart hygiene: the §12.1 downtime shift | **In this task.** The process maintains a persisted liveness instant; at start-up it measures the gap to the database's current instant and, when the gap exceeds a configured threshold, moves every overdue pending scheduler row's `run_at` forward by that gap. Owner's answer, round 1. No issue in the #47 decomposition is scoped to the rule — the word does not occur in it — and the two mechanics whose behaviour it protects, corpse and backpack TTL (#40) and raid-session timer edges (#36), name neither the rule nor this issue among their dependencies, so nothing in the roadmap would otherwise have placed it. |
 | Which rows the shift moves | **Every overdue pending row, as the design states it** — no narrowing by task class. A declared recurrence pushed forward is pulled back by the scheduler's own reconciliation, which runs before the worker's first cycle, so the literal reading needs no exception (see *Technical constraints*). |
 | Where the downtime measurement's instants come from | **The database, both of them.** The scheduler package's standing rule is that every persisted instant is server-supplied and Go time survives only as an interval; the shift is a scheduler-semantics operation and follows the same rule. No `time.Now` participates. |
-| The shift's threshold and the liveness cadence | Two configuration keys in the optional-with-default class. Their values are the design's call and are stated in their doc comments and `.env.example` rows, never as literals in a handler. |
+| The shift's threshold and the liveness cadence | Two configuration keys in the optional-with-default class. Their values are the design's call. |
 | Start-up failure policy | **Every failure is fatal.** A subsystem that cannot be constructed, bound or started stops the process, naming it; nothing is skipped, disabled or degraded. Owner's answer, round 1, with the canary consequence explicitly accepted. Subsystems already started when a later step fails are shut down through their own entry points before the process exits. |
 | Where readiness is served | On the health listener the metrics endpoint already binds, at a path distinct from the metrics path. `internal/health` grows that path; the module gains no second listen address and no second configuration key. A separate listener stays available as a Design Amendment if the infrastructure pass needs one. |
 | What readiness means | No migration is pending **and** the pool answers a round-trip query. It is false before the migration step completes, false while the pool is unreachable, and false from the moment shutdown begins — so a probe distinguishes "starting", "serving" and "draining". |
-| Shutdown budget shape | One whole-shutdown deadline, not a per-subsystem budget: a `LAB_GAME_*` optional-with-default duration key in the established class. The default value is the design's call and is stated in the key's doc comment and its `.env.example` row, never as a literal in a handler. |
+| Shutdown budget shape | One whole-shutdown deadline, not a per-subsystem budget: a `LAB_GAME_*` optional-with-default duration key in the established class. The default value is the design's call. |
 | Signal set and second-signal behaviour | `SIGINT` and `SIGTERM` begin graceful shutdown. A second signal abandons the wait immediately and exits non-zero — an operator who asks twice is not made to wait out the deadline. |
 | Process logger | One `*slog.Logger` constructed in the composition root and passed explicitly to every subsystem that takes one, including `store.Migrate`, which rejects a nil logger. Nothing calls `slog.SetDefault`; no package holds a package-level logger. Handler shape is the design's call. |
 | Build version | `version` becomes a settable string **variable**, not a constant — see *Technical constraints*. It is exported as a metric label, never parsed or compared. |
-| Observability of the shift | The measured gap and the number of rows moved reach the metrics registry. A start-up step that silently rewrites scheduler rows is the shape of an incident nobody can reconstruct afterwards, and the project's telemetry rule is that a behaviour declares its telemetry in the PR that implements it. |
+| Observability of the shift | The measured gap and the number of rows moved reach the metrics registry. A start-up step that silently rewrites scheduler rows is the shape of an incident nobody can reconstruct afterwards. |
 | Empty router and empty registry | Wired as they are. `ingest.Options.Router` documents an empty router as legal, and the loop substitutes a reserved sentinel into the transmitted allowed-updates list while the route set is empty; `scheduler.NewRegistry()` with no declarations is legal. No placeholder handler is invented to make the wiring look populated. |
 | Chat allowlist placement | The outbound gate is installed on the Telegram client at construction, which is where `ingest` documents it belongs, so no handler can bypass it. |
 | Ordering of the pool collector | The pool collector takes an accessor, so it is registered against the pool built in the same root; it never constructs a pool of its own. |
@@ -192,8 +192,7 @@ place, exposes readiness, and shuts the whole thing down cleanly on a signal.
 - **The shift touches no basis document.** The two task basis-document tables are written by the
   ledger's own basis constructors at posting time and carry the `run_at` the handler supplied
   [source: 137eb7a:internal/store/basis.go § DeferredTask · ast-index symbol "DeferredTask"], so
-  moving a scheduler row's `run_at` neither writes nor rewrites live ledger data. Nothing in this
-  task edits a basis document, which the data-contract carve-out forbids.
+  moving a scheduler row's `run_at` neither writes nor rewrites live ledger data.
 - **An interrupted scheduler task returns to `pending` at its original `run_at`.** Discovery
   claims with `FOR NO KEY UPDATE ... SKIP LOCKED` and each task executes inside its own
   transaction, so a process that dies mid-task loses that transaction on connection teardown: the
@@ -235,9 +234,6 @@ place, exposes readiness, and shuts the whole thing down cleanly on a signal.
 - **Configuration is read once.** There is no reload path, so every value the composition root
   injects is fixed for the process lifetime, and a changed balance file or environment variable
   needs a restart. Nothing in this task introduces a reload.
-- **No `panic` and no `log.Fatal` outside `main`'s own exit path.** `main` may exit non-zero;
-  everything below it returns errors. `run` already documents that it never terminates the process
-  itself.
 
 ## Acceptance Criteria
 
