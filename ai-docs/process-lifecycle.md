@@ -35,7 +35,7 @@ every diagnostic is a `lab-game bot: <name>: <cause>` line on stderr, where
 | Exit code | Meaning |
 |---|---|
 | `0` | a completed graceful drain; a successful `bot migrate` (including a no-op one); `-h`/`--help` |
-| `1` | any start-up step failed; a runner returned on its own before a signal; the drain hit its budget or was ended early by a second signal; a closer other than the liveness final write failed |
+| `1` | any start-up step failed; a runner returned on its own before a signal; the drain hit its budget or was ended early by a second signal |
 | `2` | an unrecognised subcommand — "this binary was invoked wrong", deliberately distinct from "this binary tried and failed" |
 
 ## 2. Start-up: one written order, all-fatal, unwinding
@@ -288,11 +288,13 @@ The drain, in order:
    the health listener, the pool, the signal deregistration — under a fresh
    context bounded by the same duration. That walk is the process's own final
    close: the drain's bound covers the join, and the close that follows it is
-   what the process spends *beyond* that bound. A closer that returns an
-   error is reported by name; the **final liveness write is the one
-   best-effort entry** whose failure never changes the exit code, because the
-   next start then measures its gap from the last successful heartbeat, one
-   interval old at worst.
+   what the process spends *beyond* that bound. **A closer that returns an
+   error is reported by name and never changes the exit code** — the process
+   is already leaving, and a close that failed is a diagnostic, not a second
+   verdict; the exit code carries only whether the drain itself completed.
+   The final liveness write is the clearest instance of this — the next start
+   measures its gap from the last successful heartbeat, one interval old at
+   worst — but every closer is the same case, not a named exception to it.
 
 The closer list is the single place the shutdown order is written down:
 `assemble` appends to it as resources are taken, and both the start-up unwind

@@ -300,50 +300,41 @@ func TestServe_RunnerReturnsOnOwnWithNoSignal(t *testing.T) {
 	}
 }
 
-func TestServe_FailingFinalLivenessWrite_ReportedNotFatal(t *testing.T) {
+// TestServe_FailingCloserReportedNotFatal covers what used to be two
+// cases with opposite verdicts — "liveness final write" as the one
+// best-effort exception, every other closer as fatal. The exit code
+// now carries only whether the drain itself completed, so a failing
+// closer is reported by name and never flips it, whichever closer it
+// is; the liveness write and an arbitrary other closer now exercise
+// the identical proposition, so one table-driven test replaces both.
+func TestServe_FailingCloserReportedNotFatal(t *testing.T) {
 	t.Parallel()
-	var mu sync.Mutex
-	var log []string
 
-	a := &app{
-		readiness: newReadiness(nil),
-		signals:   make(chan os.Signal, 2),
-		runners:   []runner{stoppingRunner(&mu, &log, "liveness heartbeat")},
-		closers: []closer{
-			recordingCloser(&mu, &log, "liveness final write", errors.New("write failed")),
-		},
-	}
+	for _, closerName := range []string{"liveness final write", "pool"} {
+		t.Run(closerName, func(t *testing.T) {
+			t.Parallel()
+			var mu sync.Mutex
+			var log []string
 
-	var stderr bytes.Buffer
-	go func() { a.signals <- syscall.SIGTERM }()
-	code := a.serve(context.Background(), patience, &stderr)
+			a := &app{
+				readiness: newReadiness(nil),
+				signals:   make(chan os.Signal, 2),
+				runners:   []runner{stoppingRunner(&mu, &log, "runner")},
+				closers: []closer{
+					recordingCloser(&mu, &log, closerName, errors.New("close failed")),
+				},
+			}
 
-	if code != 0 {
-		t.Errorf("serve() = %d, want 0 — a failing final liveness write must not flip the exit code", code)
-	}
-	if !strings.Contains(stderr.String(), "liveness final write") {
-		t.Errorf("stderr = %q, want it to report the failing closer by name", stderr.String())
-	}
-}
+			var stderr bytes.Buffer
+			go func() { a.signals <- syscall.SIGTERM }()
+			code := a.serve(context.Background(), patience, &stderr)
 
-func TestServe_OtherClosingFailure_IsFatal(t *testing.T) {
-	t.Parallel()
-	var mu sync.Mutex
-	var log []string
-
-	a := &app{
-		readiness: newReadiness(nil),
-		signals:   make(chan os.Signal, 2),
-		runners:   []runner{stoppingRunner(&mu, &log, "ingest loop")},
-		closers: []closer{
-			recordingCloser(&mu, &log, "pool", errors.New("close failed")),
-		},
-	}
-
-	go func() { a.signals <- syscall.SIGTERM }()
-	code := a.serve(context.Background(), patience, &bytes.Buffer{})
-
-	if code == 0 {
-		t.Error("serve() = 0, want non-zero — a non-liveness closer failed")
+			if code != 0 {
+				t.Errorf("serve() = %d, want 0 — a failing closer must not flip the exit code", code)
+			}
+			if !strings.Contains(stderr.String(), closerName) {
+				t.Errorf("stderr = %q, want it to report the failing closer by name", stderr.String())
+			}
+		})
 	}
 }

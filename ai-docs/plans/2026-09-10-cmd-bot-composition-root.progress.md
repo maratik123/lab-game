@@ -8,8 +8,8 @@ _Updated: 2026-09-10 21:01_
 **Last build:** PASS
 **Issue:** #24
 **Spec:** ai-docs/plans/2026-09-10-cmd-bot-composition-root.spec.md
-**current_step:** Step 9.5 — self-review round 1 findings 1–8 and 10 fixed (finding 9 is a Design Amendment, left open); round 2 finding 1 (T10a ordered-log rule) fixed
-**last_passed_gate:** make test-race | 2026-09-10T21:00:33Z | fcee508
+**current_step:** Step 9.5 — self-review round 1 findings 1–8 and 10 fixed (finding 9 is a Design Amendment, left open); round 2 finding 1 (T10a ordered-log rule) fixed; owner ruling (a closer's error never changes the exit code) applied — see § *Owner ruling*
+**last_passed_gate:** go test -race ./cmd/bot/... | 2026-09-10T21:32:44Z | uncommitted
 **entry_args:** 24
 
 ## Next action
@@ -164,6 +164,30 @@ four stand out: they are the places where the same discipline was not applied.
 |---|-----------|----------|---------|--------|
 | 1 | cmd/bot/serve_test.go:127 · design.md:1114-1115 | minor | **T10a's ordered-log rule is not followed.** T10a states the ordered-log case asserts "the log is exactly the reverse of the list it was handed rather than a hand-written expected sequence." `TestServe_SignalCleanStopExitZero` built `wantTail := []string{"close:health listener", "close:pool"}` by hand and compared only the last two log entries against it — a sequence that has to be updated by hand whenever `a.closers` changes, and silently stops covering an added closer until someone remembers to. | ✅ Fixed |
 
+## Owner ruling — a closer's error never changes the exit code (not a self-review round)
+
+**Scope.** The owner ruled that the exit code carries one proposition only — whether the drain
+completed (budget honoured, no second signal) — never whether a closer errored. AC28 ("A completed
+graceful shutdown exits zero") and the design's own § Approach → *Shutdown* ("the process is already
+leaving, and a close that failed is a diagnostic, not a second verdict") already said this; the code
+special-cased exactly one closer name (`"liveness final write"`) instead of applying it to all five.
+The concrete failure this closed: of the five closers only the canary's and the health listener's
+`Shutdown` can return an error at all, and the realistic way either does is an in-flight HTTP request
+outliving the closer budget — under the old code a Prometheus scrape landing at the wrong moment during
+shutdown turned a clean drain into exit 1.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | cmd/bot/serve.go:118-126 | major | `drain`'s closer walk set `exitCode = 1` for any closer other than `"liveness final write"`, contradicting AC28 and the design's own *Shutdown* argument. Removed the exception entirely — every closer error is reported on stderr by name and never flips `exitCode`; the liveness-write reasoning (self-healing via the next start's heartbeat gap) is now stated as one instance of the general rule, not a named exception. | ✅ Fixed |
+| 2 | ai-docs/process-lifecycle.md:38,287-295 | major | The exit-code table's `1` row and § 6 step 4 both asserted "a closer other than the liveness final write failed" as a `1`-exit cause. Removed the clause from the table row and rewrote step 4 to state the general rule, with the liveness write named as the clearest instance rather than the exception. Re-grepped the whole file for `exit`/`liveness final write`/`best-effort` after the edit — no other stale assertion of the removed clause remained. | ✅ Fixed |
+| 3 | cmd/bot/serve_test.go:303-349 | major | `TestServe_OtherClosingFailure_IsFatal` asserted the removed behaviour outright (a non-liveness closer failing must produce a non-zero exit). Once fixed, its assertion and `TestServe_FailingFinalLivenessWrite_ReportedNotFatal`'s assertion became the identical proposition ("a failing closer is reported by name and the exit code stays zero"), differing only in closer name — merged into one table-driven `TestServe_FailingCloserReportedNotFatal` over `{"liveness final write", "pool"}`, per the coordinator's instruction to merge rather than leave a duplicate that looks like coverage. | ✅ Fixed |
+
+**Mutation proof.** Re-applied the removed behaviour to `drain` (`exitCode = 1` on any closer error)
+against this commit: `go test -count=1 -run TestServe_FailingCloserReportedNotFatal ./cmd/bot/...`
+failed on both subtests (`liveness_final_write` and `pool`) — `serve() = 1, want 0`. Restored via a
+cp-backup (`cp`, never `git checkout --`), confirmed the restored file byte-identical (`diff` empty),
+re-ran — both subtests green.
+
 ## Review register
 
 | id | raised | severity | status | verifying command |
@@ -183,3 +207,6 @@ four stand out: they are the places where the same discipline was not applied.
 | R1-13 | round 1 | minor | accepted@1 — established project practice, operational not balance | The `LAB_GAME_PROCESS_` compiled-in defaults (`true`/`30s`/`30s`/`5m`) live in `internal/config/process.go:69-76` as Go literals. `AGENTS.md` § *Code Style*'s balance-constant rule targets game tuning (stamina cap, step cost, shop rates, dice); the four optional-with-default classes already shipped (`Transport`, `Scheduler`, `Ingest`, `Health`) hold their defaults the same way. Command: `grep -n 'ClaimLimit:\|TaskTimeout:' internal/config/scheduler.go` |
 | R1-14 | round 1 | minor | accepted@1 — re-resolved locator, not a doc defect | Design § Approach sketches `(*app).serve(ctx) int`; the tree ships `serve(ctx, shutdownTimeout, stderr) int`. A prose sketch's argument list, not a design decision — no amendment owed. Command: `grep -n '(\*app).serve' ai-docs/plans/2026-09-10-cmd-bot-composition-root.design.md` |
 | RA-1 | T10a amendment | minor | fixed@fcee508 | `TestServe_SignalCleanStopExitZero` now derives `wantTail` from `a.closers` itself (reversed) and asserts the whole closer segment of the log against it; re-applying a mutation to `drain` (the closer walk changed to run forwards instead of backwards) against this commit makes it FAIL, restoring the file makes it PASS — both measured. `go test -count=1 -run TestServe_SignalCleanStopExitZero ./cmd/bot/` |
+| OR-1 | owner ruling | major | fixed (uncommitted at authoring time) | `TestServe_FailingCloserReportedNotFatal` (both subtests) asserts a failing closer never flips the exit code; re-applying the removed `exitCode = 1` branch against this diff makes it FAIL on both subtests, restoring makes it PASS — both measured. `go test -count=1 -run TestServe_FailingCloserReportedNotFatal ./cmd/bot/` |
+| OR-2 | owner ruling | major | fixed (uncommitted at authoring time) | `grep -n 'a closer other than the liveness final write' ai-docs/process-lifecycle.md` — no match. |
+| OR-3 | owner ruling | major | fixed (uncommitted at authoring time) | `grep -n 'TestServe_OtherClosingFailure_IsFatal\|TestServe_FailingFinalLivenessWrite_ReportedNotFatal' cmd/bot/serve_test.go` — no match; `grep -n 'func TestServe_FailingCloserReportedNotFatal' cmd/bot/serve_test.go` — one match. |
