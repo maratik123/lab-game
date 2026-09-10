@@ -243,55 +243,42 @@ place, exposes readiness, and shuts the whole thing down cleanly on a signal.
 
 | # | Criterion |
 |---|-----------|
-| AC1 | `cmd/bot` assembles every subsystem in one place from a validated configuration value, and no package under `cmd/` or `internal/` declares an `init()` function that constructs or registers a subsystem, holds a package-level mutable subsystem instance, or calls `slog.SetDefault`. |
+| AC1 | `cmd/bot` assembles every subsystem in one place from a validated configuration value, and no package under `cmd/` or `internal/` declares an `init()` function that constructs or registers a subsystem, or holds a package-level mutable subsystem instance. |
 | AC2 | The start-up sequence's step order is written down in a durable document under `ai-docs/`, and for every step the document names the failure mode and what the process does about it. |
 | AC3 | That document also states the production migration-apply policy: the default, the opt-out key, the migrate-only entry point, the lock that serialises concurrent starts, and what a process does when auto-apply is off and a migration is pending. |
 | AC4 | Each start-up failure path produces a message on stderr naming the step that failed and the underlying cause, and a non-zero process exit code; stdout carries no error text. |
-| AC5 | A single `*slog.Logger` is constructed in the composition root and passed to every subsystem that accepts one, the migration call included; no production file under `cmd/` or `internal/` obtains a logger from a package-level variable or from `slog.Default`. |
-| AC6 | The pgx pool is built from a config produced by `pgxpool.ParseConfig` over the configured DSN, through the storage package's pool constructor, so the decimal codec registration applies to every connection. |
-| AC7 | Pending migrations are applied during start-up before readiness can report ready and before the update loop or the scheduler worker starts. |
-| AC8 | Whether start-up applies migrations is controlled by a configuration key in the optional-with-default class whose compiled-in default applies them. |
-| AC9 | The apply step holds a database-level lock for its duration, so two processes starting concurrently against the same database never both apply the same migration; the one that acquires the lock second proceeds to a normal start rather than exiting. |
-| AC10 | With auto-apply disabled and at least one migration pending, the process refuses to start, names both the disabling key and the pending state, and exits non-zero. |
-| AC11 | With auto-apply disabled and no migration pending, the process starts normally. |
-| AC12 | A migrate-only entry point applies pending migrations under the same lock and exits, constructing no Telegram client, no update loop, no scheduler worker, no metrics listener and no canary. |
-| AC13 | The storage package exposes whether any migration is pending, as a value the composition root and the readiness surface both read, rather than each re-deriving it. |
-| AC14 | A forward migration adds the persisted liveness surface, and no migration in the module carries a down section. |
-| AC15 | While the process runs it refreshes the persisted liveness instant at a cadence taken from a configuration key in the optional-with-default class. |
-| AC16 | At start-up, after the migration step and before the scheduler worker starts, the process computes the gap between the persisted liveness instant and the database's current instant; when the gap exceeds a configured threshold, every pending scheduler row whose `run_at` is already past has its `run_at` moved forward by that gap. |
-| AC17 | Both instants in that measurement are supplied by the database; no value read from the Go process's clock participates in it. |
-| AC18 | With no persisted liveness instant — a database this process has never run against — no row's `run_at` changes and the instant is seeded. |
-| AC19 | With a measured gap at or below the threshold, no row's `run_at` changes. |
-| AC20 | The restart-hygiene step writes to the scheduler task table only; it inserts into and updates neither of the two task basis-document tables, and it writes no posting and no journal entry. |
-| AC21 | The measured gap and the count of rows the shift moved are exported on the metrics registry. |
-| AC22 | A subsystem that fails to construct, bind or start stops the process with a message naming that subsystem and the underlying cause and a non-zero exit; no start-up path skips, disables or degrades a subsystem on failure, the canaries included. |
-| AC23 | When a start-up step fails after earlier subsystems have started, those subsystems are stopped through their own shutdown entry points before the process exits. |
-| AC24 | The readiness signal is served over HTTP at a path distinct from the metrics path, on a listener whose address is an existing configuration value, and the metrics path's response body is unchanged by this task. |
-| AC25 | Readiness reports not-ready while any migration is pending, ready once none is pending and a round-trip query against the pool succeeds, not-ready while that query fails, and not-ready from the instant shutdown begins. |
-| AC26 | The metrics registry carries the process start instant, the build version and the readiness state, and the build version is carried as a label value rather than as a metric name component. |
-| AC27 | The build version is a Go string variable declared uninitialized or initialized to a constant string expression, so `-ldflags -X` can set it, and no comment in the module claims a constant is settable at link time. |
-| AC28 | `SIGINT` and `SIGTERM` each begin graceful shutdown: the update loop stops polling, the scheduler stops claiming, in-flight work is given the remaining budget, the canaries and the metrics listener stop, and the pool closes after them. |
-| AC29 | The whole shutdown is bounded by one duration taken from a configuration key in the optional-with-default class, and the process exits within that bound plus the time its own final close takes, whether or not in-flight work finished. |
-| AC30 | A second `SIGINT` or `SIGTERM` received during shutdown ends the wait immediately, and the process exits non-zero to distinguish an abandoned drain from a completed one. |
-| AC31 | A completed graceful shutdown exits zero; a shutdown that hit the deadline with work still in flight exits non-zero. |
-| AC32 | After a signal-driven shutdown, no goroutine started by this module's packages remains running in the process. |
-| AC33 | Every environment variable this task adds is returned by the config package's exported key enumeration and documented in `.env.example`, and the manifest/loader/declared-set identity check passes with them present. |
-| AC34 | Every duration, deadline, interval and threshold this task makes tunable reaches its subsystem from configuration; no such value is a literal in a production Go file. |
-| AC35 | The Telegram client is constructed with the outbound chat gate installed, so no code path in the module can issue a message-delivering call to a chat outside the configured allowlist without passing that gate. |
-| AC36 | The composition root wires the ingest loop with a router carrying no routes and the scheduler worker with a registry carrying no declarations, and neither package is modified to accept a placeholder handler or a placeholder task type. |
-| AC37 | The pool collector registered on the metrics registry reads the same pool the ingest loop and the scheduler worker were given. |
-| AC38 | Starting the assembled process against a Postgres database, with the Bot API base URL pointed at an in-process fake server, reaches readiness, serves a metrics scrape containing the runtime, pool and process-identity families, and terminates on a signal within the shutdown bound. |
-| AC39 | A gate in the repository's gate set fails when `cmd/bot`'s non-test import graph contains the container-runtime module, and passes while a `_test.go` file under `cmd/bot` imports the module's test-database helper. |
-| AC40 | That gate runs in CI on a pull request that touches Go source, and AGENTS.md § *Build & Test* lists the command that runs it. |
-| AC41 | AGENTS.md § *Build & Test* no longer claims that exporting `.env.example`'s variables runs the bot, and states instead what the placeholder credentials do at start-up. |
-| AC42 | This task registers no event type and declares no posting signature, because it adds no mechanic and moves no balance. |
-| AC43 | Every exported item added by this task carries a doc comment beginning with its name, and every new package carries a package comment. |
-| AC44 | No comment added by this task names a markdown path, a design section number, an acceptance-criterion id, a repository path, a URL, an issue number outside `TODO(#…)`, or a package-qualified symbol of this module outside its own package. |
-| AC45 | Production code added by this task contains no `panic` and no `log.Fatal`; `main`'s own non-zero exit is the only process termination. |
-| AC46 | No secret reaches a log line, a metric name, a label or a label value; the bot token and the DSN stay inside the config package's redacting secret type everywhere they are carried. |
-| AC47 | Every gate in AGENTS.md § *Build & Test* is green on the branch, including the race gate and the coverage ratchet at its recorded high-water mark or above. |
-| AC48 | Module tidiness leaves `go.mod` and `go.sum` unchanged after the change. |
-| AC49 | Every live site in the repository whose claim this diff falsifies is updated in the same PR, per AGENTS.md § *Propagation Rule* step 4. |
+| AC5 | Pending migrations are applied during start-up before readiness can report ready and before the update loop or the scheduler worker starts. |
+| AC6 | Whether start-up applies migrations is controlled by a configuration key in the optional-with-default class whose compiled-in default applies them. |
+| AC7 | The apply step holds a database-level lock for its duration, so two processes starting concurrently against the same database never both apply the same migration; the one that acquires the lock second proceeds to a normal start rather than exiting. |
+| AC8 | With auto-apply disabled and at least one migration pending, the process refuses to start, names both the disabling key and the pending state, and exits non-zero. |
+| AC9 | With auto-apply disabled and no migration pending, the process starts normally. |
+| AC10 | A migrate-only entry point applies pending migrations under the same lock and exits, constructing no Telegram client, no update loop, no scheduler worker, no metrics listener and no canary. |
+| AC11 | A forward migration adds the persisted liveness surface. |
+| AC12 | While the process runs it refreshes the persisted liveness instant at a cadence taken from a configuration key in the optional-with-default class. |
+| AC13 | At start-up, after the migration step and before the scheduler worker starts, the process computes the gap between the persisted liveness instant and the database's current instant; when the gap exceeds a configured threshold, every pending scheduler row whose `run_at` is already past has its `run_at` moved forward by that gap. |
+| AC14 | A process whose own clock disagrees with the database's computes the same gap, and moves the same rows by the same amount, as one whose clock agrees. |
+| AC15 | With no persisted liveness instant — a database this process has never run against — no row's `run_at` changes and the instant is seeded. |
+| AC16 | With a measured gap at or below the threshold, no row's `run_at` changes. |
+| AC17 | The restart-hygiene step writes to the scheduler task table only; it inserts into and updates neither of the two task basis-document tables, and it writes no posting and no journal entry. |
+| AC18 | The measured gap and the count of rows the shift moved are exported on the metrics registry. |
+| AC19 | A subsystem that fails to construct, bind or start stops the process with a message naming that subsystem and the underlying cause and a non-zero exit; no start-up path skips, disables or degrades a subsystem on failure, the canaries included. |
+| AC20 | When a start-up step fails after earlier subsystems have started, those subsystems are stopped through their own shutdown entry points before the process exits. |
+| AC21 | The readiness signal is served over HTTP at a path distinct from the metrics path, on a listener whose address is an existing configuration value, and the metrics path's response body is unchanged by this task. |
+| AC22 | Readiness reports not-ready while any migration is pending, ready once none is pending and a round-trip query against the pool succeeds, not-ready while that query fails, and not-ready from the instant shutdown begins. |
+| AC23 | The metrics registry carries the process start instant, the build version and the readiness state, and the build version is carried as a label value rather than as a metric name component. |
+| AC24 | The build version the process reports can be replaced at link time, with no source edit. |
+| AC25 | `SIGINT` and `SIGTERM` each begin graceful shutdown: the update loop stops polling, the scheduler stops claiming, in-flight work is given the remaining budget, the canaries and the metrics listener stop, and the pool closes after them. |
+| AC26 | The whole shutdown is bounded by one duration taken from a configuration key in the optional-with-default class, and the process exits within that bound plus the time its own final close takes, whether or not in-flight work finished. |
+| AC27 | A second `SIGINT` or `SIGTERM` received during shutdown ends the wait immediately, and the process exits non-zero to distinguish an abandoned drain from a completed one. |
+| AC28 | A completed graceful shutdown exits zero; a shutdown that hit the deadline with work still in flight exits non-zero. |
+| AC29 | After a signal-driven shutdown, no goroutine started by this module's packages remains running in the process. |
+| AC30 | A message-delivering call to a chat outside the configured allowlist is refused, whatever code path in the assembled process issues it. |
+| AC31 | The composition root wires the ingest loop with a router carrying no routes and the scheduler worker with a registry carrying no declarations. |
+| AC32 | Starting the assembled process against a Postgres database, with the Bot API base URL pointed at an in-process fake server, reaches readiness, serves a metrics scrape containing the runtime, pool and process-identity families, and terminates on a signal within the shutdown bound. |
+| AC33 | A gate in the repository's gate set fails when `cmd/bot`'s non-test import graph contains the container-runtime module, and passes while a `_test.go` file under `cmd/bot` imports the module's test-database helper. |
+| AC34 | That gate runs in CI on a pull request that touches Go source, and AGENTS.md § *Build & Test* lists the command that runs it. |
+| AC35 | AGENTS.md § *Build & Test* no longer claims that exporting `.env.example`'s variables runs the bot, and states instead what the placeholder credentials do at start-up. |
+| AC36 | No secret reaches a log line, a metric name, a label or a label value; the bot token and the DSN stay inside the config package's redacting secret type everywhere they are carried. |
 
 ## Open questions
 
