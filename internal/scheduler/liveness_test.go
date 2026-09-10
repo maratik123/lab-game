@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/maratik123/lab-game/internal/repotest"
@@ -282,17 +284,36 @@ func TestAbsorbDowntime_LedgerAndBasisTablesUntouched(t *testing.T) {
 }
 
 // TestAbsorbDowntime_TwoConcurrentCallsShiftOnce drives two
-// AbsorbDowntime calls against one schema, released together, over a
-// stale instant with overdue rows present: the row lock serialises
-// them, so the rows move exactly once and by exactly one gap.
+// AbsorbDowntime calls against one schema, released together over a
+// stale instant with overdue rows present, and establishes that running
+// the end-to-end path twice this way still leaves the row moved exactly
+// once. It does NOT prove the process_liveness row lock by itself:
+// measuring the two calls' reported gaps showed they never actually
+// overlap at the database — the second call's SELECT consistently runs
+// only after the first call's whole transaction has already committed,
+// regardless of whether the lock is present. TestAbsorbDowntime_LockBlocksConcurrentSelect
+// is where the lock itself is proved, by driving two transactions'
+// statements directly so their overlap is controlled rather than hoped
+// for.
+//
+// The gap (5 minutes) is still deliberately smaller than the row's
+// overdue amount (30 minutes): after one shift the row is still overdue
+// by 25 minutes, still matching a lockless second transaction's
+// "run_at <= now()" — a gap larger than the overdue amount (as an
+// earlier version of this test used) shifts the row into the future on
+// the first pass, so a second UPDATE would find nothing to match
+// regardless of locking or overlap. That shape stays, because it is
+// still the correct fixture for whatever mutual exclusion this path
+// ends up getting from any source — it is the *overlap*, not the
+// arithmetic, that this test cannot control.
 func TestAbsorbDowntime_TwoConcurrentCallsShiftOnce(t *testing.T) {
 	t.Parallel()
 	pool := newScheduler(t)
 	l1 := newLiveness(t, pool, time.Second, time.Minute)
 	l2 := newLiveness(t, pool, time.Second, time.Minute)
 
-	setLivenessSeenAt(t, pool, "now() - interval '1 hour'")
-	id := insertScheduledTask(t, pool, "t", "now() - interval '10 minutes'", "pending")
+	setLivenessSeenAt(t, pool, "now() - interval '5 minutes'")
+	id := insertScheduledTask(t, pool, "t", "now() - interval '30 minutes'", "pending")
 	before := scheduledTaskRunAt(t, pool, id)
 
 	start := make(chan struct{})
@@ -327,6 +348,129 @@ func TestAbsorbDowntime_TwoConcurrentCallsShiftOnce(t *testing.T) {
 		winnerGap = dt2.Gap
 	}
 	if got, want := after.Sub(before), winnerGap; absDuration(got-want) > time.Second {
+		t.Errorf("row shifted by %v, want %v (exactly one gap)", got, want)
+	}
+}
+
+// TestAbsorbDowntime_LockBlocksConcurrentSelect proves the
+// process_liveness row lock itself, by driving two transactions'
+// absorbLockAndGapSQL / absorbShiftSQL / absorbSeenSQL statements
+// directly instead of calling AbsorbDowntime end to end — the shape
+// TestAbsorbDowntime_TwoConcurrentCallsShiftOnce uses never overlaps the
+// two calls at the database, so it cannot exercise the lock.
+//
+// tx1 begins and runs the locking SELECT but does not commit. tx2 begins
+// and runs the same locking SELECT on a goroutine, publishing the
+// moment it returns. The load-bearing assertion is that tx2's SELECT
+// has NOT returned while tx1 still holds the lock — asserted positively
+// by waiting a bounded, generous patience budget and requiring nothing
+// has been published — rather than inferred later from a row count.
+// Only then does tx1 run its shift and seen_at write and commit; tx2
+// then unblocks, reads the instant tx1 just wrote, measures a
+// near-zero gap, and correctly shifts nothing.
+func TestAbsorbDowntime_LockBlocksConcurrentSelect(t *testing.T) {
+	t.Parallel()
+	pool := newScheduler(t)
+	ctx := context.Background()
+
+	// Patience budgets, not the subjects under test: blockedPatience is
+	// how long we wait before concluding tx2 is genuinely blocked, and
+	// unblockCeiling is how long we wait for tx2 to return once tx1 has
+	// committed and the lock is released. Both are generous, and neither
+	// bounds the other: the two waits are sequential and disjoint, so
+	// widening either changes no proposition this case asserts.
+	const blockedPatience = 500 * time.Millisecond
+	const unblockCeiling = 5 * time.Second
+
+	setLivenessSeenAt(t, pool, "now() - interval '5 minutes'")
+	id := insertScheduledTask(t, pool, "t", "now() - interval '30 minutes'", "pending")
+	before := scheduledTaskRunAt(t, pool, id)
+
+	tx1, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin tx1: %v", err)
+	}
+	tx1Committed := false
+	defer func() {
+		if !tx1Committed {
+			_ = tx1.Rollback(ctx)
+		}
+	}()
+
+	var seenAt1 *time.Time
+	var gap1 pgtype.Interval
+	if err := tx1.QueryRow(ctx, absorbLockAndGapSQL).Scan(&seenAt1, &gap1); err != nil {
+		t.Fatalf("tx1 lock+gap: %v", err)
+	}
+	if seenAt1 == nil || !gap1.Valid {
+		t.Fatalf("tx1 read seenAt1=%v gap1.Valid=%v, want a seeded instant", seenAt1, gap1.Valid)
+	}
+
+	type tx2Result struct {
+		tx     pgx.Tx
+		seenAt *time.Time
+		gap    pgtype.Interval
+		err    error
+	}
+	tx2Done := make(chan tx2Result, 1)
+	go func() {
+		tx2, err := pool.Begin(ctx)
+		if err != nil {
+			tx2Done <- tx2Result{err: err}
+			return
+		}
+		var seenAt2 *time.Time
+		var gap2 pgtype.Interval
+		scanErr := tx2.QueryRow(ctx, absorbLockAndGapSQL).Scan(&seenAt2, &gap2)
+		tx2Done <- tx2Result{tx: tx2, seenAt: seenAt2, gap: gap2, err: scanErr}
+	}()
+
+	select {
+	case res := <-tx2Done:
+		if res.tx != nil {
+			_ = res.tx.Rollback(ctx)
+		}
+		t.Fatalf("tx2's locking SELECT returned before tx1 committed (err=%v) — it did not block on tx1's lock", res.err)
+	case <-time.After(blockedPatience):
+		// tx2 is still blocked, as expected while tx1 holds the lock.
+	}
+
+	if _, err := tx1.Exec(ctx, absorbShiftSQL, gap1); err != nil {
+		t.Fatalf("tx1 shift: %v", err)
+	}
+	if _, err := tx1.Exec(ctx, absorbSeenSQL); err != nil {
+		t.Fatalf("tx1 record seen_at: %v", err)
+	}
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatalf("tx1 commit: %v", err)
+	}
+	tx1Committed = true
+
+	var res tx2Result
+	select {
+	case res = <-tx2Done:
+	case <-time.After(unblockCeiling):
+		t.Fatalf("tx2 did not unblock within %v of tx1's commit", unblockCeiling)
+	}
+	if res.err != nil {
+		t.Fatalf("tx2 lock+gap: %v", res.err)
+	}
+	defer func() { _ = res.tx.Rollback(ctx) }()
+
+	gap2 := intervalDuration(res.gap)
+	if gap2 >= time.Minute {
+		t.Errorf("tx2 measured gap %v after tx1's commit, want a near-zero gap (tx2 should have read tx1's fresh seen_at)", gap2)
+	}
+
+	if _, err := res.tx.Exec(ctx, absorbSeenSQL); err != nil {
+		t.Fatalf("tx2 record seen_at: %v", err)
+	}
+	if err := res.tx.Commit(ctx); err != nil {
+		t.Fatalf("tx2 commit: %v", err)
+	}
+
+	after := scheduledTaskRunAt(t, pool, id)
+	if got, want := after.Sub(before), intervalDuration(gap1); absDuration(got-want) > time.Second {
 		t.Errorf("row shifted by %v, want %v (exactly one gap)", got, want)
 	}
 }

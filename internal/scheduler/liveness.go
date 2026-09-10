@@ -83,11 +83,17 @@ func NewLiveness(opts LivenessOptions) (*Liveness, error) {
 // never depends on this process's own clock. Both are NULL when the row
 // has never been written: "gap > threshold" is then unknown, which is
 // exactly "seeded, and nothing moves" without a separate branch.
+//
+// The lock is FOR NO KEY UPDATE, not the stronger FOR UPDATE: it is
+// exactly the mode the transaction's own later UPDATE already takes,
+// since seen_at is not a key column, and PostgreSQL's conflicting-locks
+// table has FOR NO KEY UPDATE conflict with itself, which is all the
+// mutual exclusion this transaction needs.
 const absorbLockAndGapSQL = `
 	SELECT seen_at, now() - seen_at
 	FROM process_liveness
 	WHERE id = 1
-	FOR UPDATE
+	FOR NO KEY UPDATE
 `
 
 // absorbShiftSQL moves every overdue pending row forward by the exact

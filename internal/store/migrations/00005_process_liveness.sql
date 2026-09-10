@@ -6,9 +6,10 @@
 -- distinguish from an ordinary short gap. The row is seeded by this
 -- migration rather than by the first start, so AbsorbDowntime's locking
 -- SELECT always has a row to lock: an empty table has no row for
--- SELECT ... FOR UPDATE to serialise on, and Postgres describes a
+-- SELECT ... FOR NO KEY UPDATE to serialise on, and Postgres describes a
 -- concurrent INSERT racing a SELECT as merely "might block" rather than
--- the deterministic ordering READ COMMITTED guarantees for a row lock.
+-- the ordering the row-lock conflict table states outright for this
+-- mode against itself.
 CREATE TABLE process_liveness (
     id      integer     NOT NULL DEFAULT 1,
     seen_at timestamptz,

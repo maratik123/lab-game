@@ -434,7 +434,7 @@ locking one:
 
 ```
 BEGIN
-  SELECT seen_at, now() - seen_at AS gap FROM <liveness> WHERE id = 1 FOR UPDATE
+  SELECT seen_at, now() - seen_at AS gap FROM <liveness> WHERE id = 1 FOR NO KEY UPDATE
       seen_at IS NULL  ->  never run here: nothing moves, Seeded is true
       gap  > threshold ->  UPDATE scheduled_task SET run_at = run_at + gap
                              WHERE state = 'pending' AND run_at <= now()   -> Shifted
@@ -452,13 +452,39 @@ computed and Go only reports.
 **Atomicity is not mutual exclusion, and the row lock is what supplies the second.** The premise that
 made the migration step take a lock — two processes starting at once — applies here unchanged, and
 under Postgres' default READ COMMITTED two concurrent readers would each see the pre-shift instant
-and each apply the shift, moving every overdue row by twice the gap. `FOR UPDATE` on the singleton
-row removes that: the second transaction waits for the first and then re-reads what the first one
-wrote — *"In the case of `SELECT FOR UPDATE` and `SELECT FOR SHARE`, this means it is the updated
-version of the row that is locked and returned to the client"*
-(https://www.postgresql.org/docs/18/transaction-iso.html § Read Committed). The loser therefore
-measures a gap of about zero and moves nothing, which is the correct answer rather than a suppressed
-one. An advisory lock is deliberately *not* used here: it is database-wide while this table is
+and each apply the shift, moving every overdue row by twice the gap. `FOR NO KEY UPDATE` on the
+singleton row removes that, because the mode conflicts with **itself**: the second transaction's
+locking `SELECT` blocks until the first commits, which the manual's conflicting-row-level-locks grid
+states as a cell rather than leaving to inference — the `FOR NO KEY UPDATE` row against the
+`FOR NO KEY UPDATE` column
+(https://www.postgresql.org/docs/18/explicit-locking.html § Row-Level Locks, Table 13.3
+*Conflicting Row-Level Locks*). The loser then re-reads what the winner wrote, measures a gap of
+about zero and moves nothing, which is the correct answer rather than a suppressed one.
+
+**And that sequence is asserted rather than argued.** The row-lock case § Test Design T4 specifies
+drives two transactions' statements directly — rather than calling `AbsorbDowntime` twice — so their
+overlap is controlled rather than hoped for, and its load-bearing assertion is *positive, and taken
+while the first transaction still holds the lock*: the second one's locking `SELECT` has **not**
+returned. A citation cannot stand in for that here, because what this path depends on is the block
+and the re-read together, in one run, on this schema [derived → the row-lock case in § Test
+Design T4].
+
+**Why that strength and no more.** `FOR NO KEY UPDATE` is precisely the mode this transaction's own
+later write already takes: the closing `UPDATE process_liveness SET seen_at` touches no key column —
+the singleton's only key is the primary key on `id` that § *The forward migration* below gives it —
+and the manual names that correspondence outright, *"This lock mode is also acquired by any `UPDATE`
+that does not acquire a `FOR UPDATE` lock"* (same page). `FOR UPDATE` would therefore ask for
+strictly more than this transaction ever uses, and what the extra strength buys is exactly one
+thing: the stronger mode blocks `FOR KEY SHARE`, where this one *"will not block `SELECT FOR KEY
+SHARE` commands that attempt to acquire a lock on the same rows"* (same page). `FOR KEY SHARE` is
+the mode a foreign-key check takes on a referenced row, and nothing references this singleton — the
+migration § *The forward migration* specifies gives it no incoming foreign key, and a guarded
+one-row table is not a target for one. Taking the weaker mode also keeps this statement in step with
+every other row lock in the package, so `AbsorbDowntime` is not the one place where a reader has to
+explain a stronger lock
+[measured 1463d1b:internal/scheduler · grep -rln 'FOR NO KEY UPDATE' internal/scheduler/*.go | grep -v _test | grep -v liveness | sort → "internal/scheduler/claim.go", "internal/scheduler/doc.go", "internal/scheduler/reconcile.go", "internal/scheduler/settle.go"].
+
+An advisory lock is deliberately *not* used here: it is database-wide while this table is
 per-schema, so it would serialise unrelated schemas' fixtures on the one shared test server — the
 same trap the migration lock is opt-in to avoid.
 
@@ -501,9 +527,9 @@ A NULL instant is "this database has never had a live process" — the state the
 distinguish, and the reason the column is nullable. The row exists from the migration rather than
 from the first start because that is what lets `AbsorbDowntime` take its lock on its first
 statement: an empty table has no row to lock, and the serialisation above would then rest on
-concurrent-insert behaviour the manual describes as *might* block rather than on the READ COMMITTED
-rule it states outright
-(https://www.postgresql.org/docs/18/sql-insert.html § Notes). Nothing exists under this name before
+concurrent-insert behaviour the manual describes as *might* block
+(https://www.postgresql.org/docs/18/sql-insert.html § Notes) rather than on the row-lock conflict
+Table 13.3 states outright. Nothing exists under this name before
 the migration, so nothing reads a prior shape and no dual-shape read is needed during a deploy: a
 binary from before the migration never queries the table, and one from after it treats a NULL
 instant exactly as it treats a database it has not run against — it seeds, and shifts nothing.
@@ -947,11 +973,28 @@ prose the repository's own link, citation and shape gates check.
   - **the task basis tables and the ledger are untouched** — row counts of `deferred_task`,
     `recurrent_task`, `journal_entry` and `posting` are identical either side of a shift that moved
     rows [derived → AC17];
-  - **two starts at once** → two `AbsorbDowntime` calls against one schema, released together, with
-    a stored instant far in the past and overdue rows present: the rows move **once** and by **one**
-    gap, one call reports the shift and the other measures a gap at or below the threshold and moves
-    nothing — the serialisation § Approach names, observed rather than reasoned about
-    [derived → AC13];
+  - **two starts at once, end to end** → two `AbsorbDowntime` calls against one schema, released
+    together, with a stored instant far in the past and overdue rows present: the rows move **once**
+    and by **one** gap, one call reports the shift and the other measures a gap at or below the
+    threshold and moves nothing. What that establishes is the end-to-end path run twice leaving the
+    row moved once — and **not** the row lock: released together is not overlapping at the database,
+    and this case holds no lever that makes the two calls overlap there, so the mutual exclusion
+    § Approach names is credited to the case below and never to this one. Its fixture keeps the
+    measured gap deliberately **smaller** than the rows' overdue amount, so that an already-shifted
+    row still matches an unserialised second transaction's overdue predicate; with a larger gap the
+    first shift moves the rows out of that predicate and the case then passes on arithmetic
+    whatever the locking does [derived → AC13];
+  - **the row lock itself** → the two transactions are driven statement by statement instead of
+    through `AbsorbDowntime`, so their overlap is controlled: the first runs the locking `SELECT`
+    and does not commit; the second runs the same locking `SELECT` on a goroutine and publishes the
+    moment it returns. The load-bearing assertion is **positive, and made while the first still
+    holds the lock** — nothing has been published, waited out over a bounded and generous patience
+    budget — rather than inferred afterwards from a row count, which the case above is precisely the
+    demonstration of coming out right with no lock at all. The first then shifts, writes its instant
+    and commits; the second unblocks, reads the instant the first wrote, measures a near-zero gap
+    and shifts nothing. Deleting the locking clause must fail this case *on that positive
+    assertion* — the discrimination requirement is part of the case, on the same reasoning as the
+    scratch package the clock-independence guard below requires [derived → AC13];
   - `Run` writes the instant once per configured interval — asserted by counting writes across a
     span of several intervals, not by timing one — and returns when its context is done, leaving no
     goroutine [derived → AC12];

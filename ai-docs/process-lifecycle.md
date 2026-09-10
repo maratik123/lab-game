@@ -164,7 +164,7 @@ row to lock.
 
 ```
 BEGIN
-  SELECT seen_at, now() - seen_at FROM process_liveness WHERE id = 1 FOR UPDATE
+  SELECT seen_at, now() - seen_at FROM process_liveness WHERE id = 1 FOR NO KEY UPDATE
       seen_at IS NULL   ->  never run here: nothing moves, the instant is seeded
       gap  > threshold  ->  UPDATE scheduled_task SET run_at = run_at + gap
                               WHERE state = 'pending' AND run_at <= now()
@@ -182,11 +182,24 @@ Four properties of that shape are contractual:
   in the scheduler package's test suite holds that structurally.
 - **The row lock, not an advisory lock, supplies mutual exclusion.** Two
   processes starting at once would otherwise each see the pre-shift instant
-  and each apply the shift, moving every overdue row by twice the gap. Under
-  `FOR UPDATE` the second transaction waits and then re-reads what the first
-  wrote: it measures a gap of about zero and moves nothing, which is the
-  correct answer rather than a suppressed one. An advisory lock is not used
-  here because it is database-wide while this table is per-schema.
+  and each apply the shift, moving every overdue row by twice the gap. The
+  lock is `FOR NO KEY UPDATE` — the same mode the transaction's own later
+  `UPDATE process_liveness SET seen_at = now()` already takes, since
+  `seen_at` is not a key column, and PostgreSQL's conflicting-locks table
+  has `FOR NO KEY UPDATE` conflict with itself, so a second starter waits
+  behind the first rather than racing it. That the waiter then re-reads the
+  winner's write and measures a gap of about zero, moving nothing, is not
+  asserted from the manual — it is what
+  `TestAbsorbDowntime_LockBlocksConcurrentSelect` proves directly, by driving
+  two transactions' statements by hand and asserting the second's locking
+  `SELECT` has not returned while the first still holds the lock: drop the
+  locking clause and that assertion goes red.
+  (`TestAbsorbDowntime_TwoConcurrentCallsShiftOnce`, which drives two
+  `AbsorbDowntime` calls end to end from goroutines, cannot prove this —
+  measurement showed its two calls never actually overlap at the database,
+  so it establishes only that the end-to-end path run twice leaves the row
+  moved once.) An advisory lock is not used here because it is database-wide
+  while this table is per-schema.
 - **The shift writes `scheduled_task` and nothing else** — no basis-document
   row, no posting, no journal entry. It rewrites a `run_at` on rows that
   already exist, so it moves no balance and has no posting signature to
