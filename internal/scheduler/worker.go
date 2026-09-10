@@ -16,6 +16,10 @@ import (
 // Scheduler config field.
 const reasonMustBePositive = "must be positive"
 
+// reasonMustNotBeNil is the rejection reason for every required nil
+// pointer/interface field across this package's option structs.
+const reasonMustNotBeNil = "must not be nil"
+
 // OptionError is returned by New when an Options field is invalid.
 type OptionError struct {
 	// Field names the invalid Scheduler config field.
@@ -64,10 +68,10 @@ type Worker struct {
 // field.
 func New(opts Options) (*Worker, error) {
 	if opts.Pool == nil {
-		return nil, &OptionError{Field: "Pool", Reason: "must not be nil"}
+		return nil, &OptionError{Field: "Pool", Reason: reasonMustNotBeNil}
 	}
 	if opts.Registry == nil {
-		return nil, &OptionError{Field: "Registry", Reason: "must not be nil"}
+		return nil, &OptionError{Field: "Registry", Reason: reasonMustNotBeNil}
 	}
 	positiveFields := []struct {
 		name  string
