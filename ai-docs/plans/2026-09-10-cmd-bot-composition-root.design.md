@@ -206,8 +206,9 @@ completed shutdown from an abandoned one (AC28).
 **Decision: the liveness heartbeat gets the same `Stop()` as its two siblings, rather than a
 composition-root wrapper that cancels a per-runner context.** The wrapper was the alternative — it
 would leave `internal/scheduler`'s `Liveness` API untouched and let `serve` synthesise a `stop` for
-it — and it is rejected because it makes a *stopped* runner return `context.Canceled`, which is the
-value the drain reads to mean **abandoned**. `serve` would then need a second rule mapping one
+it — and it is rejected because it makes a *stopped* runner return `context.Canceled` — a
+non-nil error, which the drain's **join** path turns into a non-zero exit exactly as if that runner
+had failed. `serve` would then need a second rule mapping one
 runner's `context.Canceled` to a zero exit while its siblings' means non-zero, and AC28's whole
 distinction would rest on a per-runner exception rather than on the `nil`-vs-`ctx.Err()` contract.
 Three consequences of the chosen form, all load-bearing: `runner.stop` is total, so `serve` has no
@@ -275,14 +276,33 @@ AC25 — polling and claiming stop, in-flight work keeps the remaining budget, t
 listener stop, the pool closes after them — read off the order the steps were registered in rather
 than restated here as a second list that could disagree with the table above.
 
-**A closer's error never changes the process exit code.** The exit code carries one proposition and
-only one: whether the drain completed. Zero means it completed; non-zero means it was abandoned —
-the budget expired, a second signal arrived, or a runner returned on its own before any signal. A
-closer that returns an error is reported on stderr by its name, and that is the whole of its
-effect. The final liveness write is **not** a carve-out from that rule but one instance of it, and
-the reason its own failure is harmless still stands: the next start measures its gap from the last
-successful heartbeat, which is one interval old at worst and far below the downtime threshold
-[derived → AC28].
+**The exit code answers one question: did this process's *work* end cleanly?** Zero means the drain
+completed inside its budget **and** every runner finished without error. Non-zero means one of four
+things, and the design names all four, because a partial list is what lets a fifth arrive
+unnoticed: the budget expired; a second signal arrived; a runner returned on its own **before** any
+signal — the **trigger** path, where that return is itself the reason `serve` began draining; or a
+runner that was asked to stop, honoured it, and returned an error on the way out — the **join**
+path. The first two are abandonment. The last two are both a runner error, and they are written as
+two paths rather than one because conflating them is what hides the join path: the trigger path
+leaves a visibly interrupted shutdown, while **the join path looks exactly like a clean shutdown
+until the error is read**, being reachable on a drain that finished well inside its budget. It is
+not a theoretical branch — the scheduler worker's reconcile failure and the liveness heartbeat's
+spent tolerance both reach it [derived → AC26, AC27, AC28]. This is compatible with AC28 rather
+than an extension of it: AC28's zero clause is about a shutdown that completed *with its work
+finished*, and its non-zero clause states a sufficient condition for exiting non-zero, not the
+exhaustive list of them.
+
+**A closer's error, by contrast, never changes the exit code.** It is reported on stderr by its
+name, and that is the whole of its effect. What separates the two rules is not where in the
+sequence the failure happened but *what kind of thing failed*. A runner is **work**: the ingest
+loop, the scheduler worker and the liveness heartbeat are what this process exists to do, so one of
+them failing on the way out is a failure of that work, and the exit code carries it. A closer is
+**cleanup**, and the argument for making its failure diagnostic is that the process is already
+leaving and the operating system reclaims whatever was not released — an argument that reaches
+cleanup and does not reach work. The final liveness write is **not** a carve-out from the closer
+rule but one instance of it, and the reason its own failure is harmless still stands: the next
+start measures its gap from the last successful heartbeat, which is one interval old at worst and
+far below the downtime threshold [derived → AC28].
 
 The rejected reading — a failed close makes the exit non-zero — is rejected because of *who* would
 be deciding. Of the closers this design registers only two cannot fail at all, the pool close and
@@ -1137,10 +1157,13 @@ prose the repository's own link, citation and shape gates check.
   nothing orders [derived → AC22]. A fake runner returns on its own with **no** signal sent → the
   same drain runs in the same order, that runner's name and its error reach stderr, and the exit
   code is non-zero [derived → the runner-exit rule § Approach → *Shutdown* fixes, under AC26's
-  budget]. A runner that *was* stopped and then returns a non-nil error is reported on stderr under
-  its own name: that is the join's error branch, a different path from the unprompted-return
-  trigger above, and reaching it needs a fake that honours `stop` and still errors — without such a
-  fake the branch has no case anywhere in § Test Design [derived → AC25]. And, deriving from
+  budget]. A runner that *was* stopped, honoured it, and then returns a non-nil error is
+  reported on stderr under its own name **and drives the exit code non-zero** — the fourth cause
+  § Approach → *Shutdown* enumerates, and the one reachable on a drain that finished inside its
+  budget, so the case must assert the exit code and not merely the stderr line. It is the join's
+  error branch, a different path from the unprompted-return trigger above, and reaching it needs a
+  fake that honours `stop` and still errors; no other case in this file produces one
+  [derived → AC25, AC28]. And, deriving from
   § Approach → *Shutdown*'s decision rather than restating its argument, a closer that returns an
   error is reported on stderr by its name and **leaves the exit code alone** — asserted for the
   final liveness write *and* for at least one other closer, so that the case set shows the general
