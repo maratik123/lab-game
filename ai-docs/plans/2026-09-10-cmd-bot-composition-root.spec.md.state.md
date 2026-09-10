@@ -62,7 +62,19 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: aa819bf6502b63262
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "Production migration-apply policy: where do pending migrations get applied? (goose applies no lock unless one is configured, so the concurrent-start answer follows from this choice.)"
+    answer: "Start-up, opt-out — Applied at start-up by default, with an environment switch turning it off for an operator who runs the separate command instead. Both paths exist and both need covering."
+  - round: 1
+    question: "DESIGN 12.1 restart hygiene — shifting overdue scheduler run_at forward by the downtime. Does that land in this task or its own issue? No issue in the #47 decomposition owns it today."
+    answer: "why we need to shift run_at?"
+  - round: 1
+    question: "(orchestrator answered from docs/DESIGN.md §12.1 — the rule protects backpack/corpse TTL and raid-session timer edges from firing in one salvo after a home-machine outage; §11 names the standing timer as the one non-lazy subsystem — then re-put the same question verbatim)"
+    answer: "In this task — The composition root records a liveness heartbeat and, at start-up, shifts overdue pending scheduled_task rows forward by the measured downtime. Grows a forward migration and a start-up step."
+  - round: 1
+    question: "A subsystem that fails to construct or bind at start-up — fatal, or does the bot come up degraded? (The example that already exists: .env.example's placeholder cloud-canary token refuses the whole canary, own leg included.)"
+    answer: "All fatal — Any subsystem failing stops the process, naming it. One rule, no degraded modes — a placeholder canary token keeps the bot down until it is fixed."
 ```
