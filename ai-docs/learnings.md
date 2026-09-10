@@ -436,3 +436,10 @@ wrong-surface text by message twelve.
 **at:** 1c71715
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-10 — process — reading a spec's silence about a file as a scope prohibition, and escalating a design decision as a scope question
+**What happened:** A delegate flagged that its design migrates two existing hand-rolled test guards onto a new shared helper, one of them in a package it believed the spec's scope "does not otherwise reach", and asked me to route it. I grepped the spec for that package, found only a pinned citation in Technical constraints, and put the choice to the owner as a scope question. The owner rejected the premise: "почему спека говорит, какие пакеты трогать? разве это не дело дизайна/кода?" Reading the spec's Scope and Out of scope in full afterwards confirmed it: they state outcomes and mechanisms-not-to-build, and the only paths named anywhere in them are the task's own subject, two functions named as not-to-reimplement, and where a document lands. The spec never enumerates a touchable file set, so a package's absence from it prohibits nothing.
+**Rule:** A spec that speaks in outcomes does not define the file set — the design does. Before invoking "the spec's scope does not cover X" as a reason to ask or to refuse, read the Scope and Out of scope sections whole and confirm the spec is making that kind of claim at all; a grep that returns one incidental hit answers a question about the query, not about the spec's intent. Where the design's own charter already settles the choice — here, § Rules refusing "minimal surface" as a justification for leaving duplication — routing it to the owner is not caution, it is spending their attention on a decision that was already delegated.
+**at:** 27c9194
+**Kind:** correction
+**Escalated?** no
