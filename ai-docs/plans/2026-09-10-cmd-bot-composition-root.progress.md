@@ -8,8 +8,8 @@ _Updated: 2026-09-10 14:26_
 **Last build:** not run
 **Issue:** #24
 **Spec:** ai-docs/plans/2026-09-10-cmd-bot-composition-root.spec.md
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** design-review GO (round 5) | 2026-09-10T14:26:34Z | a56c6a93eba5db7b540b4a23f7bed1d2e59c26a1
+**current_step:** Step 8 — subtask 2 of 15 complete
+**last_passed_gate:** go build/test/vet/lint GREEN | subtask 2 commit (this commit)
 **entry_args:** 24
 
 ## Next action
@@ -18,9 +18,9 @@ _Updated: 2026-09-10 14:26_
 
 ## Subtasks
 
-- [ ] 1. `internal/srcguard` — shared source-walk guard support  ← CURRENT
-- [ ] 2. `internal/config` — the `LAB_GAME_PROCESS_` optional-with-default class
-- [ ] 3. `internal/store` — liveness migration, `MigrateOption`/`WithAdvisoryLock`, `ProcessLockID`, pending query
+- [x] 1. `internal/srcguard` — shared source-walk guard support
+- [x] 2. `internal/config` — the `LAB_GAME_PROCESS_` optional-with-default class
+- [ ] 3. `internal/store` — liveness migration, `MigrateOption`/`WithAdvisoryLock`, `ProcessLockID`, pending query  ← CURRENT
 - [ ] 4. `internal/scheduler` — `Liveness` (`AbsorbDowntime`, `Refresh`, `Run`, `Stop`)
 - [ ] 5. `internal/scheduler` — `(*Worker).Stop()`
 - [ ] 6. `internal/ingest` — `(*Loop).Stop()` + the `getUpdates`-scoped cancel
@@ -37,6 +37,8 @@ _Updated: 2026-09-10 14:26_
 ## Decisions log
 
 - **Step 8**: groups are A=1–8, B=9–13 (both `code-writer`, model pinned by frontmatter), C=14–15 (`general-purpose`, inherit) — taken from the design's `## Handoff plan`, not re-derived.
+- **Subtask 1**: `internal/srcguard` — `PackageFiles`/`WalkSubtree`/`TestFilesOnly`/`ParseFile`/`ParseFiles`/`ImportPaths`/`WriteScratchFile`/`WriteScratchFileIn`. `internal/health` and `internal/ingest` guard plumbing (`walkGoFilesUnder`/`parseGoFile`/`importPaths`, `ingestNonTestFiles`/`walkIngestSource`/`parseIngestSource`) now delegate to it; every predicate unchanged. Commit 803e694. Comment-refs required removing bare-extension/example-path literals (`.go`, `_test.go`, `internal/ingest`, etc.) from doc comments — the gate is stricter than a first `make comment-refs` pass over already-committed content suggested, since the pre-commit hook runs against the newly staged content.
+- **Subtask 2**: `internal/config/process.go` — `Process` struct (`MigrateOnStart`, `ShutdownTimeout`, `LivenessInterval`, `DowntimeThreshold`), `processEnvKeys()`, `defaultProcess()`, `loadProcess()`, all four `LAB_GAME_PROCESS_*` keys with the design's defaults (`true`, `30s`, `30s`, `5m`). Added `lookupBool` to `transport.go`'s lookup-helper family. Wired into `EnvKeys()`, `Config.Process` and `Load` in `config.go`/`env.go`; `.env.example` gained the four rows. Every existing disjointness/manifest test (`TestEnvExample_MatchesLoaderAndEnvKeys`, `TestLoad_ExampleEnvironmentSucceeds`) covers the new class automatically.
 
 ## Key discoveries (don't re-investigate)
 

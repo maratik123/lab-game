@@ -35,11 +35,11 @@ func (s Secret) Reveal() string {
 // Config is lab-game's fully validated runtime configuration: the process
 // environment's secrets, runtime settings and file paths, plus the balance
 // file's decoded constants. Every field is populated by Load or Load
-// returns an error naming every rejected key. Transport, Scheduler, Ingest
-// and Health are the exceptions: their fields are individually
+// returns an error naming every rejected key. Transport, Scheduler, Ingest,
+// Health and Process are the exceptions: their fields are individually
 // optional-with-default, so an absent LAB_GAME_TG_, LAB_GAME_SCHEDULER_,
-// LAB_GAME_INGEST_ or LAB_GAME_HEALTH_ variable never fails Load — every
-// other field has no compiled-in fallback.
+// LAB_GAME_INGEST_, LAB_GAME_HEALTH_ or LAB_GAME_PROCESS_ variable never
+// fails Load — every other field has no compiled-in fallback.
 // Treat the returned value as read-only; Config is not defended against
 // mutation by the type system.
 type Config struct {
@@ -75,6 +75,11 @@ type Config struct {
 	// canary probes' cadence and cloud-leg configuration (LAB_GAME_HEALTH_*),
 	// each field optional-with-default.
 	Health Health
+	// Process holds the composition root's own tuning: the migration-apply
+	// policy, the whole-shutdown deadline, and the liveness heartbeat's
+	// cadence and downtime threshold (LAB_GAME_PROCESS_*), each field
+	// optional-with-default.
+	Process Process
 }
 
 // Load reads and validates lab-game's whole configuration through lookup —
@@ -124,6 +129,11 @@ func Load(lookup Lookup) (*Config, error) {
 		errs = append(errs, err)
 	}
 
+	process, err := loadProcess(lookup)
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	// The long-poll/attempt-timeout cross-check needs both Ingest and
 	// Transport, so it runs here, once each has loaded successfully on
 	// its own — a
@@ -166,6 +176,7 @@ func Load(lookup Lookup) (*Config, error) {
 		Scheduler:      *scheduler,
 		Ingest:         *ingest,
 		Health:         *health,
+		Process:        *process,
 	}, nil
 }
 

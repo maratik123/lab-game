@@ -12,9 +12,10 @@ import (
 // LAB_GAME_TEST_DSN this module's test helpers declare. Every variable
 // declared here is required and none has a compiled-in default; the Bot
 // API transport's tuning variables, the scheduler's polling/retry tuning
-// variables, the update-ingest loop's tuning variables and the
-// health-metrics/canary tuning variables are separate,
-// optional-with-default classes, added on top by EnvKeys().
+// variables, the update-ingest loop's tuning variables, the
+// health-metrics/canary tuning variables and the composition root's own
+// process tuning variables are separate, optional-with-default classes,
+// added on top by EnvKeys().
 const (
 	envBotToken = "LAB_GAME_BOT_TOKEN" //nolint:gosec // G101: this is an environment-variable NAME, not a credential value
 
@@ -47,15 +48,17 @@ type Lookup func(key string) (value string, ok bool)
 // "consults no environment variable outside the documented set" is
 // checked against, and the set the example environment file is asserted
 // to equal exactly. transportEnvKeys(), schedulerEnvKeys(),
-// ingestEnvKeys() and healthEnvKeys() — the four optional-with-default
-// tuning classes — are appended alongside envBalancePath and envWorldPath,
-// each validated by its own dedicated reader rather than by loadEnv.
+// ingestEnvKeys(), healthEnvKeys() and processEnvKeys() — the five
+// optional-with-default tuning classes — are appended alongside
+// envBalancePath and envWorldPath, each validated by its own dedicated
+// reader rather than by loadEnv.
 func EnvKeys() []string {
 	keys := append(envKeys(), envBalancePath, envWorldPath)
 	keys = append(keys, transportEnvKeys()...)
 	keys = append(keys, schedulerEnvKeys()...)
 	keys = append(keys, ingestEnvKeys()...)
-	return append(keys, healthEnvKeys()...)
+	keys = append(keys, healthEnvKeys()...)
+	return append(keys, processEnvKeys()...)
 }
 
 // envValues holds the environment layer's validated results: the two
