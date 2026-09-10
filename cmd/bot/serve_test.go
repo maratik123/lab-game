@@ -13,9 +13,22 @@ import (
 	"time"
 )
 
-// patience is a generous-but-bounded wait for an assertion that should
-// resolve promptly (well inside the test's own shutdownTimeout budget).
-const patience = 2 * time.Second
+// shutdownBudget is the drain budget these instrument cases pass to
+// serve. It is deliberately generous enough that none of them ever
+// makes it fire.
+//
+// giveUpCeiling is strictly greater than shutdownBudget: it bounds how
+// long a case that calls serve asynchronously waits before declaring
+// serve hung. Keeping the two separately named and ordered this way
+// means a drain that merely runs slower than expected still trips
+// shutdownBudget's own accounting first, so the case fails with
+// serve's exit code and stderr rather than with a bare "did not
+// return in time" — a single shared constant would make the ceiling
+// equal to the deadline it has to outlast, defeating that diagnosis.
+const (
+	shutdownBudget = 2 * time.Second
+	giveUpCeiling  = 5 * time.Second
+)
 
 // recordingCloser builds a closer that appends its own name to log
 // (guarded by mu) when called, and returns closeErr.
@@ -117,7 +130,7 @@ func TestServe_SignalCleanStopExitZero(t *testing.T) {
 	}
 
 	done := make(chan int, 1)
-	go func() { done <- a.serve(context.Background(), patience, &bytes.Buffer{}) }()
+	go func() { done <- a.serve(context.Background(), shutdownBudget, &bytes.Buffer{}) }()
 
 	a.signals <- syscall.SIGTERM
 
@@ -126,7 +139,7 @@ func TestServe_SignalCleanStopExitZero(t *testing.T) {
 		if code != 0 {
 			t.Errorf("serve() = %d, want 0", code)
 		}
-	case <-time.After(patience):
+	case <-time.After(giveUpCeiling):
 		t.Fatal("serve did not return in time")
 	}
 
@@ -212,13 +225,13 @@ func TestServe_DrainLatchesReadinessBeforeStoppingRunners(t *testing.T) {
 	a.runners = []runner{drainObservingRunner(a, &mu, &observedDraining, "ingest loop")}
 
 	done := make(chan int, 1)
-	go func() { done <- a.serve(context.Background(), patience, &bytes.Buffer{}) }()
+	go func() { done <- a.serve(context.Background(), shutdownBudget, &bytes.Buffer{}) }()
 
 	a.signals <- syscall.SIGTERM
 
 	select {
 	case <-done:
-	case <-time.After(patience):
+	case <-time.After(giveUpCeiling):
 		t.Fatal("serve did not return in time")
 	}
 
@@ -317,7 +330,7 @@ func TestServe_RunnerReturnsOnOwnWithNoSignal(t *testing.T) {
 	}
 
 	var stderr bytes.Buffer
-	code := a.serve(context.Background(), patience, &stderr)
+	code := a.serve(context.Background(), shutdownBudget, &stderr)
 
 	if code == 0 {
 		t.Error("serve() = 0, want non-zero — a runner returned on its own")
@@ -350,14 +363,14 @@ func TestServe_StoppedRunnerErrorsDuringJoin_ExitNonZero(t *testing.T) {
 	go func() { a.signals <- syscall.SIGTERM }()
 
 	start := time.Now()
-	code := a.serve(context.Background(), patience, &stderr)
+	code := a.serve(context.Background(), shutdownBudget, &stderr)
 	elapsed := time.Since(start)
 
 	if code == 0 {
 		t.Error("serve() = 0, want non-zero — a stopped runner returned an error during the join")
 	}
-	if elapsed >= patience/2 {
-		t.Errorf("serve took %s, want well inside the %s budget — the drain must complete on its own so the non-zero code is attributable to the runner's error, not to abandonment", elapsed, patience)
+	if elapsed >= shutdownBudget/2 {
+		t.Errorf("serve took %s, want well inside the %s budget — the drain must complete on its own so the non-zero code is attributable to the runner's error, not to abandonment", elapsed, shutdownBudget)
 	}
 	if !strings.Contains(stderr.String(), "scheduler worker") || !strings.Contains(stderr.String(), wantErr.Error()) {
 		t.Errorf("stderr = %q, want it to name the runner and its error", stderr.String())
@@ -391,7 +404,7 @@ func TestServe_FailingCloserReportedNotFatal(t *testing.T) {
 
 			var stderr bytes.Buffer
 			go func() { a.signals <- syscall.SIGTERM }()
-			code := a.serve(context.Background(), patience, &stderr)
+			code := a.serve(context.Background(), shutdownBudget, &stderr)
 
 			if code != 0 {
 				t.Errorf("serve() = %d, want 0 — a failing closer must not flip the exit code", code)
