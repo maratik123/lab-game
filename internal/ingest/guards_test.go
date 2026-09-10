@@ -291,6 +291,7 @@ var ctxFirstExemptions = map[string]string{
 	"Derive":               "pure in-memory derivation — no I/O",
 	"Date":                 "pure in-memory derivation — no I/O",
 	"ChatID":               "pure in-memory derivation — no I/O",
+	"(*Loop).Stop":         "closes the stop channel — no I/O, and takes no ctx by design (the drain lever, mirroring the scheduler package's Worker/Liveness Stop)",
 }
 
 // TestGuard_CtxFirstAndNoRidingContext is this package's ctx-discipline

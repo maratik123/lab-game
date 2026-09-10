@@ -2,7 +2,9 @@ package ingest
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -71,6 +73,13 @@ type Loop struct {
 	// "send an empty list" — which encoding/json's omitempty would
 	// silently erase — is never attempted.
 	allowedUpdates []string
+
+	// stopOnce/stopCh implement Stop: closed once, selected on beside
+	// ctx.Done() in Run and, per cycle, watched to cancel the in-flight
+	// getUpdates call without touching the batch it already returned —
+	// the same drain lever Worker and Liveness carry.
+	stopOnce sync.Once
+	stopCh   chan struct{}
 }
 
 // New builds a Loop from opts, refusing a nil Client, Pool or Router, or
@@ -134,6 +143,7 @@ func New(opts Options) (*Loop, error) {
 		cfg:            opts.Config,
 		observer:       opts.Observer,
 		allowedUpdates: allowed,
+		stopCh:         make(chan struct{}),
 	}, nil
 }
 
@@ -142,6 +152,16 @@ func New(opts Options) (*Loop, error) {
 // exactly one LoopObservation per call, whether it succeeds or fails — a
 // poll failure is reported through LoopObservation.Err as
 // well as returned, since Run must not stop on a transient one.
+//
+// The getUpdates call alone runs on a per-cycle child context that Stop
+// can cancel without touching ctx: readOffset and every processUpdate in
+// the batch keep the parent ctx and run to completion, so a Stop that
+// lands mid-batch settles every update already fetched rather than
+// aborting it. When Stop cancels that child context while ctx itself is
+// still live, the long poll's failure is a discarded cycle, not a failed
+// one: the reported LoopObservation carries no Err, and PollOnce returns
+// ErrPollDiscarded — a caller distinguishing "nothing happened" from
+// "something went wrong" matches on it via errors.Is.
 func (l *Loop) PollOnce(ctx context.Context) error {
 	start := time.Now()
 
@@ -157,8 +177,15 @@ func (l *Loop) PollOnce(ctx context.Context) error {
 		Timeout:        int(l.cfg.LongPollTimeout / time.Second),
 		AllowedUpdates: l.allowedUpdates,
 	}
-	updates, err := l.client.API().GetUpdates(ctx, params)
+
+	updates, err := l.getUpdatesStoppable(ctx, params)
 	if err != nil {
+		if ctx.Err() == nil && errors.Is(err, context.Canceled) {
+			// Stop cancelled the poll while the parent context is still
+			// live — a discarded cycle, not a failure.
+			observeLoop(l.observer, LoopObservation{Duration: time.Since(start)})
+			return ErrPollDiscarded
+		}
 		observeLoop(l.observer, LoopObservation{Duration: time.Since(start), Err: err})
 		return err
 	}
@@ -173,8 +200,34 @@ func (l *Loop) PollOnce(ctx context.Context) error {
 	return nil
 }
 
-// Run loops PollOnce at the configured poll interval until ctx is done,
-// returning ctx.Err(). Run does not stop on a PollOnce
+// getUpdatesStoppable calls GetUpdates on a child of ctx that is also
+// cancelled the moment Stop is called, and joins the watcher goroutine
+// that implements that before returning — so no goroutine outlives this
+// call, and the batch is never touched until the watch is over.
+func (l *Loop) getUpdatesStoppable(ctx context.Context, params *telego.GetUpdatesParams) ([]telego.Update, error) {
+	pollCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	watchDone := make(chan struct{})
+	go func() {
+		defer close(watchDone)
+		select {
+		case <-l.stopCh:
+			cancel()
+		case <-pollCtx.Done():
+		}
+	}()
+
+	updates, err := l.client.API().GetUpdates(pollCtx, params)
+	cancel()
+	<-watchDone
+
+	return updates, err
+}
+
+// Run loops PollOnce at the configured poll interval until Stop is
+// called or ctx is done, returning nil when stopped and ctx.Err() when
+// cancelled. Run does not stop on a PollOnce
 // error — each cycle already reports it through ObserveLoop — because a
 // loop that stopped on a transient poll failure against a self-hosted
 // telegram-bot-api instance would need an external restart for no
@@ -186,6 +239,8 @@ func (l *Loop) Run(ctx context.Context) error {
 
 	for {
 		select {
+		case <-l.stopCh:
+			return nil
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
@@ -194,11 +249,21 @@ func (l *Loop) Run(ctx context.Context) error {
 		_ = l.PollOnce(ctx)
 
 		select {
+		case <-l.stopCh:
+			return nil
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
 		}
 	}
+}
+
+// Stop makes Run return nil after the cycle in flight (if any)
+// completes, cancelling that cycle's in-flight getUpdates call rather
+// than waiting out the long-poll window. Safe to call more than once
+// and from any goroutine.
+func (l *Loop) Stop() {
+	l.stopOnce.Do(func() { close(l.stopCh) })
 }
 
 // processUpdate derives raw's Update and dispatches it: to its Handler

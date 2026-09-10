@@ -27,4 +27,11 @@ var (
 	// unverifiable (ChatUnknown), not an integer chat id, or neither
 	// allowlisted nor a known player.
 	ErrChatRefused = errors.New("ingest: chat refused")
+
+	// ErrPollDiscarded is PollOnce's sentinel for a getUpdates call
+	// Stop cancelled while the parent context was still live: the poll
+	// returned nothing worth acting on, and no update in it was ever
+	// processed, so it is a discarded cycle rather than a failed one —
+	// the observation this call reports carries no Err.
+	ErrPollDiscarded = errors.New("ingest: poll discarded by Stop")
 )
