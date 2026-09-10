@@ -62,7 +62,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 3
 agent_id: aa819bf6502b63262
 prior_qa:
   - round: 1
@@ -77,4 +77,10 @@ prior_qa:
   - round: 1
     question: "A subsystem that fails to construct or bind at start-up — fatal, or does the bot come up degraded? (The example that already exists: .env.example's placeholder cloud-canary token refuses the whole canary, own leg included.)"
     answer: "All fatal — Any subsystem failing stops the process, naming it. One rule, no degraded modes — a placeholder canary token keeps the bot down until it is fixed."
+  - round: 2
+    question: "Approve the spec and post the cross-link comment on #24?"
+    answer: "show me ACs"
+  - round: 2
+    question: "Что именно снести раундом 3? (после того, как владелец разобрал AC на две группы: пересказ стоячих правил и предписания «как реализовать»)"
+    answer: "A целиком, срезать B (кроме AC46), а еще AC не должны дублировать то, что и так ловится механическими гейтами/линтерами"
 ```
