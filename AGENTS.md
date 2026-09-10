@@ -55,10 +55,22 @@ golangci-lint fmt                                       # apply every enabled fo
 golangci-lint fmt -d                                    # format check — non-zero exit = dirty
 go mod tidy && git diff --exit-code go.mod go.sum       # module hygiene gate
 make comment-refs                                       # the comment-reference ban, over the whole tracked gated set
+make import-guard                                       # the transitive-import gate over the bot's non-test dependency graph
 actionlint .github/workflows/<file>.yml                 # required gate for any new/modified workflow file
 shellcheck <script>.sh                                  # required gate for any new/modified shell script
-go run ./cmd/bot                                        # run the bot (exits non-zero unless .env.example's variables are exported)
+go run ./cmd/bot                                        # serve until SIGINT/SIGTERM — placeholders do not get there, see below
+go run ./cmd/bot migrate                                # apply pending migrations under the process lock and exit
 ```
+
+> **`.env.example`'s credentials are placeholders, and exporting them does not run the bot.**
+> They satisfy the configuration step and nothing past it. `LAB_GAME_DSN` names a database
+> that either is not there or refuses those credentials, so start-up dies at the `database`
+> step — measured: `lab-game bot: database: failed to connect … password authentication
+> failed`, exit 1, stdout empty. Point it at a real database and it dies at `telegram client`
+> instead, because `LAB_GAME_BOT_TOKEN=changeme` is not a token the Bot API client's format
+> check accepts. Serving needs a real token, a real database and a reachable Bot API
+> instance; the start-up order, its failure modes and the drain are in
+> [`ai-docs/process-lifecycle.md`](ai-docs/process-lifecycle.md).
 
 > **`make test` and `make test-race` provision ONE Postgres for the whole run**, through
 > `cmd/testpg`: it uses a `LAB_GAME_TEST_DSN` you exported as it stands, otherwise a
@@ -123,7 +135,7 @@ go run ./cmd/bot                                        # run the bot (exits non
 > environments, before changing the number; the script's header carries the recipe and `git log -p`
 > on it carries why the number is what it is.
 
-**CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
+**CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta + the import gate) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Comment references · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
 
 Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-index.md)); fall back to `rg <pattern> --type go [-l | -C 3]` when `ast-index` returns empty.
 

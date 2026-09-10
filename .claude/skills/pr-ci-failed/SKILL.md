@@ -1,6 +1,6 @@
 ---
 name: pr-ci-failed
-description: "Address one CI-failure round on the current branch's open PR. Identifies the first failing required check, fetches the failing-step log, classifies the failure (fmt / build / tidy / test / race / lint / harness / actionlint / other), reproduces locally, applies the fix, runs self-review, commits, pushes, and runs the unconditional AXIOM-2 PR-body read. Re-invocable per round (one CI failure per invocation). Runs downstream of /task Step 12, in parallel with /pr-commented; does NOT replace /task."
+description: "Address one CI-failure round on the current branch's open PR. Identifies the first failing required check, fetches the failing-step log, classifies the failure (fmt / build / tidy / import-guard / test / race / lint / harness / comment-refs / actionlint / other), reproduces locally, applies the fix, runs self-review, commits, pushes, and runs the unconditional AXIOM-2 PR-body read. Re-invocable per round (one CI failure per invocation). Runs downstream of /task Step 12, in parallel with /pr-commented; does NOT replace /task."
 disable-model-invocation: false
 allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git rev-parse *) Bash(git branch *) Bash(git checkout *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git fetch *) Bash(git merge-base *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr create *) Bash(gh pr edit *) Bash(gh pr comment *) Bash(gh issue create *) Bash(gh run view *) Bash(gh run list *) Bash(gh api *) Bash(make *)
 ---
@@ -161,6 +161,7 @@ Classify the failure into exactly one class:
 | `fmt` | Format | a unified diff per file, each headed `diff <path>.orig <path>` |
 | `build` | Build | a compile error from `go build ./...`, or a `go vet` finding |
 | `tidy` | Build | `go mod tidy` left a delta — `git diff --exit-code go.mod go.sum` failed |
+| `import-guard` | Build | `<package>: forbidden dependency <module>` from the transitive-import gate — a rule-table package's non-test dependency graph reaches a module it may not |
 | `test` | Test | `--- FAIL:` / `FAIL	github.com/...` |
 | `race` | Test | `WARNING: DATA RACE` under `go test -race` |
 | `lint` | Lint | a `golangci-lint` finding with its linter name in brackets, or `<path>: N lines exceeds hard limit M` from the `file-limits` gate |
@@ -176,6 +177,7 @@ Classify the failure into exactly one class:
 | `fmt` | `golangci-lint fmt -d` — no diff = clean |
 | `build` | `go build ./...` then `go vet ./...` |
 | `tidy` | `go mod tidy && git diff --exit-code go.mod go.sum` |
+| `import-guard` | `make import-guard`, or `go run ./cmd/importguard`. The fix is to move the offending import behind a `_test.go` file or out of the graph — never to delete the rule from the table: a test-only helper may be imported from a `_test.go` file freely, since the gate reads the **non-test** graph |
 | `test` | `go test ./... -run <TestName>`, then the full `go test ./...` |
 | `race` | `go test -race ./... -run <TestName>` |
 | `lint` | `golangci-lint run`; if that is clean the failure is the file-size gate — `awk` over `*.go`, hard 1000 / 1500 for `_test.go` |
@@ -319,7 +321,7 @@ Print a summary to the user:
 ```
 PR #<N> CI-fix round <M> complete (commit <sha>).
 Failing check: <name>
-Class: <fmt|build|tidy|test|race|lint|harness|actionlint|other>
+Class: <fmt|build|tidy|import-guard|test|race|lint|harness|comment-refs|actionlint|other>
 Run URL: https://github.com/<O>/<R>/actions/runs/<run-id>
 Self-review: APPROVE round <R>
 Push: <sha>
