@@ -123,9 +123,17 @@ func TestServe_SignalCleanStopExitZero(t *testing.T) {
 		}
 	}
 	// The closers must run AFTER both runners have stopped, and in
-	// reverse of their append order: health listener, then pool.
-	wantTail := []string{"close:health listener", "close:pool"}
-	gotTail := log[len(log)-2:]
+	// reverse of the order they were appended to a.closers — derived
+	// from that same list rather than hand-written, so the assertion
+	// tracks the closer list by construction.
+	wantTail := make([]string, len(a.closers))
+	for i, c := range a.closers {
+		wantTail[len(a.closers)-1-i] = "close:" + c.name
+	}
+	if len(log) < len(wantTail) {
+		t.Fatalf("log = %v, too short for closer tail %v", log, wantTail)
+	}
+	gotTail := log[len(log)-len(wantTail):]
 	for i, w := range wantTail {
 		if gotTail[i] != w {
 			t.Errorf("closer order = %v, want tail %v", log, wantTail)
