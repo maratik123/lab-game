@@ -244,6 +244,8 @@ while an implementation behaviour that predates the amendment was left out of th
 amendment wrote down (finding 2). Neither is a coordinate that moved; both are a document and a
 binary that now say different things about the same rule.
 
+- **Step 11 (round 2 close)**: the owner confirmed, as their own, the design's recorded reading of AC28 — its zero clause is about a shutdown that completed with its work finished, and its non-zero clause states a sufficient condition rather than an exhaustive list. The reading was written by the design-writer and flagged for confirmation rather than left to stand unattributed; AC28's own wording is unchanged, the owner having declined a spec amendment twice on this point.
+
 ## Review register
 
 | id | raised | severity | status | verifying command |
