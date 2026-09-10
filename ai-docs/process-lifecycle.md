@@ -35,7 +35,7 @@ every diagnostic is a `lab-game bot: <name>: <cause>` line on stderr, where
 | Exit code | Meaning |
 |---|---|
 | `0` | a completed graceful drain; a successful `bot migrate` (including a no-op one); `-h`/`--help` |
-| `1` | any start-up step failed; a runner returned on its own before a signal; the drain hit its budget or was ended early by a second signal |
+| `1` | any start-up step failed; the drain hit its budget or was ended early by a second signal; a runner returned on its own before a signal; a runner that was asked to stop honoured it and returned an error on the way out |
 | `2` | an unrecognised subcommand — "this binary was invoked wrong", deliberately distinct from "this binary tried and failed" |
 
 ## 2. Start-up: one written order, all-fatal, unwinding
@@ -283,7 +283,12 @@ The drain, in order:
 3. **Join the runners**, bounded by `LAB_GAME_PROCESS_SHUTDOWN_TIMEOUT`. If
    the budget expires, or a second signal arrives, the run context is
    cancelled and the join completes; the drain is then **abandoned** and the
-   exit code is non-zero.
+   exit code is non-zero. A runner that honoured its stop and returned an
+   error while doing so also makes the exit code non-zero, and this is the
+   one non-zero cause that looks exactly like a clean shutdown until the
+   error is read — it is reachable on a drain that finished well inside its
+   budget. The scheduler worker's reconcile failure and the liveness
+   heartbeat's spent tolerance both reach it.
 4. **Walk the closer list backwards** — the canary, the final liveness write,
    the health listener, the pool, the signal deregistration — under a fresh
    context bounded by the same duration. That walk is the process's own final
@@ -291,7 +296,8 @@ The drain, in order:
    what the process spends *beyond* that bound. **A closer that returns an
    error is reported by name and never changes the exit code** — the process
    is already leaving, and a close that failed is a diagnostic, not a second
-   verdict; the exit code carries only whether the drain itself completed.
+   verdict; the exit code answers whether this process's *work* ended cleanly, and a
+   closer is cleanup rather than work.
    The final liveness write is the clearest instance of this — the next start
    measures its gap from the last successful heartbeat, one interval old at
    worst — but every closer is the same case, not a named exception to it.
