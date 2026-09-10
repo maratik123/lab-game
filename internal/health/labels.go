@@ -18,6 +18,7 @@ const (
 	labelLeg     = "leg"
 	labelReason  = "reason"
 	labelState   = "state"
+	labelVersion = "version"
 )
 
 // allowedLabelNames is the ceiling above, as a slice for a guard to walk.
@@ -31,6 +32,7 @@ var allowedLabelNames = []string{
 	labelLeg,
 	labelReason,
 	labelState,
+	labelVersion,
 }
 
 // unknownLabelValue is the closed-set fallback every enum mapper in this

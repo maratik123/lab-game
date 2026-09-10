@@ -288,6 +288,12 @@ func driveEveryAdapterOnce(t *testing.T, reg prometheus.Registerer) {
 	canary.probeLeg(ctx, legCloud, cloud)
 	canary.probeLeg(ctx, legOwn, failingOwn)
 	canary.probeLeg(ctx, legCloud, failingCloud)
+
+	proc, err := NewProcess(reg, ProcessOptions{Version: "test-version", StartedAt: time.Now(), Ready: alwaysReady})
+	if err != nil {
+		t.Fatalf("NewProcess: %v", err)
+	}
+	proc.ObserveDowntime(90*time.Second, 3)
 }
 
 // labelValuesFor returns the observed set of label label's values, across
@@ -369,10 +375,16 @@ func TestGuard_LabelNamesAndClosedSetValues(t *testing.T) {
 	assertExactSet(t, labelValuesFor(mfs, []string{familyPoolConns}, labelState),
 		[]string{poolStateIdle, poolStateAcquired, poolStateConstructing}, "labgame_pgxpool_conns.state")
 
-	// method, code and reason are not closed-set: a shape assertion only.
+	// method, code, reason and version are not closed-set: a shape
+	// assertion only.
 	for v := range labelValuesFor(mfs, []string{familyBotAPICallDuration, familyBotAPIResponses, familyBotAPIRateLimited, familyBotAPIRetries}, labelMethod) {
 		if v == "" {
 			t.Error("method label carries an empty value")
+		}
+	}
+	for v := range labelValuesFor(mfs, []string{familyBuildInfo}, labelVersion) {
+		if v == "" {
+			t.Error("version label carries an empty value")
 		}
 	}
 	for v := range labelValuesFor(mfs, []string{familyBotAPIResponses}, labelCode) {

@@ -100,7 +100,7 @@ func TestAllowedLabelNames_NamesNoLeLabel(t *testing.T) {
 
 func TestAllowedLabelNames_MatchesTheNamedConstants(t *testing.T) {
 	t.Parallel()
-	want := []string{labelMethod, labelCode, labelType, labelOutcome, labelFailure, labelKind, labelLeg, labelReason, labelState}
+	want := []string{labelMethod, labelCode, labelType, labelOutcome, labelFailure, labelKind, labelLeg, labelReason, labelState, labelVersion}
 	if len(allowedLabelNames) != len(want) {
 		t.Fatalf("allowedLabelNames has %d entries, want %d", len(allowedLabelNames), len(want))
 	}
