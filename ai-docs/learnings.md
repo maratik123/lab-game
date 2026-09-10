@@ -450,3 +450,10 @@ wrong-surface text by message twelve.
 **at:** d7dcc90
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-10 — process — carried a premise scoped to the old behaviour into the ruling that removed it
+**What happened:** Laying out the exit-code decision for the owner, I wrote that "of the five closers only the canary's and the health listener's Shutdown can return an error at all", and then relayed that sentence verbatim into the ruling sent to two delegates at once. It is false: the final liveness write's closer is a database write (`liveness.Refresh`), so three of the five can fail. I had reached "only two" by excluding the liveness write as the best-effort exception — which was true of the behaviour the ruling was about to abolish. The design-writer refused to write the relayed premise into the design, checked the tree, corrected it, and pointed out that the correction strengthens the decision rather than weakening it: under the rejected reading a failed heartbeat write would also have flipped the exit code, which is exactly what the old carve-out existed to prevent.
+**Rule:** When a decision removes an exception, every premise that was computed *under* that exception is invalidated by the decision itself, and re-checking it is part of writing the decision — not a step that can be skipped because the premise was true when it was first formed. The tell is a sentence of the form "only X can happen", written while arguing to abolish the rule that made the other cases not count. Re-derive such a claim against the tree after the ruling is stated, before relaying it; a premise sent to a delegate travels further than the rule it was attached to, because the rule gets reviewed and the premise gets copied.
+**at:** 71226f4
+**Kind:** correction
+**Escalated?** no
