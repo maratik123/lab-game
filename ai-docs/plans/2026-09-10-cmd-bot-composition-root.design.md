@@ -273,12 +273,27 @@ signal arrived), and only then walks `app.closers` from the last appended to the
 the liveness row's final write, the health listener, the pool, the signal deregistration. That is
 AC25 — polling and claiming stop, in-flight work keeps the remaining budget, the canary and the
 listener stop, the pool closes after them — read off the order the steps were registered in rather
-than restated here as a second list that could disagree with the table above. The final liveness
-write is the one best-effort entry: a failure there is reported and does not change the exit code,
-because the next start then measures its gap from the last successful heartbeat, which is one
-interval old at worst and far below the downtime threshold. Every other closer's error is reported
-by its name and, like it, leaves the exit code to AC28's completed-versus-abandoned distinction —
-the process is already leaving, and a close that failed is a diagnostic, not a second verdict.
+than restated here as a second list that could disagree with the table above.
+
+**A closer's error never changes the process exit code.** The exit code carries one proposition and
+only one: whether the drain completed. Zero means it completed; non-zero means it was abandoned —
+the budget expired, a second signal arrived, or a runner returned on its own before any signal. A
+closer that returns an error is reported on stderr by its name, and that is the whole of its
+effect. The final liveness write is **not** a carve-out from that rule but one instance of it, and
+the reason its own failure is harmless still stands: the next start measures its gap from the last
+successful heartbeat, which is one interval old at worst and far below the downtime threshold
+[derived → AC28].
+
+The rejected reading — a failed close makes the exit non-zero — is rejected because of *who* would
+be deciding. Of the closers this design registers only two cannot fail at all, the pool close and
+the signal deregistration; the canary's and the health listener's `Shutdown` can, and so can the
+final liveness write. For the two HTTP ones the realistic failure is an in-flight request that
+outlasts the closer budget, so under that reading a Prometheus scrape landing at the wrong moment
+would turn a clean shutdown into a failure — an exit code that is partly a function of when an
+external scraper happens to poll. An exit code is read by a supervisor, so it must answer the
+question a supervisor asks, *did this process finish what it was draining*, and not a second and
+noisier one that an outside actor's timing can flip. § Test Design T10a derives its closer cases
+from this decision rather than restating it [derived → AC25, AC28].
 
 Rejected: driving `PollOnce`/`RunOnce` from the composition root and dropping `Run` — it duplicates
 each package's tick loop in `cmd/bot`, leaves `Run` dead in production, and moves `Reconcile`'s
@@ -666,7 +681,7 @@ legal and neither gets a placeholder to make the wiring look populated.
 | 7 | `internal/health`: `ReadyFunc`; `ServerOptions` + `NewServer` returning an error; the `/readyz` path; the `Process` collector and its families; `version` in the label ceiling; `LegsOptions.HTTPClient`; guard-fixture and package-doc updates, the source-walk half now driven through `internal/srcguard` | `internal/health/server.go`, `internal/health/process.go`, `internal/health/labels.go`, `internal/health/canary.go`, `internal/health/probe.go`, `internal/health/doc.go`, `internal/health/server_test.go`, `internal/health/process_test.go`, `internal/health/guards_test.go`, `internal/health/gather_test.go` | 1 |
 | 8 | `internal/testdb`: `SchemaDSN` — one fresh schema handed to a caller outside this package as a connection string, carrying both the `search_path` that isolates it and the per-test pool cap the ceiling arithmetic assumes, so the consumer's own pool lands inside that arithmetic rather than beside it; the schema's drop stays on the same registered cleanup. `Binaries` is deliberately untouched here — the constant moves in subtask 9, the step that adds the caller | `internal/testdb/testdb.go`, `internal/testdb/testdb_test.go` | — |
 | 9 | `cmd/bot`: `version` as a settable variable, the process logger, the build identity moved to stderr, `readiness` (the latches plus the pool round trip), the `closer` seam, and `assemble` — the whole start-up order, beginning with the signal registration, all-fatal, unwinding its closer list backwards — each landing **with its own tests in this same step**: the readiness cases, the start-up failure paths and the assembled happy path. That happy-path fixture is what makes this command a `testdb.Main` caller, so `TestMain` arrives here too and the `Binaries` constant is raised to the value the manifest test derives from the tree, the ceiling worked-example comment moving with it **in this same commit** — the manifest test going red→green here rather than sitting red across a group boundary. The existing `run` cases move out of `main_test.go` into `run_test.go` against the flipped stream | `cmd/bot/main.go`, `cmd/bot/readiness.go`, `cmd/bot/readiness_test.go`, `cmd/bot/assemble.go`, `cmd/bot/assemble_test.go`, `cmd/bot/run_test.go`, `cmd/bot/main_test.go`, `internal/testdb/server.go`, `internal/testdb/server_test.go` | 2, 3, 4, 7, 8 |
-| 10 | `cmd/bot`: the `runner` set, `serve` (the signal channel `assemble` registered **or** the first runner return begins the drain), `drain` (budget, second signal, exit codes, then the closer list walked backwards — the canary, the best-effort final liveness write, the listener, the pool, the signal deregistration), and the migrate-only path — all **with their tests in this same step**: `serve` and `drain` driven together with fake runners, each case inside a `synctest` bubble exactly when a duration is its subject and on the file's generous wall-clock patience budget otherwise (the rule and its reason: § Test Design T10a), and the migrate-only path against a real schema. `errgroup` becomes a direct requirement here, so `go mod tidy`'s delta on the module files lands in this step | `cmd/bot/serve.go`, `cmd/bot/serve_test.go`, `cmd/bot/drain.go`, `cmd/bot/migrate.go`, `cmd/bot/migrate_test.go`, `go.mod`, `go.sum` | 5, 6, 9 |
+| 10 | `cmd/bot`: the `runner` set, `serve` (the signal channel `assemble` registered **or** the first runner return begins the drain), `drain` (budget, second signal, exit codes, then the closer list walked backwards — the canary, the final liveness write, the listener, the pool, the signal deregistration), and the migrate-only path — all **with their tests in this same step**: `serve` and `drain` driven together with fake runners, each case inside a `synctest` bubble exactly when a duration is its subject and on the file's generous wall-clock patience budget otherwise (the rule and its reason: § Test Design T10a), and the migrate-only path against a real schema. `errgroup` becomes a direct requirement here, so `go mod tidy`'s delta on the module files lands in this step | `cmd/bot/serve.go`, `cmd/bot/serve_test.go`, `cmd/bot/drain.go`, `cmd/bot/migrate.go`, `cmd/bot/migrate_test.go`, `go.mod`, `go.sum` | 5, 6, 9 |
 | 11 | `cmd/bot`: `run`'s final shape — argv dispatch, usage, stdout left to an explicit `-h` alone — wiring the serve and migrate-only paths in, plus the package comment that stops calling this a scaffold; `run_test.go` grows the dispatch cases beside the configuration case subtask 9 moved there | `cmd/bot/main.go`, `cmd/bot/run.go`, `cmd/bot/run_test.go` | 10 |
 | 12 | `cmd/bot` whole-root tests — the ones that need the assembled process and cannot be written beside a single file: the composition-root guards (the `func init()` walk, the package-level-var assertion, the sentinel-secret scrape-and-log guard, the import-graph discrimination proof), the in-process smoke condition against a real Postgres and a fake Bot API with a real `SIGTERM` and a leak check, and the subprocess link-time-version test. `goleak` becomes a direct test-only requirement here | `cmd/bot/guards_test.go`, `cmd/bot/smoke_test.go`, `cmd/bot/version_test.go`, `go.mod`, `go.sum` | 1, 11 |
 | 13 | `cmd/importguard` and its gate wiring: the rule table, the classifier, its unit tests, `make import-guard`, the `verify` aggregate, the CI Build-job step | `cmd/importguard/main.go`, `cmd/importguard/run.go`, `cmd/importguard/run_test.go`, `Makefile`, `.github/workflows/ci.yml` | — |
@@ -1074,57 +1089,65 @@ prose the repository's own link, citation and shape gates check.
   **The clock rule — per case, not per file: the subject is exact, the instrument is generous.**
   This module treats every wall-clock constant in a database-backed test binary as one of two
   things, and treats the two oppositely
-  [measured 2bbeacf:ai-docs/go-test-conventions.md · sed -n 47p ai-docs/go-test-conventions.md → "Every wall-clock constant in a database-backed suite is one of two things, and they are treated oppositely."],
-  and this binary is database-backed — its `TestMain` provisions the shared server, so every case
-  here runs while sibling packages contend for it
-  [measured 2bbeacf:cmd/bot/assemble_test.go · rg --no-line-number -o 'testdb\.Main\(m\)' cmd/bot/*_test.go → "cmd/bot/assemble_test.go:testdb.Main(m)"].
-  An **instrument** is a patience budget — how long a case waits for `serve` to return before it
-  gives up, or a `serve` budget deliberately large enough never to fire. It stays generous
-  wall-clock time under one named package-level constant, and widening it changes no proposition any
-  case asserts, so this design fixes neither its value nor a bracket around it
-  [measured 2bbeacf:cmd/bot/serve_test.go · rg --no-line-number -o 'const patience\b' cmd/bot/serve_test.go → "const patience"].
+  [measured 47a045c:ai-docs/go-test-conventions.md · rg --no-line-number -o 'Every wall-clock constant in a database-backed suite is one of two things, and they are treated oppositely\.' ai-docs/go-test-conventions.md → "Every wall-clock constant in a database-backed suite is one of two things, and they are treated oppositely."],
+  and this binary is database-backed — its cases take the shared server the fixtures § Test Design
+  T9 names, so each one runs while sibling packages contend for it [derived → those fixtures].
+  An **instrument** is a wall-clock duration that no proposition here depends on, and this file
+  needs **two** of them, in a fixed order. One is the `serve` shutdown budget, set deliberately
+  large enough never to fire. The other is a give-up ceiling bounding how long the case waits for
+  `serve` to return before declaring it hung. **The ceiling is strictly greater than the budget it
+  has to outlast, and they are two separately named constants for exactly that reason:** a single
+  constant filling both roles makes the ceiling equal to the deadline it is supposed to survive, so
+  a drain that is merely slower than expected trips the ceiling first and the case reports "serve
+  did not return in time" — withholding the exit code and the stderr that would have named the
+  cause. Both are generous, and widening either changes no proposition any case asserts, so this
+  design fixes neither value; it fixes only their order [derived → AC26, AC28].
   A **subject** is a duration that is itself the asserted property, and it must stay exact — which
   is what a wall clock under that contention cannot deliver. Hence the rule this design binds:
   **a case enters a `testing/synctest` bubble exactly when a duration is its subject, and nowhere
   else.** Inside the bubble the timing assertion is an equality rather than a bracket, because a
   virtual clock makes it bit-exact rather than merely bounded. Outside it, a case that asserts no
-  duration buys nothing from the bubble and would still pay its cost — the bubble excludes the
-  network its own guidelines exclude, and it constrains what the case may reach. The earlier draft
-  of this section put every case in a bubble; that was the instrument half of the split being
-  charged for a subject it never had.
-  **Subject cases — inside a bubble, asserting an exact duration**
-  [measured 2bbeacf:cmd/bot/serve_test.go · rg -U --no-line-number -o 'func (TestServe_[A-Za-z_]+)\(t \*testing\.T\) \{\n\tt\.Parallel\(\)\n\tsynctest\.Test' -r '$1' cmd/bot/serve_test.go → "TestServe_RunnerIgnoresStop_BudgetExpires_ExitNonZero", "TestServe_SecondSignalMidDrain_EndsAtOnce"]:
-  one runner ignores `stop` and returns only on cancellation → the run context is cancelled, the
+  duration buys nothing from a bubble and would still pay its restrictions — the excluded network
+  among them, which the package's own guidance names
+  [measured 47a045c · go doc testing/synctest → "Avoid using the network. Use a fake network implementation as needed."].
+  An earlier draft of this section put every case in a bubble; that was the instrument half of the
+  split being charged for a subject it never had.
+  **Subject cases — inside a bubble, asserting an exact duration** [derived → AC26, AC27]: one
+  runner ignores `stop` and returns only on cancellation → the run context is cancelled, the
   runners are joined, the exit code is non-zero, and the drain is abandoned **at exactly the
-  budget** [derived → AC26, AC28]; a second signal arrives mid-drain against a budget deliberately
-  far larger → the wait ends **at exactly the instant the second signal arrived**, exit code
-  non-zero [derived → AC27]. The equality is the point in both: a bracket ("well inside the budget")
-  also passes for a drain that ended for the wrong reason, and exactness is what the virtual clock
-  buys [measured 2bbeacf:cmd/bot/serve_test.go · rg --no-line-number -o 'elapsed != [a-zA-Z]+' cmd/bot/serve_test.go → "elapsed != budget", "elapsed != secondSignalAt"].
-  Bubble rules: `synctest.Test` sits inside the test function and `t.Parallel()` outside it — the
-  shape `internal/health`'s canary test already establishes in this module
-  [measured 2bbeacf:internal/health/canary_test.go · rg --no-line-number -o 'synctest\.Test' internal/health/canary_test.go → "synctest.Test"].
-  **Instrument cases — no bubble, one generous patience budget**
-  [measured 2bbeacf:cmd/bot/serve_test.go · comm -23 <(rg --no-line-number -o 'func (TestServe_[A-Za-z_]+)' -r '$1' cmd/bot/serve_test.go | sort) <(rg -U --no-line-number -o 'func (TestServe_[A-Za-z_]+)\(t \*testing\.T\) \{\n\tt\.Parallel\(\)\n\tsynctest\.Test' -r '$1' cmd/bot/serve_test.go | sort) → "TestServe_DrainLatchesReadinessBeforeStoppingRunners", "TestServe_FailingFinalLivenessWrite_ReportedNotFatal", "TestServe_OtherClosingFailure_IsFatal", "TestServe_RunnerReturnsOnOwnWithNoSignal", "TestServe_SignalCleanStopExitZero"]:
-  a signal arrives and every runner returns promptly on `stop` → exit code zero and no cancellation
-  of the run context [derived → AC28], and the shutdown order is asserted by recording each fake's
-  `stop` and each closer's call into one ordered log — runners stopped, runners joined, then the
-  closer list backwards: canary, final liveness write, listener, pool, signal deregistration
+  budget**; a second signal arrives mid-drain against a budget deliberately far larger → the wait
+  ends **at exactly the instant the second signal arrived**, exit code non-zero. The equality is
+  the point in both: a bracket ("well inside the budget") also passes for a drain that ended for
+  the wrong reason, and exactness is what the virtual clock buys. Bubble rules: `synctest.Test`
+  sits inside the test function and `t.Parallel()` outside it — the shape `internal/health`'s
+  canary test already establishes in this module
+  [measured 47a045c:internal/health/canary_test.go · rg --no-line-number -o 'synctest\.Test' internal/health/canary_test.go → "synctest.Test"].
+  **Instrument cases — no bubble, the two ordered budgets above** [derived → AC28]: a signal
+  arrives and every runner returns promptly on `stop` → exit code zero and no cancellation of the
+  run context, and the shutdown order is asserted by recording each fake's `stop` and each closer's
+  call into one ordered log — runners stopped, runners joined, then the closer list backwards: the
+  canary, the final liveness write, the listener, the pool, the signal deregistration
   [derived → AC25]; and, because that order is the reverse of the order `assemble` appended the
   entries in, the same case asserts the log is exactly the reverse of the list it was handed rather
   than a hand-written expected sequence [derived → AC20, AC25]. The draining latch is latched
   **before any runner's `stop`**, and that gets a case of its own, which reads the readiness value
   from inside a fake runner's own `stop` as it runs: a re-check taken after `serve` has returned
   cannot distinguish "latched first" from "latched last", because both leave the latch set by then,
-  so the proposition needs an observer positioned mid-drain rather than a trailing assertion nothing
-  orders [derived → AC22]. A fake runner returns on its own with **no** signal sent → the same drain
-  runs in the same order, that runner's name and its error reach stderr, and the exit code is
-  non-zero [derived → the runner-exit rule § Approach → *Shutdown* fixes, under AC26's budget]. A
-  failing final liveness write is reported and leaves the exit code alone; any other closer's error
-  is fatal. The criterion that keeps this group out of a bubble is uniform: not one of these
-  propositions is a duration — each is an exit code, an ordering, a latch reading or a stderr
-  substring — so each is decided by the fake the case handed `serve` rather than by how long
-  anything took, and the patience budget covering them may be widened without review.
+  so the proposition needs an observer positioned mid-drain rather than a trailing assertion
+  nothing orders [derived → AC22]. A fake runner returns on its own with **no** signal sent → the
+  same drain runs in the same order, that runner's name and its error reach stderr, and the exit
+  code is non-zero [derived → the runner-exit rule § Approach → *Shutdown* fixes, under AC26's
+  budget]. A runner that *was* stopped and then returns a non-nil error is reported on stderr under
+  its own name: that is the join's error branch, a different path from the unprompted-return
+  trigger above, and reaching it needs a fake that honours `stop` and still errors — without such a
+  fake the branch has no case anywhere in § Test Design [derived → AC25]. And, deriving from
+  § Approach → *Shutdown*'s decision rather than restating its argument, a closer that returns an
+  error is reported on stderr by its name and **leaves the exit code alone** — asserted for the
+  final liveness write *and* for at least one other closer, so that the case set shows the general
+  rule rather than an exception carved out for one entry [derived → AC28]. The criterion that keeps
+  this whole group out of a bubble is uniform: not one of these propositions is a duration — each
+  is an exit code, an ordering, a latch reading or a stderr substring — so each is decided by the
+  fake the case handed `serve` rather than by how long anything took.
   **Why fakes here and the real runner set in T12b.** The ordered log is an assertion about
   `serve`'s sequence, and a deterministic sequence needs a `stop` each fake honours on command — a
   real ingest loop, worker and heartbeat carry their own timing and their own database. So T10a
