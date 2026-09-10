@@ -429,3 +429,10 @@ wrong-surface text by message twelve.
 **at:** a45655c2278fb703b92ab642f1c8b738de28768c
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-10 — process — a pre-approval spec audit that only hunts added scope misses the rows that add nothing
+**What happened:** Put the round-2 spec up for owner approval after auditing it for scope growth, and flagged the two items that went past the issue's own list. The owner then read the acceptance table and found the opposite defect, which I had passed over: a run of rows restating standing AGENTS.md rules that bind every branch regardless of this task — the doc-comment requirement, the comment-reference ban, tuning-values-in-configuration, the panic ban, all-gates-green, module tidiness, the Propagation Rule — plus a second class prescribing a mechanism where the criterion should state an outcome, plus two rows duplicating live tests. Both CI shape gates were green throughout and the Rule-5 grep was empty, so nothing mechanical was ever going to surface it. Owner's framing, verbatim: "Найди любые AC, которые не про выполнение issue, а про то, как писать код (это зона ответственности design/code-writer, но не спек-врайтера)".
+**Rule:** Before putting a spec up for owner approval, test every acceptance row in both directions, not one. Added scope is the direction that feels like diligence; the other is a row whose condition is already true on every branch. The question that separates them is whether THIS task makes the condition true, and the follow-up the owner added is whether a linter, a Makefile gate or a committed test already enforces it. A green shape gate says nothing about either — it checks the row's grammar, never whose obligation the row is.
+**at:** 1c71715
+**Kind:** correction
+**Escalated?** no
