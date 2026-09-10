@@ -9,6 +9,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -132,57 +133,72 @@ func TestServe_SignalCleanStopExitZero(t *testing.T) {
 	}
 }
 
+// TestServe_RunnerIgnoresStop_BudgetExpires_ExitNonZero asserts a
+// duration — the drain must abandon exactly at the shutdown budget,
+// not merely "eventually" — so it runs inside a synctest bubble
+// against a virtual clock: a wall-clock budget racing a shared test
+// server's neighbouring binaries (this package shares one Postgres
+// server with several sibling packages) is exactly the shape the
+// bubble exists to remove, per this module's own subject/instrument
+// convention for a duration under test.
 func TestServe_RunnerIgnoresStop_BudgetExpires_ExitNonZero(t *testing.T) {
 	t.Parallel()
-	a := &app{
-		readiness: newReadiness(nil),
-		signals:   make(chan os.Signal, 2),
-		runners:   []runner{stubbornRunner("scheduler worker")},
-	}
+	synctest.Test(t, func(t *testing.T) {
+		a := &app{
+			readiness: newReadiness(nil),
+			signals:   make(chan os.Signal, 2),
+			runners:   []runner{stubbornRunner("scheduler worker")},
+		}
 
-	budget := 100 * time.Millisecond
-	go func() { a.signals <- syscall.SIGTERM }()
-	start := time.Now()
-	code := a.serve(context.Background(), budget, &bytes.Buffer{})
-	elapsed := time.Since(start)
+		budget := 100 * time.Millisecond
+		a.signals <- syscall.SIGTERM
 
-	if code == 0 {
-		t.Error("serve() = 0, want non-zero (abandoned drain)")
-	}
-	if elapsed < budget {
-		t.Errorf("serve returned after %s, want at least the budget %s", elapsed, budget)
-	}
-	if elapsed > budget+patience {
-		t.Errorf("serve returned after %s, want close to the budget %s", elapsed, budget)
-	}
+		start := time.Now()
+		code := a.serve(context.Background(), budget, &bytes.Buffer{})
+		elapsed := time.Since(start)
+
+		if code == 0 {
+			t.Error("serve() = 0, want non-zero (abandoned drain)")
+		}
+		if elapsed != budget {
+			t.Errorf("serve returned after exactly %s of virtual time, want exactly the budget %s", elapsed, budget)
+		}
+	})
 }
 
+// TestServe_SecondSignalMidDrain_EndsAtOnce asserts a duration too —
+// the second signal must end the wait at exactly the instant it
+// arrives, not merely "well before" a large budget — so it runs inside
+// a synctest bubble for the same reason as the case above.
 func TestServe_SecondSignalMidDrain_EndsAtOnce(t *testing.T) {
 	t.Parallel()
-	a := &app{
-		readiness: newReadiness(nil),
-		signals:   make(chan os.Signal, 2),
-		runners:   []runner{stubbornRunner("scheduler worker")},
-	}
+	synctest.Test(t, func(t *testing.T) {
+		a := &app{
+			readiness: newReadiness(nil),
+			signals:   make(chan os.Signal, 2),
+			runners:   []runner{stubbornRunner("scheduler worker")},
+		}
 
-	budget := 10 * time.Second // large — the second signal must end it well before this
+		budget := 10 * time.Second // large — the second signal must end it well before this
+		secondSignalAt := 50 * time.Millisecond
 
-	go func() {
 		a.signals <- syscall.SIGTERM
-		time.Sleep(50 * time.Millisecond)
-		a.signals <- syscall.SIGTERM
-	}()
+		go func() {
+			time.Sleep(secondSignalAt)
+			a.signals <- syscall.SIGTERM
+		}()
 
-	start := time.Now()
-	code := a.serve(context.Background(), budget, &bytes.Buffer{})
-	elapsed := time.Since(start)
+		start := time.Now()
+		code := a.serve(context.Background(), budget, &bytes.Buffer{})
+		elapsed := time.Since(start)
 
-	if code == 0 {
-		t.Error("serve() = 0, want non-zero (abandoned drain)")
-	}
-	if elapsed >= budget {
-		t.Errorf("serve took %s, want well under the %s budget (second signal should end it)", elapsed, budget)
-	}
+		if code == 0 {
+			t.Error("serve() = 0, want non-zero (abandoned drain)")
+		}
+		if elapsed != secondSignalAt {
+			t.Errorf("serve took exactly %s of virtual time, want exactly %s (the instant the second signal arrived)", elapsed, secondSignalAt)
+		}
+	})
 }
 
 func TestServe_RunnerReturnsOnOwnWithNoSignal(t *testing.T) {
