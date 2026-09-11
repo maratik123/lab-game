@@ -162,23 +162,22 @@ func observedRetries(attempts int) int {
 	return attempts - 1
 }
 
-// limiterRefusalCause answers which cause a limiter refusal (acquire
-// returning ok=false) carries, from the same (now, deadline, hasDeadline)
-// triple the limiter decided the refusal from. Called only from the
-// refusal branch, where a refusal has already been decided — hasDeadline
-// false there would mean the limiter refused with no deadline to compare
-// against, which acquire's own predicate (hasDeadline && t.After(deadline))
-// makes unreachable, so this always takes the hasDeadline-true path in
-// production; it still answers the false case for completeness and for
-// the table test.
+// limiterRefusalCause answers which cause a limiter refusal carries, from
+// the same instant and deadline the limiter decided that refusal from, so
+// the decision and its explanation can never disagree. It is called only
+// where the limiter has already refused.
 //
-// When now is already past deadline, the refusal is a deadline breach
-// decided before any wait, not a real wait that would end past a deadline
-// still ahead — the two worlds a canary probe's failure classifier must
-// tell apart. The predicate is strict (now.After(deadline), not
-// !now.Before(deadline)): at now == deadline the limiter still grants a
-// zero wait, so a refusal decided at that exact instant is necessarily a
-// real-wait refusal, and the deadline has not passed.
+// A deadline that had already passed at that instant makes the refusal a
+// deadline breach decided before any wait, and the cause then wraps
+// context.DeadlineExceeded, so a caller can tell it apart from a refusal
+// made for a wait that would end past a deadline still ahead. The
+// comparison is strict: at an instant equal to the deadline a zero wait is
+// still granted, so a refusal decided exactly there is a real-wait refusal
+// and the deadline has not passed.
+//
+// A refusal without a deadline cannot occur, because a refusal needs one to
+// be decided against; the no-deadline answer exists only so the function is
+// total.
 func limiterRefusalCause(now, deadline time.Time, hasDeadline bool) error {
 	if hasDeadline && now.After(deadline) {
 		return fmt.Errorf("limiter: the context deadline had already passed: %w", context.DeadlineExceeded)

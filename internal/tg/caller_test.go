@@ -171,12 +171,6 @@ func TestCaller_LimiterDelaysAndHonoursDeadline(t *testing.T) {
 	}
 }
 
-// TestCaller_HTTPClientFallsBackToDefaultClient covers
-// (*caller).httpClient's http.DefaultClient fallback, which every other
-// fixture in this file bypasses by supplying Options.HTTPClient via
-// newTestClient. This constructs a Client
-// with no HTTPClient set (validOptions leaves it nil) and reads the
-// unexported field back directly, without issuing any real HTTP call.
 // TestLimiterRefusalCause is a table test over limiterRefusalCause's whole
 // predicate: only an already-passed deadline yields a cause wrapping
 // context.DeadlineExceeded; the boundary (now == deadline), a deadline
@@ -330,6 +324,12 @@ func TestCaller_RealWaitPastDeadlineIsNotContextError(t *testing.T) {
 	})
 }
 
+// TestCaller_HTTPClientFallsBackToDefaultClient covers
+// (*caller).httpClient's http.DefaultClient fallback, which every other
+// fixture in this file bypasses by supplying Options.HTTPClient via
+// newTestClient. This constructs a Client
+// with no HTTPClient set (validOptions leaves it nil) and reads the
+// unexported field back directly, without issuing any real HTTP call.
 func TestCaller_HTTPClientFallsBackToDefaultClient(t *testing.T) {
 	t.Parallel()
 	c, err := New(validOptions())
