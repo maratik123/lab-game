@@ -4,13 +4,13 @@
 **Spec:** `ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.spec.md`
 **Branch:** `feat/2026-09-11-goroutine-leak-detection-goleak`
 **Date:** 2026-09-11
-**Round:** 2
+**Round:** 3
 
 **Tag forms used below.** A fact about something that already exists carries
 `[measured <pin>:<path>[:<lines>] · <command> → <output>]`. `<pin>` is a commit of this
-repository — `94e6de6` for round 1's measurements, `779b08b` for those round 2 added (the tree's
-Go sources are identical at both: the commits between them touch `ai-docs/plans/` only
-`[measured 779b08b · git diff --name-only 94e6de6 779b08b → the design, the spec and its state file, all under ai-docs/plans/]`); for a
+repository — `94e6de6` for round 1's measurements, `779b08b` for round 2's, `4699e2c` for round
+3's (the tree outside `ai-docs/plans/` is identical at all three
+`[measured 4699e2c · git diff --name-only 94e6de6 4699e2c → only paths under ai-docs/plans/]`); for a
 dependency it is the module version (`goleak@v1.3.0`, paths relative to that
 module's root in the module cache); for the standard library and the go command it is
 `go1.26.5` (paths relative to `$(go env GOROOT)`). A behaviour of an existing tool measured by
@@ -149,6 +149,18 @@ goroutine's state, full stack and creator line
 log that way (§ *What the tree leaves running today*) — so the stack is in the gate log with nothing
 further to run.
 
+**What a detection looks like in a gate log, and how it is reproduced.** The package's `FAIL` line
+comes with no `--- FAIL:` test line, because every test passed and the check failed after them
+`[measured 94e6de6 + probe · the shared-route log of § What the tree leaves running today → "goleak: Errors on successful test run" followed by "FAIL\tgithub.com/maratik123/lab-game/internal/tg" for each leaking package; rg -c '^--- FAIL' on that log → no match]`.
+The CI-fix flows' `test` and `race` reproducers run one named test
+`[measured 4699e2c:.claude/skills/pr-ci-failed/SKILL.md:181-182, .claude/skills/main-ci-failed/SKILL.md:174-175 · sed -n → "go test ./... -run <TestName>", "go test -race ./... -run <TestName>"]`,
+and here there is no name to give. Nothing in those rows becomes false — the `test` class still
+matches — so they stay as they are, and T6's conventions section states the reproducer instead: the
+whole package, with `-count=1`, on the route it failed on (`go run ./cmd/testpg -- go test -count=1
+./<pkg>/` for the shared route, with `-race` for the race gate, and `LAB_GAME_TEST_DSN= go test
+-count=1 ./<pkg>/` for the fallback), never narrowed with `-run`, which also switches off D6's
+per-entry evaluation `[derived → T6]`.
+
 **D5 — The ignore set is declared at the `TestMain` of the package it applies to.** An entry is
 `leaktest.Ignore{Function, Anywhere, Reason}`: the fully qualified function goleak matches; whether
 it must be the top frame or may be any frame — goleak's two matchers
@@ -169,10 +181,14 @@ through one small source function T2 asserts against the `module` line of `go.mo
 the same way, because a check that cannot tell what this module's code is has not run. A nil
 runner is refused likewise `[derived → T2's refusal cases]`.
 
-`Main` itself is one statement: it hands the check the tests to run (its runner applied to `m`),
-`os.Stderr`, that module-path source, D6's filter predicate bound to `flag.Lookup`, and the entries.
-Everything it wires in is a function T2 drives directly; the wiring is what review reads and what
-the Step-9 AC6 probe drives end to end `[derived → T2; the AC6 probe]`.
+`Main` itself is one statement: it hands the check `m` and the runner **as two separate inputs** —
+never the runner already applied to `m` inside a closure, which would turn a nil runner into a
+nil-function call inside `Main` instead of the refusal above — plus `os.Stderr`, that module-path
+source, D6's filter predicate bound to `flag.Lookup`, and the entries. The check calls the runner on
+`m` only after the refusals, so the nil-runner refusal T2 drives is the one `Main` reaches; T2 passes
+a nil `*testing.M` with runners that ignore it. Everything `Main` wires in is a function T2 drives
+directly; the wiring is what review reads and what the Step-9 AC6 probe drives end to end
+`[derived → T2; the AC6 probe]`.
 
 **Admission** — judged in review, and stated by `Ignore`'s doc comment: an entry is for a goroutine
 that neither this module's code nor its test fixtures can stop, one a dependency starts for the life
@@ -215,12 +231,24 @@ non-empty, or `test.short` is true; a flag the lookup does not find counts as un
 that finds nothing leaves the evaluation on rather than silently off `[derived → T2's filter cases]`.
 
 **D7 — Coverage of the module is enforced by a guard in `internal/leaktest`'s own tests.**
-`TestGuard_EveryPackageWithTestsRunsTheDetection` walks the module through `internal/srcguard` and
-collects every directory holding a `_test.go` file, under the go tool's own rule for what belongs to
-a package `[measured go1.26.5 · go help packages → "Directory and file names that begin with \".\" or \"_\" are ignored by the go tool, as are directories named \"testdata\"."]`.
-Of each it requires exactly one `TestMain` across its test files, whose body is the single
-statement `os.Exit(leaktest.Main(<its own parameter>, <runner>, <entries…>))`, with `os` and
-`leaktest` resolved through the file's own imports. A `TestMain` that calls the detector and
+`TestGuard_EveryPackageWithTestsRunsTheDetection` walks the module through `internal/srcguard`,
+skipping the directories the go tool ignores — `testdata`, and any whose name begins with `.` or
+`_` `[measured go1.26.5 · go help packages → "Directory and file names that begin with \".\" or \"_\" are ignored by the go tool, as are directories named \"testdata\"."]`.
+For each remaining directory holding a `_test.go` file it asks `go/build` which test files the
+default build compiles there — `build.Default.ImportDir`'s `TestGoFiles` and `XTestGoFiles` — rather
+than restating the file rules by hand. Those lists apply every one of them: a name beginning with
+`.` or `_`, a `//go:build` line, a legacy `// +build` line, and a GOOS or GOARCH filename suffix
+`[measured go1.26.5 · scratch directories, each an unconstrained test file beside a TestMain file carrying "//go:build integration", "// +build integration", the name main_windows_test.go, a leading "_" or a leading "." → ImportDir lists only the unconstrained file as a test file, the constrained ones under IgnoredGoFiles; a directory of external test files only → XTestGoFiles set, no error; the binary run with PATH=/nonexistent, so no go command was reached]`.
+A directory where both lists are empty — `ImportDir` answering `*build.NoGoError` — has no test the
+gates compile, and is skipped
+`[measured go1.26.5 · scratch directories whose only test file is excluded — named "_x_test.go", named "x_windows_test.go", or carrying "//go:build integration" → ImportDir returns *build.NoGoError, "no buildable Go source files", with both test lists empty]`;
+any other `ImportDir` error fails the guard, naming the directory.
+`build.Default` carries no build tags, which is the gates' configuration: none of them passes
+`-tags` `[measured 4699e2c · rg -n -e '-tags' Makefile .githooks/coverage-ratchet.sh .github/workflows/ci.yml → exit 1, no output; control "go test -tags integration ./..." → match]`.
+Of each directory with tests it requires exactly one `TestMain` across the files those lists name,
+whose body is the single statement `os.Exit(leaktest.Main(<its own parameter>, <runner>, <entries…>))`,
+with `os` and `leaktest` resolved through the file's own imports; a correctly shaped `TestMain` in a
+file the build excludes does not count, so its package is reported. A `TestMain` that calls the detector and
 discards the result, calls something else, or takes a second statement fails it. Every offending
 directory is named, with the declaration it needs `[derived → AC7]`. The predicate lives beside the
 proposition it enforces, as `ai-docs/go-test-conventions.md` § Structural guards requires
@@ -234,12 +262,15 @@ added, the walking guard re-ran and failed naming it while the exec'ing guard an
 `[measured go1.26.5 · go test twice, add internal/zznewpkg/x_test.go, go test again → walk guard: "(cached)" on the repeat, then "--- FAIL … found ../../internal/zznewpkg"; exec guard: "ok … (cached)" after the new package, and FAIL only under -count=1]`.
 A guard that enumerated packages through `go list` would let a package added after this task pass
 on a cached run. `srcguard.WalkSubtree` walks with `filepath.WalkDir` in the test's own process
-`[measured 94e6de6:internal/srcguard/srcguard.go:53-76 · sed -n '53,76p' → "err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {"]`.
+`[measured 94e6de6:internal/srcguard/srcguard.go:53-76 · sed -n '53,76p' → "err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {"]`,
+and `go/build` reads the files it classifies there too, so a constraint added to a `TestMain` file
+invalidates a cached pass
+`[measured go1.26.5 · scratch guard asserting via ImportDir that a sibling directory's main_test.go is compiled: go test → ok; repeated → "(cached)"; "//go:build integration" added to main_test.go → re-run, "--- FAIL … main_test.go not among compiled test files: [a_test.go] (ignored [main_test.go])"]`.
 
 **D8 — The one leak class found at adoption: the fake Bot API server's in-flight handlers.**
-`tgtest.New` gives its `http.Server` a base context that the test's cleanup cancels, and `Delayed`
-waits for its duration or for the request's context to end, whichever comes first, returning
-without calling the wrapped handler in the second case `[derived → T1's cleanup case]`. The base
+`tgtest.New` gives its `http.Server` a base context of its own that its own cleanup cancels, and
+`Delayed` waits for its duration or for the request's context to end, whichever comes first,
+returning without calling the wrapped handler in the second case `[derived → T1's cleanup case]`. The base
 context is the lever, not the client's disconnect. For a request whose body is unread, `net/http`
 starts watching the connection for its peer closing only once that body has been consumed; for a
 body-less request it watches at once
@@ -257,6 +288,17 @@ at all when it carried `null`, until the server's base context was cancelled
 Neither the base context nor its cancel function becomes a field of `Server`: the `BaseContext`
 closure holds the one and the cleanup closure the other, because a context is never stored in a
 struct `[measured 94e6de6:ai-docs/code-style.md:35 · sed -n 35p → "Never store a context in a struct."]`.
+The base context is `New`'s own, cancelled inside `New`'s own cleanup, rather than the test's
+`Context()`, which the standard library already offers: that one is cancelled just before **any**
+cleanup runs, while cleanups run last-registered-first
+`[measured go1.26.5:src/testing/testing.go:1293-1295,1584-1585 · sed -n → "Cleanup functions will be called in last added, first called order."; "Context returns a context that is canceled just before Cleanup-registered functions are called."]`.
+A consumer registers cleanups after `New` — `cmd/bot`'s tests register their teardown that way
+`[measured 4699e2c:cmd/bot/assemble_test.go:71,84 · sed -n → "srv := tgtest.New(t, tgtest.Success(nil))", "t.Cleanup(func() { teardown(t, a) })"]`
+— and with the test's context every in-flight `Delayed` handler would already have given up, and
+answered empty, while those cleanups still ran against the server. `New`'s own cleanup runs after
+every cleanup registered later, so the fake server keeps answering normally until the consumer's
+cleanups have finished `[derived → T1's ordering case]`. `AGENTS.md`'s standard-library-first
+rule is why this is argued rather than assumed.
 The cleanup does not join handler goroutines: a handler that ignores its request's context is then
 reported by the leak check, with its stack, instead of hanging the binary. The wait stays on
 whichever clock is active, so inside a `testing/synctest` bubble a `Delayed` handler still answers
@@ -311,6 +353,10 @@ The Test job's paths filter already reaches every Go file
   the D8 class's timing (§ *What the tree leaves running today*). If one ever does, its entry fails as
   not needed on the other route, which is the signal to add a route condition then.
 - **A patience window wider than goleak's.** D3.
+- **The test's own `Context()` as the fake server's base context.** It ends every in-flight request
+  before the consumer's own cleanups have run; D8.
+- **Restating the go tool's file rules in the guard.** `go/build` applies all of them, the legacy
+  constraint form included, and reads in the test's own process; D7.
 
 ### Propagation (`AGENTS.md` § Propagation Rule)
 
@@ -361,12 +407,12 @@ graph neither gains nor loses a package `[derived → make import-guard green; g
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | `internal/tgtest` — D8: the base context the cleanup cancels; `Delayed` waiting on its duration or on the request's context; the doc comments on `New` and `Delayed`; with their tests (T1's cleanup case, with both red demonstrations, and bubble case). In the same step, the doc comment on `TestCaller_AttemptTimeoutAbandonsAttempt` loses the real-time rationale D8 falsifies (§ Propagation); that test's body is untouched | `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go`, `internal/tg/retry_test.go` | — |
+| 1 | `internal/tgtest` — D8: the base context the cleanup cancels; `Delayed` waiting on its duration or on the request's context; the doc comments on `New` and `Delayed`; with their tests (T1's cleanup case with both red demonstrations, ordering case, and bubble case). In the same step, the doc comment on `TestCaller_AttemptTimeoutAbandonsAttempt` loses the real-time rationale D8 falsifies (§ Propagation); that test's body is untouched | `internal/tgtest/tgtest.go`, `internal/tgtest/tgtest_test.go`, `internal/tg/retry_test.go` | — |
 | 2 | `internal/leaktest` — package comment, `Main`, `Ignore`, and the check behind them: D5's refusals, D3's detection, D4's report, D6's per-entry evaluation and its filtered-run skip; with the unit tests of § Test Design T2, and the package's own `TestMain` in the D2 form | `internal/leaktest/leaktest.go`, `internal/leaktest/leaktest_test.go`, `internal/leaktest/main_test.go` | — |
 | 3 | `internal/testdb` — D9: `callersOfMain` as a parse through `internal/srcguard`, its doc comment, and T3's scratch case | `internal/testdb/server_test.go` | — |
 | 4 | Rollout: every package with tests declares `TestMain` in the D2 form — edited in place where it already delegates to `testdb.Main` (runner `testdb.Main`), a new `main_test.go` everywhere else (runner `(*testing.M).Run`; in the external test package where the directory has only external test files); `testdb.Main`'s doc comment; then the whole suite on every route. A leak any route reports that is not the D8 class is a **STOP** back to the orchestrator, not a fix inside this step | `cmd/bot/assemble_test.go`, `internal/ingest/main_test.go`, `internal/scheduler/scheduler_test.go`, `internal/store/store_test.go`, `internal/testdb/testdb_test.go`, `internal/testdb/testdb.go`; new `main_test.go` in `cmd/commentrefs`, `cmd/importguard`, `cmd/testpg`, `internal/backoff`, `internal/commentref`, `internal/config`, `internal/health`, `internal/repotest`, `internal/srcguard`, `internal/tg`, `internal/tgtest` | 1, 2, 3 |
 | 5 | The D7 guard: the real-tree case with its positive control, and the discriminating scratch cases of § Test Design T5 | `internal/leaktest/guard_test.go` | 2, 4 |
-| 6 | Docs: a *Goroutine-leak detection* section in `ai-docs/go-test-conventions.md` (the `TestMain` form and its two runners, when the check runs and what it reports, the ignore set's shape, admission rule, refusals and per-entry evaluation, the filtered-run skip, the guard and why it walks in-process); one bullet in `AGENTS.md` § Go Test Conventions beside the race gate, pointing there; KD-36 in `ai-docs/key-decisions.md` (the decision, D2's composition, the rejected alternatives above, the consequences) | `ai-docs/go-test-conventions.md`, `AGENTS.md`, `ai-docs/key-decisions.md` | 1, 2, 3, 4, 5 |
+| 6 | Docs: a *Goroutine-leak detection* section in `ai-docs/go-test-conventions.md` (the `TestMain` form and its two runners, when the check runs and what it reports, how a detection shows up in a gate log and how to reproduce it — D4's paragraph — the ignore set's shape, admission rule, refusals and per-entry evaluation, the filtered-run skip, the guard, why it walks in-process and why it asks `go/build` which files count); one bullet in `AGENTS.md` § Go Test Conventions beside the race gate, pointing there; KD-36 in `ai-docs/key-decisions.md` (the decision, D2's composition, the rejected alternatives above, the consequences) | `ai-docs/go-test-conventions.md`, `AGENTS.md`, `ai-docs/key-decisions.md` | 1, 2, 3, 4, 5 |
 
 **T4's package list is a scoping floor, and the guard is the authority.** It is what `go list`
 reports with test files at the pin, split by whether a `TestMain` already exists
@@ -452,14 +498,19 @@ Two groups — one per change-type, the fewest homogeneity allows, within the de
   lists this module's own panicking calls
   `[measured 94e6de6:ai-docs/panic-index.md:3 · sed -n 3p → "Every intentional panicking call (…) in **production** code (outside `_test.go`)"]`,
   and `internal/leaktest` makes none `[derived → the panic-gate hook and review at T2]`.
-- **A test file excluded by a build constraint.** The guard parses every `_test.go`, while a gate
-  compiles the default configuration only; a `TestMain` in a constrained file would satisfy the guard
-  and not run. A constraint can be written two ways, and the tree carries neither: no Go file has a
-  `//go:build` line
+- **A test file excluded by a build constraint.** A `TestMain` in a file the gates never compile
+  would run no detection, and AC7 covers packages added later. Engineered, not stated: the guard
+  counts only the files `go/build` says the default build compiles (D7), so a correctly shaped
+  `TestMain` in a constrained file leaves its package reported `[derived → T5's constrained-file cases]`.
+  A constraint can be written three ways and the tree carries none today, so the selection changes
+  no verdict at landing: no `//go:build` line
   `[measured 94e6de6 · rg -n '^//go:build' --type go → exit 1, no output; the same pattern against the constructed line "//go:build integration" → match]`,
-  and no tracked Go file's name ends in a GOOS or GOARCH suffix
+  no legacy `// +build` line
+  `[measured 4699e2c · rg -n '^// \+build' --type go . → exit 1, no output; control "// +build integration" → match]`,
+  and no tracked Go file named with a GOOS or GOARCH suffix
   `[measured 779b08b · git ls-files '*.go' | grep -E "_(<GOOS>|<GOARCH>)(_(<GOARCH>))?(_test)?\.go$", the name lists taken from go tool dist list → exit 1, no output; the same pattern against the constructed names "y_linux_test.go", "z_amd64.go", "w_windows_arm64_test.go" → all three match]`.
-  Stated, not engineered.
+  What remains is a gate that passes `-tags`, whose tags `build.Default` cannot see; none does
+  (D7's measurement).
 - **A stale entry survives a filtered run** (D6) and fails the next unfiltered one — every gate is
   unfiltered `[derived → T2's filtered pair]`.
 - **The whole-tree guards already bind the new package's non-test file.** It may declare no
@@ -497,6 +548,13 @@ Test names are the implementor's; the propositions are not.
   today's `Delayed`, whose handler sleeps on; and the half-fix — `Delayed` waiting on its request's
   context while the cleanup cancels nothing — whose handler is never released either, because a
   client giving up does not end a request whose body is unread. In both, `returned` stays open.
+- **Ordering case:** inside a subtest, `New` with `Delayed(<a short delay>, Success(<a payload>))`,
+  then a cleanup the case registers after `New` that sends a request through the server and records
+  the answer; after the subtest, the recorded answer must be the wrapped handler's payload.
+  Proposition: the fake server answers normally while the cleanups registered after it run
+  `[derived → D8's choice of its own base context]`. Red against a base context taken from the
+  test's `Context()`, demonstrated from a cp-backup: that context is already cancelled when the
+  cleanup runs, so the handler gives up and the answer comes back empty.
 - **Bubble case:** inside `synctest.Test`, `New` with `Delayed(d, Success(…))` and a request whose
   context outlives `d`: the call succeeds, and the virtual time elapsed across it equals `d` exactly.
   Proposition: the new wait is one the bubble sees as durably blocked (KD-26) `[derived → D8]`.
@@ -506,9 +564,11 @@ Test names are the implementor's; the propositions are not.
 
 ### T2 — `internal/leaktest/leaktest_test.go` (internal) and `main_test.go` (external)
 
-- **Entry points:** the unexported check behind `Main` — the tests to run, the report writer, the
-  module path, a predicate for "this run was filtered", and the entries — returning the exit code;
-  and the two sources `Main` wires into it, the module-path source and the filter predicate (D5, D6).
+- **Entry points:** the unexported check behind `Main` — `m` and the runner as separate inputs, the
+  report writer, the module-path source, a predicate for "this run was filtered", and the entries —
+  returning the exit code; and the two sources `Main` wires into it, the module-path source and the
+  filter predicate (D5, D6). The cases pass a nil `*testing.M` with runners that ignore it, so the
+  check's inputs are exactly the ones `Main` hands it.
 - **Shape:** the cases that exercise the check run sequentially; a helper starts a goroutine inside a
   named function of the test file and returns a release that also waits for it to exit.
 - **Scenarios:**
@@ -534,8 +594,9 @@ Test names are the implementor's; the propositions are not.
     under a standard-library creator, and `0` — so a scan that reads only frames lets it through
     `[derived → AC5, "started by"]`;
   - refusals, each with a runner that records whether it was called — blank reason, blank function,
-    a function under the module path, a nil runner, an empty module path → non-zero, runner not
-    called, the refusal named `[derived → AC3, AC5]`;
+    a function under the module path, an empty module path → non-zero, runner not called, the
+    refusal named; and a nil runner → non-zero, the refusal named, no panic
+    `[derived → AC3, AC5]`;
   - a stale entry on a filtered run → `0` with the skip line; the same entry on an unfiltered run →
     non-zero `[derived → D6]`;
   - **the real filter predicate**, driven with a fake flag lookup: nothing set → unfiltered; each of
@@ -574,9 +635,15 @@ Test names are the implementor's; the propositions are not.
     `Main`, today's form; one calling `leaktest.Main` and then `os.Exit(0)`; one passing something
     other than its own parameter; one with a second statement; two `TestMain` declarations across a
     directory's internal and external test files;
+  - reported, once per way a file can be left out of the build: a correctly shaped `TestMain` in a
+    file carrying a `//go:build` line the default build does not satisfy, a legacy `// +build` line,
+    a GOOS filename suffix other than the host's, and a name beginning with `_` or `.` — each beside an
+    unconstrained test file, so the directory still has tests and its only `TestMain` is one the
+    gates never compile `[derived → AC7, for a package added later]`;
   - not reported: a compliant package with either runner, with entries, and under import aliases; a
     compliant `TestMain` in the external test package of a mixed directory; `_test.go` files under
-    `testdata/`, `_x/` and `.x/`, and a `_x_test.go` file.
+    `testdata/`, `_x/` and `.x/`; and a directory whose only test file is named `_x_test.go`, which
+    the build does not compile.
 
 ### Acceptance criteria → where they are established
 
@@ -588,16 +655,25 @@ Test names are the implementor's; the propositions are not.
 | AC4 | T4's rollout; T5's real-tree case |
 | AC5 | T1 (the leak fixed, not ignored, and both red demonstrations); T2's module-name refusals and its "running" and "started by" cases; T4's empty set; the AC5 probe |
 | AC6 | T2's stale, redundant and filter-predicate cases; the AC6 probe |
-| AC7 | T5; the AC7 probe, run against a cached result |
+| AC7 | T5, its constrained-file cases included; the AC7 probe, run against a cached result |
 
 ### Verification probes (Step 9; not committed; every edit restored from a cp-backup)
 
 - **AC1/AC2:** a test in a package with no database starts a goroutine blocked forever; `make test`
   → that package `FAIL`, and the gate log carries the goroutine's stack, its function and its
   `created by` line.
-- **AC5:** the pre-D8 `Delayed` restored from `git show` into `internal/tgtest/tgtest.go`, and
-  `internal/tg`'s `TestMain` given an entry on `time.Sleep` with a reason; `make test` →
-  `internal/tg` `FAIL`, the entry named as excusing this module's code, with the handler's stack.
+- **AC5:** a test added to a package with no database starts, from the test file, a goroutine that
+  sleeps for an hour — `time.Sleep` on top, the test's own closure below it — and that package's
+  `TestMain` is given `leaktest.Ignore{Function: "time.Sleep", Reason: …}`; `make test` → that
+  package `FAIL`, the entry named as excusing this module's code, with the goroutine's stack. The
+  goroutine exists when the check runs by construction — nothing ends it — so a report of "not
+  needed" instead can only mean a broken scan. Neither existing `Delayed` site gives that
+  certainty. `internal/tg`'s handler waits seconds and may have exited; `internal/health`'s waits an
+  hour but may never start, because its client's deadline can expire first. The round-1 probe shows
+  exactly that on the fallback route: no parked handler in `internal/health` at the check
+  `[measured 94e6de6 + probe · LAB_GAME_TEST_DSN= go test -count=1 ./... → internal/health clean, although its Delayed(time.Hour) handler, once started, sleeps past any check]`.
+  So pointing the probe at `internal/health`, as design review round 2 suggested, would trade one
+  timing dependence for another; the probe parks its own goroutine instead.
 - **AC6:** one package's `TestMain` given an entry naming a function on no stack; `make test` → that
   package `FAIL`, the entry named as not needed.
 - **AC7, through the cache:** `go test ./internal/leaktest/` twice, the second answering `(cached)`;
