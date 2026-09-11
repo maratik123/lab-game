@@ -52,19 +52,32 @@ set -uo pipefail
 # fail loudly as an instrument error -- never leak into the comparison, where
 # it would flag every citation as unresolvable and dress the outage up as a
 # finding. Retry briefly, then stop.
-LOCAL_MAX=""
-for attempt in 1 2 3; do
-  LOCAL_MAX=$(gh pr list --state all --limit 1 --json number --jq '.[0].number // 0' 2>/dev/null)
-  case "$LOCAL_MAX" in ''|*[!0-9]*) LOCAL_MAX=""; sleep "$attempt" ;; *) break ;; esac
-done
-if [ -z "$LOCAL_MAX" ]; then
-  echo "ERROR: could not read the local PR high-water mark (gh pr list returned nothing numeric after 3 attempts)." >&2
+#
+# Issues and pull requests share one number sequence, so the mark is the
+# larger of the newest of each. Read from pull requests alone, a citation of
+# an issue filed after the last pull request reads as foreign, and stays red
+# locally until the next pull request opens -- by which time CI is green and
+# nothing records that it ever was red. Both reads must succeed: a silent
+# zero from either side would restore the too-low ceiling.
+read_max() {
+  local kind=$1 v attempt
+  for attempt in 1 2 3; do
+    v=$(gh "$kind" list --state all --limit 1 --json number --jq '.[0].number // 0' 2>/dev/null)
+    case "$v" in ''|*[!0-9]*) sleep "$attempt" ;; *) printf '%s\n' "$v"; return 0 ;; esac
+  done
+  return 1
+}
+PR_MAX=$(read_max pr) || PR_MAX=""
+ISSUE_MAX=$(read_max issue) || ISSUE_MAX=""
+if [ -z "$PR_MAX" ] || [ -z "$ISSUE_MAX" ]; then
+  echo "ERROR: could not read the local high-water mark (gh pr list / gh issue list returned nothing numeric after 3 attempts)." >&2
   echo "       Instrument failure, not a citation finding -- check gh auth / network and re-run." >&2
   exit 1
 fi
+LOCAL_MAX=$(( PR_MAX > ISSUE_MAX ? PR_MAX : ISSUE_MAX ))
 fail=0
 
-echo "== local high-water mark: PR #${LOCAL_MAX} =="
+echo "== local high-water mark: #${LOCAL_MAX} (newest pull request #${PR_MAX}, newest issue #${ISSUE_MAX}) =="
 echo
 echo "--- (1) unqualified 'PR #N' / bare '#N' claiming to be local but exceeding it ---"
 # Matches BOTH `PR #N` and a bare `#N`. Bare `#N` is the same defect: GitHub

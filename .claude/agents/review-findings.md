@@ -75,6 +75,7 @@ Read [`ai-docs/domain-invariants.md`](../../ai-docs/domain-invariants.md) first.
 - Database-enforced invariants (zero-sum per kind, `CHECK`s, capture order, `SKIP LOCKED`) tested against a real Postgres rather than a mock?
 - Every FSM edge tested, including the timer edges whose guard fails?
 - `go test -race ./...` recorded for any change touching goroutines, the scheduler, or shared state?
+- Every `leaktest.Ignore` entry for a dependency's process-lifetime goroutine only — none for a goroutine this module's code or a test fixture could stop ([`ai-docs/go-test-conventions.md`](../../ai-docs/go-test-conventions.md) § *Goroutine-leak detection* → Admission)?
 ### 4. Performance
 - O(n²) or worse where O(n) is straightforward?
 - Unnecessary clones or allocations in non-trivial code paths?

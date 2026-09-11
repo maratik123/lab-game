@@ -153,18 +153,30 @@ check_bash ALLOW none "$real_write"
 check_bash ALLOW none "echo x > AGENTS.md"
 
 # --- Edit/Write side ---
-check_edit BLOCK live "/home/syt/lab-game/.claude/agents/spec-writer.md"
+check_edit BLOCK live "$scratch/.claude/agents/spec-writer.md"
 check_edit BLOCK live ".claude/agents/spec-writer.md"
-check_edit BLOCK live "/home/syt/lab-game/AGENTS.md"
+check_edit BLOCK live "$scratch/AGENTS.md"
 check_edit BLOCK live "CLAUDE.md"
 check_edit BLOCK live "ai-docs/code-style.md"
-check_edit BLOCK live "/home/syt/lab-game/ai-docs/doc-convention.md"
-check_edit ALLOW live "/home/syt/lab-game/ai-docs/plans/2026-09-08-fixture.spec.md"
+check_edit BLOCK live "$scratch/ai-docs/doc-convention.md"
+check_edit ALLOW live "$scratch/ai-docs/plans/2026-09-08-fixture.spec.md"
 check_edit ALLOW live "ai-docs/harness-gaps.md"
 check_edit ALLOW live "ai-docs/learnings.md"
 check_edit ALLOW live "internal/config/config.go"
-check_edit ALLOW inflight "/home/syt/lab-game/.claude/agents/spec-writer.md"
-check_edit ALLOW none "/home/syt/lab-game/.claude/agents/spec-writer.md"
+check_edit ALLOW inflight "$scratch/.claude/agents/spec-writer.md"
+check_edit ALLOW none "$scratch/.claude/agents/spec-writer.md"
+
+# --- Edit/Write side: the class is the repository's files, not a path shape ---
+# The hook runs with the repository root as its working directory, and a path
+# outside it is nobody's instruction file here. The user's own Claude directory
+# carries a directory of the same name, and its memory files were refused while
+# an interview was live; an unrelated tree's rule file is equally not ours.
+check_edit ALLOW live "/home/someone/.claude/projects/-home-someone-lab-game/memory/feedback.md"
+check_edit ALLOW live "/elsewhere/project/AGENTS.md"
+check_edit ALLOW live "/elsewhere/project/CLAUDE.md"
+check_edit BLOCK live "$scratch/internal/AGENTS.md"
+check_edit BLOCK live "./AGENTS.md"
+check_edit BLOCK live "./.claude/skills/task/SKILL.md"
 
 if [ "$failures" -eq 0 ]; then
   echo "instruction-edit guard: all fixtures behave as specified"

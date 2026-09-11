@@ -238,6 +238,7 @@ Entries are appended at the END, newest last.
 **Gap:** GitHub issues and pull requests share one numbering space, but the ceiling is read from PRs alone. Whenever the most recently created object is an *issue*, every citation of it is above the ceiling and is reported as a citation that "says 'here' but means graphite-gp or quartzite" — the guard's most confident wording, applied to its least reliable case. The window is not exotic: `/task` Step 12's own inbox propagation and `/triage` both create issues, and this run hit it by following the owner's explicit instruction to file rather than fix. The failure is also self-healing in a way that hides it — opening the PR raises the ceiling past the issue, so the guard goes green in CI and nothing records that it was ever red locally.
 **Proposed edit:** take the ceiling as the maximum of the newest PR and the newest issue — `gh issue list --state all --limit 1 --json number` alongside the existing `gh pr list`, both under the same three-attempt instrument-error discipline, `LOCAL_MAX` being the larger. The instrument-failure branch must still fire when *either* read comes back non-numeric, since a silent zero from one side would restore the same too-low ceiling it is there to prevent. Worth a fixture in `test-check-citations.sh` for the ordering that produced this: newest issue above newest PR, citation of the issue, expected PASS.
 **at:** e696c3b
+**Forge:** forge-17
 
 ### 2026-09-06 — the review-register gate cannot reach a `/bugfix` trace, for two independent reasons
 **target:** `.claude/settings.json` (the `Checking the review register...` `PreToolUse` hook, the `grep '\.progress\.md$'` filter)
@@ -385,6 +386,7 @@ Entries are appended at the END, newest last.
 **Gap:** the rule text asserts enforcement over three classes; the hook enforces one of them. A reader who trusts the sentence treats an unrefused root write as a permitted one.
 **Proposed edit:** either narrow the sentence to the class the hook enforces ("gate output redirected to a bare filename in the root is refused; probes and backups are honour-system"), or widen the hook to any redirect whose target is a bare filename, with the existing slash-in-target escape — the fixture set would need a row for a non-gate tool.
 **at:** eb7cd1c
+**Forge:** forge-17
 
 ### 2026-09-11 — whether folding a GO's design-internal notes needs another design-review is answered three ways
 **target:** `.claude/skills/task/SKILL.md`, `.claude/skills/task/reference.md`
@@ -392,6 +394,7 @@ Entries are appended at the END, newest last.
 **Gap:** "non-trivial" has no test, and three texts answer one question differently. The round cap makes the ambiguity costly: after the cap's last GO a fold-in has no defined route except the owner's exemption, and nothing tells the orchestrator to surface that choice before spending the last round.
 **Proposed edit:** one rule in one place, as a closed list — a fold-in is re-reviewed when it changes a decision the reviewer approved, or substitutes the writer's own resolution for a reviewer's suggestion; otherwise the orchestrator checks that each note landed by reading the design diff, records that check, and proceeds. The two `reference.md` sections then point to that rule instead of restating it, and a re-review that would spend the cap's last round is surfaced to the owner first.
 **at:** 2fe8592
+**Forge:** forge-17
 
 ### 2026-09-11 — a new test convention's review-judged half reaches no reviewer checklist
 **target:** `.claude/agents/self-review.md`, `.claude/agents/review-findings.md`, `ai-docs/propagation-groups.md`
@@ -399,6 +402,7 @@ Entries are appended at the END, newest last.
 **Gap:** the propagation sweep finds the sites that mention a changed rule; it cannot find the checklist that should begin to mention a new one. A convention whose enforcement is partly "judged in review" can land with no reviewer instructed to judge it.
 **Proposed edit:** a Review-group row in `ai-docs/propagation-groups.md` binding "a rule added to `AGENTS.md` § Go Test Conventions or § Code Style that leaves any half to review" to a row in `self-review.md` and `review-findings.md`; or one standing line in both reviewers' checklists naming `ai-docs/go-test-conventions.md` as a source they check a diff against.
 **at:** 7f4be55
+**Forge:** forge-17
 
 ### 2026-09-11 — the citation guard reads a real issue newer than the last pull request as a foreign reference
 **target:** `.claude/skills/ai-audit/scripts/check-citations.sh`
@@ -406,6 +410,7 @@ Entries are appended at the END, newest last.
 **Gap:** the guard's instrument measures pull requests only, while the defect it hunts is a number that does not resolve in this repository, and issues resolve too. A flow that files a follow-up issue and records it in the same PR meets a red local gate that is not a finding.
 **Proposed edit:** take the high-water mark over issues and pull requests together (`gh api` on the repository's newest issue number, which covers both), keeping the instrument-failure exit; add a regression case for a ref above the newest pull request but at or below the newest issue.
 **at:** 594a38c
+**Forge:** forge-17
 
 ### 2026-09-11 — the interview-live instruction-edit guard also refuses the user's auto-memory directory
 **target:** `.claude/settings.json` (the `PreToolUse` instruction-edit guard), `ai-docs/scripts/test-instruction-edit-guard.sh`
@@ -413,6 +418,7 @@ Entries are appended at the END, newest last.
 **Gap:** the guard's path class is the glob `*/.claude/*`, which matches every absolute path containing `/.claude/`, not the repository's `.claude/**`; the user-level Claude directory falls inside it. `*/AGENTS.md` and `*/CLAUDE.md` reach just as far.
 **Proposed edit:** resolve `file_path` against the repository root and apply the class only to paths under it; add suite rows showing that a path under `$HOME/.claude/projects/*/memory/` passes while a state file exists, and that the repository's own `.claude/` still blocks.
 **at:** 166eb26
+**Forge:** forge-17
 
 ### 2026-09-11 — the `/task` stop gate blocks every session in the working tree and writes into the running flow's stop ledger
 **target:** `.claude/settings.json` (the `Stop` hook keyed on `ai-docs/plans/.task-inflight`), `ai-docs/scripts/test-stop-gate.sh`, `.claude/skills/task/SKILL.md` Step 12 item 13
@@ -420,3 +426,12 @@ Entries are appended at the END, newest last.
 **Gap:** the gate identifies the in-flight run by a file in the shared working tree alone; nothing in the marker says which session owns the run, so every concurrent session in that tree is gated by it and writes into its ledger.
 **Proposed edit:** record an owner identity in the marker when `/task` creates it, and have the hook compare it with the stopping session's own identity taken from its input — exit 0 without touching the ledger on a mismatch; add a suite row for a foreign session.
 **at:** 166eb26
+**Forge:** forge-17
+
+### 2026-09-11 — the root-scratch hook still refuses gate output only; widening it waits for a second recurrence
+**target:** `.claude/settings.json` (the `PreToolUse` gate-log path guard), `ai-docs/scripts/test-gate-log-path-guard.sh`
+**Owner's decision, 2026-09-11:** the hook half of the 2026-09-11 root-scratch entry waits for a second recurrence; narrowing `AGENTS.md` to what the hook does (forge-17) is the whole change for now. This entry exists so that half stays in the open set: the root-scratch entry itself is closed by forge-17 for its text half.
+**Observed:** the hook refuses a gate command's output redirected to a bare filename. A throwaway probe or a backup written to the root by any other tool passes, and `AGENTS.md` § *Build & Test* now says so. The first recorded instance is `ai-docs/learnings.md` 2026-09-11 (a throwaway probe redirected into the repository root instead of `tmp/`).
+**Gap:** a probe or a backup in the root is the agent's own discipline — a disposition — while the gate-output half of the same rule is a gate.
+**Proposed edit:** on a second `ai-docs/learnings.md` entry recording a probe or a backup written to the repository root, widen the hook to refuse a redirect, or a `cp` / `mv`, whose target is a bare filename that `git ls-files --error-unmatch` does not know, so a tracked root file stays writable. The suite gains rows for an `awk`, a `jq` and a `sed` redirect and for a `cp` backup, and shows the tracked-file exemption in both directions. Until that recurrence, the decision is to wait.
+**at:** f58430e

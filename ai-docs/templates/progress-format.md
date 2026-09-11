@@ -42,6 +42,15 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step N**: [decision + reason in one line]
 - **Step N+1**: [decision + reason in one line]
 
+## GO notes
+
+<!-- /task only. One row per note, minor and recommendation of every design-review GO. -->
+
+| # | round | note | kind | route | resolution |
+|---|-------|------|------|-------|------------|
+| G1 | 2 | [the item's first clause, verbatim] | design-internal | folded | design § D4 @ a1b2c3d |
+| G2 | 2 | [the item's first clause, verbatim] | spec-amending (c) | owner (3) left | answer 5.1 |
+
 ## Key discoveries (don't re-investigate)
 
 - [finding]: [why it matters / what we decided]
@@ -71,6 +80,14 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **verifying command** is the command whose output settles the row (the failing command for a defect; the measuring command for a threshold). Required for every `blocker`/`major` row.
 - The register is the **only** cross-round memory the loop has. A per-round findings table documents a round; the register is what the next round is scoped by.
 
+### `## GO notes` semantics (`/task`)
+
+- **One row per item** — every `note` / `minor` row of a design-review GO's `## Issues` table and every bullet of its `## Recommendations`: the Step 7 GO, and the GO that closes a Design or Spec Amendment. Written at Step 8's first action for the Step 7 GO, appended for every later one. A GO item with no row is an unresolved GO note.
+- **kind:** `design-internal` · `spec-amending (<a|b|c|d>)` — the trigger of `/task`'s AXIOM *the orchestrator originates no spec row*.
+- **route**, closed: `folded` (design-internal — `design-writer` folded it in, and design-review did not run again) · `owner (1) spec amended` · `owner (2) design only` · `owner (3) left`. Only a `design-internal` row may read `folded`; a `spec-amending` row carries the route the owner chose — never one the orchestrator picked.
+- **resolution:** for `folded` and `owner (2)` — where it landed in the design and at which commit; for every `owner (…)` route — also `answer <round>.<n>`, the owner's words in the interview state file's `prior_qa`; for `owner (1)` — the design-review round that closed the amendment.
+- **Readers:** `/task` Step 8's first action (no item without a row) and `self-review` § 2's round-trip closure (a `folded` / `owner (2)` row the design does not reflect is a finding; an `owner (3)` row is resolved by its answer).
+
 ## Required vs optional fields
 
 **Required fields** (read by `self-review` at handoff and by the *compaction recovery check* callout in every code-side orchestrator SKILL.md): `**Branch:**`, `**base_commit:**`, `**Last build:**`, `**current_step:**`, `**last_passed_gate:**`, `## Decisions log` section.
@@ -93,6 +110,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | `**entry_args:**` | `/task` at Step 8 (initial flow); preserved through nested skills | Immutable after creation — read-only thereafter; routes the active-task probe on re-entry after compaction |
 | `## Decisions log` | Every non-trivial decision, append-only | Append-only — never edit or remove prior entries; the audit trail across steps |
 | `## Review register` | Reviewer (new rows + `accepted@N`), fixer (`fixed@<sha>`) | **Append rows, update only the `status` cell of existing rows; never rewrite or delete a row.** One row per finding across ALL rounds — the cross-round memory of the loop |
+| `## GO notes` | `/task` orchestrator: Step 8's first action, and after every later design-review GO | Append rows; a row's `route` and `resolution` are written once, when the item is settled |
 | `## Subtasks`, `## Key discoveries`, `## AC Status`, `## Files touched` | Per-subtask updates | Updated in-place as work progresses |
 
 ## Lifecycle (process)

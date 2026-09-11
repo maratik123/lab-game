@@ -120,6 +120,51 @@ report "case 3: genuine bad citation still RED" "$?" 1
 
 cp "$backup" "$target"
 
+# --- Cases 5-7: the ceiling is the newer of the newest issue and pull request -
+# A fake gh on PATH answers the two high-water reads with chosen numbers, so
+# the ordering that produced the false red -- an issue filed after the last
+# pull request, then cited -- is reproducible on any tree. The cited numbers
+# are ASSEMBLED AT RUNTIME for the same reason as case 3's date: a literal
+# above the real ceiling in this file would be flagged by the real guard.
+fakebin=$(mktemp -d)
+cat > "$fakebin/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "pr list") printf '%s\n' "${FAKE_PR_MAX-}" ;;
+  "issue list") printf '%s\n' "${FAKE_ISSUE_MAX-}" ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$fakebin/gh"
+fake_pr=1000
+fake_issue=$((fake_pr + 5))
+run_fake_guard() {
+  guard_out=$(PATH="$fakebin:$PATH" FAKE_PR_MAX="$1" FAKE_ISSUE_MAX="$2" bash "$guard" 2>&1)
+}
+
+cited=$((fake_pr + 3))
+printf '\n> Filed as #%s during the run.\n' "$cited" >> "$target"
+run_fake_guard "$fake_pr" "$fake_issue"
+report "case 5: a ref above the newest pull request but not above the newest issue is local" "$?" 0
+cp "$backup" "$target"
+
+cited=$((fake_issue + 2))
+printf '\n> Filed as #%s during the run.\n' "$cited" >> "$target"
+run_fake_guard "$fake_pr" "$fake_issue"
+report "case 6: a ref above both is still RED" "$?" 1
+cp "$backup" "$target"
+
+run_fake_guard "$fake_pr" ""
+rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$guard_out" | grep -q 'Instrument failure'; then
+  printf '  PASS  case 7: an unreadable issue mark is an instrument error, not a pass\n'
+else
+  printf '  FAIL  case 7: an unreadable issue mark gave exit %s without the instrument error\n' "$rc"
+  printf '%s\n' "$guard_out" | sed 's/^/        | /'
+  failures=$((failures + 1))
+fi
+rm -rf "$fakebin"
+
 # --- Case 4: this test must not mutate the tracked file's MODE ---------------
 # `git status` cannot see a permission change, so a test that quietly drops
 # 644 -> 600 (as `mv` from mktemp does) leaves damage no obvious check reports.

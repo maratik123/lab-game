@@ -148,6 +148,112 @@ counts=$(awk '/^blocked: /{b++} /^handback-spent: /{h++} END{printf "%d/%d", b+0
 [ "$counts" = "2/1" ] \
   || { printf 'FAIL [ledger]: blocks/hand-backs = %s, want 2/1\n' "$counts"; failures=$((failures + 1)); }
 
+# --- 9-13. the gate belongs to the session that owns the marker --------------
+# A second session in the same working tree -- a conversation the owner runs
+# beside a /task -- was blocked at its own stop and wrote a line into the
+# running flow's ledger. The marker now names its owner, and a stop by any
+# other session is not this gate's business: no block, no ledger line, and no
+# hand-back token spent on its behalf. A marker with no owner line, or a stop
+# whose input carries no session id, keeps the old behaviour, so every failure
+# of the new half degrades to the gate as it was, never to no gate.
+run_sid() {
+  local dir=$1 sid=$2 rc payload
+  payload=$(jq -nc --arg s "$sid" '{stop_hook_active: false, session_id: $s}')
+  ( cd "$dir" && printf '%s' "$payload" | bash -c "$body" ) >/dev/null 2>&1 && rc=0 || rc=$?
+  if [ "$rc" -eq 2 ]; then echo BLOCK; else echo ALLOW; fi
+}
+
+d=$(new_case owner-stops)
+printf '2026-09-11T17:00:00Z\nowner: session-a\n' > "$d/$marker_rel"
+expect BLOCK "$(run_sid "$d" session-a)" owner-stops
+grep -q '^blocked: ' "$d/$marker_rel" \
+  || { echo "FAIL [owner-stops]: the owner's block was not recorded"; failures=$((failures + 1)); }
+
+d=$(new_case foreign-stops)
+printf '2026-09-11T17:00:00Z\nowner: session-a\nhandback: 2026-09-11T19:00:00Z awaiting delegate return\n' > "$d/$marker_rel"
+expect ALLOW "$(run_sid "$d" session-b)" foreign-stops
+grep -q '^blocked: ' "$d/$marker_rel" \
+  && { echo "FAIL [foreign-stops]: a foreign stop wrote into the ledger"; failures=$((failures + 1)); }
+grep -q '^handback: 2026-09-11T19:00:00Z' "$d/$marker_rel" \
+  || { echo "FAIL [foreign-stops]: a foreign stop spent the owner's token"; failures=$((failures + 1)); }
+
+d=$(new_case no-owner-line)
+printf '2026-09-11T17:00:00Z\n' > "$d/$marker_rel"
+expect BLOCK "$(run_sid "$d" session-b)" no-owner-line
+
+d=$(new_case no-session-id)
+printf '2026-09-11T17:00:00Z\nowner: session-a\n' > "$d/$marker_rel"
+expect BLOCK "$(run "$d" false)" no-session-id
+
+d=$(new_case reclaimed)
+printf '2026-09-11T17:00:00Z\nowner: session-a\nclaim: 2026-09-11T18:00:00Z\nowner: session-c\n' > "$d/$marker_rel"
+expect BLOCK "$(run_sid "$d" session-c)" reclaimed/new-owner
+expect ALLOW "$(run_sid "$d" session-a)" reclaimed/old-owner
+
+# --- 14-19. the stamp: which commands make a session the owner ----------------
+# The owner is recorded by a PostToolUse hook, from the session id in its own
+# input, when the main agent's command creates the marker or appends a claim
+# line to it. A subagent shares the session id but is not the flow; a handback
+# or a read is not a creation; and with no marker there is nothing to stamp.
+stamp=$(jq -r '.hooks.PostToolUse[].hooks[].command
+  | select(contains("owner: %s"))' "$settings")
+[ -n "$stamp" ] || { echo "FAIL: marker-stamp body not found in $settings"; exit 1; }
+
+# stamp_run <case-dir> <session> <agent-id or empty> <command>
+stamp_run() {
+  local dir=$1 sid=$2 agent=$3 cmd=$4 payload
+  if [ -n "$agent" ]; then
+    payload=$(jq -nc --arg s "$sid" --arg a "$agent" --arg c "$cmd" '{session_id: $s, agent_id: $a, tool_input: {command: $c}}')
+  else
+    payload=$(jq -nc --arg s "$sid" --arg c "$cmd" '{session_id: $s, tool_input: {command: $c}}')
+  fi
+  ( cd "$dir" && printf '%s' "$payload" | bash -c "$stamp" ) >/dev/null 2>&1
+}
+owners() { grep -c '^owner: ' "$1/$marker_rel" 2>/dev/null || true; }
+last_owner() { sed -n 's/^owner: //p' "$1/$marker_rel" | tail -n 1; }
+
+create='date -u +%FT%TZ > ai-docs/plans/.task-inflight'
+claim="echo \"claim: \$(date -u +%FT%TZ)\" >> ai-docs/plans/.task-inflight"
+
+d=$(new_case stamp-create)
+printf '2026-09-11T17:00:00Z\n' > "$d/$marker_rel"
+stamp_run "$d" session-a "" "$create"
+[ "$(last_owner "$d")" = session-a ] \
+  || { echo "FAIL [stamp-create]: the creating session was not recorded as owner"; failures=$((failures + 1)); }
+
+d=$(new_case stamp-handback)
+printf '2026-09-11T17:00:00Z\nowner: session-a\n' > "$d/$marker_rel"
+stamp_run "$d" session-b "" 'echo "handback: 2026-09-11T19:00:00Z awaiting delegate return" >> ai-docs/plans/.task-inflight'
+stamp_run "$d" session-b "" 'cat ai-docs/plans/.task-inflight'
+if [ "$(owners "$d")" != 1 ] || [ "$(last_owner "$d")" != session-a ]; then
+  echo "FAIL [stamp-handback]: a hand-back or a read changed the owner"; failures=$((failures + 1))
+fi
+
+d=$(new_case stamp-subagent)
+printf '2026-09-11T17:00:00Z\n' > "$d/$marker_rel"
+stamp_run "$d" session-a agent-7 "$create"
+[ "$(owners "$d")" = 0 ] \
+  || { echo "FAIL [stamp-subagent]: a subagent's command stamped the marker"; failures=$((failures + 1)); }
+
+d=$(new_case stamp-claim)
+printf '2026-09-11T17:00:00Z\nowner: session-a\n' > "$d/$marker_rel"
+stamp_run "$d" session-c "" "$claim"
+stamp_run "$d" session-c "" "$claim"
+if [ "$(last_owner "$d")" != session-c ] || [ "$(owners "$d")" != 2 ]; then
+  echo "FAIL [stamp-claim]: a claim did not move ownership exactly once"; failures=$((failures + 1))
+fi
+
+d=$(new_case stamp-no-marker)
+stamp_run "$d" session-a "" "$create"
+[ ! -e "$d/$marker_rel" ] \
+  || { echo "FAIL [stamp-no-marker]: the stamp created a marker"; failures=$((failures + 1)); }
+
+d=$(new_case stamp-end-to-end)
+printf '2026-09-11T17:00:00Z\n' > "$d/$marker_rel"
+stamp_run "$d" session-a "" "$create"
+expect ALLOW "$(run_sid "$d" session-b)" stamp-end-to-end/foreign
+expect BLOCK "$(run_sid "$d" session-a)" stamp-end-to-end/owner
+
 if [ "$failures" -eq 0 ]; then
   echo "stop gate: all fixtures behave as specified"
   exit 0
