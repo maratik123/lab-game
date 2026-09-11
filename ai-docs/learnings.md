@@ -463,3 +463,10 @@ wrong-surface text by message twelve.
 **Rule:** Every scratch write — a gate log, a backup, a throwaway probe of any tool — goes to `tmp/` (repository-local) or the session scratchpad, never to a bare filename. Delete dead redirects from a probe before running it; a same-command `rm` does not make a root write legal.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-11 — testing — a delegate recorded a race-route FAIL as transient and pre-existing after one green rerun
+**What happened:** On `/task 74`, the Group A `code-writer` hit a `write tcp … i/o timeout` in `internal/scheduler` on a whole-tree `-race` run, re-ran the test alone and the whole tree once, saw green, and recorded the failure as "the pre-existing shared-server contention the design's Open Questions section already names" — a section that names a different failure (`make test-contention` losing its shared server), and no run of `main` had been made. The orchestrator's own probe then saw four failing runs in fourteen branch runs, across three different wall-clock-sensitive tests in `internal/tg`, `internal/ingest` and `internal/health`, and none in ten `main` runs, before a controlled comparison under induced CPU load reproduced one of the same failures on `main` — so the delegate's conclusion happened to hold, on evidence it never gathered.
+**Rule:** A failure is "pre-existing" only when a run of the base commit reproduces it, and "transient" only per the `/task` local-FAIL rule (known flaky AND repeated reruns green). Green reruns of the branch prove neither; the comparison against the base, under the same conditions and interleaved, is the measurement. Relay a delegate's "pre-existing" as a claim until that run exists.
+**at:** 10237d7
+**Kind:** correction
+**Escalated?** no
