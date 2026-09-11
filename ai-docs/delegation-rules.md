@@ -2,7 +2,7 @@
 
 > Extracted from `AGENTS.md` § *Workflow*. That file keeps the binding rules; this page carries the mechanics and the incidents that produced them. **Read before any Subagent spawn that commits, edits protected files, or runs long.**
 
-Delegation fails in the middle, not at the ends. Most instruction text covers phase 1 (decide to delegate) and phase 4 (read the result); phases 2 and 3 are where the observed failures actually land.
+Delegation fails where attention is thinnest, not where the instruction text is thickest. Most of that text covers phase 1 (decide to delegate) and phase 4 (read the result); phases 2 and 3 are where the observed failures land. Phase 0 is the exception that proves the shape: it sits at an end and was still uncovered, because a premise you originate does not feel like a citation and so never trips the checks aimed at someone else's.
 
 ## Phase 0 — Outbound: every load-bearing claim in the prompt is executed first
 

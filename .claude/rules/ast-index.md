@@ -43,8 +43,8 @@ a flag, that a gate *fires*, that a function *does* X — each is established by
 never by matching its name.
 
 **MUST — read the cardinality of every input BEFORE the verdict**, for any check shaped as *intersect
-two sets* / *diff against a baseline* / *grep a corpus*. An empty right-hand side makes `comm -12`,
-`grep -f` and `diff` report the clean answer for every possible left-hand side. Likewise an
+two sets* / *diff against a baseline* / *grep a corpus*. An empty right-hand side makes `comm -12`
+and `grep -f` report the clean answer for every possible left-hand side. Likewise an
 enumeration that reached nothing reports "no findings": `git ls-files`, `git diff --cached` and any
 index walk say nothing about a file not yet in that set, so run such a checker AFTER `git add`, and a
 NEW checker against its own new files by explicit path.
