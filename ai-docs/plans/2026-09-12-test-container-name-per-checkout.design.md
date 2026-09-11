@@ -118,9 +118,16 @@ tests never touch the process-global working directory. Only the paths that name
   able to fail on a fact it does not use, and the fallback container stays anonymous because only a
   server this invocation started may be removed (KD-20). `runUp` derives before it disables the
   reaper or provisions anything; `runDown` derives after its locator and reachability checks, so
-  "nothing to remove" stays a side-effect-free exit
+  "nothing to remove" stays a side-effect-free exit — and so does the stale-locator cleanup, which is
+  the *other* side-effect-free exit a derivation raised too early would break
   [measured 42792be:cmd/testpg/run.go:286-300 · `sed -n '286,300p' cmd/testpg/run.go` → `sm.locate()`
-  returning not-ok prints "nothing to remove" and returns 0 before anything else runs].
+  returning not-ok prints "nothing to remove" and returns 0 before anything else runs]
+  [measured 8a99fc7:cmd/testpg/run.go:293-300 · `sed -n '293,300p' cmd/testpg/run.go` → the
+  `if _, err := sm.probe(ctx, dsn); err != nil` branch logging "removing the stale locator", calling
+  `sm.forget()` and returning 0]. Each half of that ordering is pinned by its own case in
+  § Test Design — the no-locator exit for the locator half, the stale-locator cleanup exit for the
+  reachability half — because an exit code and a "provisioned nothing" assertion are satisfied
+  equally by a derivation sitting between the two checks.
   Residue, so a later reader does not read the omission as an oversight: the anonymous fallback
   container is deliberately left unnamed rather than given a per-checkout name of its own. It is
   already per-invocation — nothing else can reach it, and nothing else can remove it — so a name would
@@ -151,7 +158,11 @@ tests never touch the process-global working directory. Only the paths that name
      [a-zA-Z0-9][a-zA-Z0-9_.-]*: invalid argument","response":500}` — again no offending string]. A
      developer in a checkout whose directory name is refused would be shown a character-class rule and
      no hint that the fault is the name of the directory they are standing in — which is precisely the
-     diagnosis this change introduces the need for.
+     diagnosis this change introduces the need for. This negative is the one the whole pre-check rests
+     on, so it has been executed twice, at different commits, rather than argued once
+     [measured 8a99fc7 · `podman create --name 'lab game' docker.io/library/alpine:latest true`
+     redirected to a file (exit status read from `$?`) → rc 125, the same `names must match
+     [a-zA-Z0-9][a-zA-Z0-9_.-]*` message, and `grep -c 'lab game'` over that file → `0`].
   2. **The sentence the wrapper wraps it in misdescribes the fault.** `runUp` renders it as "could not
      start the shared server" and `runDown` as "could not reach the shared server to remove it"
      [measured d41174f:cmd/testpg/run.go:249,313 · `grep -n 'could not start the shared
@@ -261,7 +272,7 @@ tests never touch the process-global working directory. Only the paths that name
 |---|------|-------|------------|
 | 1 | Add the pure derivation: the fixed suffix constant, the compiled validity pattern, and a function mapping a project-directory path to the container name or to an error naming the directory and the rule. Table test first (TDD), covering the spec's worked examples, the same base name under different parents, and each shape the runtime refuses. Nothing is wired yet. | `cmd/testpg/run.go`, `cmd/testpg/run_test.go` | — |
 | 2 | Wire it: add the working-directory lookup to `seam` (returning a directory and an error, D4) and to `productionSeam`; `runUp` derives the name **before** it disables the reaper or provisions, `runDown` derives it after its locator and reachability checks; a failing lookup and an invalid name share one non-zero exit carrying the derivation's own message; `--up`'s report names the container (D8); delete `testdb.SharedContainerName` and its doc comment. Update the existing `--up` name assertion, add the `--down` name assertion, the invalid-directory and failing-lookup cases for both paths, the reaper-untouched assertion pinning the pre-check's position, and a case pinning that a child gate run derives no name at all — all on the stub seam (D10 ground 1). | `cmd/testpg/run.go`, `cmd/testpg/run_test.go`, `internal/testdb/server.go` | 1 |
-| 3 | Amend the live prose: KD-20's parenthetical, which names the container as one fixed name for the host, states the derivation instead; the shared-server section of the test conventions gains the derivation and its consequence for two checkouts on one host. | `ai-docs/key-decisions.md`, `ai-docs/go-test-conventions.md` | 2 |
+| 3 | Amend the live prose: KD-20's parenthetical, which names the container as one fixed name for the host, states the derivation instead; the shared-server section of the test conventions gains the derivation, its consequence for two checkouts on one host, and one sentence carrying the one-time remedy for a locator file recorded before this change — it may point at another checkout's server, and the fix is to delete that checkout's locator file (or the old container) once (§ Risks, risk 2). | `ai-docs/key-decisions.md`, `ai-docs/go-test-conventions.md` | 2 |
 
 **What authorises subtask 3, now that no acceptance criterion does.** The spec's former AC4 — the row
 requiring every live surface that states the old fixed name to state the derivation instead — was struck
@@ -290,10 +301,17 @@ On subtask 3's second file: the test-conventions page names no container, so nei
 it
 [measured 42792be:ai-docs/go-test-conventions.md:43-44 · `sed -n '43,44p' ai-docs/go-test-conventions.md`
 → "`make test-db-up` creates the named long-lived server and records its DSN in the ignored scratch
-directory", with the name itself never written]. It is amended anyway because it is the developer-facing
-home for `make test-db-up`, and the parallel-checkout consequence this change delivers has no other live
-page to land on — a design decision, within Scope item 1, carried by the owner's ruling above rather
-than by any criterion.
+directory", with the name itself never written]. It is amended anyway, on two grounds. It is the
+developer-facing home for `make test-db-up`, and the parallel-checkout consequence this change delivers
+has no other live page to land on. And it is where the **remedy** in § Risks risk 2 belongs: a locator
+recorded before this change can send a gate run at another checkout's server, and a remedy that lives
+only in a design document is unreachable by the developer who hits the symptom — the shared-server
+bullet named above is the page they open instead
+[measured 8a99fc7:ai-docs/go-test-conventions.md:44 · `sed -n '44p' ai-docs/go-test-conventions.md` →
+the bullet "**Keeping one server across runs, and what it buys.**", which already explains that
+`make test-db-up` "records its DSN in the ignored scratch directory" and that `make test-db-down` is
+what removes the server]. Both grounds are design decisions, within Scope item 1,
+carried by the owner's ruling above rather than by any criterion.
 
 Surfaces deliberately **not** amended, with the evidence:
 
@@ -369,8 +387,10 @@ default maximum of 4 design-defined groups, so no user approval is needed.
   the stale DSN, finds it reachable, and then reaches for a container under the *new* name — creating
   and immediately removing an empty one while the old container keeps running. Mitigation: one remedy
   covers both, because both read the one file — the scratch directory is ignored local state, so
-  delete the stale locator file (or the old container) once; the design names it here so the first
-  run after the change is not read as a defect. —
+  delete the stale locator file (or the old container) once. That remedy ships as prose in subtask 3,
+  in the shared-server bullet of the test conventions, not only here: a developer meeting the symptom
+  reaches for the page that explains the locator file rather than for a plan document, so a remedy
+  that stayed in § Risks would sit out of reach of the person who needs it. —
   [measured 4798daf:cmd/testpg/run.go:129-133 · `sed -n '129,133p' cmd/testpg/run.go` → `runChild`'s
   `if dsn, ok := sm.locate(); ok` branch executing the child against the located DSN whenever
   `admits` holds]
@@ -424,10 +444,13 @@ default maximum of 4 design-defined groups, so no user approval is needed.
 ## Test Design
 
 Every claim below about a test, a fixture or an assertion is about something that does not exist yet,
-and carries `[derived → …]`. The exception is the verify-time probe, whose recipe is a set of
-instructions for driving the **shipped** wrapper: the facts its steps depend on — which environment
-variable `runChild` reads first, what `--parallel` defaults to, what the ignore rule covers — are
-properties of code that exists today and are cited as measurements of it.
+and carries `[derived → …]`. The exception, wherever it appears in this section, is a fact about the
+**shipped** code a scenario is written against — which branch of `runDown` a case must reach, what the
+existing `stubSeam` already records, which environment variable `runChild` reads first, what
+`--parallel` defaults to, what the ignore rule covers. Those are properties of code that exists today,
+they are what decide whether a planned assertion is reachable at all, and they are cited as
+measurements of it. The verify-time probe is the same exception applied to a whole recipe: its steps
+are instructions for driving the shipped wrapper.
 
 ### Subtask 1 — the pure derivation
 
@@ -465,7 +488,13 @@ properties of code that exists today and are cited as measurements of it.
 - **Fixtures / helpers:** the existing `stubSeam` gains a working-directory field and returns it from
   the new seam member; no container runtime is reached, exactly as the existing wrapper tests avoid
   one. The `--up`/`--down` cases stay non-parallel, joining the existing ones, because they reach the
-  code that writes the process-wide reaper setting.
+  code that writes the process-wide reaper setting. A further fixture change: the stub's `forget`
+  member answers without recording that it ran, so the stale-locator cleanup case below needs it to
+  record the call the way `provision` and `stop` already record theirs
+  [measured 8a99fc7:cmd/testpg/run_test.go:18-57 · `sed -n '18,57p' cmd/testpg/run_test.go` →
+  `provisionCalled` and `stopCalled` fields on `stubSeam`, and `forget:  func() error { return nil }`
+  with no field beside them]. The stub already carries a `probeErr` the unreachable-server half of
+  that case sets, so nothing else about the fixture moves.
 - **Binding constraint on every case below — the stub seam, never the production one (D10 ground 1).**
   Each new `--up` / `--down` case is driven through `stubSeam`, so the locator members are the stub's
   and `persist` writes nothing to disk. A case that reached `productionSeam` would write a locator file
@@ -488,8 +517,20 @@ properties of code that exists today and are cited as measurements of it.
   - `--down` with a locator present and a reachable server reaches for the container under the name
     the derivation returns for the stub's directory. [derived → AC2]
   - `--down` with no locator provisions nothing and exits 0 even when the stubbed working directory
-    would yield an invalid name — pinning D5's ordering, so that the no-op path cannot acquire a new
-    failure mode. [derived → AC2]
+    would yield an invalid name — pinning the locator half of D5's ordering, so that the no-op path
+    cannot acquire a new failure mode. [derived → AC2]
+  - `--down` with a locator present, the server **unreachable**, and a stubbed working directory whose
+    name the runtime refuses exits 0, calls `forget`, and provisions nothing — the case that pins the
+    *reachability* half of D5's ordering. The no-locator case above pins the derivation below
+    `sm.locate()`, and the reaper-mirror case below pins it above the `os.Setenv`; a derivation placed
+    between `sm.locate()` and `sm.probe(...)` satisfies both of those, while turning the wrapper's
+    stale-locator cleanup — probe fails, the locator is forgotten, exit 0 — into a non-zero exit for a
+    checkout whose directory name the runtime refuses. That branch is where the loss would land
+    [measured 8a99fc7:cmd/testpg/run.go:293-300 · `sed -n '293,300p' cmd/testpg/run.go` → the
+    `if _, err := sm.probe(ctx, dsn); err != nil` branch logging "removing the stale locator", calling
+    `sm.forget()` and returning 0]. Narrow — it needs a refused directory name *and* a stale locator
+    together — but it is the same "an exit code and `provisionCalled` do not pin a position" argument
+    its neighbouring cases already make. [derived → AC2, D5]
   - `--up` with a stubbed working directory whose name the runtime refuses exits non-zero, provisions
     nothing, and prints a message containing that directory name. The directory-name substring is the
     load-bearing half of the assertion, not decoration: it is the thing the runtime's own refusal does
