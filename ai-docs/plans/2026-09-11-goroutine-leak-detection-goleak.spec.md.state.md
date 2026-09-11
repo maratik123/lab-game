@@ -66,7 +66,19 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: aa4d3b7e2006369e6
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "A leak the detector surfaces in today's code when it lands: fixed inside this task, or ignored explicitly with its own tracking issue? For sizing: a one-run probe (check at the end of each test binary, shared-server route; per-test checks and the fallback route not probed) found leaks in 3 of the 16 packages (internal/health, internal/tg, internal/ingest), all from one cause: the fake Bot API test helper's delayed-response handler keeps sleeping after its test ends. No production goroutine was left running."
+    answer: "Fix in task — Every leak found at adoption is fixed here, so none lands excused. The size stays open until the design has run the detector everywhere; today's probe suggests one test-helper fix."
+  - round: 1
+    question: "Which packages run the detector? Today 16 packages have tests; 6 start a goroutine with a go statement in non-test code (cmd/bot, health, ingest, scheduler, tg, tgtest); 5 already have a TestMain, all delegating to testdb.Main."
+    answer: "Module-wide — Every package with tests runs it. A package that later grows a goroutine is covered from its first test; costs a TestMain in the 11 packages that have none."
+  - round: 1
+    question: "What keeps the ignore set honest as dependencies move? Each entry carries its reason in every option."
+    answer: "don't sure what is better, explain, what consequences of each option"
+  - round: 1
+    question: "(orchestrator explained each option's consequences — goleak's API reports no per-entry match, so a stale check is own code over it; a goroutine alive only sometimes makes a stale check flaky unless entries are scoped per package or route; a version pin checks that a line was touched, fails on every dependency move and misses stdlib goroutines; reason-only lets dead entries accumulate, and an entry's width matters more than its age — recommended Stale fails — then re-put the same question verbatim)"
+    answer: "Stale fails — An entry that matches no goroutine in the runs it applies to fails the suite, so a dependency move that drops or renames a goroutine forces the entry to be updated or deleted."
 ```
