@@ -49,7 +49,10 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: a84a8e2269564fe03
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "A canary probe the limiter refuses before any attempt — no request written, no network touched — is counted a failure with reason=network. Which outcome should hold?"
+    answer: "Timeout — An already-expired deadline at the limiter decision reports `timeout`; a refusal with a real wait that ends past the deadline goes on reporting `network`."
 ```
