@@ -399,3 +399,10 @@ Entries are appended at the END, newest last.
 **Gap:** the propagation sweep finds the sites that mention a changed rule; it cannot find the checklist that should begin to mention a new one. A convention whose enforcement is partly "judged in review" can land with no reviewer instructed to judge it.
 **Proposed edit:** a Review-group row in `ai-docs/propagation-groups.md` binding "a rule added to `AGENTS.md` § Go Test Conventions or § Code Style that leaves any half to review" to a row in `self-review.md` and `review-findings.md`; or one standing line in both reviewers' checklists naming `ai-docs/go-test-conventions.md` as a source they check a diff against.
 **at:** 7f4be55
+
+### 2026-09-11 — the citation guard reads a real issue newer than the last pull request as a foreign reference
+**target:** `.claude/skills/ai-audit/scripts/check-citations.sh`
+**Observed:** On `/task 74`, Step 9.5 wrote `#84` and `#85` — two issues of this repository, created in that run — into `ai-docs/context-status.md`. The guard's local high-water mark is the newest pull request number (`gh pr list --state all --limit 1`), which was `#79`, so both lines went RED as "claiming to be local but exceeding it". Issues and pull requests share one number sequence; the refs resolve here. The same refs pass once any pull request numbered above them exists — this run's own PR, opened at Step 12 — so CI on that PR is green while every local run before it is red.
+**Gap:** the guard's instrument measures pull requests only, while the defect it hunts is a number that does not resolve in this repository, and issues resolve too. A flow that files a follow-up issue and records it in the same PR meets a red local gate that is not a finding.
+**Proposed edit:** take the high-water mark over issues and pull requests together (`gh api` on the repository's newest issue number, which covers both), keeping the instrument-failure exit; add a regression case for a ref above the newest pull request but at or below the newest issue.
+**at:** 594a38c

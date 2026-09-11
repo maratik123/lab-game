@@ -11,7 +11,7 @@ _Updated: 2026-09-11 17:47 UTC_
 **Spec:** ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.spec.md
 **Design:** ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.design.md
 
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** make verify | 2026-09-11T18:25:52Z | 594a38c
 **entry_args:** 74
 
@@ -52,6 +52,7 @@ Group B — instructions (`general-purpose`, inherited model):
 - **Step 8 (orchestrator, Group B return)**: re-validated at 7f4be55 — branch and `base_commit` unchanged, tree clean; the orchestrator ran every step of CI's Harness guards job locally (`make shellcheck`, the settings.json hook bodies through shellcheck, `check-citations.sh`, the sixteen guard suites, the five `check-*.sh` gates, the relative-link check) and each exited 0. The Group B learning's premise was checked: `.claude/skills/ai-audit/checklist-m.md` names `/task` in its FORBIDDEN row. Its three observations: (1) confirmed against `internal/leaktest/guard_test.go`'s `checkTestMain` and § Structural guards — routed to a single-fix `code-writer` before Step 9, so self-review reviews the conforming state; (2) D5's "every refusal named" reads either way — left to self-review; (3) no sync group or mirror ties § Go Test Conventions to `self-review.md` — recorded as a harness diagnosis in `ai-docs/harness-gaps.md` (2026-09-11), not an instruction edit.
 - **Step 8 (orchestrator, single fix)**: `internal/leaktest/guard_test.go`'s `checkTestMain` now parses through `srcguard.ParseFile`; the `go/parser` and `go/token` imports went with the hand-rolled parse, and nothing else in the file changed (diff read by the orchestrator). Gates the orchestrator re-ran on the edit: `go build ./...`, `go test -count=1 ./internal/leaktest/...` twice, `golangci-lint run ./internal/leaktest/...`, `golangci-lint fmt -d` (empty).
 - **Step 9**: `make verify` (fmt-check, build, vet, lint, file-limits, test, test-race, tidy-check, actionlint, shellcheck, comment-refs, import-guard) and `make test-fallback` exited 0 at 594a38c; the design's four probes plus an AC1 probe in a database-backed package on both routes behaved as specified (AC Status). No panic-index addition: no panic, `log.Fatal`/`log.Panic` or `Must…` in the changed production files. No posting signature and no event: the task adds no mechanic and moves no balance. Domain-invariant sweep over the changed Go files: no hit.
+- **Step 9.5**: `ai-docs/context-status.md` gains this task's entry (PR locator `#TBD-at-Step-12`); `ai-docs/context.md` § Status gains the leak check in its Gates bullet and its date moves to 2026-09-11; no repo-root user doc exists beyond `AGENTS.md`/`CLAUDE.md`, and a hidden-inclusive sweep found no live doc still stating the old `TestMain` form. No open question in `context.md` was resolved by this task. `check-citations.sh` is RED locally on the entry's `#84`/`#85` until this run's PR exists, because its high-water mark is the newest pull request; recorded in `ai-docs/harness-gaps.md` (2026-09-11), and it resolves at Step 12 when the PR is opened.
 
 ## Key discoveries (don't re-investigate)
 
