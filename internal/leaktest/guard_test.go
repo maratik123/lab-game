@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build"
-	"go/parser"
-	"go/token"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -179,11 +177,7 @@ func checkTestMain(t *testing.T, dir string, testFiles []string) string {
 	var decls []*ast.FuncDecl
 	var files []*ast.File
 	for _, name := range sorted {
-		fset := token.NewFileSet()
-		f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
-		if err != nil {
-			t.Fatalf("ParseFile(%s): %v", filepath.Join(dir, name), err)
-		}
+		f := srcguard.ParseFile(t, filepath.Join(dir, name))
 		for _, decl := range f.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok || fn.Recv != nil || fn.Name.Name != "TestMain" {
