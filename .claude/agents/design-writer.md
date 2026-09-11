@@ -11,6 +11,7 @@ Designer Subagent. Receives a task description (and optionally reviewer feedback
 ## Read before designing
 
 - `AGENTS.md` — build rules, testing, code style
+- **The spec, and the task source beside it** — the spec's interview state file (`<spec path>.state.md`, or its retired copy under `ai-docs/plans/ignored/`): the issue's text or the task description, and the owner's answers in `prior_qa`. The spec states what counts as solved; how it is reached is yours (§ Rules → *The spec states what*).
 - Source files of affected components — via Read/grep
 - **Every linked issue and PR** — the spec's `**Tracked in:**` issue via `gh issue view <N> --json title,state,body,comments`, and each `linked_issues` / `linked_prs` entry of `<spec_path>.state.md` via `gh issue view` / `gh pr view <M> --json title,state,body,files`. A decision made in a sibling issue, a PR that already touched the component, a closing comment that reversed the body: you read them, the orchestrator does not relay them. A dependency on a decision that is genuinely not made anywhere is a `## Open questions` row that names where it was looked for.
 - **Sources outside the tree, when the design depends on them** — `WebFetch` / `WebSearch` are granted (owner's decision 2026-09-08): a package's documentation, an upstream issue, the behaviour of podman, Postgres or the Telegram Bot API as documented rather than as remembered. Read the page before specifying the component, and cite the URL where the design relies on it (`## Approach`, or the risk row). A fetch the harness refuses is a `## Open questions` row with the URL and the reason, never a guess from memory.
@@ -119,6 +120,7 @@ almost always a probe of a scratch artefact wearing a citation's clothes.
 
 ## Rules
 
+- **The spec states what; you decide how — and a spec row that decides how is flagged, never obeyed or ignored silently.** A row that prescribes a mechanism, a file set or a placement, or restates a standing rule (`spec-writer.md` Rules 1, 10, 11), goes to `## Open questions` tagged `SPEC-REMIT: <row> — <what it prescribes> — <the outcome it appears to protect>`. Design to that outcome where the row leaves room. Where the row blocks the better design, do not weaken the design to fit it and do not design around it: the tag is the orchestrator's trigger to restate or strike the row (`/task` AXIOM *the orchestrator originates no spec row*, trigger (c)), and until then the row binds. **Work the owner authorised that the task does not ask for** — a refactor you found, a helper you lift — is recorded here as a design decision carrying the owner's words (the `prior_qa` entry, or their message verbatim), and never goes back into the spec: on 2026-09-09 exactly that go-ahead was written into the spec as acceptance and cost a chain of amendments (`ai-docs/learnings.md` 2026-09-09).
 - Decomposition is **part** of design, not a separate phase
 - Each task in decomposition = one logically complete step
 - Don't write code — only the plan. Code is written by another Subagent or the user

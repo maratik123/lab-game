@@ -45,7 +45,7 @@ The prompt carries paths and a range. Everything a caller used to explain in pro
 
 | What arrives | What it means |
 |---|---|
-| `Spec:` a `ai-docs/plans/*.spec.md` path AND `Design:` a `*.design.md` path | A `/task` run. The spec's `## Acceptance Criteria` are the ACs; the design is the implementation contract. |
+| `Spec:` a `ai-docs/plans/*.spec.md` path AND `Design:` a `*.design.md` path | A `/task` run. The spec's `## Acceptance Criteria` are the ACs; the design is the implementation contract; the spec's interview state file — `<spec path>.state.md`, or its retired copy `ai-docs/plans/ignored/<spec file name>.state.md` once Step 12 has moved it — is the task source. |
 | `Spec-equivalent:` a `ai-docs/bugfix/trace-*.md` path, no `Design:` line | A `/bugfix` run — no spec, no design doc. The trace's *Actual behaviour*, *Expected behaviour* and *Root Cause* sections are the AC-equivalent: the fix is correct iff the diff makes Actual match Expected at the labelled divergence point and addresses exactly the documented Root Cause. Scope is fitness-against-the-bug, never fitness-against-a-broader-task — a finding about pre-existing code outside the diff window is out of scope. |
 | A `Progress:` path with neither `Spec:` nor `Design:` | A `/project-review` run — review-driven, no spec or design doc. The findings table in that file's `## AC Status` is the acceptance criteria, and its header records `base_commit`. |
 | A `Progress:` path pointing at a `trace-*.md` file | Findings go into that trace file, in the canonical `## Self-Review (Round N)` shape. |
@@ -66,7 +66,7 @@ A passing test doesn't mean it's correct. Mentally comment out the production fi
 1. Read `AGENTS.md` — current project rules
 2. Read the progress file (path passed in prompt) — find `base_commit` and current round. The progress-file format may include the extended re-entry fields (`**current_step:**`, `**last_passed_gate:**`, `**parent_skill:**`, `**entry_args:**`) and a `## Decisions log` section per the canonical template at [`ai-docs/templates/progress-format.md`](../../ai-docs/templates/progress-format.md). These fields exist for compaction-recovery routing in the calling skill — **verify they are PRESENT** when the calling skill requires them (every code-side orchestrator other than `/interview` / `/verify-change` / `/pr-merged`), but **do NOT review their content** for correctness; their lifecycle is the calling skill's responsibility and the canonical template is the source of truth.
 3. Get the diff: `git diff <base_commit>..HEAD`
-4. Read spec — only `## Acceptance Criteria`
+4. Read the spec's `## Scope` and `## Acceptance Criteria`, and — for a `/task` run — the task source (table above): the issue's title, body and comments or its `task_description:` block, and `prior_qa`, whose answers override the body where they differ; a body marked `issue_body_status: superseded` is history, not a source
 5. Read design doc — architecture and decomposition
 6. Run through the checklist below
 7. Count existing `## Self-Review` sections in the progress file to determine round N
@@ -79,9 +79,10 @@ A passing test doesn't mean it's correct. Mentally comment out the production fi
 
 ## Checklist
 
-### 1. Spec conformance
+### 1. Task and spec conformance
 - Every AC from the spec is covered by the diff?
-- No changes outside the spec scope (scope creep)?
+- **The task is solved** — the diff delivers what the task source asks for, as the spec scoped it? Where the spec and the task source disagree, the finding is against the spec — a Spec Amendment trigger quoting both — never a demand to implement from the issue past the spec.
+- No outcome outside the spec's scope and the design's recorded decisions (scope creep)? A change the design records as its own — by its charter, or by an owner's go-ahead recorded with the owner's words — is in scope; a behaviour neither the spec nor the design names is not.
 
 ### 2. Design conformance
 - Implementation architecture matches the design?

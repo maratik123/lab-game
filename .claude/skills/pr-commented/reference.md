@@ -17,6 +17,8 @@ Fires BEFORE Step 5 when the round's diff touches `ai-docs/plans/*.spec.md` (or 
 | `git diff --name-only <round-M-base-sha>..HEAD \| grep -E '^ai-docs/plans/(done/)?.*\.spec\.md$'` returns ≥ 1 file | The round is **spec-amending**. PAUSE before Step 5. |
 | Diff contains no `.spec.md` files | Proceed straight to Step 5 (self-review). The recipe does not fire. |
 
+**Legal triggers only.** The round amends the spec only on one of the four triggers of `/task`'s AXIOM *the orchestrator originates no spec row* (`.claude/skills/task/SKILL.md` § Design Amendment): a reviewer's request about code the task merely touches is a design amendment or a follow-up issue, never a spec row (`.claude/agents/spec-writer.md` Rule 10). The owner's approving answer is appended verbatim to `prior_qa` in the spec's interview state file before `spec-writer` writes the row that anchors to it (Rule 11); where that file is not on disk, `ai-docs/scripts/check-spec-anchors.sh` checks the anchor for presence only, and the row still quotes the owner's words.
+
 **When spec-amending, run this sub-flow instead of going straight to Step 5:**
 
 1. Re-run **`/task` Step 6 (`design-writer` Subagent)** against the amended spec — spawn the `design-writer` Subagent with `(amended spec, current design)` and prompt: *"the spec was amended during `/pr-commented` Round M; verify the decomposition + ACs still hold against the new spec, and update the design accordingly. The implementation has already landed in commit `<round-M-fix-SHA>`."* Expected output: a refreshed design doc (`ai-docs/plans/*.design.md` if extant, otherwise an inline analysis).

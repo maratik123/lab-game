@@ -218,12 +218,15 @@ jobs:
           bash ai-docs/scripts/test-instruction-edit-guard.sh
           bash ai-docs/scripts/test-doc-edit-guard.sh
           bash ai-docs/scripts/test-spec-shape.sh
+          bash ai-docs/scripts/test-spec-anchors.sh
           bash ai-docs/scripts/test-script-shape.sh
           bash ai-docs/scripts/test-harness-gaps-forge.sh
       - name: acceptance criteria state conditions, not tests
         run: bash ai-docs/scripts/check-ac-shape.sh
       - name: specs locate by commit or symbol and store no tally
         run: bash ai-docs/scripts/check-spec-shape.sh
+      - name: every spec row names its source in the owner's words
+        run: bash ai-docs/scripts/check-spec-anchors.sh
       - name: every script's --help dispatch shape; shebang-extension pairing
         run: bash ai-docs/scripts/check-script-shape.sh
       - name: harness-gaps closing fields are written by a forge branch only

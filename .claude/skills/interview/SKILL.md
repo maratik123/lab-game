@@ -86,8 +86,8 @@ gh_issue:                          # present only when issue_ref resolves to a r
   linked_issues: ["#<N>"]           # extracted from body / comments via #\d+ regex; may be empty — spec-writer READS each one (gh issue view) before round 1
   issue_body_status: current         # or `superseded` — Step 1's answer when TASK differs from the persisted body
   linked_prs: ["#100"]             # same; may be empty
-task_description: |                # present only in free-text entry mode (mutually exclusive with gh_issue:)
-  <user's free-text task description>
+task_description: |                # free-text entry mode; or beside gh_issue: when issue_body_status is superseded (Step 1)
+  <user's free-text task description, or the TASK section verbatim>
 round_cap: 4
 questions_per_round_cap: 3
 round: 2
@@ -104,6 +104,8 @@ prior_qa:
 
 The `gh_issue:` / `task_description:` blocks are the durable home for the spec-writer's original inputs. The round prompts (Step 3a) carry the same content inline today, but persistence to `.state.md` survives auto-compaction and cold re-spawns where the round prompt has been dropped — the orchestrator can rebuild the prompt from `.state.md` on re-entry without re-issuing `gh issue view`.
 
+**This file is also what every spec row's anchor resolves against** (`spec-writer.md` Rule 11): `[task: "…"]` against the task text — the `task_description:` block when there is one, else the issue's title, body and comments — and `[answer <round>.<n>: "…"]` against the n-th `prior_qa` entry of that round. So `prior_qa` is **append-only**: an entry is never edited, reordered or removed, and an answer is the owner's words verbatim, never a summary of them.
+
 ## Workflow
 
 ### Step 1: Detect entry mode
@@ -116,7 +118,7 @@ Inspect `$ARGUMENTS`. **First, apply the hand-off contract** (defined at the `/t
 
 Then detect entry mode:
 
-- **Issue ref** — matches `^#?\d+$`: load `gh issue view <N> --json title,body,state,labels,comments` once. Record `tracking_issue = <N>`. **When the hand-off is sectioned and its `## TASK (verbatim)` is not the issue body** (the owner reframed the task in conversation — the shape of 2026-09-08, where the persisted body prescribed the opposite of TASK and the delegate spent its `## Source conflicts` on a source the spec itself declared void), ask before anything else — `AskUserQuestion`, single-select: **Update the issue now** (`gh issue edit <N> --body-file <path>` with TASK, recommended) / **TASK supersedes the body** / **Stop**. Record the answer as `issue_body_status: current | superseded` in the state file's `gh_issue:` block; `spec-writer` reads it (§ *Read before drafting* item 2 there) and treats a superseded body as history, not as a source. Extract `#\d+` references from the body + comments → `linked_issues` / `linked_prs` (split on whether the referenced number is an issue or a PR; cheap heuristic — running `gh pr view <M>` once per match is acceptable, or treating ambiguous refs as `linked_issues` is acceptable until a downstream consumer needs the precise split).
+- **Issue ref** — matches `^#?\d+$`: load `gh issue view <N> --json title,body,state,labels,comments` once. Record `tracking_issue = <N>`. **When the hand-off is sectioned and its `## TASK (verbatim)` is not the issue body** (the owner reframed the task in conversation — the shape of 2026-09-08, where the persisted body prescribed the opposite of TASK and the delegate spent its `## Source conflicts` on a source the spec itself declared void), ask before anything else — `AskUserQuestion`, single-select: **Update the issue now** (`gh issue edit <N> --body-file <path>` with TASK, recommended) / **TASK supersedes the body** / **Stop**. Record the answer as `issue_body_status: current | superseded` in the state file's `gh_issue:` block; `spec-writer` reads it (§ *Read before drafting* item 2 there) and treats a superseded body as history, not as a source. **On `superseded`, also write TASK verbatim into the state file as a `task_description:` block** — the one state file that carries both blocks. Without it the task text lives only in a round prompt, which compaction drops, and no spec anchor can resolve against it. Extract `#\d+` references from the body + comments → `linked_issues` / `linked_prs` (split on whether the referenced number is an issue or a PR; cheap heuristic — running `gh pr view <M>` once per match is acceptable, or treating ambiguous refs as `linked_issues` is acceptable until a downstream consumer needs the precise split).
 - **Free text / empty**: use as task description, or ask "What do you want to plan?" if empty. `tracking_issue` is unset until Step 5.
 
 ### Step 2: Compute paths and seed state
@@ -125,7 +127,7 @@ Then detect entry mode:
 2. `spec_path = ai-docs/plans/<TODAY>-<slug>.spec.md`
 3. `state_path = <spec_path>.state.md`
 3a. **Create the feature branch now — the first commit of this flow happens in this skill, not in `/task` Step 8.** Run `git branch --show-current`; if it is `main`, `git checkout -b <prefix>/<TODAY>-<slug>` using the same date-slug as `spec_path` (AGENTS.md § Workflow AXIOM 1 — the branch exists before the first edit, and from here on there are edits to commit). `/task` Step 8 finds the branch already created and verifies it instead of creating it.
-4. Write the initial state file, then `git add ai-docs/plans/<TODAY>-<slug>.spec.md.state.md` and commit it (no `-f` needed — the state path matches no ignore rule). Contents: `round: 1`, `prior_qa: []`, `agent_id: null`, **plus the Step 1 payload**: issue-ref mode emits a `gh_issue:` block populated with `title` / `state` / `labels` / `body` / `comments` / `linked_issues` / `linked_prs`; free-text mode emits a `task_description:` block carrying the user's description verbatim. The two blocks are mutually exclusive — exactly one is present per state file.
+4. Write the initial state file, then `git add ai-docs/plans/<TODAY>-<slug>.spec.md.state.md` and commit it (no `-f` needed — the state path matches no ignore rule). Contents: `round: 1`, `prior_qa: []`, `agent_id: null`, **plus the Step 1 payload**: issue-ref mode emits a `gh_issue:` block populated with `title` / `state` / `labels` / `body` / `comments` / `linked_issues` / `linked_prs`; free-text mode emits a `task_description:` block carrying the user's description verbatim. Exactly one block is present per state file, with the single exception Step 1 makes for a superseded issue body, which adds `task_description:` beside `gh_issue:`.
 
 ### Step 3: Round loop
 
@@ -233,6 +235,7 @@ Execute the chosen action:
 
 ### Step 4: Cross-link and exit (on `ready`)
 
+0. **Run the spec gates yourself before the owner sees the spec** — `bash ai-docs/scripts/check-spec-anchors.sh <spec_path>`, `bash ai-docs/scripts/check-spec-shape.sh <spec_path>` and `bash ai-docs/scripts/check-ac-shape.sh <spec_path>`, each read by its exit code, never piped. The delegate ran them before `ready`; its green is a claim (AGENTS.md § *Patterns* 1). Red → re-spawn the round (cold, same fields) with `extra_context` carrying the gate output verbatim and nothing else; red twice → surface the output to the owner via `AskUserQuestion`, quoted. **This is the orchestrator's whole check of the spec's zone: an exit code, not a reading.** Neither add, reword nor strike a row yourself, and do not audit the rows by judgment in place of the gates — the audit an orchestrator ran by judgment on 2026-09-10 hunted added scope and passed every row that restated a standing rule or prescribed a mechanism (`ai-docs/learnings.md` 2026-09-10). A row the owner wants changed after reading goes back to `spec-writer` as their answer, recorded in `prior_qa`.
 1. Show the user the final spec at `<spec_path>` (last 80 lines if long).
 2. Confirm — `AskUserQuestion`: "Approve and post cross-link comment?" / { Approve, Tweak first }.
 3. On Approve:
@@ -271,6 +274,8 @@ _Validated by repeated user correction across multiple rounds: "from now and for
 
 - Drafting questions yourself in the orchestrator. The subagent owns question authorship; you forward the questions verbatim.
 - Mutating the spec yourself. The subagent owns spec writes; the orchestrator only reads it.
+- Passing the spec to the owner on the delegate's word that its gates are green, or judging its rows in place of running them (Step 4 item 0).
+- Editing, reordering or summarising a `prior_qa` entry — spec anchors index into it (§ *State file*).
 - Skipping the YAML status parse and inferring intent from prose. The status block is the contract; treat parse failure as a defect.
 - Embedding the Rule-5 substring blacklist in this file. It lives in the Subagent definition; this orchestrator's only Rule-5 role is the validation gate at 3d (defence in depth).
 - Deleting the state file on `ready`. It is the re-entry point for every later `spec-writer` round (§ *State file*); only `abort` and `defer_to_deferred` remove it. An orphaned state file from an abandoned run is caught by `⚡ First`'s validation sequence, not by destroying the record of a live one.
