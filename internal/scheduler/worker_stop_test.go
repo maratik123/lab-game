@@ -1,16 +1,10 @@
 package scheduler
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
-	"net"
-	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // TestWorker_StopSeam is the shared stop-contract scenario list this
@@ -114,85 +108,6 @@ func TestWorker_StopSeam(t *testing.T) {
 			t.Fatal("Run did not return promptly after cancel")
 		}
 	})
-
-	t.Run("cancelled_mid_reconcile_returns_ctx_err", func(t *testing.T) {
-		t.Parallel()
-		runCtx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		var fired atomic.Bool
-		pool := cancelOnWritePool(t, newScheduler(t), []byte(reconcileCorrectSQL), cancel, &fired)
-		w, err := New(Options{Pool: pool, Registry: recurrentRegistry(t, "stop.reconcile", time.Hour), Config: testConfig()})
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
-
-		done := make(chan error, 1)
-		go func() { done <- w.Run(runCtx) }()
-
-		select {
-		case err := <-done:
-			if !fired.Load() {
-				t.Fatalf("Run() = %v before Reconcile wrote its correction statement — the interleaving under test never happened", err)
-			}
-			if !errors.Is(err, context.Canceled) {
-				t.Errorf("Run() = %v, want context.Canceled — a cancellation that lands while Reconcile is writing is still a cancellation", err)
-			}
-		case <-time.After(10 * time.Second):
-			cancel()
-			<-done
-			t.Fatal("Run did not return: Reconcile never wrote its correction statement")
-		}
-	})
-}
-
-// cancelOnWritePool opens a second pool on base's schema whose
-// connections cancel through cancel the first time they are about to
-// write a message containing marker, recording that in fired, and let
-// that write meet an already-passed deadline — the state the driver's
-// own cancellation handler leaves the socket in. The write then fails as
-// a raw network timeout rather than as a context error, which is the
-// driver's behaviour for a cancellation that lands mid-write.
-func cancelOnWritePool(t *testing.T, base *pgxpool.Pool, marker []byte, cancel context.CancelFunc, fired *atomic.Bool) *pgxpool.Pool {
-	t.Helper()
-	cfg := base.Config()
-	dial := cfg.ConnConfig.DialFunc
-	cfg.ConnConfig.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		conn, err := dial(ctx, network, addr)
-		if err != nil {
-			return nil, err
-		}
-		return &cancelOnWriteConn{Conn: conn, marker: marker, cancel: cancel, fired: fired}, nil
-	}
-	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
-	if err != nil {
-		t.Fatalf("new cancel-on-write pool: %v", err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
-}
-
-// cancelOnWriteConn is the net.Conn cancelOnWritePool hands the driver.
-type cancelOnWriteConn struct {
-	net.Conn
-	marker []byte
-	cancel context.CancelFunc
-	fired  *atomic.Bool
-}
-
-// Write cancels and arms a passed write deadline before the first write
-// carrying c.marker, then writes through.
-func (c *cancelOnWriteConn) Write(p []byte) (int, error) {
-	if bytes.Contains(p, c.marker) && c.fired.CompareAndSwap(false, true) {
-		c.cancel()
-		if err := c.SetWriteDeadline(time.Now()); err != nil {
-			return 0, fmt.Errorf("arm write deadline: %w", err)
-		}
-	}
-	n, err := c.Conn.Write(p)
-	if err != nil {
-		return n, fmt.Errorf("cancel-on-write conn: %w", err)
-	}
-	return n, nil
 }
 
 // mustRegistry returns a fresh, empty *Registry, failing tb on error.

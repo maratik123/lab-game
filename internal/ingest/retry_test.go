@@ -435,10 +435,9 @@ func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 	srv := tgtest.New(t, nil)
 
 	raw := telego.Update{UpdateID: 40, Message: &telego.Message{Date: time.Now().Unix(), Chat: telego.Chat{ID: 1}}}
-	// The update is served late, as it is on a loaded machine: how long
-	// the first attempt takes to fail is not something the test can
-	// guess, so the cancellation below has to follow that failure rather
-	// than a fixed wait.
+	// The handler adds a delay so the first attempt's failure lands well
+	// past the few tens of milliseconds a fixed sleep would allow for on
+	// a loaded machine.
 	srv.SetHandler(tgtest.Delayed(200*time.Millisecond, tgtest.Success(updatesJSON(t, []telego.Update{raw}))))
 
 	cfg := testIngestConfig()
