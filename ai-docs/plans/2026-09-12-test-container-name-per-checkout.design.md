@@ -247,12 +247,37 @@ tests never touch the process-global working directory. Only the paths that name
 | 2 | Wire it: add the working-directory lookup to `seam` (returning a directory and an error, D4) and to `productionSeam`; `runUp` derives the name **before** it disables the reaper or provisions, `runDown` derives it after its locator and reachability checks; a failing lookup and an invalid name share one non-zero exit carrying the derivation's own message; `--up`'s report names the container (D8); delete `testdb.SharedContainerName` and its doc comment. Update the existing `--up` name assertion, add the `--down` name assertion, the invalid-directory and failing-lookup cases for both paths, the reaper-untouched assertion pinning the pre-check's position, and a case pinning that a child gate run derives no name at all — all on the stub seam (D10 ground 1). | `cmd/testpg/run.go`, `cmd/testpg/run_test.go`, `internal/testdb/server.go` | 1 |
 | 3 | Amend the live prose: KD-20's parenthetical, which names the container as one fixed name for the host, states the derivation instead; the shared-server section of the test conventions gains the derivation and its consequence for two checkouts on one host. | `ai-docs/key-decisions.md`, `ai-docs/go-test-conventions.md` | 2 |
 
-On subtask 3's second file: the test-conventions page names no container, so AC4 does not compel it
+**What authorises subtask 3, now that no acceptance criterion does.** The spec's former AC4 — the row
+requiring every live surface that states the old fixed name to state the derivation instead — was struck
+by the owner during Step 7, leaving criteria that are all about which server a checkout addresses; the
+former AC5 renumbered into the vacated slot
+[measured 4043659:ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md ·
+`git show 4043659 -- ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md` → the
+propagation row deleted, and the same-directory-name row renumbered from AC5 to AC4]. Subtask 3 stands on
+two grounds that never rested on that row. **(a)** The ruling that struck it named this subtask as the
+delivery in the same breath
+[measured 4043659:ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md.state.md ·
+`git show b53299f` → the round-3 `prior_qa` answer "Spec amendment: AC4 is removed outright. The
+propagation of the KD-20 and test-conventions edits is delivered by the design's subtask 3 and by the
+standing workspace rule regardless."]. **(b)** That standing rule binds on every branch, this one
+included: a change propagating a factual claim sweeps every live document asserting it
+[measured 4043659:AGENTS.md:288 · `grep -n -A6 '^4. When the change propagates' AGENTS.md`
+→ "Completeness test: every LIVE doc must agree; history surfaces (`ai-docs/learnings.md`,
+`ai-docs/plans/done/**`) are left untouched"]. `ai-docs/key-decisions.md` is a live document asserting the
+old fixed name, so the sweep reaches it
+[measured 4043659:ai-docs/key-decisions.md:53 · `grep -rn 'lab-game-test-postgres' --include='*' .`
+excluding `.git` and `tmp` → `internal/testdb/server.go`, `ai-docs/key-decisions.md`, and this task's own
+spec and interview-state files]. Neither ground is an acceptance criterion, so subtask 3 is verified at
+Step 9 as a design obligation and by the reviewer — not against an AC row.
+
+On subtask 3's second file: the test-conventions page names no container, so neither ground above compels
+it
 [measured 42792be:ai-docs/go-test-conventions.md:43-44 · `sed -n '43,44p' ai-docs/go-test-conventions.md`
 → "`make test-db-up` creates the named long-lived server and records its DSN in the ignored scratch
 directory", with the name itself never written]. It is amended anyway because it is the developer-facing
 home for `make test-db-up`, and the parallel-checkout consequence this change delivers has no other live
-page to land on — a design decision, within Scope item 1, not an AC4 obligation.
+page to land on — a design decision, within Scope item 1, carried by the owner's ruling above rather
+than by any criterion.
 
 Surfaces deliberately **not** amended, with the evidence:
 
@@ -274,7 +299,7 @@ Surfaces deliberately **not** amended, with the evidence:
   [measured d41174f:ai-docs/context-status.md:3 · `sed -n '3p' ai-docs/context-status.md` → "The
   detailed, append-only implementation log: one entry per completed task … Written by `/task` Step
   9.5"]; **(b)** what it names is the **symbol** `SharedContainerName`, inside a list of the exported
-  API that task added — not a container name, and so not a site AC4 reaches
+  API that task added — not a container name, and so not a site the propagation sweep reaches
   [measured d41174f:ai-docs/context-status.md:188 · `grep -n SharedContainerName ai-docs/context-status.md`
   → the symbol appears inside the parenthesised list "(`ServerOptions`, `StartServer`, `Server` with
   `DSN` / `Stop`, the capacity `Probe`, `DSNEnv`, `SharedContainerName`)"].
@@ -392,7 +417,7 @@ Every claim below is about a test that does not exist yet.
     [derived → AC1]
   - Paths differing only in their parent directories, sharing one base name, yield **one and the
     same** name — the assertion is equality between the results, not a match against a literal, so it
-    is about the property rather than about the fixture. [derived → AC5]
+    is about the property rather than about the fixture. [derived → AC4]
   - A base name carrying a character the runtime refuses returns an error whose message contains the
     offending directory name. [derived → AC1's "the name under which a server is created, found again
     and removed", read as: a name the runtime cannot create is refused here rather than downstream]
@@ -433,7 +458,7 @@ Every claim below is about a test that does not exist yet.
     the assertion is inequality between the recorded names, which is the discriminating form for
     "each checkout owns its own server". [derived → AC2, AC3]
   - `--up` with stubbed working directories whose base names are equal but whose parents differ
-    provisions with one and the same container name. [derived → AC5]
+    provisions with one and the same container name. [derived → AC4]
   - `--down` with a locator present and a reachable server reaches for the container under the name
     the derivation returns for the stub's directory. [derived → AC2]
   - `--down` with no locator provisions nothing and exits 0 even when the stubbed working directory
@@ -465,35 +490,50 @@ Every claim below is about a test that does not exist yet.
   confirms the failure line names the assertion, before restoring it. A test that passes under a
   constant derivation is testing nothing this task changes.
 
-### Verify-time end-to-end probe (AC2, AC3 — the container-level half)
+### Verify-time end-to-end probe (AC2, AC3, AC4 — the container-level half)
 
-The seam tests prove that distinct checkouts reach distinct names; they start no container, so they
-say nothing about what the runtime then does. The probe below closes that gap without making the
-package database-backed (D10). Run it once at `/task` verify time, from the repository root:
+The seam tests prove that distinct checkouts reach distinct names and that same-named checkouts reach
+one and the same name; they start no container, so they say nothing about what the runtime then does
+with those names — including the half of AC4 that is not about the name at all, namely that a second
+`--up` under a name already taken joins that server rather than raising a second. That last step is
+the pre-existing reuse behaviour measured in § Approach, unchanged by this task and therefore
+plausible; plausible is not observed, and this is the probe that observes it. The probe closes the gap
+without making the package database-backed (D10). Run it once at `/task` verify time, from the
+repository root:
 
 1. Build the wrapper: `go build -o tmp/testpg ./cmd/testpg`.
-2. Create throwaway project directories under the session scratch directory whose base names differ —
-   call them the alpha and beta probe directories — and note that the wrapper needs nothing from them
-   but the ability to create its own scratch subdirectory there.
+2. Create throwaway project directories under the session scratch directory: two whose base names
+   differ — call them the alpha and beta probe directories — and, under a *different* parent, one
+   whose base name equals alpha's, the alpha twin. The wrapper needs nothing from any of them but the
+   ability to create its own scratch subdirectory there.
 3. From the alpha directory, run the built wrapper with `--up --parallel 1` (pinning parallelism keeps
    each probe server at the smallest ceiling the formula floors to, so the probe does not provision
    large servers). Repeat from the beta directory.
 4. **AC1 / AC3 evidence:** list the runtime's running containers by name and confirm a container named
    for each probe directory's base name plus the test-server suffix; confirm each probe directory's
    own locator file holds a DSN, and that the DSNs differ.
-5. **AC3 evidence:** from the alpha directory, run the built wrapper with `-- sh -c 'printf %s
+5. **AC4 evidence:** from the alpha twin, run the built wrapper with `--up --parallel 1`. Confirm the
+   runtime's container listing is unchanged — no container was raised for the twin — and that the
+   twin's own locator file now holds the DSN alpha's holds. The listing and the DSN are both read: a
+   run that silently failed to provision would also leave the listing unchanged, and only the DSN
+   distinguishes joining alpha's server from reaching nothing.
+6. **AC3 evidence:** from the alpha directory, run the built wrapper with `-- sh -c 'printf %s
    "$LAB_GAME_TEST_DSN"'` and confirm the printed DSN is alpha's, not beta's.
-6. **AC2 evidence:** from the alpha directory, run the built wrapper with `--down`. Then confirm
+7. **AC2 evidence:** from the alpha directory, run the built wrapper with `--down`. Then confirm
    beta's container is still listed as running, and that a child run from the beta directory still
    prints beta's DSN — a server that is listed but unreachable would pass a listing check and fail
    this one, so both are read.
-7. Tear down: run `--down` from the beta directory, then list the runtime's containers again and
-   confirm neither probe container survives. A leaked container from this probe is a probe defect, not
-   a finding (see § Risks).
+8. Tear down: run `--down` from the beta directory, then list the runtime's containers again and
+   confirm neither probe container survives. The twin needs no `--down` of its own — its name is
+   alpha's, so alpha's teardown in step 7 removed the container it joined, and what the twin keeps is
+   a stale locator file in a throwaway directory. A leaked container from this probe is a probe
+   defect, not a finding (see § Risks).
 
-What a failure of step 6 would mean: the probe directories did not in fact get distinct servers, i.e.
+What a failure of step 7 would mean: the probe directories did not in fact get distinct servers, i.e.
 the derivation reached the provisioning call for one path and not the other — which is precisely the
-case the `--down` name assertion in subtask 2 is written to catch first.
+case the `--down` name assertion in subtask 2 is written to catch first. What a failure of step 5
+would mean is the opposite fault: the same directory name produced two servers, which is the owner's
+name-basis decision (D1) breaking at the runtime rather than at the derivation.
 
 ### Subtask 3 — prose
 
@@ -510,13 +550,20 @@ coverage ratchet, which the pre-commit hook takes on its own once `.go` files ar
 
 ## Open questions
 
-- **SPEC-REMIT: AC4 — "…states how the name is derived instead, per AGENTS.md § Propagation Rule step
-  4" — the row cites a standing workspace rule as its own authority — the outcome it appears to
-  protect is that no live document keeps asserting the old fixed name.** That outcome is delivered by
-  subtask 3 regardless, and the row binds until the orchestrator restates or strikes it, so nothing in
-  this design is weakened to fit it. Flagged only because a criterion that restates a rule holding on
-  every branch is re-verified per-AC at `/task` Step 9 and again by `self-review`, at that cost, on
-  every run (`spec-writer.md` Rule 1).
+- **RESOLVED — the SPEC-REMIT flag raised on the spec's former AC4 was answered by striking that row,
+  and the work it named is now authorised directly.** The flag was raised because that row required every
+  live surface stating the old fixed name to state the derivation instead, citing AGENTS.md
+  § Propagation Rule step 4 as its own authority — and a criterion restating a rule that holds on
+  every branch is re-verified per-AC at `/task` Step 9 and again by `self-review`, at that cost, on every
+  run (`spec-writer.md` Rule 1). The orchestrator put it to the owner, who struck the row outright and
+  named this design's subtask 3 as the delivery instead. Their words, verbatim: "Spec amendment: AC4 is
+  removed outright. The propagation of the KD-20 and test-conventions edits is delivered by the design's
+  subtask 3 and by the standing workspace rule regardless."
+  [measured 4043659:ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md.state.md ·
+  `git show b53299f` → that answer, under a round-3 `prior_qa` entry whose question is the flag]. No
+  part of this design was weakened to fit the row while it stood, and none was dropped when it fell:
+  subtask 3 keeps both files, on the grounds recorded under § Decomposition. Nothing is open here —
+  the entry is the record that the flag was raised and answered.
 - **A surface outside the project root asserts the falsified claim, and this task cannot reach it.**
   The owner's own per-project memory note on the parallel checkout records the test Postgres as shared
   between the checkouts. It lives under the user's Claude configuration directory, not in this
