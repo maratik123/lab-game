@@ -2,15 +2,17 @@ package testdb
 
 import (
 	"context"
-	"os"
+	"go/ast"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/maratik123/lab-game/internal/repotest"
+	"github.com/maratik123/lab-game/internal/srcguard"
 )
 
 func TestCeiling_formula(t *testing.T) {
@@ -127,44 +129,78 @@ func TestProbe_invalidDSN(t *testing.T) {
 	}
 }
 
+// testdbImportPath is this package's own import path, as another test
+// file's import block would spell it.
+const testdbImportPath = "github.com/maratik123/lab-game/internal/testdb"
+
+// testdbLocalName reports the identifier f's own import block binds this
+// package's Main to — the import's alias if it declares one, "testdb"
+// otherwise — and whether f imports this package at all.
+func testdbLocalName(f *ast.File) (string, bool) {
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil || path != testdbImportPath {
+			continue
+		}
+		if imp.Name != nil {
+			return imp.Name.Name, true
+		}
+		return "testdb", true
+	}
+	return "", false
+}
+
+// selectsMain reports whether f's syntax tree holds a selector expression
+// naming Main on the identifier local — called, passed as a value, or
+// merely referenced. A string literal spelling the same text is not this
+// syntax and is not counted.
+func selectsMain(f *ast.File, local string) bool {
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		if found {
+			return false
+		}
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		ident, ok := sel.X.(*ast.Ident)
+		if ok && ident.Name == local && sel.Sel.Name == "Main" {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
 // callersOfMain walks the module tree and returns the set of package
-// directories, relative to root, whose test files call testdb.Main —
-// derived from the tree rather than typed by hand, so it cannot drift from
-// what the constant is meant to track.
+// directories, relative to root, whose test files hold a syntactic
+// reference to this package's Main through their own import of it —
+// derived from the tree rather than typed by hand, so it cannot drift
+// from what the constant is meant to track.
 func callersOfMain(t *testing.T, root string) map[string]bool {
 	t.Helper()
 	callers := map[string]bool{}
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	srcguard.WalkSubtree(t, root, func(path string) {
+		if srcguard.NonTestFile(path) || !strings.HasSuffix(path, "_test.go") {
+			return
+		}
+		f := srcguard.ParseFile(t, path)
+		local, ok := testdbLocalName(f)
+		if !ok {
+			return
+		}
+		if !selectsMain(f, local) {
+			return
+		}
+		rel, err := filepath.Rel(root, filepath.Dir(path))
 		if err != nil {
-			return err
+			t.Fatalf("Rel(%s): %v", path, err)
 		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "tmp":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), "_test.go") {
-			return nil
-		}
-		contents, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if strings.Contains(string(contents), "testdb.Main(") {
-			rel, err := filepath.Rel(root, filepath.Dir(path))
-			if err != nil {
-				return err
-			}
-			callers[filepath.ToSlash(rel)] = true
-		}
-		return nil
+		callers[filepath.ToSlash(rel)] = true
 	})
-	if err != nil {
-		t.Fatalf("walking the module tree: %v", err)
-	}
 	return callers
 }
 
@@ -189,5 +225,83 @@ func TestBinaries_matchesTree(t *testing.T) {
 
 	if len(got) != Binaries {
 		t.Errorf("found %d package(s) calling testdb.Main (%v), Binaries constant says %d", len(got), names, Binaries)
+	}
+}
+
+// TestCallersOfMain_scratch drives callersOfMain over a scratch tree
+// rather than the real one, so each way a test file can or cannot refer
+// to Main is exercised directly: calling it, passing it as a value,
+// reaching it through an aliased import, naming it only inside a string
+// literal, and not referencing it at all.
+func TestCallersOfMain_scratch(t *testing.T) {
+	t.Parallel()
+
+	root, _ := srcguard.WriteScratchFile(t, "calls/main_test.go", `package callspkg
+
+import (
+	"testing"
+
+	"github.com/maratik123/lab-game/internal/testdb"
+)
+
+func TestMain(m *testing.M) {
+	testdb.Main(m)
+}
+`)
+	srcguard.WriteScratchFileIn(t, root, "value/main_test.go", `package valuepkg
+
+import (
+	"os"
+	"testing"
+
+	"github.com/maratik123/lab-game/internal/testdb"
+)
+
+func TestMain(m *testing.M) {
+	run := testdb.Main
+	os.Exit(run(m))
+}
+`)
+	srcguard.WriteScratchFileIn(t, root, "aliased/main_test.go", `package aliasedpkg
+
+import (
+	"testing"
+
+	tdb "github.com/maratik123/lab-game/internal/testdb"
+)
+
+func TestMain(m *testing.M) {
+	tdb.Main(m)
+}
+`)
+	srcguard.WriteScratchFileIn(t, root, "literal/main_test.go", `package literalpkg
+
+import "testing"
+
+func TestSomething(t *testing.T) {
+	_ = "testdb.Main("
+}
+`)
+	srcguard.WriteScratchFileIn(t, root, "none/main_test.go", `package nonepkg
+
+import "testing"
+
+func TestSomething(t *testing.T) {}
+`)
+
+	got := callersOfMain(t, root)
+	want := map[string]bool{"calls": true, "value": true, "aliased": true}
+	if len(got) != len(want) {
+		t.Fatalf("callersOfMain() = %v, want exactly %v", got, want)
+	}
+	for k := range want {
+		if !got[k] {
+			t.Errorf("callersOfMain() missing %q", k)
+		}
+	}
+	for k := range got {
+		if !want[k] {
+			t.Errorf("callersOfMain() unexpectedly includes %q", k)
+		}
 	}
 }
