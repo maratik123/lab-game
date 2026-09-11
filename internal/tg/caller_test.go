@@ -135,7 +135,9 @@ func TestCaller_LimiterDelaysAndHonoursDeadline(t *testing.T) {
 	srv := tgtest.New(t, tgtest.Success(nil))
 	// GetMe addresses no chat (ChatNone), so only the class-GLOBAL
 	// schedule applies to it — a ChatRate bound would never be reached.
-	limits := config.TransportLimits{Other: config.ClassLimits{Global: rate(1, 50*time.Millisecond)}}
+	// The window is long enough that no descheduling gap between the two
+	// calls can refill it before the second call is refused.
+	limits := config.TransportLimits{Other: config.ClassLimits{Global: rate(1, time.Hour)}}
 	tr := validTransport()
 	tr.Limits = limits
 	c := newTestClient(t, srv, func(o *Options) { o.Transport = tr })
@@ -145,10 +147,17 @@ func TestCaller_LimiterDelaysAndHonoursDeadline(t *testing.T) {
 		t.Fatalf("GetMe (1st): %v", err)
 	}
 
+	// A pause between the calls, as a descheduled goroutine takes on a
+	// loaded machine: the window has to outlast it for the second call to
+	// meet a required wait at all.
+	time.Sleep(100 * time.Millisecond)
+
 	// A second call, with a deadline shorter than the limiter's required
-	// wait, must return promptly with a context error rather than block
-	// for the full wait.
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	// wait, must return promptly with an error rather than block for the
+	// full wait. The deadline is long next to any scheduling delay, so the
+	// refusal is decided by the required wait, never by a deadline that
+	// had already passed before the call reached the limiter.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	start := time.Now()
 	_, err := c.API().GetMe(ctx)
@@ -156,8 +165,9 @@ func TestCaller_LimiterDelaysAndHonoursDeadline(t *testing.T) {
 	if err == nil {
 		t.Fatal("GetMe (2nd): expected an error (deadline too short for the limiter wait)")
 	}
-	if elapsed > 200*time.Millisecond {
-		t.Errorf("GetMe (2nd) took %v, want well under the limiter's 50ms wait (deadline must cut it short)", elapsed)
+	const patience = 2 * time.Second
+	if elapsed > patience {
+		t.Errorf("GetMe (2nd) took %v, want at most %v (a refusal must not sit out the required wait, even under a descheduled goroutine)", elapsed, patience)
 	}
 }
 
