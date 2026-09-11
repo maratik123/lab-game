@@ -10,12 +10,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/maratik123/lab-game/internal/leaktest"
 	"github.com/maratik123/lab-game/internal/store"
 	"github.com/maratik123/lab-game/internal/testdb"
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(testdb.Main(m))
+	os.Exit(leaktest.Main(m, testdb.Main))
 }
 
 // newScheduler builds a fresh, migrated schema-scoped pool for tb and

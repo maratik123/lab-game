@@ -38,8 +38,9 @@ var (
 )
 
 // Main provisions a PostgreSQL server for the calling test binary and runs
-// m.Run(), returning the exit code the caller's TestMain must pass to
-// os.Exit. It never skips: if LAB_GAME_TEST_DSN is unset and no container
+// m.Run(), returning the exit code the caller's TestMain hands to whatever
+// runs after it — a goroutine-leak check, typically, rather than os.Exit
+// directly. It never skips: if LAB_GAME_TEST_DSN is unset and no container
 // runtime is reachable, it prints the error and returns 1 without running
 // any test.
 func Main(m *testing.M) int {

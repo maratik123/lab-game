@@ -457,3 +457,34 @@ wrong-surface text by message twelve.
 **at:** 71226f4
 **Kind:** correction
 **Escalated?** AGENTS.md, delegation-rules
+
+### 2026-09-11 — process — a throwaway probe was redirected into the repository root instead of tmp/
+**What happened:** While seeding the interview state file for `/task 74`, a one-off verification command redirected an `awk` extraction to a bare filename (`tmp-yaml.<pid>`) in the working directory, then deleted it in the same command. The file was never read; the redirect was dead code left over from a first draft of the check. No hook refused it, because the root-redirect hook matches only gate commands (`go`, `golangci-lint`, `make`, `actionlint`, `shellcheck`), not an arbitrary probe.
+**Rule:** Every scratch write — a gate log, a backup, a throwaway probe of any tool — goes to `tmp/` (repository-local) or the session scratchpad, never to a bare filename. Delete dead redirects from a probe before running it; a same-command `rm` does not make a root write legal.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-11 — testing — a delegate recorded a race-route FAIL as transient and pre-existing after one green rerun
+**What happened:** On `/task 74`, the Group A `code-writer` hit a `write tcp … i/o timeout` in `internal/scheduler` on a whole-tree `-race` run, re-ran the test alone and the whole tree once, saw green, and recorded the failure as "the pre-existing shared-server contention the design's Open Questions section already names" — a section that names a different failure (`make test-contention` losing its shared server), and no run of `main` had been made. The orchestrator's own probe then saw four failing runs in fourteen branch runs, across three different wall-clock-sensitive tests in `internal/tg`, `internal/ingest` and `internal/health`, and none in ten `main` runs, before a controlled comparison under induced CPU load reproduced one of the same failures on `main` — so the delegate's conclusion happened to hold, on evidence it never gathered.
+**Rule:** A failure is "pre-existing" only when a run of the base commit reproduces it, and "transient" only per the `/task` local-FAIL rule (known flaky AND repeated reruns green). Green reruns of the branch prove neither; the comparison against the base, under the same conditions and interleaved, is the measurement. Relay a delegate's "pre-existing" as a claim until that run exists.
+**at:** 10237d7
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-11 — process — measured an instruction file's size inside `/task`, the shape the 2026-09-04 entry recorded inside `/improve`
+**What happened:** On `/task 74` Group B — the docs subtask, which adds a bullet to `AGENTS.md` — I wanted to know whether any cap bound that bullet, and ran one command that both printed `.claude/skills/ai-audit/checklist-m.md` § Sub-check 9 and ran `wc -c AGENTS.md CLAUDE.md`. The page it printed names `/task` in its FORBIDDEN row, and forbids the measurement itself, not only reporting it. The figure reached no artefact, and the bullet was written as the design specified rather than fitted to it. Same shape as the `/improve` recurrence: the question "how big is it?" was asked before the rule that forbids asking it had been read — and batching the lookup of the rule with the command the rule might forbid guaranteed the command ran first.
+**Rule:** In `/task`, `/interview`, `/bugfix`, `/improve`, either reviewer or CI, never count the bytes or lines of a file in Sub-check 9's covered set, whatever the purpose. Wondering whether an edit fits a size limit is itself the tell: ship the edit as specified and leave size to `/ai-audit`. Never batch reading a rule with a command that rule might forbid — read the rule, then decide whether to run anything.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-11 — testing — a mutant that `go build` accepts can still fail to build under `go test`
+**What happened:** On `/task 74` Step 11, the orchestrator checked a self-review row's mutant (every refusal message in `internal/leaktest`'s `check` replaced by `"x"`) with `go build ./internal/leaktest/` first, as the "confirm the mutant builds" step, then ran the test: exit 1. The log showed no failing subtest — `go test` runs a `go vet` subset before the binary, and the mutant left `fmt.Fprintf` calls with arguments and no directive, so the package never compiled into a test. The exit status looked like "the test caught it"; only the zero count of `--- FAIL:` lines under the named test showed otherwise. The mutant was rewritten to pass `go vet`, and then failed the five subtests on their own assertion.
+**Rule:** The build check for a mutant is the one `go test` applies — `go vet <pkg>` (or `go test -run '^$' <pkg>`), never `go build` alone — and a mutant run counts only when its log names the test and the assertion that went red.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-11 — tooling — scripted `rg` with no path read stdin and hung; `pkill -f` matched the invoking shell
+**What happened:** On `/task 74` Step 11, a verification script ran `rg -n -e '<pattern>' --type go` with no path argument inside a non-interactive `Bash` call; ripgrep searches standard input when stdin is not a terminal and no path is given, so the command waited on stdin until the tool's timeout moved it to the background. The follow-up `pkill -f "rg -n -e"` then matched its own shell's command line, which contained that string, and killed it (exit 144).
+**Rule:** In scripted commands, give `rg` an explicit path (`.`) and redirect its stdin from `/dev/null`; stop a stray process by its PID or by a pattern that cannot occur in the stopping command's own text, never `pkill -f` with a substring of the command being written.
+**Kind:** correction
+**Escalated?** no

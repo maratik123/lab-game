@@ -61,10 +61,18 @@ type Server struct {
 }
 
 // New starts a fake server that answers every request with handler until
-// SetHandler replaces it, and registers the server's shutdown with
-// tb.Cleanup so no goroutine outlives the test.
+// SetHandler replaces it. Every request's context derives from a base
+// context of New's own — not the test's Context(), which is already
+// cancelled by the time any cleanup runs — cancelled by tb.Cleanup before
+// the server itself closes, so the fake server keeps answering normally
+// while cleanups registered after New run, and a Delayed handler still
+// waiting when the test ends is released there instead of outliving it,
+// no matter which clock is active (the real one or a testing/synctest
+// bubble's virtual one) and no matter whether the request's body was
+// read.
 func New(tb testing.TB, handler Handler) *Server {
 	tb.Helper()
+	baseCtx, cancelBase := context.WithCancel(context.Background())
 	s := &Server{
 		tb:       tb,
 		handler:  handler,
@@ -73,6 +81,7 @@ func New(tb testing.TB, handler Handler) *Server {
 	s.httpSrv = &http.Server{
 		Handler:           http.HandlerFunc(s.serveHTTP),
 		ReadHeaderTimeout: 0, // unbounded — tests control timing explicitly via context deadlines.
+		BaseContext:       func(net.Listener) context.Context { return baseCtx },
 	}
 	go func() {
 		// http.ErrServerClosed is the expected outcome of tb.Cleanup's
@@ -82,6 +91,7 @@ func New(tb testing.TB, handler Handler) *Server {
 		}
 	}()
 	tb.Cleanup(func() {
+		cancelBase()
 		_ = s.httpSrv.Close()
 		_ = s.listener.Close()
 	})
@@ -232,13 +242,22 @@ func ServerError(status int) Handler {
 	}
 }
 
-// Delayed waits for the given duration — through whichever clock is active
-// in the caller's goroutine tree, the real one or a testing/synctest
-// bubble's virtual one — before invoking next.
+// Delayed waits for the given duration or for the request's context to
+// end, whichever comes first — through whichever clock is active in the
+// caller's goroutine tree, the real one or a testing/synctest bubble's
+// virtual one — before invoking next. It returns without calling next
+// when the request's context ends first, so a handler still waiting when
+// its server's cleanup cancels the server's own base context does not
+// outlive the test.
 func Delayed(after time.Duration, next Handler) Handler {
 	return func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(after)
-		next(w, r)
+		timer := time.NewTimer(after)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			next(w, r)
+		case <-r.Context().Done():
+		}
 	}
 }
 
