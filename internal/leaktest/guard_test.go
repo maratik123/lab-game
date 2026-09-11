@@ -55,8 +55,12 @@ func excludedByDirName(relPath string) bool {
 }
 
 // testDirs returns the sorted, root-relative set of directories under
-// root holding at least one Go test source file that the go tool would
-// ever look at — excludedByDirName's directories left out.
+// root holding at least one Go test source file, going by its filename
+// suffix alone — excludedByDirName's directories left out. A directory
+// whose only such file the go tool itself would never compile (a
+// leading underscore or dot in the file's own name) is still returned
+// here, and checkTree examines it and finds no compiled test file to
+// check.
 func testDirs(t *testing.T, root string) []string {
 	t.Helper()
 	set := map[string]bool{}
@@ -198,14 +202,14 @@ func checkTestMain(t *testing.T, dir string, testFiles []string) string {
 	}
 }
 
-// checkTree walks root for every directory the go tool would compile
-// test files in, and checks each one, under both build configurations,
-// for exactly one well-formed TestMain among the test files that
-// configuration actually compiles. It returns the sorted, root-relative
-// directories it examined — a directory with no test file the go tool
-// would ever compile is never examined — and a map from a failing
-// directory to its failure reasons, one per configuration it failed
-// under.
+// checkTree walks root for every directory testDirs names, and checks
+// each one, under both build configurations, for exactly one
+// well-formed TestMain among the test files that configuration actually
+// compiles. It returns the sorted, root-relative directories it
+// examined — every directory testDirs names, including one whose only
+// Go test source file the go tool itself would never compile — and a
+// map from a failing directory to its failure reasons, one per
+// configuration it failed under.
 func checkTree(t *testing.T, root string) (examined []string, failures map[string][]string) {
 	t.Helper()
 	failures = map[string][]string{}

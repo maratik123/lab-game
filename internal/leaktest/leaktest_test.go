@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"flag"
-	"io"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +13,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/goleak"
+
+	"github.com/maratik123/lab-game/internal/repotest"
 )
 
 // fakeModule is a module path used by cases that exercise the refusal and
@@ -83,10 +87,16 @@ func TestCheck_RunnerNonZeroSkipsTheLeakCheck(t *testing.T) {
 func TestCheck_TwoGoroutinesLeftRunning(t *testing.T) {
 	chA := make(chan struct{})
 	chB := make(chan struct{})
-	go blockOnChannelA(chA)
-	go blockOnChannelB(chB)
-	defer close(chA)
-	defer close(chB)
+	doneA := make(chan struct{})
+	doneB := make(chan struct{})
+	go func() { blockOnChannelA(chA); close(doneA) }()
+	go func() { blockOnChannelB(chB); close(doneB) }()
+	defer func() {
+		close(chA)
+		close(chB)
+		<-doneA
+		<-doneB
+	}()
 
 	var out bytes.Buffer
 	code := check(nil, runnerReturning(0), &out, fakeModulePath, unfiltered, nil)
@@ -100,8 +110,8 @@ func TestCheck_TwoGoroutinesLeftRunning(t *testing.T) {
 	if !strings.Contains(report, "blockOnChannelB") {
 		t.Errorf("report does not name blockOnChannelB:\n%s", report)
 	}
-	if !strings.Contains(report, "created by") {
-		t.Errorf("report carries no created by line:\n%s", report)
+	if strings.Count(report, "created by") != 2 {
+		t.Errorf("report does not carry a created by line for each goroutine:\n%s", report)
 	}
 }
 
@@ -155,21 +165,27 @@ func TestCheck_TwoEntriesMatchingSameGoroutine(t *testing.T) {
 	}
 }
 
-// TestCheck_RunningHalfAlone excuses a goroutine's top frame while that
-// same goroutine also carries a frame of this module's own code below
-// it, so the excuse must still fail: a scan that reads only the
-// "created by" line would let it through, because the creator here is
-// the standard library's own.
+// TestCheck_RunningHalfAlone excuses, via an Anywhere entry, a function
+// that appears somewhere on a goroutine's stack while that same
+// goroutine also carries a frame of this module's own code below it, so
+// the excuse must still fail: a scan that reads only the "created by"
+// line would let it through, because the creator here is the standard
+// library's own.
 func TestCheck_RunningHalfAlone(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	started := make(chan struct{})
+	finished := make(chan struct{})
 	time.AfterFunc(time.Millisecond, func() {
 		close(started)
 		wg.Wait()
+		close(finished)
 	})
 	<-started
-	defer wg.Done()
+	defer func() {
+		wg.Done()
+		<-finished
+	}()
 
 	entries := []Ignore{
 		{Function: "sync.(*WaitGroup).Wait", Anywhere: true, Reason: "would excuse it, but this goroutine also carries a module frame"},
@@ -184,11 +200,13 @@ func TestCheck_RunningHalfAlone(t *testing.T) {
 	}
 }
 
-// startServeDirect starts srv serving l in a new goroutine, under a name
-// distinct from any standard-library function so a "created by" line
-// naming it is unambiguously this module's own code.
+// startServeDirect starts srv.Serve(l) itself as the new goroutine's
+// entry function — no closure wraps the call — so every frame the
+// goroutine's own stack carries is standard library, while the
+// "created by" line naming startServeDirect is unambiguously this
+// module's own code.
 func startServeDirect(srv *http.Server, l net.Listener) {
-	go func() { _ = srv.Serve(l) }()
+	go srv.Serve(l) //nolint:errcheck // Serve's return is exercised by TestCheck_StartedByHalfAlone's goleak assertions, not by its value; a closure to discard it would add a module frame the case must not carry.
 }
 
 // TestCheck_StartedByHalfAlone excuses a goroutine whose every frame is
@@ -197,14 +215,20 @@ func startServeDirect(srv *http.Server, l net.Listener) {
 // it through, because the creator line is the only place this module's
 // code appears.
 func TestCheck_StartedByHalfAlone(t *testing.T) {
+	before := goleak.IgnoreCurrent()
 	var lc net.ListenConfig
 	l, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
 	srv := &http.Server{Handler: http.NewServeMux()}
-	defer func() { _ = srv.Close() }()
 	startServeDirect(srv, l)
+	defer func() {
+		_ = srv.Close()
+		if err := goleak.Find(before); err != nil {
+			t.Errorf("startServeDirect's goroutine did not exit: %v", err)
+		}
+	}()
 
 	entries := []Ignore{
 		{Function: "net/http.(*Server).Serve", Anywhere: true, Reason: "would excuse it, but this module's code started it"},
@@ -219,23 +243,49 @@ func TestCheck_StartedByHalfAlone(t *testing.T) {
 	}
 }
 
+// TestCheck_Refusals drives every refusal check has and asserts that the
+// output names the refusal it expects, not merely that some output was
+// written.
 func TestCheck_Refusals(t *testing.T) {
 	type tc struct {
 		name       string
 		modulePath func() (string, bool)
 		ignore     []Ignore
 		nilRunner  bool
+		want       string
 	}
 	cases := []tc{
-		{name: "blank reason", modulePath: fakeModulePath, ignore: []Ignore{{Function: "some.Func", Reason: ""}}},
-		{name: "blank function", modulePath: fakeModulePath, ignore: []Ignore{{Function: "", Reason: "why"}}},
+		{
+			name:       "blank reason",
+			modulePath: fakeModulePath,
+			ignore:     []Ignore{{Function: "some.Func", Reason: ""}},
+			want:       `ignore entry for "some.Func" has a blank Reason`,
+		},
+		{
+			name:       "blank function",
+			modulePath: fakeModulePath,
+			ignore:     []Ignore{{Function: "", Reason: "why"}},
+			want:       "an ignore entry has a blank Function",
+		},
 		{
 			name:       "a function under the module path",
 			modulePath: fakeModulePath,
 			ignore:     []Ignore{{Function: fakeModule + ".Something", Reason: "why"}},
+			want:       fmt.Sprintf("ignore entry %q names this module's own code", fakeModule+".Something"),
 		},
-		{name: "an empty module path", modulePath: noModulePath, ignore: nil},
-		{name: "a nil runner", modulePath: fakeModulePath, ignore: nil, nilRunner: true},
+		{
+			name:       "an empty module path",
+			modulePath: noModulePath,
+			ignore:     nil,
+			want:       "this test binary's module path could not be determined",
+		},
+		{
+			name:       "a nil runner",
+			modulePath: fakeModulePath,
+			ignore:     nil,
+			nilRunner:  true,
+			want:       "no runner was given",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -255,8 +305,8 @@ func TestCheck_Refusals(t *testing.T) {
 			if called {
 				t.Error("the runner was called, want the refusal to stop before it")
 			}
-			if out.Len() == 0 {
-				t.Error("no refusal message was written")
+			if !strings.Contains(out.String(), c.want) {
+				t.Errorf("output = %q, want it to contain %q", out.String(), c.want)
 			}
 		})
 	}
@@ -330,15 +380,13 @@ func moduleLine(t *testing.T, goMod string) string {
 }
 
 // TestModulePath_MatchesGoMod drives the real module-path source: its
-// answer must agree with go.mod's own "module" line. This package lives
-// two directories below the repository root, matching go.mod's relative
-// path here.
+// answer must agree with go.mod's own "module" line.
 func TestModulePath_MatchesGoMod(t *testing.T) {
 	got, ok := modulePath()
 	if !ok {
 		t.Fatal("modulePath: ok = false")
 	}
-	data, err := os.ReadFile("../../go.mod")
+	data, err := os.ReadFile(repotest.RootPath(t, "go.mod"))
 	if err != nil {
 		t.Fatalf("ReadFile go.mod: %v", err)
 	}
@@ -348,27 +396,27 @@ func TestModulePath_MatchesGoMod(t *testing.T) {
 }
 
 // TestMain_Wiring drives Main itself — not the check behind it — with a
-// nil *testing.M and a stale ignore entry, redirecting os.Stderr for the
-// call. It computes its own expectation from the real testing flags
-// rather than through the filter predicate under test, so a predicate
-// hard-wired to always answer "filtered" or "unfiltered" would fail this
-// case on the gate it disagrees with.
+// nil *testing.M and a stale ignore entry, redirecting os.Stderr to a
+// temporary file for the call. It computes its own expectation from the
+// real testing flags rather than through the filter predicate under
+// test, so a predicate hard-wired to always answer "filtered" or
+// "unfiltered" would fail this case on the gate it disagrees with.
 func TestMain_Wiring(t *testing.T) {
-	r, w, err := os.Pipe()
+	f, err := os.CreateTemp(t.TempDir(), "leaktest-wiring-*")
 	if err != nil {
-		t.Fatalf("Pipe: %v", err)
+		t.Fatalf("CreateTemp: %v", err)
 	}
+	defer func() { _ = f.Close() }()
 	old := os.Stderr
-	os.Stderr = w
+	os.Stderr = f
 
 	entries := []Ignore{{Function: "no.such/pkg.Function", Reason: "not on any stack"}}
 	code := Main(nil, runnerReturning(0), entries...)
 
 	os.Stderr = old
-	_ = w.Close()
-	data, err := io.ReadAll(r)
+	data, err := os.ReadFile(f.Name())
 	if err != nil {
-		t.Fatalf("ReadAll: %v", err)
+		t.Fatalf("ReadFile: %v", err)
 	}
 
 	wantFiltered := testing.Short()

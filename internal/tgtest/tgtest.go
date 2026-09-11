@@ -63,7 +63,7 @@ type Server struct {
 // New starts a fake server that answers every request with handler until
 // SetHandler replaces it. Every request's context derives from a base
 // context of New's own — not the test's Context(), which is already
-// cancelled by the time any cleanup runs — cancelled by tb.Cleanup after
+// cancelled by the time any cleanup runs — cancelled by tb.Cleanup before
 // the server itself closes, so the fake server keeps answering normally
 // while cleanups registered after New run, and a Delayed handler still
 // waiting when the test ends is released there instead of outliving it,
@@ -247,8 +247,8 @@ func ServerError(status int) Handler {
 // caller's goroutine tree, the real one or a testing/synctest bubble's
 // virtual one — before invoking next. It returns without calling next
 // when the request's context ends first, so a handler still waiting when
-// its server's cleanup cancels the base context (New) does not outlive
-// the test.
+// its server's cleanup cancels the server's own base context does not
+// outlive the test.
 func Delayed(after time.Duration, next Handler) Handler {
 	return func(w http.ResponseWriter, r *http.Request) {
 		timer := time.NewTimer(after)
