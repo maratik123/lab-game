@@ -277,7 +277,7 @@ Entry shape:
   - A goroutine this module's code starts is ended by its owner — a cleanup, a context, a close — before the package's tests finish; an ignore entry is only for a dependency's process-lifetime goroutine.
   - `internal/leaktest`'s non-test code imports only goleak and the standard library, so any test binary can use it without an import cycle.
 
-## Canary limiter refusal label — a refusal decided past an expired deadline reports `timeout`, not `network` (PR #TBD-at-Step-12, 2026-09-12)
+## Canary limiter refusal label — a refusal decided past an expired deadline reports `timeout`, not `network` (PR #93, 2026-09-12)
 
 - **What landed:** `internal/tg`'s caller now reads `now` into a variable once per retry-loop pass, beside the `ctx.Deadline()` read, and passes that same instant both to the limiter and to a new pure helper that answers which cause the refusal carries. When the deadline had already passed at the moment of the decision, the refusal wraps `context.DeadlineExceeded` and says so in its message; every other refusal keeps the unchanged wait-does-not-fit cause, carrying neither context sentinel. `internal/health` takes no production edit — its failure classifier already maps a `context.DeadlineExceeded` chain to `timeout` — so the canary's label follows from the transport's cause, and a test in `internal/health` is what pins it.
 
