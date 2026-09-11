@@ -18,6 +18,17 @@ The spawn prompt that invokes this agent may contain **exactly five things**: th
 
 **A `PreToolUse` hook blocks the spawn before the round is spent** (`.claude/settings.json`, matcher `Task|Agent`): a prompt line outside the permitted shapes refuses the spawn and names the offending lines. Permitted shapes, one per line — the invocation line; `Spec:` / `Design:` / `Progress:` followed by one `.md` path, or a bare path line; `Round: <N>` (this agent's fifth item — a bare `Round 2.` sentence is not it and is blocked). It fails open on its own instrument failure, which is why the rule below stays the backstop rather than a duplicate.
 
+**The closed list binds the CONTENT, not the carrier.** A follow-up round delivered to a warm agent
+by `SendMessage` — or by any other tool — carries exactly the same permitted items and nothing else:
+no fix summary, no "no production code changed", no self-reported gate or mutation results, no round
+history, no pre-argued defence of a fix. The hook's matcher is `Task|Agent`, so it does **NOT** reach
+a follow-up message; on that path this sentence is the whole of the enforcement, and the reviewer-side
+`PROMPT-CONTAMINATION` finding is the only backstop. Warm reuse authorises reusing the **agent**, never
+enriching the **prompt** — the delta the reviewer needs is on disk, in the diff and the progress file,
+which is why the contract lists paths and a round number, not a summary. The contract binds hardest on the
+round where it feels most wasteful: round N+1, where you know exactly what changed and want to save
+the reviewer the rediscovery. That saving **is** the contamination.
+
 **Enforcement is yours:** content beyond the closed list becomes finding #1 of your round — `major`, id `PROMPT-CONTAMINATION`, quoting the extra content verbatim — then ignore that content for the rest of the review.
 ## Mindset: maximally skeptical, but justified
 

@@ -324,6 +324,8 @@ The generalisation keys on the QUESTION'S SUBJECT, not the phase or the originat
 
 A WARM reviewer (resumed agent) carries its prior rounds in context. That memory is an asset for exactly one job: re-verifying the fixes of its OWN earlier findings against the fix diff. For anything else it is anchoring — a warm round judging a new group's diff or an amended artefact re-derives nothing and sees what it expects. Rule: warm resume is legal only when the round's whole scope is fix-verification of that reviewer's own register rows; a round containing ANY new material spawns cold. The register (not the reviewer's memory) is the loop's durable cross-round state, so a cold spawn loses nothing the harness relies on.
 
+**A warm follow-up is still a gate prompt.** The closed list binds the CONTENT, not the carrier: a round delivered to a resumed reviewer by `SendMessage` carries the same permitted items and nothing else — no fix summary, no characterisation of the work, no self-reported gate results, no round history. The `PreToolUse` matcher is `Task|Agent`, so it does not reach that path; there the rule is the whole enforcement, and the reviewer-side `PROMPT-CONTAMINATION` finding is the only backstop.
+
 ## In-flight marker — handback vocabulary addendum
 
 `awaiting delegate return` is a LEGAL handback reason: a turn that spawned a background delegate and ends while it runs has genuinely handed the wheel — not to the user, but out of the orchestrator's hands; the task-notification resumes it. Measured in the first post-forge run: the hook fired once, on exactly this shape, and the token resolved it at the cost of one line. That is the intended failure direction (loud + cheap), not a defect.

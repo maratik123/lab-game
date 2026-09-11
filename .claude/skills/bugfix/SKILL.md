@@ -263,6 +263,8 @@ After `code-writer` returns, the **orchestrator** applies the bail rules below �
 4. **On REJECT:** loop back to Step 5 (Fix) — address each `⬜ Open` finding (severity ladder applies — `major`/`blocker` may require user confirmation before objecting per the same rules `/task` Step 11 enforces). After fixes, return here for Round N+1. Rewrite `**current_step:**` to `Step 6.5: Self-review — REJECT (Round N), addressing findings` before re-entering Step 5.
 5. **After Round 3 with REJECT:** STOP. Do not commit / push. Surface remaining `⬜ Open` findings to the user and wait for direction (escalate to a wider design-amendment cycle, accept the findings as out-of-scope nits, or abandon the fix).
 
+**A warm follow-up is still a gate prompt.** The closed list binds the CONTENT, not the carrier: a round delivered to a resumed reviewer by `SendMessage` carries the same permitted items and nothing else — no fix summary, no characterisation of the work, no self-reported gate results, no round history. The `PreToolUse` matcher is `Task|Agent`, so it does not reach that path; there the rule is the whole enforcement, and the reviewer-side `PROMPT-CONTAMINATION` finding is the only backstop.
+
 ---
 
 ## Step 7: Cleanup (only after Step 6.5 APPROVE)

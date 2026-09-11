@@ -111,7 +111,7 @@ After every 3 fixes (or when all findings in a subtask are resolved):
 
 ### Step 5: Self-review loop (max 3 rounds)
 
-**The prompt is the closed list and nothing else** (`self-review.md` § *Spawn prompt contract*, enforced by a `PreToolUse` hook). That there is no spec and no design doc, and that the progress file's `## AC Status` table serves as the acceptance criteria, is derived by the reviewer from the paths it receives — `self-review.md` § *What the prompt paths already tell you* — not asserted in the prompt. Substitute `<base_commit>` with the value recorded in the progress-file header:
+**The prompt is the closed list and nothing else** (`self-review.md` § *Spawn prompt contract*, enforced by a `PreToolUse` hook) — and the list binds the CONTENT, not the carrier, so a warm `SendMessage` follow-up round carries the same items and nothing else, on a path the hook's `Task|Agent` matcher does not reach. That there is no spec and no design doc, and that the progress file's `## AC Status` table serves as the acceptance criteria, is derived by the reviewer from the paths it receives — `self-review.md` § *What the prompt paths already tell you* — not asserted in the prompt. Substitute `<base_commit>` with the value recorded in the progress-file header:
 
 ```
 Agent(subagent_type="self-review", prompt="

@@ -16,7 +16,7 @@ a comment wherever its marker sits on the line — a trailing comment is in scop
 line-leading one is.
 
 Markdown is outside the gated set entirely. Prose in `docs/`, `ai-docs/`, `.claude/` and `AGENTS.md`
-obeys the durable-reference convention instead, which is a different rule and must not be conflated
+obeys § *Durable references* below instead, which is a different rule and must not be conflated
 with the ban below: markdown keeps naming paths and sections.
 
 ## DOC-1 — Summary sentence
@@ -140,3 +140,43 @@ it does anything else. A script with no invocation grammar gains no flag.
 ## DOC-6 — Examples
 
 An `Example…` function in `_test.go` is the preferred documentation for anything with a non-obvious call sequence — it compiles, it runs in CI, and it cannot rot silently.
+
+
+## Durable references — a place named to be read later names a SYMBOL
+
+The rule § *Scope* points at, and the whole of it. It governs markdown prose in `docs/`, `ai-docs/`,
+`.claude/` and `AGENTS.md` — **not** comments, which DOC-4 governs far more strictly (a comment names
+no place at all, symbols included).
+
+**MUST — a reference written into a durable file to be read later names a symbol: package plus
+function, a type, or a named document section.** Resolve it before writing it — `ast-index symbol` /
+`ast-index outline` for code, the heading text for a document — and write the NAME the tool
+confirmed, never the coordinate it printed.
+
+**MUST — a `file:line`, a line range, or a coverage-profile coordinate appears only as a historical
+measurement, and only carrying the commit it was taken at.** A bare coordinate is a defect wherever
+it sits.
+
+**Why a name and not a coordinate.** A coordinate is invalidated by any edit above it, and these
+files are read on a different tree. The observed symptom is not "slightly imprecise" — it is a
+**false finding**: two coordinate lists taken at different commits, compared against each other,
+produce a discrepancy that does not exist.
+
+**The spec surface is stricter, mechanised, and defined ONCE — elsewhere.** A spec's quoted value
+carries a pinned annotation whose exact form, its required commit, and the reviewer's obligation to
+raise a violation are stated in `.claude/agents/spec-writer.md` Rule 8. That text is authoritative
+for specs and is deliberately **not** restated here: two copies of a format rule drift, and the copy
+nobody gates is the one that goes stale. This section is the general case; Rule 8 is its spec-scoped
+instance, and where they meet Rule 8 governs.
+
+**Verifying a citation has two halves, and the second is the one that gets skipped:** does the source
+say what is claimed, **and** is the reference spelled in the form this project allows. The quote
+being right is exactly what stops you looking at the pointer.
+
+**Where two numbering spaces exist** — a project-wide registry and a document's own local table — a
+**bare** identifier resolves against the project-wide one. Write the qualified form, and resolve
+**every** such reference on a touched line, not only the one you came for.
+
+**Mechanical half, and its exact scope.** `ai-docs/scripts/check-spec-shape.sh` refuses a bare
+`path:line`, but only over `*.spec.md`, and only from CI. Every other durable surface is
+review-judged.
