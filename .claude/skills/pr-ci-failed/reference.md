@@ -23,7 +23,7 @@ Fires BEFORE Step 5 when the fix diff touches `ai-docs/plans/*.spec.md` (or `don
 
 1. Re-run **`/task` Step 6 (`design-writer` Subagent)** against the amended spec — spawn the `design-writer` Subagent with `(amended spec, current design)` and prompt: *"the spec was amended during `/pr-ci-failed` Round M; verify the decomposition + ACs still hold against the new spec, and update the design accordingly. The CI-fix implementation has already landed in commit `<round-M-fix-SHA>`."*
 2. Re-run **`/task` Step 7 (`design-review` Subagent)** with `(amended spec, refreshed design, round-M-fix diff)`. On NEEDS-CHANGES → loop back to sub-flow Step 1 (cap 3 design rounds total). On REQUEST-USER → surface and stop.
-3. Only on a GO verdict: resume `/pr-ci-failed` Step 5 (self-review).
+3. Only on a GO verdict: resume `/pr-ci-failed` Step 5 (self-review). The GO's notes route by `/task` Step 7's table: design-internal ones are folded in without another design-review; a spec-amending one goes to the owner's three options.
 
 **Why:** A CI-fix that also amends `.spec.md` is, by definition, no longer a pure CI fix — it has reclassified the spec contract. `self-review` checks code-against-spec, not spec-against-design; the design-review re-entry is the only gate that catches contradictions, unresolved decomposition items, or new ACs introduced by the amendment.
 

@@ -55,6 +55,7 @@ ls ai-docs/plans/*.progress.md 2>/dev/null
 **If found → validate the match BEFORE jumping to RESUME.** The probe is a flat glob — it matches any `.progress.md` regardless of git branch or merge state. Run the four-step **stale-merge + branch-match** validation in `preambles.md` § ⚡ First — validation sequence (detail). If either check fails, surface to user with **delete / park / RESUME anyway** options before continuing; do NOT auto-RESUME on a mismatch.
 
 **RESUME flow (skip Steps 1–7) — only after validation passes:**
+0. If `ai-docs/plans/.task-inflight` exists, claim it for this session: `echo "claim: $(date -u +%FT%TZ)" >> ai-docs/plans/.task-inflight`. A session begun by `/clear` or `--resume` carries a new session id, and the Stop gate holds only the session the marker names (§ In-flight marker).
 1. Read the `.progress.md` file
 2. Read spec — only `## Acceptance Criteria`
 3. Read only files from `## Files touched`
@@ -115,10 +116,16 @@ First action: confirm the spec exists. Spawn the `design-writer` Subagent (per `
 
 Spawn the `design-review` Subagent with **exactly** these five things: the invocation line (`Read .claude/agents/design-review.md and follow it.`), the spec path, the design path, the progress-file path (when one exists), and the round number — **nothing else**. No `Context:` paragraph, no amendment history, no "verify that X now matches Y", no framing of what changed. Anything beyond the list becomes a `major` `PROMPT-CONTAMINATION` finding against this orchestrator, and the reviewer then ignores the content it flagged. The amended artefacts are on disk; the round number is the only state a gate prompt carries. (Enumerated here rather than left as "per `design-review.md`" because the one in-flow spawn example an orchestrator used to meet — the amendment recipes' template — carried a `Context:` line and shipped the contamination: `ai-docs/harness-gaps.md` 2026-09-02.)
 
-Verdict: GO / ITERATE / STOP.
-- **GO** → proceed to Step 8. Spec-amending notes (AC/constraint changes) need Step 6 → Step 7 re-run, not a fold-in — see `reference.md` § Spec Amendment recipe. A note is spec-amending only on one of the four triggers of the AXIOM *the orchestrator originates no spec row* (below, § Design Amendment); any other note is the design's to fold in or a follow-up, whatever its severity.
-- **ITERATE** → back to Step 6 (max 3 rounds total).
-- **STOP** → fundamental flaw with the approach. Surface the verdict and `Issues` table to the user, do not start Step 8. Wait for direction (e.g., narrow scope, change approach, abandon).
+Verdict: GO / ITERATE / STOP. **The verdict alone decides whether design-review runs again** — owner's ruling, 2026-09-11. No judgement of how "trivial" a change is enters it, the orchestrator's included:
+
+| Verdict | Next |
+|---|---|
+| **ITERATE** | Back to Step 6, then Step 7 again (max 3 rounds total). |
+| **GO**, and none of its notes, minors or recommendations needs a spec change | `design-writer` folds every one of them into the design, and **design-review does not run again**. The orchestrator reads the design diff, confirms each item landed, records it in the progress file's `## GO notes`, and opens Step 8. |
+| **GO** with a note whose resolution needs a spec amendment — one of the four triggers of the AXIOM *the orchestrator originates no spec row* (below, § Design Amendment) | **The owner decides, note by note — never the orchestrator.** `AskUserQuestion`, the reviewer's note quoted verbatim, exactly three options: **(1) Amend the spec** — `spec-writer` amends it, then the full Step 6 → Step 7 cycle on the amended pair (`reference.md` § Spec Amendment recipe); **(2) Fix the design only** — `design-writer` folds the design-level part in, the spec stays as written, and design-review does not run again; **(3) Leave it** — nothing changes, and the flow continues as it is. The orchestrator may recommend one; it never picks one, and never routes a note it has not put to the owner. The answer goes to `prior_qa` verbatim, and `## GO notes` cites it. The GO's other notes fold in as in the row above. |
+| **STOP** | Fundamental flaw with the approach. Surface the verdict and `Issues` table to the user, do not start Step 8. Wait for direction (e.g., narrow scope, change approach, abandon). |
+
+A note about code the task merely touches is never spec-amending, whatever its severity: the design folds it in, or it is a follow-up. Why the verdict and not a triviality test: one question had three answers here — "no loop", "re-run if the change is non-trivial", "re-review is unconditional" — and the run that met them spent a design-review round on the orchestrator's pick (`ai-docs/harness-gaps.md` 2026-09-11).
 
 > **AXIOM — `*.spec.md` and `*.design.md` writes are subagent-owned.**
 > The `/task` orchestrator NEVER writes to `ai-docs/plans/*.spec.md` or `ai-docs/plans/*.design.md` (including `done/` siblings). All such writes go through the responsible Subagent: `spec-writer` for `*.spec.md`, `design-writer` for `*.design.md`. Orchestrator-side direct edits with `Edit` / `Write` are FORBIDDEN.
@@ -126,7 +133,7 @@ Verdict: GO / ITERATE / STOP.
 
 ### Design Amendment (re-entrant — triggered from Step 8 or Step 11)
 
-If implementation (Step 8) reveals a necessary deviation from the design, **or** a self-review finding (Step 11) requires a design change rather than a code fix: stop the step, surface to user for approval, **spawn the `design-writer` Subagent to update the design doc** (orchestrator MUST NOT edit `*.design.md` directly — see the AXIOM above), re-run Step 7 design-review (max 3 rounds total). On GO → resume the triggering step. See `reference.md` § Design Amendment recipe for the full procedure.
+If implementation (Step 8) reveals a necessary deviation from the design, **or** a self-review finding (Step 11) requires a design change rather than a code fix: stop the step, surface to user for approval, **spawn the `design-writer` Subagent to update the design doc** (orchestrator MUST NOT edit `*.design.md` directly — see the AXIOM above), re-run Step 7 design-review (max 3 rounds total). On GO → its notes route by Step 7's table, then resume the triggering step. See `reference.md` § Design Amendment recipe for the full procedure.
 
 > Silently implementing a deviation without triggering Design Amendment — FORBIDDEN.
 > Orchestrator-side direct edits to `*.design.md` / `*.spec.md` — FORBIDDEN (per the AXIOM above).
@@ -144,19 +151,19 @@ If implementation (Step 8) reveals a necessary deviation from the design, **or**
 >
 > Everything else a reviewer or a delegate raises about code the task merely touches — a duplicate, an adjacent defect, a refactor worth doing — is the design's to decide or a follow-up issue, never a Scope item, a Key decision or an AC (`spec-writer.md` Rule 10). **A question to the owner never offers "do it now" and "amend the spec" as one option:** the owner's go-ahead for extra work authorises it **in the design**, recorded there with their words. Measured 2026-09-09: that bundle turned a `note` about a test helper into a chain of spec amendments, with the design and review rounds they cost, on an issue that never mentioned the helper (`ai-docs/learnings.md` 2026-09-09). The orchestrator neither widens nor narrows the spec and writes none of its words: it routes, and it records the owner's answers.
 
-> **Amendment re-review is unconditional — exemption is the owner's, per instance.** No category of "mechanical" edits exempts a re-run; only the owner's explicit word in the surfaced answer does, for that instance only. Cap exhausted + amendment required → the owner raises the cap as an explicit number; the orchestrator never invents a bypass.
+> **Amendment re-review is unconditional — exemption is the owner's, per instance.** No category of "mechanical" edits exempts a re-run; only the owner's explicit word in the surfaced answer does, for that instance only. Cap exhausted + amendment required → the owner raises the cap as an explicit number; the orchestrator never invents a bypass. **Its reach:** the Design Amendment recipe (Step 8, Step 11) and the Spec Amendment recipe a GO note enters by the owner's option (1). Folding a GO's notes is neither and takes no further review (Step 7); option (2) is the owner's per-instance exemption, given by choosing it.
 
 ---
 
 ### Step 8: Implementation
 
-> First action: verify spec + design + GO verdict exist AND that every `note`/`minor`/recommendation from the latest design-review GO has been written back into the design document. "Applied in code later" is NOT the same as "resolved in the design"; the design doc is the implementation contract. See `reference.md` § Step 8 — first-action GO-notes verification (detail). Unresolved GO-notes = previous steps incomplete.
+> First action: verify spec + design + GO verdict exist AND that every `note`/`minor`/recommendation from the latest design-review GO has been written back into the design document — or, for a note the owner chose to leave (Step 7, option (3)), recorded as left — each with its row in the progress file's `## GO notes`. "Applied in code later" is NOT the same as "resolved in the design"; the design doc is the implementation contract. See `reference.md` § Step 8 — first-action GO-notes verification (detail). Unresolved GO-notes = previous steps incomplete.
 
 - **The feature branch already exists** — `/interview` Step 2 created it before the first commit of this flow, and Steps 6–7 have been committing to it. Verify, do not re-create:
   ```bash
   git branch --show-current    # must not be main; must match the spec's date-name
   ```
-  If it *is* `main`, the interview was skipped (a saved spec was reused): `git checkout -b feat/YYYY-MM-DD-name` now, using the spec file's date-name. Record the branch name in the progress file. Create the in-flight marker: `date -u +%FT%TZ > ai-docs/plans/.task-inflight` (gitignored; Stop-hook contract — see § In-flight marker).
+  If it *is* `main`, the interview was skipped (a saved spec was reused): `git checkout -b feat/YYYY-MM-DD-name` now, using the spec file's date-name. Record the branch name in the progress file. Create the in-flight marker: `date -u +%FT%TZ > ai-docs/plans/.task-inflight` (gitignored; Stop-hook contract — see § In-flight marker); a `PostToolUse` hook records this session as its owner.
 - **Visibility from the first group return (binding).** When the FIRST Step-8 group returns and its subtask commits are in: `git push -u origin <branch>`. Every subsequent group return and every Step-11 fix round pushes. **No PR yet** — the PR is created at Step 12, after self-review APPROVE; CI on the PR is the FINAL gate (AGENTS.md § Workflow carve-out). The push is visibility and survivability, not presentation.
 - **Before every `git commit` in this step:** run `git branch --show-current` and confirm it is NOT `main`. If it is — stop immediately, do not commit, apply the recovery procedure in AGENTS.md.
 - **Before every `git commit` in this step:** stage a modified/untracked `ai-docs/learnings.md` with the related code change, and after every push give a later-written entry its own commit in the same turn — AGENTS.md § *Workflow* (learnings are part of the deliverable). Order: write learning → `git add ai-docs/learnings.md` → commit → push.
@@ -286,6 +293,8 @@ After the PR is created, the unconditional PR-body re-read rule (AGENTS.md *Work
 ## In-flight marker (Stop-hook contract)
 
 `ai-docs/plans/.task-inflight` (gitignored) exists from Step 8 entry to Step 12 item 13. The `Stop` hook blocks ending a turn while it exists, unless the turn appended a hand-back line `handback: <ISO-8601 UTC> <reason ≤ 10 words>` to the marker — do that only when the turn genuinely hands control to the user (an `AskUserQuestion`, a surfaced blocker, a user stop) or out of its hands to a background delegate. **One token buys one stop: the hook spends it as it permits that stop, renaming it `handback-spent:`.** You never edit the marker to resume — appending is the only write you make to it. Full contract: `reference.md` § In-flight marker. The rule it enforces: **naming the next step is not performing it** — a turn inside an active `/task` either advances the flow with tool calls or explicitly hands back.
+
+**The gate is the owning session's, and no one else's.** The marker names its owner — the session that created it, or the last one to claim it on RESUME — in an `owner:` line a `PostToolUse` hook writes from its own input. A stop by any other session in the same working tree is not gated and writes nothing to the ledger: on 2026-09-11 a conversation the owner ran beside a `/task` was blocked at its stop and left a `blocked:` line in the run's ledger (`ai-docs/harness-gaps.md` 2026-09-11). A marker with no `owner:` line gates every session, as before.
 
 ## Patterns
 
