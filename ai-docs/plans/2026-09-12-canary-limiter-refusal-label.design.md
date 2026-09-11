@@ -37,6 +37,14 @@ the caller's classification and the limiter's decision read one instant and can
 never disagree
 `[measured 0b1feaa:internal/tg/caller.go:70 · grep -n "acquire(call, time.Now()" internal/tg/caller.go → 70: …acquire(call, time.Now(), deadline, hasDeadline)]`.
 
+**`now` is read once per loop iteration, on the line beside the `ctx.Deadline()`
+read — inside the retry loop, never above it.** The limiter consultation is a
+per-pass step
+`[measured 0b1feaa:internal/tg/caller.go:68-70 · read → the for loop opens at 68 and the Deadline read and the acquire call are its first two statements]`,
+so a `now` hoisted above the loop would be stale on every later pass: it would
+mis-start the fixed-point search, hand `evict` a past instant, and mislabel a
+second-pass refusal against a deadline it no longer describes.
+
 A small pure helper in `internal/tg/caller.go` answers "which cause does this
 refusal carry": an already-passed deadline yields a cause wrapping
 `context.DeadlineExceeded` with `%w`, and every other refusal yields today's
@@ -72,7 +80,18 @@ for it
   `now == deadline` a zero wait is still granted (the refusal predicate is
   `t.After(deadline)`), so a refusal at that instant is necessarily a real-wait
   refusal and the deadline has not passed — which is the world AC3 governs. A
-  non-strict `!now.Before(deadline)` would mislabel it.
+  non-strict `!now.Before(deadline)` would mislabel it. **This deliberately
+  disagrees with `context`'s own boundary, and the disagreement is the point:**
+  `context.WithDeadline` treats `dur <= 0` as already expired, so a context whose
+  deadline equals the instant it was built at is `DeadlineExceeded` from
+  construction
+  `[measured go1.26.5 GOROOT src/context/context.go:644-647 · read → the dur <= 0 branch cancels with DeadlineExceeded, commented "deadline has already passed"]`,
+  while this helper labels a refusal decided at exactly that instant `network`.
+  The predicate tracks the **limiter's** boundary, not the context's, because it
+  is explaining the limiter's decision; matching `context` instead would label a
+  refusal that the limiter made for a genuine wait as a deadline breach. A later
+  reader tempted to "align them" is looking at a test that pins this row, not at
+  an oversight.
 - **D3 — The deadline form wraps `context.DeadlineExceeded` directly, never
   `ctx.Err()`.** Two independent reasons: a context that is *cancelled* while
   its deadline is still ahead would make `ctx.Err()` yield `context.Canceled`,
@@ -82,10 +101,18 @@ for it
   so it lags the wall clock by however long that callback is delayed — the caller
   would then refuse for one reason and label for another, which is the
   load-sensitivity class #84 documents.
-- **D4 — The deadline form's message still names the limiter.** A deadline
-  breached during the HTTP wait and a refusal decided past the deadline now
-  render the same label, so the log line is what an operator tells them apart by
-  — that, and `Attempts` being zero on this one `[derived → AC2]`.
+- **D4 — The deadline form's message is `limiter: the context deadline had
+  already passed`, wrapping `context.DeadlineExceeded` with `%w`.** The text is
+  named here because D4's whole property depends on it: reusing the wait form's
+  wording would make the two `timeout` sources indistinguishable in a log line
+  and no test would notice. So the AC1 test asserts the rendered cause too, not
+  only the chain — the discriminator is gated, not merely described
+  `[derived → AC1]`. Why it matters: a deadline breached during the HTTP wait and
+  a refusal decided past the deadline now render the same `reason` label, and the
+  message is the only discriminator that holds on **every** pass. `Attempts` is
+  zero on a **first-pass** refusal only; a limiter refusal on a later pass carries
+  the attempts already made
+  `[measured 0b1feaa:internal/tg/caller.go:77-79,90 · read → the !ok branch passes the loop's attempts counter, which doAttempt's caller increments at 90]`.
 - **D5 — `internal/health` carries no production edit.** AC2 is a property of
   the existing classifier once AC1 holds; adding a branch there would be a second
   encoding of the same rule.
@@ -131,12 +158,20 @@ for it
   retimed
   `[measured PR #90 (merged) · gh pr view 90 --json state,files → MERGED; internal/tg/caller_test.go and internal/health/probe_test.go among the changed paths]`.
   The spec's Out-of-scope row 2 gives their wall-clock shape to #84.
+- **`Limiter.acquire`'s doc comment — read, and deliberately left.** It describes
+  the refusal as "when the required wait would end after deadline", which stays
+  true of both worlds (`t > deadline` covers each), and the limiter still makes
+  one undivided decision, so editing it would document a split that does not
+  exist there
+  `[measured 0b1feaa:internal/tg/limit.go:298-310 · read → the doc comment states the (zero, false, nil) refusal in exactly those terms]`.
+  Recorded because that comment is where a future reader splitting the worlds
+  again would start.
 
 ## Decomposition
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | Hoist `now` out of the `acquire` argument list; add the pure refusal-cause helper (doc comment stating the precondition that a refusal without a deadline is unreachable, and carrying no path, section or identifier outside this package per DOC-4); call it from the `!ok` branch. Tests first, in the same subtask: the helper's table test, the AC1 end-to-end refusal, and the AC3 time-still-left refusal under `synctest`. | `internal/tg/caller.go`, `internal/tg/caller_test.go` | — |
+| 1 | Read `now` into a variable on the line beside the loop's `ctx.Deadline()` read — **inside** the retry loop, once per pass (D2 note in § The chosen shape) — and pass it to `acquire`; add the pure refusal-cause helper, whose deadline form carries D4's message wrapping `context.DeadlineExceeded` with `%w` (doc comment stating the precondition that a refusal without a deadline is unreachable, and carrying no path, section or identifier outside this package per DOC-4); call it from the `!ok` branch. Tests first, in the same subtask: the helper's table test, the AC1 end-to-end refusal, and the AC3 time-still-left refusal under `synctest`. | `internal/tg/caller.go`, `internal/tg/caller_test.go` | — |
 | 2 | Add the canary-label test: a probe whose context deadline has already passed is counted a failure with `reason` `timeout`, and the fake Bot API handler is never reached. | `internal/health/probe_test.go` | 1 |
 
 ## Handoff plan
@@ -188,13 +223,14 @@ groups.
 
 ## Test Design
 
-All claims below are about tests that do not exist yet.
-
 **1. The refusal-cause helper — table test, `internal/tg/caller_test.go`.**
 - Entry point: the pure helper subtask 1 adds.
 - Scenarios, one row each: deadline already passed → the chain carries
-  `context.DeadlineExceeded`; `now` equal to the deadline → it does not; deadline
-  still ahead → it does not; no deadline → it does not.
+  `context.DeadlineExceeded`; `now` equal to the deadline → it does not (the
+  boundary D2 names, where this predicate departs from `context`'s own); deadline
+  still ahead → it does not; no deadline → it does not. Each row also checks
+  which of the two wordings the cause renders, so D4's message is pinned at the
+  unit level as well as end to end.
 - Fixtures: a fixed base instant and offsets from it; no client, no server, no
   clock read. `[derived → AC1, AC3]`
 - Discriminating power: under a mutant relaxing D2's predicate to
@@ -206,9 +242,14 @@ All claims below are about tests that do not exist yet.
   fake Bot API server and default transport fixture.
 - Scenario: a context whose deadline is already in the past. Assert the returned
   error is this package's typed error, that its method is `getMe` and its
-  `Attempts` is zero (so the failure is the pre-attempt refusal, not an HTTP
-  timeout and not a short-circuit above this package), and that the chain carries
-  `context.DeadlineExceeded`. `[derived → AC1]`
+  `Attempts` is zero (this refusal is on the first pass, so the failure is the
+  pre-attempt refusal, not an HTTP timeout and not a short-circuit above this
+  package), and that the chain carries `context.DeadlineExceeded`.
+  `[derived → AC1]`
+- Also assert the **rendered cause** — that it names the deadline as already
+  passed and is not the wait-does-not-fit wording. This is what pins D4's
+  operator discriminator to a gate instead of to prose: reusing the wait form's
+  text would otherwise satisfy AC1 and silently void D4. `[derived → AC1, D4]`
 - Fixtures: none beyond the existing test-client helper. No sleep: the deadline
   is in the past by construction.
 - Discriminating power: it must be seen RED against the pre-change caller, where
