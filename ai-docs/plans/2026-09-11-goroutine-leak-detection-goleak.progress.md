@@ -1,5 +1,5 @@
 # Progress: Goroutine-leak detection in the test suite: adopt goleak — ACTIVE
-_Updated: 2026-09-11 16:33 UTC_
+_Updated: 2026-09-11 17:47 UTC_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -11,13 +11,13 @@ _Updated: 2026-09-11 16:33 UTC_
 **Spec:** ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.spec.md
 **Design:** ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.design.md
 
-**current_step:** Step 8 — subtask 5 of 6 complete (Group A done)
-**last_passed_gate:** make verify | 2026-09-11T17:10Z | 10237d7
+**current_step:** Step 8 — subtask 6 of 6 complete (Groups A and B done)
+**last_passed_gate:** harness guards over the subtask-6 docs (CI's relative-link check, `check-citations.sh`, every guard suite and `check-*.sh` of CI's Harness guards job) | 2026-09-11T17:47Z | 17bc5c2 + the subtask-6 edits
 **entry_args:** 74
 
 ## Next action
 
-**Do this immediately:** Group B — subtask 6 of the design's `## Decomposition` (the docs: the *Goroutine-leak detection* section in `ai-docs/go-test-conventions.md`, one `AGENTS.md` bullet in § Go Test Conventions, KD-36 in `ai-docs/key-decisions.md`), describing the shape Group A shipped by symbol; one commit. Group A (subtasks 1–5) is complete.
+**Do this immediately:** Orchestrator — re-validate the Group B return (subtask 6's commit: the three docs files, `ai-docs/learnings.md` and this file), then leave Step 8 for Step 9 (Verify): the design's four verification probes and the AC Status table. Every subtask of the decomposition is complete.
 
 ## Subtasks
 
@@ -31,7 +31,7 @@ Group A — code (`code-writer`):
 
 Group B — instructions (`general-purpose`, inherited model):
 
-- [ ] 6. Docs — `ai-docs/go-test-conventions.md` section, one `AGENTS.md` bullet, KD-36 in `ai-docs/key-decisions.md`
+- [x] 6. Docs — `ai-docs/go-test-conventions.md` section, one `AGENTS.md` bullet, KD-36 in `ai-docs/key-decisions.md`
 
 ## Decisions log
 
@@ -47,6 +47,7 @@ Group B — instructions (`general-purpose`, inherited model):
 - **Step 8 (orchestrator, Group A return)**: re-validated at 10237d7 — branch and `base_commit` unchanged, tree clean; the orchestrator ran `make verify` itself and it exited 0 (every route's packages `ok`).
 - **Step 8 (orchestrator, race-route flakes)**: the delegate's single `internal/scheduler` race-route failure was investigated before the push. The orchestrator's own uncached `-race` runs (`go run ./cmd/testpg -- go test -race -count=1 …`) failed in 4 of 14 branch runs — `internal/tg` `TestCaller_LimiterDelaysAndHonoursDeadline` twice, `internal/ingest` `TestRun_cancellationLeavesTheUpdateUnsettled`, `internal/health` `TestTelegramProber_Timeout`, none a leak report, two of them in runs that excluded `internal/leaktest` — and in 0 of 10 runs of `main` (eb7cd1c, a scratch clone). Under induced CPU load, interleaved, `main` failed 1 of 3 on the same `internal/ingest` test and the branch 1 of 3 on the `internal/tg` one. Reading: pre-existing wall-clock-sensitive tests whose rate follows machine load; `leaktest.Main` does nothing before `run(m)` and the failing tests' code paths are unchanged apart from `tgtest.New`'s base context. Not proven that the branch leaves the rate unchanged — recorded as a pre-existing defect for a follow-up, not fixed in this task.
 - **Step 8 (orchestrator, `make test-contention`)**: red on `main` and on the branch in two interleaved runs each, exhaustion scan clean on all four: `cmd/bot` migration tests fail on `pg_try_advisory_lock: unexpected EOF` under induced load. Pre-existing on `main`; the design's Open questions row already records the observation. Follow-up candidate, out of this task's scope.
+- **Subtask 6 (Group B complete)**: `ai-docs/go-test-conventions.md` gains § *Goroutine-leak detection*, placed after § Structural guards — the two `TestMain` forms and their runners; when the check runs (after the runner, only on zero, goleak's own retry and no window of its own); what it reports; the gate-log shape (package `FAIL`, no `--- FAIL:` line) with one reproducer per route, `-count=1`, never `-run`; the `Ignore{Function, Anywhere, Reason}` shape, admission, refusals and per-entry evaluation; the filtered-run skip; the guard by symbol (`TestGuard_EveryPackageWithTestsRunsTheDetection`, `TestGuard_scratch`), why it walks in-process, why it asks `go/build`, its two configurations and the third a new tag would need; and the D8 fix as the fix-at-the-owner example. `AGENTS.md` § Go Test Conventions gains one bullet after the race-gate bullet, pointing at that section. `ai-docs/key-decisions.md` gains `## Test suite (2026-09-11)` with KD-36 (decision, D2's composition, every rejected alternative of the design, consequences). Every behavioural claim was read against the shipped code (`leaktest.Main`/`check`/`filtered`/`namesModuleCodeIn`, `guard_test.go`'s `checkTree`/`validateTestMainShape`/`buildConfigs`, `tgtest.New`/`Delayed`, `tg`'s caller refusing a body-less request) or against goleak@v1.3.0 in the module cache (`Option`'s unexported method, the exported surface, `VerifyTestMain`'s exit, the unexported retry settings). Two claims were probed rather than read, each with a throwaway `zz_leakprobe_test.go` deleted in the same command (tree clean after each): a parked goroutine in `internal/backoff` gives `PASS`, the `leaktest:` line, goleak's stack with its `created by` line, then `FAIL` for the package and no `--- FAIL:` line; the same in `cmd/commentrefs` (package `main`) names the function under its import path. Propagation sweep (`rg -n -i` for goleak / goroutine leak / leak check / leaktest / TestMain, and for the test-conventions surfaces, over `.claude/`, `AGENTS.md`, `ai-docs/`): nothing the diff makes false; the `AGENTS.md` note on a `TestMain` reading the DSN before `m.Run()` still holds. A conduct slip during the subtask is recorded in `ai-docs/learnings.md` (2026-09-11, instruction-file size measured inside `/task`); the figure reached no artefact. Observations for the orchestrator, not acted on because they are outside subtask 6's files: (1) the guard enumerates through `srcguard.WalkSubtree` but parses each test file with `go/parser` directly, where § Structural guards says to parse through `srcguard` (`srcguard.ParseFile` exists with the same fail-fatal contract); (2) `check` returns on the first refusal, so with two malformed entries only the first is named — D5 says "every refusal named"; (3) `.claude/agents/self-review.md` § 3 mirrors the § Go Test Conventions rules and carries no row for the new one, including the ignore-entry admission D5 leaves to review — the keyword sweep found no match there, so the Propagation Rule's procedure does not require one.
 
 ## Key discoveries (don't re-investigate)
 
@@ -83,3 +84,7 @@ Group B — instructions (`general-purpose`, inherited model):
 - `internal/testdb/testdb.go` — subtask 4 (doc comment only)
 - new `main_test.go` in `cmd/commentrefs`, `cmd/importguard`, `cmd/testpg`, `internal/backoff`, `internal/commentref`, `internal/config`, `internal/health`, `internal/repotest`, `internal/srcguard`, `internal/tg`, `internal/tgtest` — subtask 4 (runner `(*testing.M).Run`)
 - `internal/leaktest/guard_test.go` — subtask 5 (new)
+- `ai-docs/go-test-conventions.md` — subtask 6 (§ *Goroutine-leak detection*, new)
+- `AGENTS.md` — subtask 6 (one bullet in § Go Test Conventions)
+- `ai-docs/key-decisions.md` — subtask 6 (`## Test suite (2026-09-11)`, KD-36)
+- `ai-docs/learnings.md` — subtask 6 (one appended entry)

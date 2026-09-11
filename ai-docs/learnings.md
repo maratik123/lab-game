@@ -470,3 +470,9 @@ wrong-surface text by message twelve.
 **at:** 10237d7
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-11 — process — measured an instruction file's size inside `/task`, the shape the 2026-09-04 entry recorded inside `/improve`
+**What happened:** On `/task 74` Group B — the docs subtask, which adds a bullet to `AGENTS.md` — I wanted to know whether any cap bound that bullet, and ran one command that both printed `.claude/skills/ai-audit/checklist-m.md` § Sub-check 9 and ran `wc -c AGENTS.md CLAUDE.md`. The page it printed names `/task` in its FORBIDDEN row, and forbids the measurement itself, not only reporting it. The figure reached no artefact, and the bullet was written as the design specified rather than fitted to it. Same shape as the `/improve` recurrence: the question "how big is it?" was asked before the rule that forbids asking it had been read — and batching the lookup of the rule with the command the rule might forbid guaranteed the command ran first.
+**Rule:** In `/task`, `/interview`, `/bugfix`, `/improve`, either reviewer or CI, never count the bytes or lines of a file in Sub-check 9's covered set, whatever the purpose. Wondering whether an edit fits a size limit is itself the tell: ship the edit as specified and leave size to `/ai-audit`. Never batch reading a rule with a command that rule might forbid — read the rule, then decide whether to run anything.
+**Kind:** correction
+**Escalated?** no
