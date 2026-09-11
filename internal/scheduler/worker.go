@@ -142,7 +142,11 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 // interval until ctx is done, returning ctx.Err(). If Reconcile fails,
 // Run returns its error without entering the loop at all — a worker
 // that could not reconcile is one whose recurrences may be missing, and
-// running anyway would hide that behind a quiet loop.
+// running anyway would hide that behind a quiet loop. When ctx is
+// already done at the point Reconcile fails, Run reports ctx.Err()
+// instead of Reconcile's error, since a failure observed after
+// cancellation is a cancellation, not a reconcile defect, however the
+// underlying driver happened to phrase it.
 // RunOnce does not call Reconcile: it is the single-cycle primitive the
 // tests drive, and an implicit reconcile inside it would make every
 // cycle test a reconcile test too.
@@ -161,6 +165,9 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 // before Run's first cycle makes Run return nil without starting one.
 func (w *Worker) Run(ctx context.Context) error {
 	if err := w.Reconcile(ctx); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return fmt.Errorf("scheduler: run: %w", err)
 	}
 
