@@ -17,6 +17,7 @@ import (
 
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/ingest"
+	"github.com/maratik123/lab-game/internal/leaktest"
 	"github.com/maratik123/lab-game/internal/repotest"
 	"github.com/maratik123/lab-game/internal/scheduler"
 	"github.com/maratik123/lab-game/internal/store"
@@ -25,7 +26,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(testdb.Main(m))
+	os.Exit(leaktest.Main(m, testdb.Main))
 }
 
 // assembleTestEnv returns a fresh, fully valid environment for assemble:
