@@ -225,8 +225,9 @@ d=$(new_case stamp-handback)
 printf '2026-09-11T17:00:00Z\nowner: session-a\n' > "$d/$marker_rel"
 stamp_run "$d" session-b "" 'echo "handback: 2026-09-11T19:00:00Z awaiting delegate return" >> ai-docs/plans/.task-inflight'
 stamp_run "$d" session-b "" 'cat ai-docs/plans/.task-inflight'
-[ "$(owners "$d")" = 1 ] && [ "$(last_owner "$d")" = session-a ] \
-  || { echo "FAIL [stamp-handback]: a hand-back or a read changed the owner"; failures=$((failures + 1)); }
+if [ "$(owners "$d")" != 1 ] || [ "$(last_owner "$d")" != session-a ]; then
+  echo "FAIL [stamp-handback]: a hand-back or a read changed the owner"; failures=$((failures + 1))
+fi
 
 d=$(new_case stamp-subagent)
 printf '2026-09-11T17:00:00Z\n' > "$d/$marker_rel"
@@ -238,8 +239,9 @@ d=$(new_case stamp-claim)
 printf '2026-09-11T17:00:00Z\nowner: session-a\n' > "$d/$marker_rel"
 stamp_run "$d" session-c "" "$claim"
 stamp_run "$d" session-c "" "$claim"
-[ "$(last_owner "$d")" = session-c ] && [ "$(owners "$d")" = 2 ] \
-  || { echo "FAIL [stamp-claim]: a claim did not move ownership exactly once"; failures=$((failures + 1)); }
+if [ "$(last_owner "$d")" != session-c ] || [ "$(owners "$d")" != 2 ]; then
+  echo "FAIL [stamp-claim]: a claim did not move ownership exactly once"; failures=$((failures + 1))
+fi
 
 d=$(new_case stamp-no-marker)
 stamp_run "$d" session-a "" "$create"
