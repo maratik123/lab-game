@@ -11,8 +11,8 @@ _Updated: 2026-09-11 16:33 UTC_
 **Spec:** ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.spec.md
 **Design:** ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.design.md
 
-**current_step:** Step 8 — subtask 1 of 6 complete
-**last_passed_gate:** golangci-lint run ./internal/tgtest/... ./internal/tg/... | 20037f7
+**current_step:** Step 8 — subtask 2 of 6 complete
+**last_passed_gate:** golangci-lint run ./internal/leaktest/...
 **entry_args:** 74
 
 ## Next action
@@ -24,8 +24,8 @@ _Updated: 2026-09-11 16:33 UTC_
 Group A — code (`code-writer`):
 
 - [x] 1. `internal/tgtest` — D8 fix, its tests (T1), and the `internal/tg/retry_test.go` doc-comment rewrite (commit 20037f7)
-- [ ] 2. `internal/leaktest` — `Main`, `Ignore`, the check, T2's unit tests, the package's own `TestMain`  ← CURRENT
-- [ ] 3. `internal/testdb` — D9: `callersOfMain` as a parse, T3's scratch case
+- [x] 2. `internal/leaktest` — `Main`, `Ignore`, the check, T2's unit tests, the package's own `TestMain`
+- [ ] 3. `internal/testdb` — D9: `callersOfMain` as a parse, T3's scratch case  ← CURRENT
 - [ ] 4. Rollout — every package with tests declares `TestMain` in the D2 form; the whole suite on every route
 - [ ] 5. The D7 guard — `internal/leaktest/guard_test.go` (T5)
 
@@ -40,6 +40,7 @@ Group B — instructions (`general-purpose`, inherited model):
 - **Step 7**: design-review round 2 GO with design-internal notes only; folded in at 2fe8592 and re-reviewed as round 3, the orchestrator having judged the fold-in non-trivial; the harness's conflicting rules on that point are recorded in `ai-docs/harness-gaps.md` (2026-09-11 entry).
 - **Step 7**: design-review round 3 GO, the 3-round cap reached; its notes folded in at 364657b. The owner exempted this fold-in from re-review, on the condition that the orchestrator checks each note in the design diff; the orchestrator read the diff 2fe8592..364657b — the race-tag guard pass with its T5 case, T2's wiring case through `Main`, the two corrected measurement tags, and the CI-runtime Risks row with T4's STOP extended to the first CI run are all present, and no reviewer suggestion was rejected or resolved by another route.
 - **Subtask 1** (commit 20037f7): `tgtest.New` now gives its `*http.Server` a base context of its own, cancelled by `tb.Cleanup` after the server closes; `Delayed` waits on its duration or on the request's context, whichever comes first. T1's three cases (cleanup, ordering, synctest bubble) went into `internal/tgtest/tgtest_test.go`; `internal/tg/retry_test.go`'s `TestCaller_AttemptTimeoutAbandonsAttempt` doc comment lost its now-false real-time rationale, body unchanged. The design's two red demonstrations (today's `Delayed`, and the half-fix cancelling nothing) were exercised by hand against cp-backups during authoring, not committed. No decision-anchor token (`D8`, `KD-26`) survived into the committed comments — `make comment-refs`' equivalent check (the pre-commit hook's decision-anchor scan) caught two on the first attempt and both were rewritten to describe behaviour instead. Gates run and green: `go build ./...`, `go test ./internal/tgtest/...`, `go test -race ./internal/tgtest/...`, `golangci-lint fmt -d` (clean), `golangci-lint run ./internal/tgtest/... ./internal/tg/...`.
+- **Subtask 2**: `internal/leaktest/leaktest.go` implements `Ignore`, `Main` and the unexported `check` behind it — refusals (nil runner, blank Reason, blank Function, a Function naming this module's own code, an undeterminable module path), the clean check via `goleak.Find`, the filtered-run skip, and the per-entry evaluation (accumulating every not-needed or module-code-excusing entry into one report rather than returning on the first, so two entries matching the same goroutine are both named). The module path comes from `debug.ReadBuildInfo().Main.Path`, never a literal; the filtered predicate reads `test.run`/`test.skip`/`test.list`/`test.short` through an injected `flag.Lookup`-shaped function. `internal/leaktest/leaktest_test.go` (internal, whitebox) carries every T2 scenario, including the two half-alone cases (a goroutine excused at the top of its stack that also carries a module frame lower down; a goroutine whose frames are all standard library but whose creator line is this module's code) and the real module-path/real filter-predicate/wiring cases; `internal/leaktest/main_test.go` (external) is the package's own `TestMain` in the `(*testing.M).Run` form. Two authoring-time bugs caught by the tests themselves before commit: (1) the AfterFunc-callback half-alone case initially raced — `goleak.Find` ran before the timer's goroutine had even started, so both the excused and unexcused checks read clean regardless of the fix; fixed by synchronizing on a `started` channel closed inside the callback, confirmed against a scratch `go.uber.org/goleak@v1.3.0` fixture outside the module first. (2) the two-identical-entries case failed because the per-entry loop originally returned on the first not-needed entry, so only one of the two was ever named — fixed by accumulating across the whole ignore set before returning. Gates run and green: `go build ./...`, `go test ./internal/leaktest/...`, `go test -race ./internal/leaktest/...`, `golangci-lint fmt -d` (clean), `golangci-lint run ./internal/leaktest/...` (0 issues after fixing 6 errcheck findings on the unchecked `fmt.Fprint*` returns and 1 noctx finding on `net.Listen`, switched to `(*net.ListenConfig).Listen`). No decision-anchor token survived into the committed files (checked by grep before commit).
 
 ## Key discoveries (don't re-investigate)
 
@@ -68,3 +69,6 @@ Group B — instructions (`general-purpose`, inherited model):
 - `internal/tgtest/tgtest.go` — subtask 1
 - `internal/tgtest/tgtest_test.go` — subtask 1
 - `internal/tg/retry_test.go` — subtask 1
+- `internal/leaktest/leaktest.go` — subtask 2 (new)
+- `internal/leaktest/leaktest_test.go` — subtask 2 (new)
+- `internal/leaktest/main_test.go` — subtask 2 (new)
