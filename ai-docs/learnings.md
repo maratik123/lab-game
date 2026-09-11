@@ -518,3 +518,15 @@ wrong-surface text by message twelve.
 **Rule:** A claim that something does not exist — a validation, a check, a branch — is made only after a raw read of the path that would contain it. Never state one to the owner off a search tool's silence, even as a side remark in a plan.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — spawned design-review with `key: value` lines instead of the contract's line shapes
+**What happened:** At `/task` Step 7 I built the design-review spawn prompt as `spec_path: …` / `design_path: …` / `round: 1`, copying the field style the spec-writer prompt uses. The content was exactly the five permitted things, but the shapes are not the ones the spawn-prompt contract fixes, and the `PreToolUse` hook refused the spawn. Re-spawning with `Spec:` / `Design:` / `Round:` lines went through.
+**Rule:** A gate subagent's spawn prompt is a fixed set of LINE SHAPES, not a set of facts to render in any style. Copy the permitted lines from the agent's spawn-prompt contract literally — `Read .claude/agents/<name>.md and follow it.`, `Spec:`, `Design:`, `Progress:`, `<sha>..HEAD`, `Round:` — and never carry a sibling flow's field style across to it.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — tooling — a delegate left `.go` scratch files in `tmp/`, and `go build ./...` walks that directory
+**What happened:** The round-1 `self-review` agent wrote `tmp/caller_test_pre.go`, `tmp/probe_test_pre.go` and `tmp/fixed_test.go` as controls and mutant fixtures and did not remove them. The next `make verify` died at its first Go target with `found packages tg (caller_test_pre.go) and health (probe_test_pre.go) in /home/syt/lab-game/tmp` — a RED gate that said nothing about the change under test. The instruction file already says such scratch is the writer's to keep out; the failure mode it does not name is that a `.go` file there breaks the module build for everyone downstream, so the cost lands on the next agent, not on the one that wrote it.
+**Rule:** A scratch copy of a Go source file never keeps a `.go` extension under `tmp/`. Save it as `.go.txt` or `.bak`, or delete it in the same command that used it. Whoever finds a stray `*.go` under `tmp/` reads it before deleting — confirm it is a copy of a tracked state and not the only copy of something — and then removes it, because a gate cannot run until it is gone.
+**Kind:** correction
+**Escalated?** no

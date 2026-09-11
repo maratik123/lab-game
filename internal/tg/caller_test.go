@@ -171,6 +171,159 @@ func TestCaller_LimiterDelaysAndHonoursDeadline(t *testing.T) {
 	}
 }
 
+// TestLimiterRefusalCause is a table test over limiterRefusalCause's whole
+// predicate: only an already-passed deadline yields a cause wrapping
+// context.DeadlineExceeded; the boundary (now == deadline), a deadline
+// still ahead, and no deadline at all must all yield the unchanged
+// wait-does-not-fit wording. A mutant relaxing the predicate to
+// !now.Before(deadline) must flip only the "now == deadline" row.
+func TestLimiterRefusalCause(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name        string
+		now         time.Time
+		deadline    time.Time
+		hasDeadline bool
+		wantWrapped bool
+	}{
+		{
+			name:        "deadline already passed",
+			now:         base.Add(time.Second),
+			deadline:    base,
+			hasDeadline: true,
+			wantWrapped: true,
+		},
+		{
+			name:        "now equal to deadline",
+			now:         base,
+			deadline:    base,
+			hasDeadline: true,
+			wantWrapped: false,
+		},
+		{
+			name:        "deadline still ahead",
+			now:         base,
+			deadline:    base.Add(time.Second),
+			hasDeadline: true,
+			wantWrapped: false,
+		},
+		{
+			name:        "no deadline",
+			now:         base,
+			deadline:    time.Time{},
+			hasDeadline: false,
+			wantWrapped: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := limiterRefusalCause(tc.now, tc.deadline, tc.hasDeadline)
+			if got == nil {
+				t.Fatal("limiterRefusalCause: got nil, want a non-nil cause")
+			}
+			isDeadline := errors.Is(got, context.DeadlineExceeded)
+			if isDeadline != tc.wantWrapped {
+				t.Errorf("errors.Is(got, context.DeadlineExceeded) = %t, want %t", isDeadline, tc.wantWrapped)
+			}
+			wantsPassedWording := strings.Contains(got.Error(), "already passed")
+			if wantsPassedWording != tc.wantWrapped {
+				t.Errorf("got = %q, wording mismatch: contains \"already passed\" = %t, want %t", got.Error(), wantsPassedWording, tc.wantWrapped)
+			}
+			if !tc.wantWrapped && !strings.Contains(got.Error(), "required wait ends after") {
+				t.Errorf("got = %q, want the unchanged wait-does-not-fit wording", got.Error())
+			}
+		})
+	}
+}
+
+// TestCaller_ExpiredDeadlineAtLimiterIsContextError asserts that a Bot API
+// call the limiter refuses at an instant when the call's own context
+// deadline has already passed fails with an error whose chain carries
+// context.DeadlineExceeded, on the first pass (Attempts == 0), and whose
+// rendered cause names the deadline as already passed rather than
+// reusing the wait-does-not-fit wording — the operator discriminator
+// between the two refusal worlds, gated here rather than left to prose.
+func TestCaller_ExpiredDeadlineAtLimiterIsContextError(t *testing.T) {
+	t.Parallel()
+	srv := tgtest.New(t, tgtest.Success(nil))
+	c := newTestClient(t, srv, nil)
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	_, err := c.API().GetMe(ctx)
+	if err == nil {
+		t.Fatal("GetMe: expected an error from the already-passed deadline")
+	}
+	var tgErr *Error
+	if !errors.As(err, &tgErr) {
+		t.Fatalf("GetMe: error %v is not a *tg.Error", err)
+	}
+	if tgErr.Method != "getMe" {
+		t.Errorf("Method = %q, want %q", tgErr.Method, "getMe")
+	}
+	if tgErr.Attempts != 0 {
+		t.Errorf("Attempts = %d, want 0 (a first-pass limiter refusal costs no attempt)", tgErr.Attempts)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("errors.Is(err, context.DeadlineExceeded) = false, want true")
+	}
+	if !strings.Contains(tgErr.Err.Error(), "already passed") {
+		t.Errorf("Err = %q, want it to name the deadline as already passed, not the wait-does-not-fit wording", tgErr.Err.Error())
+	}
+}
+
+// TestCaller_RealWaitPastDeadlineIsNotContextError asserts that a limiter
+// refusal made because the required wait would end after a context
+// deadline that has NOT yet passed fails with an error whose chain
+// carries neither context.DeadlineExceeded nor context.Canceled — the
+// world limiterRefusalCause's predicate must NOT classify as a deadline
+// breach. Runs under synctest: no sleep, virtual time only.
+func TestCaller_RealWaitPastDeadlineIsNotContextError(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		srv := tgtest.New(t, tgtest.Success(nil))
+		// GetMe addresses no chat (ChatNone), so only the class-global
+		// schedule applies — one call per hour is enough that the second
+		// call's required wait certainly ends after a several-second
+		// deadline.
+		limits := config.TransportLimits{Other: config.ClassLimits{Global: rate(1, time.Hour)}}
+		tr := validTransport()
+		tr.Limits = limits
+		c := newTestClient(t, srv, func(o *Options) { o.Transport = tr })
+
+		if _, err := c.API().GetMe(context.Background()); err != nil {
+			t.Fatalf("GetMe (1st): %v", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		start := time.Now()
+		_, err := c.API().GetMe(ctx)
+		elapsed := time.Since(start)
+		if err == nil {
+			t.Fatal("GetMe (2nd): expected an error (deadline too short for the limiter's hour-long wait)")
+		}
+		if elapsed != 0 {
+			t.Errorf("elapsed = %v, want 0 (a limiter refusal must not sit out any part of the required wait)", elapsed)
+		}
+		var tgErr *Error
+		if !errors.As(err, &tgErr) {
+			t.Fatalf("GetMe (2nd): error %v is not a *tg.Error", err)
+		}
+		if tgErr.Attempts != 0 {
+			t.Errorf("Attempts = %d, want 0 (a first-pass limiter refusal costs no attempt)", tgErr.Attempts)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			t.Error("errors.Is(err, context.DeadlineExceeded) = true, want false (the deadline had not passed at the limiter's decision)")
+		}
+		if errors.Is(err, context.Canceled) {
+			t.Error("errors.Is(err, context.Canceled) = true, want false")
+		}
+	})
+}
+
 // TestCaller_HTTPClientFallsBackToDefaultClient covers
 // (*caller).httpClient's http.DefaultClient fallback, which every other
 // fixture in this file bypasses by supplying Options.HTTPClient via

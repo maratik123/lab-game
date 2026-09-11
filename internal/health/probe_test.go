@@ -177,6 +177,39 @@ func TestTelegramProber_Timeout(t *testing.T) {
 	}
 }
 
+// TestTelegramProber_ExpiredDeadlineCountsAsTimeout asserts that a probe
+// run under a context whose deadline has already passed is counted a
+// failure with reason "timeout", not "network" — the prober's transport
+// fixture configures no limits, so the limiter's refusal here can only be
+// decided by the already-expired deadline, never by a real wait. The fake
+// server's handler must never be invoked: the issue's own claim that no
+// request is written and no network is touched.
+func TestTelegramProber_ExpiredDeadlineCountsAsTimeout(t *testing.T) {
+	t.Parallel()
+	var calls int32
+	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		tgtest.Success(nil)(w, r)
+	})
+	p := newTestProber(t, srv)
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	result, err := p.Probe(ctx)
+	if err == nil {
+		t.Fatal("Probe: expected an error from the already-passed deadline")
+	}
+	if result.StatusCode != 0 {
+		t.Errorf("StatusCode = %d, want 0 (no response received)", result.StatusCode)
+	}
+	if got := classifyFailure(result.StatusCode, err); got != "timeout" {
+		t.Errorf("classifyFailure = %q, want %q (err=%v)", got, "timeout", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 0 {
+		t.Errorf("handler invoked %d times, want 0 (an already-expired deadline must refuse before any attempt)", got)
+	}
+}
+
 func TestTelegramProber_NeverWritesToATransportRegistry(t *testing.T) {
 	t.Parallel()
 	srv := tgtest.New(t, tgtest.Success(json.RawMessage(`{"id":1,"is_bot":true,"first_name":"x"}`)))
