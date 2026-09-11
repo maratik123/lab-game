@@ -66,8 +66,9 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 	)
 
 	for {
+		now := time.Now()
 		deadline, hasDeadline := ctx.Deadline()
-		t, ok, acquireErr := c.client.limiter.acquire(call, time.Now(), deadline, hasDeadline)
+		t, ok, acquireErr := c.client.limiter.acquire(call, now, deadline, hasDeadline)
 		if acquireErr != nil {
 			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous,
 				fmt.Errorf("limiter: %w", acquireErr))
@@ -76,7 +77,7 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 		}
 		if !ok {
 			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous,
-				errors.New("limiter: required wait ends after the context deadline"))
+				limiterRefusalCause(now, deadline, hasDeadline))
 			c.client.observe(method, time.Since(start), lastStatus, rateLimited, observedRetries(attempts))
 			return nil, tgErr
 		}
@@ -159,6 +160,30 @@ func observedRetries(attempts int) int {
 		return 0
 	}
 	return attempts - 1
+}
+
+// limiterRefusalCause answers which cause a limiter refusal (acquire
+// returning ok=false) carries, from the same (now, deadline, hasDeadline)
+// triple the limiter decided the refusal from. Called only from the
+// refusal branch, where a refusal has already been decided — hasDeadline
+// false there would mean the limiter refused with no deadline to compare
+// against, which acquire's own predicate (hasDeadline && t.After(deadline))
+// makes unreachable, so this always takes the hasDeadline-true path in
+// production; it still answers the false case for completeness and for
+// the table test.
+//
+// When now is already past deadline, the refusal is a deadline breach
+// decided before any wait, not a real wait that would end past a deadline
+// still ahead — the two worlds a canary probe's failure classifier must
+// tell apart. The predicate is strict (now.After(deadline), not
+// !now.Before(deadline)): at now == deadline the limiter still grants a
+// zero wait, so a refusal decided at that exact instant is necessarily a
+// real-wait refusal, and the deadline has not passed.
+func limiterRefusalCause(now, deadline time.Time, hasDeadline bool) error {
+	if hasDeadline && now.After(deadline) {
+		return fmt.Errorf("limiter: the context deadline had already passed: %w", context.DeadlineExceeded)
+	}
+	return errors.New("limiter: required wait ends after the context deadline")
 }
 
 // doAttempt performs exactly one HTTP round trip and decodes its Bot API
