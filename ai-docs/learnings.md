@@ -476,3 +476,15 @@ wrong-surface text by message twelve.
 **Rule:** In `/task`, `/interview`, `/bugfix`, `/improve`, either reviewer or CI, never count the bytes or lines of a file in Sub-check 9's covered set, whatever the purpose. Wondering whether an edit fits a size limit is itself the tell: ship the edit as specified and leave size to `/ai-audit`. Never batch reading a rule with a command that rule might forbid — read the rule, then decide whether to run anything.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-11 — testing — a mutant that `go build` accepts can still fail to build under `go test`
+**What happened:** On `/task 74` Step 11, the orchestrator checked a self-review row's mutant (every refusal message in `internal/leaktest`'s `check` replaced by `"x"`) with `go build ./internal/leaktest/` first, as the "confirm the mutant builds" step, then ran the test: exit 1. The log showed no failing subtest — `go test` runs a `go vet` subset before the binary, and the mutant left `fmt.Fprintf` calls with arguments and no directive, so the package never compiled into a test. The exit status looked like "the test caught it"; only the zero count of `--- FAIL:` lines under the named test showed otherwise. The mutant was rewritten to pass `go vet`, and then failed the five subtests on their own assertion.
+**Rule:** The build check for a mutant is the one `go test` applies — `go vet <pkg>` (or `go test -run '^$' <pkg>`), never `go build` alone — and a mutant run counts only when its log names the test and the assertion that went red.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-11 — tooling — scripted `rg` with no path read stdin and hung; `pkill -f` matched the invoking shell
+**What happened:** On `/task 74` Step 11, a verification script ran `rg -n -e '<pattern>' --type go` with no path argument inside a non-interactive `Bash` call; ripgrep searches standard input when stdin is not a terminal and no path is given, so the command waited on stdin until the tool's timeout moved it to the background. The follow-up `pkill -f "rg -n -e"` then matched its own shell's command line, which contained that string, and killed it (exit 144).
+**Rule:** In scripted commands, give `rg` an explicit path (`.`) and redirect its stdin from `/dev/null`; stop a stray process by its PID or by a pattern that cannot occur in the stopping command's own text, never `pkill -f` with a substring of the command being written.
+**Kind:** correction
+**Escalated?** no
