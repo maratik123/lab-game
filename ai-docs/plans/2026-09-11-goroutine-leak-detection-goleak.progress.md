@@ -11,8 +11,8 @@ _Updated: 2026-09-11 17:47 UTC_
 **Spec:** ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.spec.md
 **Design:** ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.design.md
 
-**current_step:** Step 8 — subtask 6 of 6 complete (Groups A and B done)
-**last_passed_gate:** harness guards over the subtask-6 docs (CI's relative-link check, `check-citations.sh`, every guard suite and `check-*.sh` of CI's Harness guards job) | 2026-09-11T17:47Z | 17bc5c2 + the subtask-6 edits
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** make verify | 2026-09-11T18:25:52Z | 594a38c
 **entry_args:** 74
 
 ## Next action
@@ -51,23 +51,25 @@ Group B — instructions (`general-purpose`, inherited model):
 - **Step 8 (orchestrator, follow-ups)**: the owner chose to track the two pre-existing `main` defects as issues; created #84 (race-route wall-clock tests failing under machine load) and #85 (`make test-contention` red on `main`, `cmd/bot` migrations losing the advisory-lock connection). This task's code does not change for either.
 - **Step 8 (orchestrator, Group B return)**: re-validated at 7f4be55 — branch and `base_commit` unchanged, tree clean; the orchestrator ran every step of CI's Harness guards job locally (`make shellcheck`, the settings.json hook bodies through shellcheck, `check-citations.sh`, the sixteen guard suites, the five `check-*.sh` gates, the relative-link check) and each exited 0. The Group B learning's premise was checked: `.claude/skills/ai-audit/checklist-m.md` names `/task` in its FORBIDDEN row. Its three observations: (1) confirmed against `internal/leaktest/guard_test.go`'s `checkTestMain` and § Structural guards — routed to a single-fix `code-writer` before Step 9, so self-review reviews the conforming state; (2) D5's "every refusal named" reads either way — left to self-review; (3) no sync group or mirror ties § Go Test Conventions to `self-review.md` — recorded as a harness diagnosis in `ai-docs/harness-gaps.md` (2026-09-11), not an instruction edit.
 - **Step 8 (orchestrator, single fix)**: `internal/leaktest/guard_test.go`'s `checkTestMain` now parses through `srcguard.ParseFile`; the `go/parser` and `go/token` imports went with the hand-rolled parse, and nothing else in the file changed (diff read by the orchestrator). Gates the orchestrator re-ran on the edit: `go build ./...`, `go test -count=1 ./internal/leaktest/...` twice, `golangci-lint run ./internal/leaktest/...`, `golangci-lint fmt -d` (empty).
+- **Step 9**: `make verify` (fmt-check, build, vet, lint, file-limits, test, test-race, tidy-check, actionlint, shellcheck, comment-refs, import-guard) and `make test-fallback` exited 0 at 594a38c; the design's four probes plus an AC1 probe in a database-backed package on both routes behaved as specified (AC Status). No panic-index addition: no panic, `log.Fatal`/`log.Panic` or `Must…` in the changed production files. No posting signature and no event: the task adds no mechanic and moves no balance. Domain-invariant sweep over the changed Go files: no hit.
 
 ## Key discoveries (don't re-investigate)
 
 - The design's probes (recipes in the design) record one leak class in today's tree: a handler made by `internal/tgtest`'s `Delayed` still sleeping after its test ends; D8 is its fix. Any other leak class reported during the rollout is subtask 4's STOP.
 - Design-review round 3 reports reproducing that `-race` excludes a `//go:build !race` file which `build.Default` compiles — the reason the D7 guard classifies each directory under two configurations.
+- A gate log written into the repository's `tmp/` between two `go test ./internal/leaktest/` runs makes the second miss the test cache: the guard reads the repository root's directory listing, and `go test` hashes each entry's stat, so `tmp/`'s changed mtime changes the listing. Observed in the Step-9 AC7 probe; harmless (an extra run, never a stale pass), but a cache probe must write its logs outside the tree.
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
+| AC | Status | Verifying command (the orchestrator's, Step 9, at 594a38c; probe edits restored, tree clean after each) |
+|----|--------|-------------------|
+| AC1 | PASS | Probe: a test file parking `go zzProbeBlockForever(make(chan struct{}))` in `internal/backoff` → `make test` → `FAIL internal/backoff`; the same in `internal/store` (runner `testdb.Main`) → `go run ./cmd/testpg -- go test -count=1 ./internal/store/` and `LAB_GAME_TEST_DSN= go test -count=1 ./internal/store/` → `FAIL` on both routes. Every package runs the same form (AC4). |
+| AC2 | PASS | The AC1 probes' output: `leaktest: goroutines still running …`, the goroutine's state and top function (`…backoff.zzProbeBlockForever`), and its `created by …TestZZProbeAC1Leak` line. |
+| AC3 | PASS | `rg -n 'leaktest\.Ignore\{' --type go -g '!internal/leaktest/**'` → no match (control line matched): the shipped ignore set is empty; a blank `Reason` is refused before tests run (`internal/leaktest/leaktest_test.go` case "blank reason"). |
+| AC4 | PASS | For each `go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.Dir}}{{end}}' ./...` directory, a `*_test.go` matching `os\.Exit\(leaktest\.Main\(m, ` (control line matched) → every package with tests carries it, none missing. |
+| AC5 | PASS | Probe: a test file in `internal/config` parking `go func() { time.Sleep(time.Hour) }()`, its `TestMain` given `leaktest.Ignore{Function: "time.Sleep", …}` → `make test` → `FAIL internal/config`, `ignore entry "time.Sleep" excuses this module's own code` with the goroutine's stack. Shipped set empty (AC3's command) and `make verify` + `make test-fallback` green, so no leak lands excused. |
+| AC6 | PASS | Probe: `internal/commentref`'s `TestMain` given `leaktest.Ignore{Function: "net/http.(*persistConn).readLoop", …}` → `make test` → `FAIL internal/commentref`, `ignore entry … is not needed`. The gate targets pass no `-run`/`-skip`/`-short`/`-list` (`grep` over the `test`, `test-race`, `test-fallback` recipes → no match). |
+| AC7 | PASS | `go test ./internal/leaktest/` twice, logs written outside the tree → second `(cached)`; a scratch `internal/zzprobe` with one test and no `TestMain` → same command → not cached, `FAIL`, `internal/zzprobe: default build: no TestMain …` and `race build: no TestMain …`; scratch package removed. |
 
 ## Review register
 
