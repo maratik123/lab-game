@@ -35,7 +35,7 @@ The same SUBJECT block is dispatched twice — once against the pre-change tree 
 **FAIL criterion (Kind: correction):** <the negation of the quoted clause above> — the violation still happens, rule not strong enough.
 **FAIL criterion (Kind: validation):** <the negation of the quoted clause above> — the pattern overfits or breaks under the edge → downgrade the promotion verb (*Prefer* → *Default to*) or do not promote.
 
-**Verdict:** not recalled | recalled and misapplied | applied and held | no valid reproducer
+**Verdict:** not recalled | recalled and misapplied | applied and held | no valid reproducer | out of instrument reach
 ```
 
 Emit only the line variant matching the audited entry's `Kind:`; leave the other variants as the template skeleton for reference. Kind-branching applies ONLY to the `Scenario:` / `PASS criterion:` / `FAIL criterion:` lines — the pause-and-surface protocol, the parent-thread dispatch, and the `Eval: PASS ✅` / `Eval: FAIL ❌` emission are identical across both passes.
@@ -47,13 +47,13 @@ Emit only the line variant matching the audited entry's `Kind:`; leave the other
 - **`Baseline outcome:`** — the **quoted fragment** of the pre-change returned answer, not the bare word *"FAIL"*. An adjective is not evidence; the fragment is what a later reader grades attributability against.
 - **`Rule-citation observable:`** — stated **before** the runs, so *"recalled"* is decided by a criterion written in advance rather than read into the answer afterwards.
 
-`Verdict:` is one of the five cells in [`improve-eval-contract.md` § *Verdict space*](../improve-eval-contract.md), and it is read against **this clause**, not against the pass as a whole.
+`Verdict:` is one of the six cells in [`improve-eval-contract.md` § *Verdict space*](../improve-eval-contract.md), and it is read against **this clause**, not against the pass as a whole.
 
 ## Rejection conditions
 
 A reproducer that trips any of these is **not a valid reproducer**. It is rewritten or dropped — never counted toward the gate, and never carried through under an "unevaluable" label, which would reinstate the confirm-only gate under a new name.
 
-1. **Passes both ways.** A reproducer that PASSes against the pre-change tree *and* after the proposal is applied proves nothing about the rule. Rewrite or drop; never count.
+1. **Passes both ways.** A reproducer that PASSes against the pre-change tree *and* after the proposal is applied proves nothing about the rule. Rewrite or drop; never count. Before dropping the last attempt, re-run one reproducer with the append-only history excluded: if it passes then too, the verdict is *out of instrument reach* rather than *no valid reproducer*, and that distinction is what the contract's § *Verdict space* gates the commit on.
 2. **Derivability (a rejection condition, not advice).** The scenario must be derivable from the **rule's own text**. A scenario turning on specifics that do not appear in the rule is rejected as authored to the desired outcome rather than to the rule. **The check is a side-by-side read:** put the `Scenario:` line next to the `Rule clause under test:` quote and confirm every specific the scenario turns on is traceable to the quote. Stated as a rejection so that *"no reproducer can be made to go RED"* cannot be dissolved by writing a harder scenario instead.
 3. **Attributability (a rejection condition, not advice).** `FAIL criterion` must be the **negation of the quoted clause**, not a generic wrong-answer test — otherwise a pre-change FAIL cannot be attributed to the absence of the rule under test.
 

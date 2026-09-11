@@ -71,14 +71,15 @@ Agent stems (file stems under .claude/agents/):
   code-writer, self-reflect
 
 AGENTS.md section headings:
-  ## Workflow, ## Propagation Rule, ## Learning Log, ## Code Style
+  ## Workflow, ## Propagation Rule, ## Learning Log, ## Code Style,
+  ## Patterns, ## Communication, ## Dependency Versions
 
 Verb-phrase keywords:
   compaction recovery, propagation rule, lock-step, worked-example carve-out,
   boundary rule
 ```
 
-A new Skill / Subagent / section heading / verb-phrase keyword added to the project requires an **additive update** to this block. The set is not auto-generated from `.claude/` listings (over-broad — would match incidental references). **Because the block is hand-maintained it drifts silently:** in the source harness it silently omitted several primitives (`code-writer`, `/next`, `/verify-change`) for weeks, so memories naming exactly those could not be detected. When running Step 1c, spot-check the block against `ls .claude/agents/` + `ls .claude/skills/` and report any drift in the `## Auto-memory candidates` section rather than silently sweeping with a stale set.
+A new Skill / Subagent / section heading / verb-phrase keyword added to the project requires an **additive update** to this block. The set is not auto-generated from `.claude/` listings (over-broad — would match incidental references). **Because the block is hand-maintained it drifts silently:** in the source harness it silently omitted several primitives (`code-writer`, `/next`, `/verify-change`) for weeks, so memories naming exactly those could not be detected. When running Step 1c, spot-check **every** sub-block against a named ground truth and report any drift in the `## Auto-memory candidates` section rather than silently sweeping with a stale set: slash commands against `ls .claude/skills/`, agent stems against `ls .claude/agents/`, section headings against `grep '^## ' AGENTS.md`, and the verb-phrase list by reading it — it has no mechanical ground truth, so say so rather than reporting it checked. Naming ground truth for only some sub-blocks is how this list drifted before: the two that had one stayed clean, and `## Patterns` went missing from the two that did not, in the same run whose own proposals both routed to `## Patterns`.
 
 **Cross-check against `ai-docs/learnings.md`.** A memory file is a **candidate** iff BOTH hold:
 
@@ -270,11 +271,11 @@ Number all proposals. Let user choose.
 
 ### Step 6: Eval (REQUIRED after Step 5)
 
-**The RED baseline.** The parent dispatches each reproducer against **two** trees, and a reproducer's PASS **does not count** until that same reproducer has been recorded **FAILing against the pre-change tree**. One that passes both ways — or whose pre-change FAIL cannot be attributed to the absence of the clause under test — is **rewritten or dropped, never counted**.
+**The RED baseline.** The parent dispatches each reproducer against **two** trees — each being the tree **minus its own append-only history**, `ai-docs/learnings.md` and `ai-docs/harness-gaps.md` declared out of scope in the SUBJECT framing, because a `Kind: correction` entry's content IS the rule and would otherwise put the clause under test into the pre-change state by construction — and a reproducer's PASS **does not count** until that same reproducer has been recorded **FAILing against the pre-change tree**. One that passes both ways — or whose pre-change FAIL cannot be attributed to the absence of the clause under test — is **rewritten or dropped, never counted**.
 
 **Baseline required when either limb fires — you have no per-proposal discretion.** **Limb 1:** the proposal edits or strengthens rule text already present in an instruction file (`AGENTS.md`, a Skill, a Subagent, `.claude/rules/`) — **read from the diff**. **Limb 2:** a source entry **records** the rule cited-or-applied and the defect happening anyway — **read from the source entries**. **An inference that the agent likely knew the rule does NOT satisfy limb 2** — the trigger is an observable trace of invocation *and* failure, without which limb 2 widens until every proposal qualifies. On a FAIL loop-back the baseline is **re-used** while the reproducer is unchanged; exempt proposals add **zero** dispatches.
 
-**Three outcomes** — *not recalled* / *recalled and misapplied* / *applied and held*, read from the post-change answer. **Neither non-held outcome commits:** both revert and loop back to Step 3, changing different things — *not recalled* → the rule's **placement or strength**; *recalled and misapplied* → its **form** (a property restated as a **procedure**). If **no** reproducer can be made to go RED the proposal does not commit either: surface it **with the failed attempts attached**, so a reader can tell *"no valid reproducer"* from *"nobody tried hard"*. There is no "unevaluable" PASS. Full table, remedies, the self-report prohibition and the attributability consequence: [`ai-docs/improve-eval-contract.md`](../../ai-docs/improve-eval-contract.md).
+**Three outcomes** — *not recalled* / *recalled and misapplied* / *applied and held*, read from the post-change answer, plus two terminal states (*no valid reproducer*, *out of instrument reach*). **Neither non-held outcome commits:** both revert and loop back to Step 3, changing different things — *not recalled* → the rule's **placement or strength**; *recalled and misapplied* → its **form** (a property restated as a **procedure**). If **no** reproducer can be made to go RED the proposal does not commit either: surface it **with the failed attempts attached**, so a reader can tell *"no valid reproducer"* from *"nobody tried hard"*. There is no "unevaluable" PASS. Full table, remedies, the self-report prohibition and the attributability consequence: [`ai-docs/improve-eval-contract.md`](../../ai-docs/improve-eval-contract.md).
 
 **Why the parent dispatches — a MAY rule, not a CAN rule.** `Agent` **IS** callable here; the contract is the parent's anyway. Do not re-derive it from your tool list: [`ai-docs/improve-eval-contract.md`](../../ai-docs/improve-eval-contract.md).
 
