@@ -87,6 +87,21 @@ tests never touch the process-global working directory. Only the paths that name
   [measured 42792be:cmd/testpg/run_test.go:318-320 · `sed -n '318,320p' cmd/testpg/run_test.go` →
   "Not parallel, and neither is the undersized-reuse case below: both reach the code that disables the
   reaper, which is a process-wide setting written to the environment."].
+
+  **Its shape, and what a failing lookup does.** The member carries the same two results the standard
+  lookup returns — a directory string and an error — because discarding the error is what the code
+  style forbids outright
+  [measured d41174f:AGENTS.md · `grep -n 'Never `_ = err`' AGENTS.md` → "Never `_ = err`." in
+  § Code Style → Errors]. `productionSeam` supplies the standard library's own working-directory
+  lookup unwrapped; every other member of `seam` is supplied the same way
+  [measured d41174f:cmd/testpg/run.go:53-67 · `sed -n '53,67p' cmd/testpg/run.go` → `probe`, `locate`,
+  `persist` and `forget` are each a bare function value, only `provision` wrapped]. On both `--up` and
+  `--down` a failing lookup **folds into the derivation's own failure path**: one non-zero exit, whose
+  message says the working directory could not be read and carries the underlying error, in the
+  print-and-return-a-code idiom every other failure in the wrapper already uses, exactly as the
+  invalid-name exit does for a directory that was read. There is no
+  second failure mode and no fallback directory — a wrapper that guessed a name here would address a
+  container belonging to no checkout [derived → the failing-lookup cases in § Test Design, subtask 2].
 - **D5 — Only `runUp` and `runDown` derive a name; `runChild` never does.** A gate run must not be
   able to fail on a fact it does not use, and the fallback container stays anonymous because only a
   server this invocation started may be removed (KD-20). `runUp` derives before it disables the
@@ -94,8 +109,13 @@ tests never touch the process-global working directory. Only the paths that name
   "nothing to remove" stays a side-effect-free exit
   [measured 42792be:cmd/testpg/run.go:286-300 · `sed -n '286,300p' cmd/testpg/run.go` → `sm.locate()`
   returning not-ok prints "nothing to remove" and returns 0 before anything else runs].
-- **D6 — A derived name the container runtime would refuse fails cleanly; it is never sanitised.**
-  Measured on this host: podman 5.8.2 refuses a name outside `[a-zA-Z0-9][a-zA-Z0-9_.-]*`
+  Residue, so a later reader does not read the omission as an oversight: the anonymous fallback
+  container is deliberately left unnamed rather than given a per-checkout name of its own. It is
+  already per-invocation — nothing else can reach it, and nothing else can remove it — so a name would
+  buy no isolation and would cost the property KD-20 names. The spec's Out of scope does not reach the
+  question, and nothing in it needs an answer to proceed.
+- **D6 — A derived name the container runtime would refuse fails cleanly *here*; it is never
+  sanitised.** Measured on this host: podman 5.8.2 refuses a name outside `[a-zA-Z0-9][a-zA-Z0-9_.-]*`
   [measured 42792be · `podman create --name 'lab game' docker.io/library/alpine:latest true` →
   `Error: running container create option: names must match [a-zA-Z0-9][a-zA-Z0-9_.-]*: invalid
   argument`, rc 125; the same rejection for `lab-game@2`, `.lab-game`, `-lab-game` and a Cyrillic
@@ -103,12 +123,52 @@ tests never touch the process-global working directory. Only the paths that name
   one name and silently re-create the contention this task removes, which contradicts D1. So: a
   non-zero exit whose message names the offending directory and states the rule, on `--up` and
   `--down` alike [derived → the invalid-directory cases in § Test Design].
-- **D7 — The validity check is a package-level compiled pattern.** Established precedent in this
-  module [measured 42792be:internal/commentref/classify.go:33-42 · `grep -n MustCompile internal/commentref/classify.go`
-  → a block of package-level `regexp.MustCompile` values]. No `panic(` or `log.Fatal` call is written,
-  so the `panic-gate` hook's pattern is not matched and the panic index gains no row
-  [measured 42792be:ai-docs/panic-index.md · `tail -3 ai-docs/panic-index.md` → the table body is the
-  row `| — | — | — |`].
+
+  **Why a pre-check rather than letting the runtime's own refusal through.** The alternative is real
+  and was compared: `runUp` already surfaces the provisioning error verbatim, so a bad name would
+  reach the developer without any code of ours. It loses on three measured grounds.
+
+  1. **The runtime's refusal names the rule and never the offending string** — on the command line and
+     on the API socket testcontainers actually dials
+     [measured d41174f · `podman create --name 'lab game' …` captured to a file (exit status read from
+     `$?`, not from a pipe) → `Error: running container create option: names must match
+     [a-zA-Z0-9][a-zA-Z0-9_.-]*: invalid argument`, rc 125 — the string `lab game` appears nowhere in
+     it] [measured d41174f · `curl --unix-socket /run/user/1000/podman/podman.sock -X POST
+     'http://d/v1.41/containers/create?name=lab%20game' …` → HTTP 500, body `{"cause":"invalid
+     argument","message":"container create: running container create option: names must match
+     [a-zA-Z0-9][a-zA-Z0-9_.-]*: invalid argument","response":500}` — again no offending string]. A
+     developer in a checkout whose directory name is refused would be shown a character-class rule and
+     no hint that the fault is the name of the directory they are standing in — which is precisely the
+     diagnosis this change introduces the need for.
+  2. **The sentence the wrapper wraps it in misdescribes the fault.** `runUp` renders it as "could not
+     start the shared server" and `runDown` as "could not reach the shared server to remove it"
+     [measured d41174f:cmd/testpg/run.go:249,313 · `grep -n 'could not start the shared
+     server\|could not reach the shared server' cmd/testpg/run.go` → both messages]. Neither is true:
+     the server is fine, the checkout's name is not.
+  3. **It fails before the side effects.** Both paths write `TESTCONTAINERS_RYUK_DISABLED` into the
+     process environment before they provision
+     [measured d41174f:cmd/testpg/run.go:239,306 · `grep -n 'TESTCONTAINERS_RYUK_DISABLED'
+     cmd/testpg/run.go` → an `os.Setenv` in `runUp` and another in `runDown`; `grep -n 'sm.provision'`
+     puts each one above its own path's provision call]. A pre-check ahead of that leaves the process environment untouched on the
+     failing path, and on `--down` it also means nothing is reached for at all.
+
+  **The cost, stated rather than waved past.** The pattern is this project's copy of a rule the
+  runtime owns, so it can drift. The drift is one-directional by construction: the pre-check is a
+  *diagnosis layer*, never the authority — a name it accepts and the runtime refuses still fails, with
+  the runtime's own message, exactly as today. Only the opposite drift bites (a runtime whose rule
+  loosens would have a legitimate directory name refused here), and that is carried in § Risks rather
+  than assumed away. Only podman was measured; no claim is made about any other runtime's rule.
+- **D7 — The validity check is a package-level compiled pattern.** The pattern is a compile-time
+  constant, so the established shape in this module is a package-level `regexp.MustCompile`
+  [measured d41174f:internal/commentref/classify.go:33-42 · `grep -n MustCompile
+  internal/commentref/classify.go` → a block of package-level `regexp.MustCompile` values in
+  production code]. The panic index carries no row for any of them
+  [measured d41174f:ai-docs/panic-index.md · `cat ai-docs/panic-index.md` → the table body is the
+  single row `| — | — | — |`, under a header whose scope is "`panic`, `log.Fatal*`, `log.Panic*`,
+  `must…` helpers, a deliberate nil-map write" in production code], so this is the practice the index
+  and the review together already treat as needing none — not a gap the hook happens to miss. The
+  index's own header names review and the hook as *both* keeping it in sync, so what the hook matches
+  is not what decides a row, and no argument here rests on it.
 - **D8 — `--up`'s report line names the container it brought up.** The derivation is otherwise
   invisible at the terminal, and a developer running two checkouts needs to read which server they
   just got. The existing capacity report goes to stderr — stdout carries only the DSN — and the tests
@@ -124,17 +184,46 @@ tests never touch the process-global working directory. Only the paths that name
   [measured 42792be:ai-docs/code-style.md:68-79 · `sed -n '68,79p' ai-docs/code-style.md` → the
   four-band table (500 reasonable, 800 soft, 1000/1500 hard and gated) and the counter-rule "do not
   over-split — one type per file is not a Go idiom, and a package of ten 40-line files is harder to
-  read than one 400-line file"]. Both touched files stay inside the reasonable band after the change
-  [derived → the `make file-limits` gate named in § Test Design → Gates].
-- **D10 — `cmd/testpg`'s test binary stays non-database-backed.** An in-suite test that really starts
-  two named servers would have to call `testdb.Main`, which would move the `Binaries` manifest
-  constant and therefore re-size every server this project provisions
-  [measured 42792be:internal/testdb/server.go · `grep -n '^const Binaries' internal/testdb/server.go`
-  → a `Binaries` manifest constant, which the `Ceiling` formula multiplies into every provisioned
-  server's connection ceiling]
-  [measured 42792be:internal/testdb/server_test.go:207-227 · `sed -n '207,211p' internal/testdb/server_test.go`
-  → `TestBinaries_matchesTree` "keeps the Binaries constant honest against the tree"]. The end-to-end
-  property is verified instead by the probe § Test Design specifies, run at verify time.
+  read than one 400-line file"].
+- **D10 — `cmd/testpg`'s test binary starts no container; the container-level half of AC2/AC3 is a
+  verify-time probe.** The obstacle is **not** the `Binaries` manifest constant: that constant counts
+  packages whose test files reference `testdb.Main`, and a test could reach a real named server
+  through `testdb.StartServer` — which `cmd/testpg` already imports and calls — without moving it
+  [measured d41174f:internal/testdb/server_test.go:177-205 · `grep -n -B5 -A30 callersOfMain
+  internal/testdb/server_test.go` → `callersOfMain` "returns the set of package directories … whose
+  test files hold a syntactic reference to this package's Main"]
+  [measured d41174f:cmd/testpg/run.go:53-61 · `grep -n -A10 'func productionSeam' cmd/testpg/run.go` →
+  `provision` calls `testdb.StartServer` directly]. The three grounds that do hold, each executed:
+
+  1. **A real `--up` writes a locator file into the source tree, and the repository's ignore rule does
+     not cover it.** The locator path is relative and the test binary's working directory is its own
+     package directory, so the file lands beside the package's sources; the ignore rule for the
+     scratch directory is anchored at the repository root
+     [measured d41174f:.gitignore:18 · `git check-ignore -v tmp/testpg-dsn` → `.gitignore:18:/tmp/`,
+     while `git check-ignore -v cmd/testpg/tmp/testpg-dsn` exits 1 — no rule matches]
+     [measured d41174f · a scratch module outside this repository whose test logs `os.Getwd()`, run
+     with `go test ./sub/ -run TestWD -v -count=1` → the package's own source directory]. Every CI run
+     and every developer's `make test` would leave an untracked file the guards then see.
+  2. **A real `--up` disables the reaper process-wide and creates a container that outlives the test
+     binary — by design.** That is the wrapper's purpose, and it is fatal inside a test process: the
+     `os.Setenv` is global to the binary (which is already why the package's `--up` cases are
+     non-parallel), and the container it then creates carries no reap label, so an interrupted or
+     failing run leaks it on every machine that runs the suite
+     [measured d41174f:cmd/testpg/run.go:236-242 · `sed -n '236,242p' cmd/testpg/run.go` → the comment
+     "this process must disable it before provisioning so the container it creates … outlives this
+     process"].
+  3. **The package's suite reaches no container runtime today, and that is a property worth keeping.**
+     Its `TestMain` is the non-database-backed form, and every test drives the wrapper through the
+     stub seam
+     [measured d41174f:cmd/testpg/main_test.go:10-12 · `grep -rn 'TestMain\|leaktest' cmd/testpg/` →
+     `os.Exit(leaktest.Main(m, (*testing.M).Run))`, not `testdb.Main`]. A runtime-dependent case here
+     would make `go test ./cmd/testpg/` fail on a machine with no container runtime, which it does not
+     today.
+
+  Re-confirmed from these grounds: the manual probe is still the right answer for the container-level
+  half, and the locator hazard in ground 1 additionally binds subtask 2's new cases — they stay on the
+  stub seam, which reaches neither the locator file nor a runtime (§ Test Design). The probe runs once,
+  at verify time, from throwaway directories outside the repository.
 
 ### Rejected alternatives
 
@@ -155,7 +244,7 @@ tests never touch the process-global working directory. Only the paths that name
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
 | 1 | Add the pure derivation: the fixed suffix constant, the compiled validity pattern, and a function mapping a project-directory path to the container name or to an error naming the directory and the rule. Table test first (TDD), covering the spec's worked examples, the same base name under different parents, and each shape the runtime refuses. Nothing is wired yet. | `cmd/testpg/run.go`, `cmd/testpg/run_test.go` | — |
-| 2 | Wire it: add the working-directory lookup to `seam` and to `productionSeam`; `runUp` derives the name before it disables the reaper or provisions, `runDown` derives it after its locator and reachability checks; each fails non-zero with the derivation's own message; `--up`'s report names the container (D8); delete `testdb.SharedContainerName` and its doc comment. Update the existing `--up` name assertion, add the `--down` name assertion, the invalid-directory failure cases for both paths, and a case pinning that a child gate run derives no name at all. | `cmd/testpg/run.go`, `cmd/testpg/run_test.go`, `internal/testdb/server.go` | 1 |
+| 2 | Wire it: add the working-directory lookup to `seam` (returning a directory and an error, D4) and to `productionSeam`; `runUp` derives the name **before** it disables the reaper or provisions, `runDown` derives it after its locator and reachability checks; a failing lookup and an invalid name share one non-zero exit carrying the derivation's own message; `--up`'s report names the container (D8); delete `testdb.SharedContainerName` and its doc comment. Update the existing `--up` name assertion, add the `--down` name assertion, the invalid-directory and failing-lookup cases for both paths, the reaper-untouched assertion pinning the pre-check's position, and a case pinning that a child gate run derives no name at all — all on the stub seam (D10 ground 1). | `cmd/testpg/run.go`, `cmd/testpg/run_test.go`, `internal/testdb/server.go` | 1 |
 | 3 | Amend the live prose: KD-20's parenthetical, which names the container as one fixed name for the host, states the derivation instead; the shared-server section of the test conventions gains the derivation and its consequence for two checkouts on one host. | `ai-docs/key-decisions.md`, `ai-docs/go-test-conventions.md` | 2 |
 
 On subtask 3's second file: the test-conventions page names no container, so AC4 does not compel it
@@ -175,11 +264,20 @@ Surfaces deliberately **not** amended, with the evidence:
   [measured 42792be:AGENTS.md:48-49,76-78 · `sed -n '48,49p;76,78p' AGENTS.md` → "bring up a long-lived
   shared test server (CLIENTS=N sizes it)", "remove it — no reaper will", and "otherwise a long-lived
   server from `make test-db-up` if that one answers and admits the run"].
-- `ai-docs/context-status.md` names `SharedContainerName` in its entry for the shared-test-server
-  task, and is a history surface, not a live claim
-  [measured 42792be:ai-docs/context-status.md:1-5 · `head -5 ai-docs/context-status.md` → "The
-  detailed, append-only implementation log: one entry per completed task"]. `AGENTS.md` § Propagation
-  Rule step 4 exempts history surfaces by name.
+- `ai-docs/context-status.md` is untouched on two independent grounds, neither of them the
+  Propagation Rule's exemption list — that list names `ai-docs/learnings.md` and
+  `ai-docs/plans/done/**`, and this file is not among them
+  [measured d41174f:AGENTS.md:288 · `grep -n -A6 '4\. When the change propagates' AGENTS.md` → "history
+  surfaces (`ai-docs/learnings.md`, `ai-docs/plans/done/**`) are left untouched"]. The grounds that do
+  hold: **(a)** the file declares itself append-only in its own header, so an entry records what landed
+  then, not what is true now
+  [measured d41174f:ai-docs/context-status.md:3 · `sed -n '3p' ai-docs/context-status.md` → "The
+  detailed, append-only implementation log: one entry per completed task … Written by `/task` Step
+  9.5"]; **(b)** what it names is the **symbol** `SharedContainerName`, inside a list of the exported
+  API that task added — not a container name, and so not a site AC4 reaches
+  [measured d41174f:ai-docs/context-status.md:188 · `grep -n SharedContainerName ai-docs/context-status.md`
+  → the symbol appears inside the parenthesised list "(`ServerOptions`, `StartServer`, `Server` with
+  `DSN` / `Stop`, the capacity `Probe`, `DSNEnv`, `SharedContainerName`)"].
 - `ai-docs/context.md` describes what `internal/testdb` owns without enumerating its exported symbols
   [measured 42792be · `grep -n SharedContainerName ai-docs/context.md` → no match; the same file's
   `internal/testdb` sentence describes "PostgreSQL provisioning for the whole suite … exported as an
@@ -246,6 +344,18 @@ default maximum of 4 design-defined groups, so no user approval is needed.
   container, so the cost is bounded and stated; the sizing advice (`CLIENTS=N`) is unchanged. —
   [measured 42792be:internal/testdb/server.go · `grep -n 'tmpfsOptions =' internal/testdb/server.go` →
   `tmpfsOptions = "rw,size=512m"`, documented as capping the mount]
+- **The validity pattern is this project's copy of a rule the container runtime owns, so it can drift
+  out of agreement with it.** Only the *loosening* direction bites: if a runtime's rule ever admits a
+  character this pattern refuses, a legitimate checkout is refused here and the developer is stopped
+  by our copy rather than by the runtime. The tightening direction is harmless — the runtime remains
+  the authority and still refuses, with its own message, exactly as it does today. Mitigation: none
+  beyond stating it; the pattern is a diagnosis layer and the cost of it being one version stale is a
+  message, not a wrong container. Only podman was measured, and no claim is made about any other
+  runtime's rule. —
+  [measured d41174f · `podman create --name 'lab game' docker.io/library/alpine:latest true` captured
+  to a file → `names must match [a-zA-Z0-9][a-zA-Z0-9_.-]*`, rc 125; the same rule returned over the
+  Docker-compat API socket testcontainers dials, by `curl --unix-socket … POST
+  '/v1.41/containers/create?name=lab%20game'` → HTTP 500 with that rule in the message body]
 - **New comments could carry an outward reference and fail the comment gate.** The derivation's doc
   comments must state the rule in prose rather than quoting a path, a markdown file, a decision anchor
   or a package-qualified symbol of this module from outside its own package. Mitigation: `make
@@ -305,6 +415,15 @@ Every claim below is about a test that does not exist yet.
   the new seam member; no container runtime is reached, exactly as the existing wrapper tests avoid
   one. The `--up`/`--down` cases stay non-parallel, joining the existing ones, because they reach the
   code that writes the process-wide reaper setting.
+- **Binding constraint on every case below — the stub seam, never the production one (D10 ground 1).**
+  Each new `--up` / `--down` case is driven through `stubSeam`, so the locator members are the stub's
+  and `persist` writes nothing to disk. A case that reached `productionSeam` would write a locator file
+  into the package's own source directory — the path is relative to the working directory, which for a
+  test binary is its package directory, and the repository's scratch-directory ignore rule is anchored
+  at the root and does not cover it. That would leave an untracked file behind on every run of the
+  suite, in CI and locally alike. This is the same constraint D10 ground 1 states; it is repeated here
+  because it binds the implementor writing these cases, not only the decision not to write an
+  end-to-end one.
 - **Scenarios:**
   - `--up` with a stubbed working directory provisions with the container name the derivation returns
     for that directory — the existing assertion against the deleted constant is replaced by one
@@ -321,9 +440,21 @@ Every claim below is about a test that does not exist yet.
     would yield an invalid name — pinning D5's ordering, so that the no-op path cannot acquire a new
     failure mode. [derived → AC2]
   - `--up` with a stubbed working directory whose name the runtime refuses exits non-zero, provisions
-    nothing, and prints a message containing that directory name. [derived → AC1]
+    nothing, and prints a message containing that directory name. The directory-name substring is the
+    load-bearing half of the assertion, not decoration: it is the thing the runtime's own refusal does
+    not carry, and therefore the thing the pre-check exists to add (D6, ground 1). [derived → AC1]
+  - `--up` with such a directory additionally leaves the process-wide reaper setting as it found it —
+    the assertion is over the environment variable before and after the call, which is what pins the
+    pre-check's *position* rather than merely its existence (D6, ground 3). A pre-check placed after
+    the `Setenv` would pass every other case in this list. [derived → AC1, D6]
   - `--down` with a locator, a reachable server and such a directory exits non-zero and stops nothing.
     [derived → AC1]
+  - `--up` whose working-directory lookup itself fails exits non-zero, provisions nothing, and prints
+    a message carrying the lookup's own error; the stub seam's working-directory member returns an
+    error for this case. [derived → AC1, D4]
+  - `--down` with a locator and a reachable server, whose working-directory lookup fails, exits
+    non-zero and stops nothing — the same single failure path as the invalid-name case, not a second
+    one. [derived → AC1, D4]
   - `--up`'s report line contains the container name it provisioned. [derived → AC1, D8]
   - `runChild` with a stubbed working directory whose name the runtime refuses still runs its child to
     completion and returns the child's own exit code — the wrapper must not acquire a dependency on a
@@ -394,7 +525,3 @@ coverage ratchet, which the pre-commit hook takes on its own once `.go` files ar
   [measured 42792be · the session's own injected project-memory index → the entry "Параллельный чекаут
   lab-game2 — второй клон рядом с ~/lab-game: что общее (origin, тестовый Postgres), что своё, и что
   выставлять руками"].
-- **Should the anonymous fallback container also carry a per-checkout name?** The design says no (D5,
-  and KD-20's "anonymous because only a server this invocation started may be removed"), and the
-  spec's Out of scope does not reach it. Raised only so that a later reader does not take the
-  omission for an oversight; no answer is needed to proceed.
