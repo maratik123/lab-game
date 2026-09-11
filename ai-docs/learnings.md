@@ -488,3 +488,21 @@ wrong-surface text by message twelve.
 **Rule:** In scripted commands, give `rg` an explicit path (`.`) and redirect its stdin from `/dev/null`; stop a stray process by its PID or by a pattern that cannot occur in the stopping command's own text, never `pkill -f` with a substring of the command being written.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-11 — process — named the scheduler's first consumers as "#36/#38" without reading #47's dependency table
+**What happened:** Splitting issue #80 in conversation, I told the owner — in an analysis table and again inside a questionnaire option — that the scheduler's first task type arrives "with #36/#38", and derived the new scheduler issue's deadline from it. I had not read the roadmap: #47's dependency table lists #36, #40, #43 and #45 as the direct dependants of #20, and #38 reaches the scheduler only through #36; #45, whose close job is a recurrent task, has the shortest dependency list of the four. The owner's recorded choice read "before the first task type", so it survived; the corrected set went into #81, into #47 and into the four issues' "Depends on" after the table was read, before anything was published.
+**Rule:** An issue number offered as the anchor of an ordering or timing claim is a citation — open the source that orders the issues (`gh issue view 47`, its dependency table) and quote its rows before naming which issues a decision binds.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-11 — documentation — described #74's leak check as "per-test" in a published issue without checking #74's spec
+**What happened:** Drafting #83 (the goroutine baseline under load), I called #74's detector "a per-test detector" everywhere the text named it. #74's approved spec — in context at the time — had every package with tests run the detection, and KD-36 as merged makes it one check at the end of each test binary: a package-level check. The owner approved the drafts on my summary, so the wrong characterisation was published; re-reading the merged #74 caught it, and #83 was corrected.
+**Rule:** A sentence that characterises another issue's mechanism is a claim about that issue: before it enters a durable artefact, check it against that issue's spec or the decision that records it (a KD), exactly as for any cited fact.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-11 — tooling — piped a `golangci-lint run` into `grep | head` for a control probe
+**What happened:** Measuring govet's `nilness` for issue #80, I wrote the positive-control half as `golangci-lint run … | grep … | head -3`, in a scratch directory outside the repository. The `PreToolUse` piped-gate hook refused the command; it was re-run with every output captured to a file and grepped afterwards.
+**Rule:** Capture a gate's output to a file and read the file — for an exploratory probe too, and outside the repository too. The pipe hides the exit status and can truncate the very line the probe exists for, whatever I meant to do with the status.
+**Kind:** correction
+**Escalated?** no

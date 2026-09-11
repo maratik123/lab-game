@@ -406,3 +406,17 @@ Entries are appended at the END, newest last.
 **Gap:** the guard's instrument measures pull requests only, while the defect it hunts is a number that does not resolve in this repository, and issues resolve too. A flow that files a follow-up issue and records it in the same PR meets a red local gate that is not a finding.
 **Proposed edit:** take the high-water mark over issues and pull requests together (`gh api` on the repository's newest issue number, which covers both), keeping the instrument-failure exit; add a regression case for a ref above the newest pull request but at or below the newest issue.
 **at:** 594a38c
+
+### 2026-09-11 — the interview-live instruction-edit guard also refuses the user's auto-memory directory
+**target:** `.claude/settings.json` (the `PreToolUse` instruction-edit guard), `ai-docs/scripts/test-instruction-edit-guard.sh`
+**Observed:** In a conversational session analysing issue #80, while #74's interview state file was on the checked-out branch, a `Write` to the user's auto-memory — `~/.claude/projects/-home-syt-lab-game/memory/`, outside the repository — was refused as "write into an instruction file while an interview is live". The owner's decisions on #80's contradictions then lived only in the conversation until they reached the issue texts.
+**Gap:** the guard's path class is the glob `*/.claude/*`, which matches every absolute path containing `/.claude/`, not the repository's `.claude/**`; the user-level Claude directory falls inside it. `*/AGENTS.md` and `*/CLAUDE.md` reach just as far.
+**Proposed edit:** resolve `file_path` against the repository root and apply the class only to paths under it; add suite rows showing that a path under `$HOME/.claude/projects/*/memory/` passes while a state file exists, and that the repository's own `.claude/` still blocks.
+**at:** 166eb26
+
+### 2026-09-11 — the `/task` stop gate blocks every session in the working tree and writes into the running flow's stop ledger
+**target:** `.claude/settings.json` (the `Stop` hook keyed on `ai-docs/plans/.task-inflight`), `ai-docs/scripts/test-stop-gate.sh`, `.claude/skills/task/SKILL.md` Step 12 item 13
+**Observed:** While #74's `/task` run held `ai-docs/plans/.task-inflight`, an unrelated conversational session in the same working tree — analysing issue #80, told by the owner not to touch the project directory — was blocked at its stop with "/task is in-flight", and the hook appended `blocked: 2026-09-11T19:09:33Z` to #74's marker. Step 12 item 13 reads those lines as the run's own stop-gate blocks. Both of the hook's exits were wrong for the blocked session: advancing the flow was not its work, and a `handback:` line would have handed the other run's agent a stop it never earned.
+**Gap:** the gate identifies the in-flight run by a file in the shared working tree alone; nothing in the marker says which session owns the run, so every concurrent session in that tree is gated by it and writes into its ledger.
+**Proposed edit:** record an owner identity in the marker when `/task` creates it, and have the hook compare it with the stopping session's own identity taken from its input — exit 0 without touching the ledger on a mismatch; add a suite row for a foreign session.
+**at:** 166eb26
