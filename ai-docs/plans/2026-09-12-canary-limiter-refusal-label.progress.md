@@ -10,24 +10,26 @@ _Updated: 2026-09-11 23:04_
 **Issue:** #89
 **Spec:** ai-docs/plans/2026-09-12-canary-limiter-refusal-label.spec.md
 
-**current_step:** Step 8 — group A not yet handed off
-**last_passed_gate:** check-spec-anchors.sh + check-spec-shape.sh + check-ac-shape.sh | 2026-09-11T22:33Z | 0b1feaa
+**current_step:** Step 8 — subtask 2 of 2 complete (Group A done)
+**last_passed_gate:** go build ./... + go vet ./... + golangci-lint run + golangci-lint fmt -d + go test -race ./internal/tg/... ./internal/health/... | 2026-09-12 | 9dbd45e
 **entry_args:** 89
 
 ## Next action
 
-**Do this immediately:** hand Group A (subtasks 1–2) to `code-writer` through `/context-reset`, per the design's `## Handoff plan`.
+**Do this immediately:** Group A is complete (both subtasks committed). Proceed to Step 9 (Verify) / Step 10 (self-review) per `/task`.
 
 ## Subtasks
 
-- [ ] 1. `internal/tg/caller.go` + `caller_test.go` — read `now` per loop pass beside the `ctx.Deadline()` read, add the pure refusal-cause helper (deadline form carries D4's message wrapping `context.DeadlineExceeded`), call it from the `!ok` branch; tests first  ← CURRENT
-- [ ] 2. `internal/health/probe_test.go` — the canary-label test: an already-passed deadline is counted a failure with `reason` `timeout`, fake handler never reached
+- [x] 1. `internal/tg/caller.go` + `caller_test.go` — read `now` per loop pass beside the `ctx.Deadline()` read, add the pure refusal-cause helper (deadline form carries D4's message wrapping `context.DeadlineExceeded`), call it from the `!ok` branch; tests first — commit 5b08da6
+- [x] 2. `internal/health/probe_test.go` — the canary-label test: an already-passed deadline is counted a failure with `reason` `timeout`, fake handler never reached — commit 9dbd45e
 
 ## Decisions log
 
 Append-only, one line per non-trivial decision. Each line is prefixed with the step or phase that made it. Never edit or remove prior entries.
 
 - **Step 7**: design-review returned GO on round 1; all four `## Issues` rows and both recommendations were design-internal, so they were folded by `design-writer` and design-review did not run again.
+- **Step 8 (subtask 1)**: the helper's doc comment and the two new end-to-end test doc comments initially named "AC1"/"AC3"/"D4"/"KD-26" as their rationale; `make comment-refs` flagged all four as forbidden ac-id/decision-anchor references (DOC-4), so the comments were reworded to describe the property directly instead of citing the spec/design anchor. Re-ran the gate clean afterward.
+- **Step 8 (subtask 2)**: verified the new `TestTelegramProber_ExpiredDeadlineCountsAsTimeout` test's discriminating power directly — checked out `internal/tg/caller.go` at the pre-subtask-1 commit (HEAD~1) with the new test still in place, ran it, and it failed with `classifyFailure = "network"` as expected; restored the post-subtask-1 file (`git diff` confirmed byte-identical) before continuing.
 
 ## GO notes
 
@@ -50,9 +52,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
+| AC1 | PASS — `TestCaller_ExpiredDeadlineAtLimiterIsContextError`, `internal/tg/caller_test.go` |
+| AC2 | PASS — `TestTelegramProber_ExpiredDeadlineCountsAsTimeout`, `internal/health/probe_test.go` |
+| AC3 | PASS — `TestCaller_RealWaitPastDeadlineIsNotContextError`, `internal/tg/caller_test.go` |
 
 ## Review register
 
@@ -62,4 +64,6 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## Files touched
 
-- (none yet)
+- `internal/tg/caller.go` — `now` read per loop pass; new `limiterRefusalCause` helper
+- `internal/tg/caller_test.go` — `TestLimiterRefusalCause`, `TestCaller_ExpiredDeadlineAtLimiterIsContextError`, `TestCaller_RealWaitPastDeadlineIsNotContextError`
+- `internal/health/probe_test.go` — `TestTelegramProber_ExpiredDeadlineCountsAsTimeout`
