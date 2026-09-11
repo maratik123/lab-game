@@ -435,7 +435,10 @@ func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 	srv := tgtest.New(t, nil)
 
 	raw := telego.Update{UpdateID: 40, Message: &telego.Message{Date: time.Now().Unix(), Chat: telego.Chat{ID: 1}}}
-	srv.SetHandler(tgtest.Success(updatesJSON(t, []telego.Update{raw})))
+	// The handler adds a delay so the first attempt's failure lands well
+	// past the few tens of milliseconds a fixed sleep would allow for on
+	// a loaded machine.
+	srv.SetHandler(tgtest.Delayed(200*time.Millisecond, tgtest.Success(updatesJSON(t, []telego.Update{raw}))))
 
 	cfg := testIngestConfig()
 	cfg.RetryBaseDelay = 300 * time.Millisecond
@@ -455,9 +458,29 @@ func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- l.Run(ctx) }()
 
-	// Let the first attempt fail and enter its backoff wait, then cancel
-	// mid-wait.
-	time.Sleep(80 * time.Millisecond)
+	// Wait for the first attempt's failure to be observed, then cancel —
+	// how long reaching that failure takes is not something the test can
+	// guess, so it polls the observation rather than sleeping a fixed
+	// duration.
+	waitDeadline := time.Now().Add(10 * time.Second)
+	for {
+		observedFailure := false
+		for _, o := range rec.Updates() {
+			if o.Outcome == OutcomeFailed {
+				observedFailure = true
+				break
+			}
+		}
+		if observedFailure {
+			break
+		}
+		if time.Now().After(waitDeadline) {
+			cancel()
+			<-done
+			t.Fatal("timed out waiting for an OutcomeFailed observation before cancelling")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	cancelAt := time.Now()
 	cancel()
 
@@ -494,16 +517,6 @@ func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 	}
 	if got := countRows(t, pool, "player_operation"); got != 0 {
 		t.Errorf("player_operation rows = %d, want 0 (the last attempt's writes were rolled back)", got)
-	}
-
-	var failedBeforeCancel int
-	for _, o := range rec.Updates() {
-		if o.Outcome == OutcomeFailed {
-			failedBeforeCancel++
-		}
-	}
-	if failedBeforeCancel < 1 {
-		t.Errorf("OutcomeFailed observations before cancellation = %d, want at least 1 (distinguishes cancelled-mid-retry from cancelled-before-anything-happened)", failedBeforeCancel)
 	}
 }
 

@@ -3,9 +3,15 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func recurrentRegistry(t *testing.T, typ Type, period time.Duration) *Registry {
@@ -401,4 +407,111 @@ func TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot(t *testing.T) {
 			t.Fatalf("Run with a closed pool = nil, want an error from the failed Reconcile")
 		}
 	})
+}
+
+// TestRun_cancelledMidReconcileReturnsCtxErr asserts that when Run's ctx
+// is cancelled while Reconcile's correction statement is in flight, and
+// the resulting write consequently fails as a raw network error rather
+// than a context error, Run still reports ctx.Err() rather than
+// surfacing the driver's phrasing of the underlying failure.
+func TestRun_cancelledMidReconcileReturnsCtxErr(t *testing.T) {
+	t.Parallel()
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var fired atomic.Bool
+	pool := cancelOnWritePool(t, newScheduler(t), cancel, &fired)
+	w, err := New(Options{Pool: pool, Registry: recurrentRegistry(t, "stop.reconcile", time.Hour), Config: testConfig()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- w.Run(runCtx) }()
+
+	select {
+	case err := <-done:
+		if !fired.Load() {
+			t.Fatalf("Run() = %v before Reconcile wrote its correction statement — the interleaving under test never happened", err)
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("Run() = %v, want context.Canceled — a cancellation that lands while Reconcile is writing is still a cancellation", err)
+		}
+	case <-time.After(10 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("Run did not return: Reconcile never wrote its correction statement")
+	}
+}
+
+// reconcileWriteTrigger is a pgx.QueryTracer that arms once the driver
+// starts the correction statement, so the interleaving under test —
+// cancelling on that statement's own network write — needs no assumption
+// about the statement's wire encoding or the transport beneath it.
+type reconcileWriteTrigger struct {
+	armed atomic.Bool
+}
+
+// TraceQueryStart arms rt.armed when data names the correction statement.
+func (rt *reconcileWriteTrigger) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	if data.SQL == reconcileCorrectSQL {
+		rt.armed.Store(true)
+	}
+	return ctx
+}
+
+// TraceQueryEnd does nothing; only the start of the correction statement
+// matters here.
+func (rt *reconcileWriteTrigger) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {
+}
+
+// cancelOnWritePool opens a second pool on base's schema whose
+// connections cancel through cancel on the first write after a
+// reconcileWriteTrigger arms, recording that in fired, and let that
+// write meet an already-passed deadline — the state the driver's own
+// cancellation handler leaves the socket in. The write then fails as a
+// raw network timeout rather than as a context error, which is the
+// driver's behaviour for a cancellation that lands mid-write.
+func cancelOnWritePool(t *testing.T, base *pgxpool.Pool, cancel context.CancelFunc, fired *atomic.Bool) *pgxpool.Pool {
+	t.Helper()
+	cfg := base.Config()
+	trigger := &reconcileWriteTrigger{}
+	cfg.ConnConfig.Tracer = trigger
+	dial := cfg.ConnConfig.DialFunc
+	cfg.ConnConfig.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := dial(ctx, network, addr)
+		if err != nil {
+			return nil, fmt.Errorf("dial cancel-on-write conn: %w", err)
+		}
+		return &cancelOnWriteConn{Conn: conn, armed: &trigger.armed, cancel: cancel, fired: fired}, nil
+	}
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("new cancel-on-write pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
+}
+
+// cancelOnWriteConn is the net.Conn cancelOnWritePool hands the driver.
+type cancelOnWriteConn struct {
+	net.Conn
+	armed  *atomic.Bool
+	cancel context.CancelFunc
+	fired  *atomic.Bool
+}
+
+// Write cancels and arms a passed write deadline before the first write
+// once armed reports true, then writes through.
+func (c *cancelOnWriteConn) Write(p []byte) (int, error) {
+	if c.armed.Load() && c.fired.CompareAndSwap(false, true) {
+		c.cancel()
+		if err := c.SetWriteDeadline(time.Now()); err != nil {
+			return 0, fmt.Errorf("arm write deadline: %w", err)
+		}
+	}
+	n, err := c.Conn.Write(p)
+	if err != nil {
+		return n, fmt.Errorf("cancel-on-write conn: %w", err)
+	}
+	return n, nil
 }

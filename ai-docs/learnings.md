@@ -506,3 +506,15 @@ wrong-surface text by message twelve.
 **Rule:** Capture a gate's output to a file and read the file — for an exploratory probe too, and outside the repository too. The pipe hides the exit status and can truncate the very line the probe exists for, whatever I meant to do with the status.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — named a sibling test from memory in a delegate prompt
+**What happened:** Handing issue #84's four fixes to `code-writer`, I told it to follow the polling idiom in "`TestRun_pollFailureDoesNotExitTheLoop`-style code". No test of that name exists; the real one is `TestRun_pollFailureDoesNotStopTheLoop`. I had read its body earlier, never its name, and wrote the name from memory. I caught it right after the spawn, resolved the name with `ast-index outline`, and sent the correction to the live delegate.
+**Rule:** Every symbol that goes into a delegate prompt is resolved against the tree before the prompt is sent (`ast-index symbol` / `outline`), like any other load-bearing claim (delegation Phase 0). A name remembered from a file I read is still a claim.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — search — told the owner "no window-length validation" from an empty grep
+**What happened:** In #84's Step-4 plan I told the owner that nothing validates a limiter window's length, so an hour-long window is acceptable. At that point the only support was an `rg` over `internal/config` that matched nothing. Before the delegate prompt went out I read the construction path (`tg.New` → `newLimiter` → `paceWindows`), which confirmed it. The claim was true, but when I made it it rested on a search miss.
+**Rule:** A claim that something does not exist — a validation, a check, a branch — is made only after a raw read of the path that would contain it. Never state one to the owner off a search tool's silence, even as a side remark in a plan.
+**Kind:** correction
+**Escalated?** no
