@@ -367,13 +367,7 @@ func TestRetry_DeadlineRefusalInsteadOfSleep(t *testing.T) {
 // TestCaller_AttemptTimeoutAbandonsAttempt covers the AttemptTimeout
 // safety valve (a wedged-instance incident this option was added for): a single
 // HTTP attempt that outruns AttemptTimeout is abandoned at that timeout,
-// not at the caller's own (much longer-lived) context deadline. This test
-// deliberately runs in real time rather than under synctest: the fake
-// handler's delay outlives the aborted attempt (net/http never interrupts
-// a handler mid-flight just because the client gave up), and synctest
-// requires every bubble goroutine to finish or be durably blocked before
-// the bubble's root returns — a still-sleeping handler goroutine trips
-// that "deadlock" check even though nothing is actually deadlocked.
+// not at the caller's own (much longer-lived) context deadline.
 func TestCaller_AttemptTimeoutAbandonsAttempt(t *testing.T) {
 	t.Parallel()
 	srv := tgtest.New(t, tgtest.Delayed(2*time.Second, tgtest.Success(nil)))
