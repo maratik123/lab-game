@@ -457,3 +457,9 @@ wrong-surface text by message twelve.
 **at:** 71226f4
 **Kind:** correction
 **Escalated?** AGENTS.md, delegation-rules
+
+### 2026-09-11 — process — a throwaway probe was redirected into the repository root instead of tmp/
+**What happened:** While seeding the interview state file for `/task 74`, a one-off verification command redirected an `awk` extraction to a bare filename (`tmp-yaml.<pid>`) in the working directory, then deleted it in the same command. The file was never read; the redirect was dead code left over from a first draft of the check. No hook refused it, because the root-redirect hook matches only gate commands (`go`, `golangci-lint`, `make`, `actionlint`, `shellcheck`), not an arbitrary probe.
+**Rule:** Every scratch write — a gate log, a backup, a throwaway probe of any tool — goes to `tmp/` (repository-local) or the session scratchpad, never to a bare filename. Delete dead redirects from a probe before running it; a same-command `rm` does not make a root write legal.
+**Kind:** correction
+**Escalated?** no
