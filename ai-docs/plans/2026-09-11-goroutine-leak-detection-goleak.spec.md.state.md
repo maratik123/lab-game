@@ -84,4 +84,7 @@ prior_qa:
   - round: 2
     question: "Module-wide coverage: does it also bind a package added after this task? Once this task lands, all 16 of today's packages run the detector; the Module-wide option's text ('covered from its first test') reads either way for a package that does not exist yet."
     answer: "Enforced — A check fails the suite when a package with tests does not run the detector, so a package added later is covered from its first test without anyone having to remember."
+  - round: 3
+    question: "Approve and post cross-link comment?"
+    answer: "Approve — Approve the spec and its Acceptance Criteria, post the cross-link comment on #74, and continue to the design phase."
 ```
