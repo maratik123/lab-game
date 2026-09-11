@@ -68,6 +68,18 @@ tests never touch the process-global working directory. Only the paths that name
   project directory's name exactly, as in the examples. Two checkouts with the same directory name
   under different parents share one server."]. The suffix is a named constant in the wrapper, not a
   literal spelled twice [derived → AC1's table cases in § Test Design].
+
+  **What sharing one server costs the twins, named so a later reader does not read it as a
+  regression.** Two same-named checkouts hold one container and two locator files. A `--down` in
+  either removes that one container and leaves the other checkout's locator pointing at a server that
+  is gone; that checkout's next gate run probes it, finds it unreachable, says so, and falls through
+  to an anonymous container — correct behaviour, and the same decided semantics AC4 asks for, not a
+  fault
+  [measured 4798daf:cmd/testpg/run.go:129-142,169 · `sed -n '129,142p;169p' cmd/testpg/run.go` → the
+  located-DSN branch, the anonymous `sm.provision(ctx, testdb.ServerOptions{ConnCeiling: ceiling})`
+  below it, and `admits`'s `"%s is unreachable (%v); falling through"`]. The verify-time probe's own
+  teardown step relies on exactly this: the twin needs no `--down`, because alpha's removed the
+  container it joined.
 - **D2 — The working directory is the checkout, and the wrapper already treats it that way.** The
   derivation reads the same fact the locator already resolves against, so one notion of "this
   checkout" serves both. No new locating mechanism, no git subprocess.
@@ -223,7 +235,11 @@ tests never touch the process-global working directory. Only the paths that name
   Re-confirmed from these grounds: the manual probe is still the right answer for the container-level
   half, and the locator hazard in ground 1 additionally binds subtask 2's new cases — they stay on the
   stub seam, which reaches neither the locator file nor a runtime (§ Test Design). The probe runs once,
-  at verify time, from throwaway directories outside the repository.
+  at verify time, from throwaway directories inside the repository's ignored scratch directory —
+  inside the project root, where the permission rule keeps every file this task writes, and covered by
+  a root-anchored ignore rule, so the locator files they collect never appear untracked
+  [measured 4798daf:.gitignore:18 · `git check-ignore -v tmp/alpha/tmp/testpg-dsn` →
+  `.gitignore:18:/tmp/`].
 
 ### Rejected alternatives
 
@@ -346,12 +362,18 @@ default maximum of 4 design-defined groups, so no user approval is needed.
   `Getwd: …/scratchpad/link`, `Base: link`, `PWD env: …/scratchpad/link`; the Go runtime returns `$PWD`
   when it names the same directory]
 - **A locator file written before this change, in a checkout whose directory name is not the old
-  constant's prefix, points at the old shared container.** After the change that checkout's `--down`
-  probes the stale DSN, finds it reachable, and then reaches for a container under the *new* name —
-  creating and immediately removing an empty one while the old container keeps running. Mitigation:
-  the scratch directory is ignored local state, so the remedy is to delete the stale locator file (or
-  the old container) once, and the design names it here so the first run after the change is not read
-  as a defect. —
+  constant's prefix, points at the old shared container — and it is read on two paths, not one.**
+  The one a developer hits first is a **gate run**: `runChild` reads that same locator, finds the old
+  shared server reachable and large enough, and runs the gate against the *other* checkout's server —
+  the AC3-shaped symptom, surviving until the locator is replaced. The second is `--down`: it probes
+  the stale DSN, finds it reachable, and then reaches for a container under the *new* name — creating
+  and immediately removing an empty one while the old container keeps running. Mitigation: one remedy
+  covers both, because both read the one file — the scratch directory is ignored local state, so
+  delete the stale locator file (or the old container) once; the design names it here so the first
+  run after the change is not read as a defect. —
+  [measured 4798daf:cmd/testpg/run.go:129-133 · `sed -n '129,133p' cmd/testpg/run.go` → `runChild`'s
+  `if dsn, ok := sm.locate(); ok` branch executing the child against the located DSN whenever
+  `admits` holds]
   [measured 42792be:cmd/testpg/run.go:286-320 · `sed -n '286,320p' cmd/testpg/run.go` → `runDown`
   locates, probes, then provisions by name and stops that container; it never checks that the located
   DSN and the named container are the same server]
@@ -401,7 +423,11 @@ default maximum of 4 design-defined groups, so no user approval is needed.
 
 ## Test Design
 
-Every claim below is about a test that does not exist yet.
+Every claim below about a test, a fixture or an assertion is about something that does not exist yet,
+and carries `[derived → …]`. The exception is the verify-time probe, whose recipe is a set of
+instructions for driving the **shipped** wrapper: the facts its steps depend on — which environment
+variable `runChild` reads first, what `--parallel` defaults to, what the ignore rule covers — are
+properties of code that exists today and are cited as measurements of it.
 
 ### Subtask 1 — the pure derivation
 
@@ -474,6 +500,16 @@ Every claim below is about a test that does not exist yet.
     the `Setenv` would pass every other case in this list. [derived → AC1, D6]
   - `--down` with a locator, a reachable server and such a directory exits non-zero and stops nothing.
     [derived → AC1]
+  - `--down` in that same case additionally leaves the process-wide reaper setting as it found it —
+    the mirror of the `--up` assertion above, and for the same reason: D6's ground 3 claims the
+    property for **both** paths, and exit code plus "provisioned nothing" are satisfied equally by a
+    pre-check placed *after* `runDown`'s own `os.Setenv`, so only the environment-before/after
+    assertion pins the position on this path too. It is reachable as specified, because `runDown`
+    reaches for the environment only after its locator and reachability checks, which is where D5
+    places the derivation
+    [measured 4798daf:cmd/testpg/run.go:286-306 · `sed -n '286,306p' cmd/testpg/run.go` →
+    `sm.locate()`, then `sm.probe(...)`, and only then the `os.Setenv` that disables the reaper].
+    [derived → AC1, D6]
   - `--up` whose working-directory lookup itself fails exits non-zero, provisions nothing, and prints
     a message carrying the lookup's own error; the stub seam's working-directory member returns an
     error for this case. [derived → AC1, D4]
@@ -499,14 +535,54 @@ with those names — including the half of AC4 that is not about the name at all
 the pre-existing reuse behaviour measured in § Approach, unchanged by this task and therefore
 plausible; plausible is not observed, and this is the probe that observes it. The probe closes the gap
 without making the package database-backed (D10). Run it once at `/task` verify time, from the
-repository root:
+repository root.
 
-1. Build the wrapper: `go build -o tmp/testpg ./cmd/testpg`.
-2. Create throwaway project directories under the session scratch directory: two whose base names
-   differ — call them the alpha and beta probe directories — and, under a *different* parent, one
-   whose base name equals alpha's, the alpha twin. The wrapper needs nothing from any of them but the
-   ability to create its own scratch subdirectory there.
-3. From the alpha directory, run the built wrapper with `--up --parallel 1` (pinning parallelism keeps
+**Two disciplines bind every wrapper invocation below.** Neither is decoration: with either one
+dropped, the steps that carry the container-level evidence fail for a reason that has nothing to do
+with this change, and a reader would misattribute the failure to the derivation.
+
+- **Prefix every invocation with `env -u LAB_GAME_TEST_DSN`.** `runChild` consults that variable
+  *before* the locator and uses whatever it finds unconditionally, so an operator who exports it —
+  the documented way to point the suite at a server they already run, and the subject of this
+  design's last § Open questions entry — would have the probe print that DSN and observe nothing
+  about this change
+  [measured 4798daf:cmd/testpg/run.go:124,129 · `sed -n '124p;129p' cmd/testpg/run.go` →
+  `if dsn, ok := lookup(testdb.DSNEnv); ok && dsn != ""` as `runChild`'s first branch, above the
+  `if dsn, ok := sm.locate(); ok` branch]. Unsetting per invocation rather than per shell keeps the
+  discipline inside the recipe, where a later reader can see it.
+- **Pass `--parallel 1` on every invocation — the child runs as much as the `--up` runs.** On `--up`
+  the flag only caps how large a server is created. On a child run it changes the wrapper's
+  **decision**: `--parallel` defaults to `runtime.GOMAXPROCS(0)`, and a discovered long-lived server
+  is used only if it admits the need computed from that value, so a child run left at the default
+  asks for far more than a server sized with `--parallel 1` was given, `admits` falls through, and
+  the wrapper starts an **anonymous** container and prints *its* DSN — neither alpha's nor beta's,
+  and the container-level observation evaporates
+  [measured 4798daf:cmd/testpg/run.go:79,129-142,175 · `sed -n '79p;129,142p;175p' cmd/testpg/run.go`
+  → the flag's default `runtime.GOMAXPROCS(0)`; the discovered-server branch gated on `admits`,
+  falling past it into `sm.provision(ctx, testdb.ServerOptions{ConnCeiling: ceiling})`, which carries
+  no container name; and `admits`'s own message `"%s admits %d connections, this run needs %d;
+  falling through"`]
+  [measured 4798daf:internal/testdb/server.go:198,204,213,236 · `nproc` → `16`, and a scratch driver
+  importing this module and calling `testdb.Ceiling` → `GOMAXPROCS 16`, `Ceiling(1,1) = 100` (the
+  formula's own value floored to `imageDefaultCeiling`), `Ceiling(1,16) = 432`]. With `--parallel 1`
+  everywhere, the need and the ceiling the probe servers were sized with are the same number, and the
+  discovered server is taken.
+
+Steps:
+
+1. Build the wrapper and keep the repository root: `go build -o tmp/testpg ./cmd/testpg`. Every later
+   step runs from another directory, so the binary is invoked by **absolute** path, never as
+   `tmp/testpg`.
+2. Create the throwaway project directories **inside the repository's ignored scratch directory**,
+   not outside the project root: two whose base names differ — call them the alpha and beta probe
+   directories — and, under a *different* parent inside that same scratch directory, one whose base
+   name equals alpha's, the alpha twin. The ignore rule for the scratch directory is anchored at the
+   repository root and covers everything beneath it, including each probe directory's own locator
+   file, so nothing lands outside the project root and nothing appears untracked
+   [measured 4798daf:.gitignore:18 · `git check-ignore -v tmp/alpha/tmp/testpg-dsn` →
+   `.gitignore:18:/tmp/`]. The wrapper needs nothing from any of them but the ability to create its
+   own scratch subdirectory there.
+3. From the alpha directory, run the built wrapper with `--up --parallel 1` (here the pin only keeps
    each probe server at the smallest ceiling the formula floors to, so the probe does not provision
    large servers). Repeat from the beta directory.
 4. **AC1 / AC3 evidence:** list the runtime's running containers by name and confirm a container named
@@ -517,12 +593,16 @@ repository root:
    twin's own locator file now holds the DSN alpha's holds. The listing and the DSN are both read: a
    run that silently failed to provision would also leave the listing unchanged, and only the DSN
    distinguishes joining alpha's server from reaching nothing.
-6. **AC3 evidence:** from the alpha directory, run the built wrapper with `-- sh -c 'printf %s
-   "$LAB_GAME_TEST_DSN"'` and confirm the printed DSN is alpha's, not beta's.
+6. **AC3 evidence:** from the alpha directory, run the built wrapper with `--parallel 1 -- sh -c
+   'printf %s "$LAB_GAME_TEST_DSN"'` and confirm the printed DSN is alpha's, not beta's. What makes
+   the printed value readable as the wrapper's own choice: the child is handed the chosen DSN
+   appended last to the inherited environment
+   [measured 4798daf:cmd/testpg/run.go:212 · `sed -n '212p' cmd/testpg/run.go` →
+   `cmd.Env = append(os.Environ(), testdb.DSNEnv+"="+dsn)`].
 7. **AC2 evidence:** from the alpha directory, run the built wrapper with `--down`. Then confirm
-   beta's container is still listed as running, and that a child run from the beta directory still
-   prints beta's DSN — a server that is listed but unreachable would pass a listing check and fail
-   this one, so both are read.
+   beta's container is still listed as running, and that a child run from the beta directory — again
+   `--parallel 1 -- sh -c …` — still prints beta's DSN; a server that is listed but unreachable would
+   pass a listing check and fail this one, so both are read.
 8. Tear down: run `--down` from the beta directory, then list the runtime's containers again and
    confirm neither probe container survives. The twin needs no `--down` of its own — its name is
    alpha's, so alpha's teardown in step 7 removed the container it joined, and what the twin keeps is
@@ -534,6 +614,11 @@ the derivation reached the provisioning call for one path and not the other — 
 case the `--down` name assertion in subtask 2 is written to catch first. What a failure of step 5
 would mean is the opposite fault: the same directory name produced two servers, which is the owner's
 name-basis decision (D1) breaking at the runtime rather than at the derivation.
+
+One failure shape means neither of those, and it is the one to rule out first: a step 6 or step 7
+child run whose stderr carries the `admits … falling through` line, or whose printed DSN belongs to
+neither probe directory, is the **instrument** mis-run — one of the two disciplines above was dropped
+— and says nothing about the change. Re-run it with both before reading it as a finding.
 
 ### Subtask 3 — prose
 
