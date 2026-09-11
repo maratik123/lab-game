@@ -11,13 +11,13 @@ _Updated: 2026-09-11 17:47 UTC_
 **Spec:** ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.spec.md
 **Design:** ai-docs/plans/2026-09-11-goroutine-leak-detection-goleak.design.md
 
-**current_step:** Step 11 — review fixes complete (Round 1)
+**current_step:** Step 10 — self-review APPROVE (Round 2)
 **last_passed_gate:** golangci-lint run | 2026-09-11T19:05:24Z | d7283d7
 **entry_args:** 74
 
 ## Next action
 
-**Do this immediately:** Step 10, round 2 — a cold `self-review` spawn over `364657b..HEAD`; every round-1 row is `fixed@d7283d7` or `accepted@1`.
+**Do this immediately:** Step 12 — finalise `INDEX.md`, move the spec and design to `done/`, inbox propagation and the task-run record, commit and push, retire the state files, open the PR, fill the context-status PR locator.
 
 ## Subtasks
 
@@ -55,6 +55,8 @@ Group B — instructions (`general-purpose`, inherited model):
 - **Step 9.5**: `ai-docs/context-status.md` gains this task's entry (PR locator `#TBD-at-Step-12`); `ai-docs/context.md` § Status gains the leak check in its Gates bullet and its date moves to 2026-09-11; no repo-root user doc exists beyond `AGENTS.md`/`CLAUDE.md`, and a hidden-inclusive sweep found no live doc still stating the old `TestMain` form. No open question in `context.md` was resolved by this task. `check-citations.sh` is RED locally on the entry's `#84`/`#85` until this run's PR exists, because its high-water mark is the newest pull request; recorded in `ai-docs/harness-gaps.md` (2026-09-11), and it resolves at Step 12 when the PR is opened.
 - **Step 10**: self-review round 1 REJECT — sixteen register rows: eleven open (one major R1-1, eight minor R1-2…R1-9, two nit R1-10/R1-11) and five accepted@1 by the reviewer (R1-12…R1-16). None touches the spec or design, so all route to the Step-11 code-fix path.
 - **Step 11 (round 1)**: all eleven open rows fixed at d7283d7, none objected — the Go rows by a single-fix `code-writer`, R1-8 (`ai-docs/context.md`) in-thread. Measured by the orchestrator after the fix: R1-1's mutant (`namesModuleCodeIn` skipping `created by` lines) builds and turns `TestCheck_StartedByHalfAlone` red on its own assertion, green once restored; R1-2's mutant (every refusal call printing `"x"`) passes `go vet` and fails all five `TestCheck_Refusals` subtests on "want it to contain", green once restored — a first attempt at that mutant left `Fprintf` arguments with no directive, failed `go vet` inside `go test`, and was discarded as a test of the compiler; R1-3, R1-4, R1-9, R1-10 greps → no match (R1-3's control line matched); R1-8's count → 1; R1-5, R1-6, R1-7, R1-11 read in the diff. Gates on the fix: `go build ./...`, `go test -count=1` and `-race -count=1` over `internal/leaktest` and `internal/tgtest`, `go vet ./...`, `golangci-lint run` (whole tree), `golangci-lint fmt -d` (empty), `make comment-refs`, and the pre-commit coverage ratchet's whole-suite run (89.56% against 89.68%, within tolerance).
+- **Step 10**: self-review round 2 APPROVE (cold spawn over `364657b..HEAD`) after two rounds — every round-1 row re-verified by its own command; two new rows accepted@2 (R2-1 minor, R2-2 nit); re-litigation share 0 in both rounds. Correction to the Step 9.5 bullet, per the round-2 reviewer: `check-citations.sh`'s local RED on `#84`/`#85` covers `ai-docs/harness-gaps.md`'s 2026-09-11 citation-guard entry as well as `ai-docs/context-status.md`; both resolve once this run's PR exists.
+- **Step 10 (stop ledger)**: the in-flight marker carries one `blocked: 2026-09-11T19:09:33Z` line; the owner stated it came from a neighbouring session's hook, not from this run — Step 12's ledger read reports it with that attribution.
 
 ## Key discoveries (don't re-investigate)
 
@@ -84,7 +86,7 @@ Group B — instructions (`general-purpose`, inherited model):
 | R1-4 | round 1 | minor | fixed@d7283d7 | `rg -n 'os\.Pipe' internal/leaktest/leaktest_test.go` → no match (at f28c8d1: `:357`) |
 | R1-5 | round 1 | minor | fixed@d7283d7 | read `TestCheck_TwoGoroutinesLeftRunning`, `TestCheck_RunningHalfAlone`, `TestCheck_StartedByHalfAlone`: every goroutine each starts is released **and joined** before it returns |
 | R1-6 | round 1 | minor | fixed@d7283d7 | `sed -n '63,97p' internal/tgtest/tgtest.go` — the order `New`'s doc states for cancel vs close matches the cleanup body |
-| R1-7 | round 1 | minor | fixed@d7283d7 | `sed -n '57,59p;201,208p;502,509p' internal/leaktest/guard_test.go` — both doc comments agree with the `onlyunderscorefile` case, which requires that directory to be examined |
+| R1-7 | round 1 | minor | fixed@d7283d7 | `sed -n '/^\/\/ testDirs /,/^func testDirs/p;/^\/\/ checkTree /,/^func checkTree/p' internal/leaktest/guard_test.go; grep -n -A6 'only test file is named with a leading underscore' internal/leaktest/guard_test.go` — both doc comments agree with the `onlyunderscorefile` case, which requires that directory to be examined (re-resolved in round 2 from the unpinned f28c8d1 coordinates `57,59p;201,208p;502,509p`, which drifted to 57–63, 205–212 and 506–513 at d7283d7; locator drift, not a finding) |
 | R1-8 | round 1 | minor | fixed@d7283d7 | `sed -n '/Layout so far/p' ai-docs/context.md \| grep -c 'internal/leaktest'` → 1 (at f28c8d1: 0) |
 | R1-9 | round 1 | minor | fixed@d7283d7 | `grep -n 'base context (New)' internal/tgtest/tgtest.go` → no match |
 | R1-10 | round 1 | nit | fixed@d7283d7 | `grep -n "top frame" internal/leaktest/leaktest_test.go` → no claim that the excused `sync.(*WaitGroup).Wait` is the top frame |
@@ -94,6 +96,8 @@ Group B — instructions (`general-purpose`, inherited model):
 | R1-14 | round 1 | minor | accepted@1 — no sync group ties § Go Test Conventions to the reviewer checklists and no `.claude/` file carries the rule's vocabulary, so the Propagation Rule's procedure finds nothing to update; already recorded as a harness gap (`ai-docs/harness-gaps.md` 2026-09-11), not a PR defect | `grep -n -i 'go test conventions' ai-docs/propagation-groups.md; grep -rn -i -E 'goroutine.leak\|leaktest\|goleak' .claude/` → both empty |
 | R1-15 | round 1 | minor | accepted@1 — the guard never examines root `tmp/` (`srcguard.WalkSubtree` skips it) although `go test ./...` would compile a Go file placed there; `tmp/` is the designated ignored scratch directory and holds no Go file | `find tmp -name '*.go' \| wc -l` → 0 |
 | R1-16 | round 1 | minor | accepted@1 — T3's `literal/` fixture does not import the provisioner, so it never reaches `selectsMain`; the parse matches `*ast.SelectorExpr` only and cannot count a string literal by construction, and the fixture models the real hazard (`guard_test.go`'s `TestMain` string literals sit in a file with no provisioner import) | `sed -n '/^func selectsMain/,/^}/p' internal/testdb/server_test.go` |
+| R2-1 | round 2 | minor | accepted@2 — below severity floor: T2's wiring case asks for `0` **and** the skip line on a filtered run, and `TestMain_Wiring`'s filtered branch asserts only `0`. No discriminating power is lost: with one stale entry and no leak, `check` returns `0` only through its skip branch, and the unfiltered branch — the one every gate takes — asserts the output wiring ("not needed") | `sed -n '/^func TestMain_Wiring/,/^}/p' internal/leaktest/leaktest_test.go \| grep -n -A5 'if wantFiltered {'` |
+| R2-2 | round 2 | nit | accepted@2 — same-package names in the round-1 fix's comments are contract statements, not "see X" pointers: the `//nolint:errcheck` reason on `startServeDirect` names its one caller, whose deferred `goleak.Find` after `srv.Close()` is what makes discarding `Serve`'s error safe (DOC-3's guarantor exemption); `testDirs` and `checkTree` state the contract of `examined`; `make comment-refs` green | `grep -n 'nolint:errcheck' internal/leaktest/leaktest_test.go; sed -n '/^\/\/ testDirs /,/^func testDirs/p;/^\/\/ checkTree /,/^func checkTree/p' internal/leaktest/guard_test.go` |
 
 ## Files touched
 
@@ -167,3 +171,43 @@ Group B — instructions (`general-purpose`, inherited model):
 - **Register:** R1-12…R1-16 record what was examined and ruled not a defect.
 
 No Design or Spec Amendment trigger: every open row is fixed in code or in `ai-docs/context.md`, and each conforms to the design as written.
+
+## Self-Review (Round 2)
+
+**Verdict:** APPROVE
+
+**What was checked.**
+
+- **Prompt:** the closed list only (invocation, Spec, Design, Progress, Commits `364657b..HEAD`). No contamination.
+- **Round scoping:** the register holds eleven `fixed@d7283d7` rows and five `accepted@1` rows. The window since round 1 was written (`3c68d21..HEAD`) has one code-bearing commit, `d7283d7`: `internal/leaktest/leaktest_test.go`, comments in `internal/leaktest/guard_test.go` and `internal/tgtest/tgtest.go`, and `ai-docs/context.md`. It also has one bookkeeping commit, `7f3b939`: this file and two `ai-docs/learnings.md` entries. I read both in full. No production statement changed: `git diff f28c8d1..HEAD -- internal/leaktest/leaktest.go` is empty, and the `tgtest.go` hunk is comments only. Nothing that the `accepted@1` rows rest on has moved. R1-14's two greps and R1-15's `find tmp -name '*.go' | wc -l` (→ 0) return what their rows say.
+- **Every `fixed@d7283d7` row, verified with its own command:**
+  - **R1-1:** the creator-blind mutant `go vet`s clean. `go test -count=1 ./internal/leaktest/` → `--- FAIL: TestCheck_StartedByHalfAlone` `leaktest_test.go:239: check() = 0, want non-zero — this module's own code started the excused goroutine`. I also ran the frame-blind mutant (skip every line that is not `created by `): `--- FAIL: TestCheck_RunningHalfAlone` `leaktest_test.go:196`. So both halves of the scan now have a discriminating case, and the design's Risks row holds. Both mutants were restored from a cp-backup, and `git status` was clean afterwards.
+  - **R1-2:** the five refusal messages were replaced by `fmt.Fprintln(out, "x")`, which `go vet`s clean. All five `TestCheck_Refusals` subtests FAIL at `leaktest_test.go:309` on "want it to contain …". Restored.
+  - **R1-3 and R1-4:** each `rg` exits 1, and each control line matched.
+  - **R1-8:** 1. **R1-9 and R1-10:** no match.
+  - **R1-5:** read in the code. `TestCheck_TwoGoroutinesLeftRunning` joins `doneA` and `doneB`. `TestCheck_RunningHalfAlone` waits on `finished`. `TestCheck_StartedByHalfAlone` defers `srv.Close()` and then `goleak.Find(before)`, a bounded join that fails the case if the serve goroutine outlives it. The three `httptest` cases join through `(*httptest.Server).Close`, which waits for its serve goroutine. `go test -count=4 -shuffle=on -run 'TestCheck|TestMain_Wiring|TestModulePath|TestFiltered' ./internal/leaktest/` → `ok`.
+  - **R1-6:** `New`'s doc says the context is cancelled "before the server itself closes", which matches the cleanup's `cancelBase()` then `Close()`.
+  - **R1-7:** both doc comments now agree with the `onlyunderscorefile` `clean` case. The row's line-number command had drifted, so I re-resolved it to symbols in the register. That is a locator drift, not a finding.
+  - **R1-11:** the case asserts `strings.Count(report, "created by") != 2`. For one run I added a temporary `t.Log(report)`, restored afterwards. The log shows two goroutines, with `blockOnChannelA` and `blockOnChannelB` on top of their stacks, and one `created by` line each. So `blockOnChannelA`'s doc ("the function at the top of a goroutine's stack") still holds after the closure wrapping.
+- **AC re-runs against the shipped tree.** Every probe file was removed and every edited `TestMain` restored from a cp-backup, with `git status` clean after each.
+  - **AC1/AC2 PASS.** A parked goroutine in `internal/backoff` → `PASS`, then `leaktest: goroutines still running…`, `…backoff.zzReview2Park on top of the stack`, `created by …TestZZReview2ProbeLeak`, and `FAIL internal/backoff`, with no `--- FAIL` line.
+  - **AC3 PASS.** `rg -n 'leaktest\.Ignore\{' --type go -g '!internal/leaktest/**' .` → exit 1. The control matched.
+  - **AC4 PASS.** 17 packages with tests, 0 missing the form, 0 packages without tests. The control matched.
+  - **AC5 PASS.** A `time.Sleep` entry in `internal/config` → `ignore entry "time.Sleep" excuses this module's own code`, with the closure frame and the creator.
+  - **AC6 PASS.** A `net/http.(*persistConn).readLoop` entry in `internal/commentref` → `is not needed: review probe`.
+  - **AC7 PASS.** The second `go test ./internal/leaktest/` answered `(cached)`, with its logs outside the tree. With a scratch `internal/zzreview2probe` added → not cached, `FAIL`, `default build: no TestMain …` and `race build: no TestMain …`.
+  - **D6/D10.** No gate recipe in `Makefile`, `coverage-ratchet.sh` or `ci.yml` passes `-run`, `-skip`, `-short` or `-list`. `go.mod`, `go.sum`, `Makefile`, `.github` and `.githooks` have no diff. `make import-guard` is green, and `go mod tidy` leaves no delta.
+- **Gates:** `go vet ./...` green. `golangci-lint run` → `0 issues.` `golangci-lint fmt -d` is empty. `make comment-refs` and `make file-limits` are green; the largest file is `guard_test.go` at 547 lines, then `leaktest_test.go` at 441. `go test -race -count=1 ./internal/leaktest/ ./internal/tgtest/` → both `ok`.
+- **Safety:** the panic audit over `leaktest.go`, `tgtest.go` and `testdb.go` has no hit, and the control matched. The one `//nolint` the fix adds (`errcheck`, on `startServeDirect`) names its linter and a reason, and `nolintlint` is green. The reason's claim holds: `go srv.Serve(l)` puts no module frame on the goroutine's stack, as the creator-blind mutant's red run proves, and a closure would add one.
+- **Domain invariants:** nothing applies. The diff touches no ledger, balance, telemetry, schema, chat path or secret.
+- **Prose:** I checked the new `internal/leaktest` clause in `ai-docs/context.md` against `leaktest.go`. The two learnings entries follow the template's shape. The first entry's vet claim matches this round's R1-2 mutant: the directive-less `Fprintf` form is what vet refuses, and the `Fprintln` form vets clean.
+- **Citation guard (observation, not a finding):** `check-citations.sh` is RED locally on `#84` and `#85`. The hits are in `ai-docs/context-status.md` and also in `ai-docs/harness-gaps.md`, while Step 9.5's record names only the first; the cause and the resolution are the same for both. Both issues exist (`gh issue view` → `OPEN`), and the newest pull request is `#79`. The refs resolve once this run's PR, `#86` or later, exists.
+
+**No `blocker` or `major` finding is open, so the verdict is APPROVE.** Two `minor`/`nit` items were examined and are below the severity floor, so they take register rows rather than table rows. R2-1 is in `internal/leaktest/leaktest_test.go` (`TestMain_Wiring`'s filtered branch). R2-2 is in `internal/leaktest/leaktest_test.go` and `internal/leaktest/guard_test.go` (same-package names in the fix's comments). I also re-resolved one register row's command, R1-7's, for locator drift rather than raising it as a finding.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+
+_No row: no finding at or above the severity floor in this round's window._
+
+No Design or Spec Amendment trigger.
