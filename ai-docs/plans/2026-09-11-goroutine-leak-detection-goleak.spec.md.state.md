@@ -66,7 +66,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 3
 agent_id: aa4d3b7e2006369e6
 prior_qa:
   - round: 1
@@ -81,4 +81,7 @@ prior_qa:
   - round: 1
     question: "(orchestrator explained each option's consequences — goleak's API reports no per-entry match, so a stale check is own code over it; a goroutine alive only sometimes makes a stale check flaky unless entries are scoped per package or route; a version pin checks that a line was touched, fails on every dependency move and misses stdlib goroutines; reason-only lets dead entries accumulate, and an entry's width matters more than its age — recommended Stale fails — then re-put the same question verbatim)"
     answer: "Stale fails — An entry that matches no goroutine in the runs it applies to fails the suite, so a dependency move that drops or renames a goroutine forces the entry to be updated or deleted."
+  - round: 2
+    question: "Module-wide coverage: does it also bind a package added after this task? Once this task lands, all 16 of today's packages run the detector; the Module-wide option's text ('covered from its first test') reads either way for a package that does not exist yet."
+    answer: "Enforced — A check fails the suite when a package with tests does not run the detector, so a package added later is covered from its first test without anyone having to remember."
 ```
