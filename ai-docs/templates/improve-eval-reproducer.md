@@ -13,6 +13,8 @@
 
 **Scenario (Kind: correction):** <original_error_repro> — you are about to violate rule X; what is the expected behaviour?
 **Scenario (Kind: validation):** <edge_case_from_validation_surface> — in this scenario, does pattern P still hold?
+
+**Scenario (load-bearing variant — assembled ONLY when the default pair passed both ways):** <a larger primary task the agent must actually carry out, in which the clause's situation arises as ONE incidental step among several — never as the whole question>
 ```
 
 **SUBJECT authoring rules — prose, deliberately OUTSIDE the fence.** Everything inside the fence is copied verbatim into the dispatch, so a constraint written in there would be shown to the agent it constrains. Two rules, and both are hard:
@@ -23,6 +25,8 @@
 
 The same SUBJECT block is dispatched twice — once against the pre-change tree (the baseline) and once after the proposal is applied. It is **identical** both times; only the tree differs. That is what makes the pair comparable.
 
+The **load-bearing variant is the one deliberate exception**, and it is a third run, not a replacement. It is assembled only after the default pair has passed both ways, and it must differ in exactly one respect — the clause's situation is buried as an incidental step inside a larger task rather than posed as the whole question. That single varied factor is what the *out of instrument reach* verdict is read from; vary anything else and the run stops being attributable.
+
 ```
 ### Reproducer R<pattern_id> — GRADER (parent-thread only; DO NOT DISPATCH)
 
@@ -30,6 +34,7 @@ The same SUBJECT block is dispatched twice — once against the pre-change tree 
 **Baseline (pre-change) required?:** yes — limb 1 | yes — limb 2 (<source entry + the invocation-and-failure it records>) | no — neither limb (<ground>)
 **Baseline outcome:** FAIL — <quoted fragment of the pre-change returned answer that shows it> | (exempt — no baseline required)
 **Rule-citation observable:** <what in a returned answer counts as citing or applying THIS clause>
+**Load-bearing outcome:** (only when the default pair passed both ways) PASS — <quoted fragment showing the clause honoured even as an incidental step> | (not run — the default pair discriminated)
 
 **Expected fixed output:** <expected_fixed_output>
 
@@ -43,12 +48,13 @@ The same SUBJECT block is dispatched twice — once against the pre-change tree 
 
 Emit only the line variant matching the audited entry's `Kind:`; leave the other variants as the template skeleton for reference. Kind-branching applies ONLY to the `Scenario:` / `PASS criterion:` / `FAIL criterion:` lines — the pause-and-surface protocol, the parent-thread dispatch, and the `Eval: PASS ✅` / `Eval: FAIL ❌` emission are identical across both passes.
 
-**The four GRADER fields the baseline adds, and what each is for:**
+**The five GRADER fields the baseline and the reach test add, and what each is for:**
 
 - **`Rule clause under test:`** — a **verbatim substring of the proposal's diff**, never a paraphrase. It is the operand `FAIL criterion` must negate, and it is what pins a verdict to *this* proposal rather than to a sibling in the same batch.
 - **`Baseline (pre-change) required?:`** — which coverage limb fired, or the ground for exemption. Both limbs are properties of the proposal and its source entries; the assembling agent has **no** per-proposal discretion, because discretion would put the choice with the agent whose own rule is under test.
 - **`Baseline outcome:`** — the **quoted fragment** of the pre-change returned answer, not the bare word *"FAIL"*. An adjective is not evidence; the fragment is what a later reader grades attributability against.
 - **`Rule-citation observable:`** — stated **before** the runs, so *"recalled"* is decided by a criterion written in advance rather than read into the answer afterwards.
+- **`Load-bearing outcome:`** — the evidence for *out of instrument reach*, and the reason that verdict costs something. It stays `(not run)` unless the default pair passed both ways; a filled one is what the owner reads before approving a commit under that verdict.
 
 `Verdict:` is one of the six cells in [`improve-eval-contract.md` § *Verdict space*](../improve-eval-contract.md), and it is read against **this clause**, not against the pass as a whole.
 
