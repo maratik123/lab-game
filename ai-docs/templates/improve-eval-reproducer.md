@@ -9,6 +9,8 @@
 
 **Kind:** correction | validation
 
+**Out of scope for this task:** `ai-docs/learnings.md` and `ai-docs/harness-gaps.md` are append-only history — do not read them, do not grep them.
+
 **Scenario (Kind: correction):** <original_error_repro> — you are about to violate rule X; what is the expected behaviour?
 **Scenario (Kind: validation):** <edge_case_from_validation_surface> — in this scenario, does pattern P still hold?
 ```
@@ -16,6 +18,7 @@
 **SUBJECT authoring rules — prose, deliberately OUTSIDE the fence.** Everything inside the fence is copied verbatim into the dispatch, so a constraint written in there would be shown to the agent it constrains. Two rules, and both are hard:
 
 1. **Never name the rule, quote its clause, or name the file it lives in.** A scenario saying *"per AGENTS.md § X"*, or reproducing the clause under test, hands the agent the answer. Describe the **situation**; let the agent supply the rule or fail to.
+   **Carve-out — the standing `Out of scope` line.** Naming the two append-only logs is not a breach: it **withholds a source** rather than supplying an answer, it says nothing about which clause is under test, and because it is **identical on every reproducer** it carries no per-reproducer signal. That invariance is what makes it safe — vary it per reproducer and it becomes a hint, so do not.
 2. **Never ask the agent what it used or why.** *"Did you apply rule X?"*, *"which rule governs here?"*, *"explain your reasoning"* — each leaks the rule **and** substitutes self-report for trace. Whether the rule was *recalled* is read from what the returned answer **does**, never from what it says about its own reasoning.
 
 The same SUBJECT block is dispatched twice — once against the pre-change tree (the baseline) and once after the proposal is applied. It is **identical** both times; only the tree differs. That is what makes the pair comparable.
