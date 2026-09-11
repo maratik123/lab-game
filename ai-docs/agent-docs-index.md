@@ -22,7 +22,7 @@ The full map of `ai-docs/**` and the harness's supporting pages. `AGENTS.md` § 
 | [`ai-docs/doc-convention.md`](doc-convention.md) | godoc conventions — read on demand |
 | [`ai-docs/go-test-conventions.md`](go-test-conventions.md) | Table tests, `-race`, golden logs, Postgres fixtures |
 | [`ai-docs/dependency-versions.md`](dependency-versions.md) | Live-lookup recipes for all six AXIOM categories |
-| [`ai-docs/delegation-rules.md`](delegation-rules.md) | The four-phase delegation lifecycle — read before any committing/long-running spawn |
+| [`ai-docs/delegation-rules.md`](delegation-rules.md) | The five-phase delegation lifecycle — read before any committing/long-running spawn |
 | [`ai-docs/hook-verification.md`](hook-verification.md) | The three MUSTs for proving a `settings.json` hook fires |
 | [`ai-docs/agent-writing-style.md`](agent-writing-style.md) | Binary-rule writing style for dual-model readability |
 | [`ai-docs/claude-tools-hierarchy.md`](claude-tools-hierarchy.md) | Project Tool/Subagent/Skill/Hook inventory |

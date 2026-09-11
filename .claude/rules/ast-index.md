@@ -31,6 +31,32 @@ raw read of the source (or `go doc <pkg>.<Symbol>`), never a search tool's silen
 Prescribing a *replacement* off such a negative compounds it by inventing a second
 nonexistent symbol.
 
+## Positive results are NOT evidence either
+
+**MUST — no search result is reportable until the same pattern has been run against a constructed
+string it MUST match, and seen to match.** One control line per probe, **before** the conclusion —
+not after being challenged. This binds a probe you write for yourself exactly as it binds a guard in
+the repository.
+
+**MUST — a hit proves a STRING occurs; it NEVER proves a BEHAVIOUR exists.** That a script *handles*
+a flag, that a gate *fires*, that a function *does* X — each is established by running the thing,
+never by matching its name.
+
+**MUST — read the cardinality of every input BEFORE the verdict**, for any check shaped as *intersect
+two sets* / *diff against a baseline* / *grep a corpus*. An empty right-hand side makes `comm -12`,
+`grep -f` and `diff` report the clean answer for every possible left-hand side. Likewise an
+enumeration that reached nothing reports "no findings": `git ls-files`, `git diff --cached` and any
+index walk say nothing about a file not yet in that set, so run such a checker AFTER `git add`, and a
+NEW checker against its own new files by explicit path.
+
+**Vary the encoding before believing a clean sweep over PROSE** — digits against spelled numerals,
+leading markers against trailing ones, case, and the multi-line form. A pattern is written against
+the *typical* form of its target; prose is where one encoding hides the instances.
+
+Each pattern fails on a VARIANT of the thing sought, never on the thing itself: a bracket inside a
+bracket class, a trailing marker against a leading one, a spelled numeral against a digit, an
+occurrence against a behaviour, a legitimate non-zero exit against an error.
+
 ## Why ast-index
 
 ast-index is 17–69× faster than grep (1–10 ms vs 200 ms–3 s) and returns structured, accurate results.
