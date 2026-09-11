@@ -2,7 +2,7 @@
 
 **Source:** user description (free-text entry)
 **Date:** 2026-09-12
-**Tracked in:** pending — no tracking issue yet
+**Tracked in:** #91
 
 ## Scope
 
