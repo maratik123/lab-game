@@ -1,8 +1,15 @@
 # Harness gaps
 
-Append-only log of **harness diagnoses**: gaps, ambiguities, and defects in instruction files, queued for `/improve`. This is the designated parking surface `AGENTS.md` § *Learning Log* names — a harness diagnosis written here is NOT an instruction-file edit under Boundary rule 2, and does NOT belong in `ai-docs/learnings.md` (that log holds conduct corrections only).
+Append-only log of **harness diagnoses**: gaps, ambiguities, and defects in instruction files. It is no flow's input — `/improve` reads `ai-docs/learnings.md` only. It is read outside this repository, by the harness supervisor the owner runs, and a fix arrives either as a forge patch — a `harness/forge-<N>` branch the owner merges — or through a flow the owner runs for it. This is the designated parking surface `AGENTS.md` § *Learning Log* names — a harness diagnosis written here is NOT an instruction-file edit under Boundary rule 2, and does NOT belong in `ai-docs/learnings.md` (that log holds conduct corrections only).
 
 Boundary rule 1 (append-only) applies here verbatim: never edit, reorder, summarise, or delete an existing entry; supersession is a new entry plus the old entry's `Superseded by:` field.
+
+**Two closing fields, and only a forge writes either.** They are the only in-place writes besides `Superseded by:`, each added as the entry's last line by a forge commit:
+
+- `**Forge:** forge-<N>` — the forge that took the entry and added its action item; a later forge appends `, forge-<M>` to the line already there. A forge that acts on part of an entry still takes it, and its own instructions name the part it left.
+- `**Closed by:** #<N>` — the merged pull request that fixed the entry in full outside any forge, recorded by the forge that verified it. A pull request that fixed only part of an entry closes nothing: the entry stays open until a forge takes it.
+
+An entry with neither field is open, whatever else it says; a `Superseded by:` field does not close an entry either. No flow in this repository writes, changes or removes a closing field — including the flow whose pull request fixed the entry: `ai-docs/scripts/check-harness-gaps-forge.sh` (CI, Harness guards) refuses such a line added or removed on any branch not named `harness/forge-<N>`.
 
 ## Entry skeleton
 
@@ -14,6 +21,8 @@ Boundary rule 1 (append-only) applies here verbatim: never edit, reorder, summar
 **Proposed edit:** [minimal protocol-shaped change — a gate, a required field, a closed list; not a disposition]
 **at:** [commit SHA | `main`]    (required for any numeric claim)
 **Superseded by:** [ref] — [reason]    (optional)
+**Forge:** forge-<N>[, forge-<M>]    (forge-only, see above; absent until a forge takes the entry)
+**Closed by:** #<N>[, #<M>]    (forge-only, see above; a fix that landed in full outside any forge)
 ```
 
 Entries are appended at the END, newest last.
@@ -26,6 +35,7 @@ Entries are appended at the END, newest last.
 **Gap:** the obligation lived at named points (Step 11 fix-diff table; reviewer trigger wording); a scope question born elsewhere arrived bare.
 **Proposed edit:** phase-independent AXIOM keyed to the question's SUBJECT (escalated in this same commit).
 **at:** d2db0c7
+**Forge:** forge-3
 
 ### 2026-08-31 — reviewer prompts accumulated orchestrator state; design-review had no closed-list charter
 **target:** `.claude/agents/design-review.md`, `.claude/agents/self-review.md`, `.claude/skills/task/SKILL.md`
@@ -33,6 +43,7 @@ Entries are appended at the END, newest last.
 **Gap:** one review charter of two carried the closed list; nothing anywhere banned caps/routing-questions as a class.
 **Proposed edit:** closed list in BOTH charters incl. the invocation line (task-A reviewer flagged it as the one persistent extra — SR2-A0/SR3-A6); caps, history, priorities and routing requests named as PROMPT-CONTAMINATION; orchestrator-side line at Step 10 (escalated in this same commit).
 **at:** d2db0c7
+**Forge:** forge-3
 
 ### 2026-08-31 — spec-phase misses that force amendment round-trips: enumeration, permissions, byte-ceilings
 **target:** `.claude/agents/spec-writer.md`
@@ -40,6 +51,7 @@ Entries are appended at the END, newest last.
 **Gap:** spec rules verified sources (PROC-1/2) but not closure of propagation, executability, or ceiling sanity.
 **Proposed edit:** PROC-3 with the three sub-rules (escalated in this same commit).
 **at:** d2db0c7
+**Forge:** forge-3
 
 ### 2026-08-31 — auto-memory is an unpropagated fact channel
 **target:** none (user-local; harness may not edit it — recording the channel)
@@ -47,6 +59,7 @@ Entries are appended at the END, newest last.
 **Gap:** semantic changes to axioms have no sweep over auto-memory; re-infection is silent.
 **Proposed edit:** none mechanical (privacy boundary). Hygiene habit: after changing an axiom's semantics, the OWNER greps the memory dir for the stale reading. Owner performed the first such pass 2026-08-31.
 **at:** d2db0c7
+**Forge:** forge-3
 
 ### 2026-08-31 — forge patches themselves lack DELTA discipline
 **target:** (process note for the forge channel, not a harness file)
@@ -54,6 +67,7 @@ Entries are appended at the END, newest last.
 **Gap:** a forge patch is a hand-off with no `## DELTA` section: constraints it adds or contradicts are not enumerated against the standing corpus.
 **Proposed edit:** each forge patch's instructions end with a DELTA table — every standing rule the patch narrows, widens or contradicts, one line each — reviewed by the owner before `git am`. Adopted from forge-3 onward (this patch's DELTA is in its instructions file).
 **at:** d2db0c7
+**Forge:** forge-3
 
 ### 2026-08-31 — `/improve` Step 6 states an eval ordering its own canonical contract forbids
 **target:** `.claude/skills/improve/SKILL.md`
@@ -61,6 +75,7 @@ Entries are appended at the END, newest last.
 **Gap:** the skill restates an ordering instead of deferring to the contract for it, while claiming in the same sentence that it does not restate ("this item references them and does **not** restate them"). The RED-baseline change updated the contract page and the Subagent charter; the Skill's own ordering sentence was not swept.
 **Proposed edit:** replace item 6's ordering clause with the contract's four-stage sequence, or delete the ordering sentence entirely and let the existing pointer carry it. Either way the Skill must stop asserting a sequence it also disclaims restating.
 **at:** f4d39e8
+**Closed by:** #51
 
 ### 2026-08-31 — the RED baseline runs against a tree that still contains the rule's source correction
 **target:** `ai-docs/improve-eval-contract.md`, `.claude/agents/self-improve.md`
@@ -76,6 +91,7 @@ Entries are appended at the END, newest last.
 **Gap:** the 2026-08-31 entry above on auto-memory recorded the *channel* as unpropagated and proposed no mechanism, correctly, on privacy grounds. What it did not do is drain the channel's existing contents once. These two are the residue.
 **Proposed edit:** document the citation gate's line-based reading beside the gate itself, and the heading-anchor hazard wherever scripted instruction-file edits are described. Held for second confirmation under the Step 2b rule — no matching `Kind: validation` entry exists in `ai-docs/learnings.md`, so neither is written into an instruction file on this pass.
 **at:** f4d39e8
+**Forge:** forge-13
 
 ### 2026-09-01 — a Checklist K measurement ran, produced its answer, and never became a finding
 **target:** `.claude/skills/ai-audit/reference.md`
@@ -83,6 +99,7 @@ Entries are appended at the END, newest last.
 **Gap:** a sub-check's obligation to *emit* was carried by nothing but the agent's attention. Batching two sub-checks into one command makes the first one's completed measurement invisible the moment the second one needs repair, and repairing an instrument mid-checklist is exactly when that happens.
 **Proposed edit:** one tool call per sub-check, plus a required verdict line per sub-check written before the next may start, with a closed set of two shapes and an explicit "absent verdict line counts as not run" (escalated in this same commit).
 **at:** e97768c
+**Forge:** forge-4
 
 ### 2026-09-01 — the byte cap was enforced twice, and the second enforcer made every task plan around it
 **target:** `AGENTS.md`, `.github/workflows/ci.yml`, `.claude/agents/spec-writer.md`
@@ -91,6 +108,7 @@ Entries are appended at the END, newest last.
 **Gap, second half:** `spec-writer.md`'s guard forbade byte-ceiling ACs "below the hard cap". `AC11` pinned to the hard cap itself and passed the guard untouched. A semantic boundary, moved by a reader with a delivery bias.
 **Proposed edit:** retire the CI size step so `/ai-audit` is the sole enforcer; restate the AXIOM as an ownership table naming every other flow as forbidden to measure; widen the `spec-writer` guard from "below the hard cap" to any file-size figure at any threshold (all escalated in this same commit).
 **at:** 2b7144e
+**Forge:** forge-4
 
 ### 2026-09-01 — `model: opus` on the quality gates was a floor that became a ceiling
 **target:** `.claude/agents/{design,design-review,spec-writer,self-improve,self-reflect,self-review,review-findings}.md`, `.claude/skills/{interview,context-reset,task}/SKILL.md`, `ai-docs/agent-writing-style.md`, `ai-docs/claude-tools-hierarchy.md`
@@ -99,6 +117,7 @@ Entries are appended at the END, newest last.
 **Proposed edit:** the gates and the instructions/harness implementor spawn take the orchestrator's model — `model: inherit` in frontmatter (explicit on `self-review` / `review-findings` too; omission falls through the env var, `inherit` does not), no inline `model=` on any Step 8 or `/interview` spawn (closed rule); only cost-capped pins stay fixed (`code-writer` sonnet/medium; `learnings-escalation-audit`, `triage-runner` opus). Reader class replaces the enumeration in `agent-writing-style.md` (escalated in this same commit).
 **at:** 0b8218b
 **Superseded by:** 2026-09-04 — the `design` member of the `target:` brace list names `.claude/agents/design.md`, which does not exist; the live file is `design-writer.md`. Every other target in the list resolves, and the entry's own finding is unaffected.
+**Forge:** forge-5
 
 ### 2026-09-02 — the Spec Amendment recipe's design-review spawn template carries a `Context:` line the agent's closed list forbids
 **target:** `.claude/skills/task/reference.md` (§ Spec Amendment recipe, step 6 template at `:62`); `.claude/skills/task/SKILL.md` Step 7
@@ -106,6 +125,7 @@ Entries are appended at the END, newest last.
 **Gap:** the template predates (or was never propagated from) the closed-list contract, and the skill's Step 7 gives no inline enumeration — so the one in-flow example an orchestrator meets is the contradicting one, while Step 10 does enumerate self-review's list inline.
 **Proposed edit:** drop the `Context:` line from the `reference.md:62` template (the amended spec is visible on disk; the round number is the only permitted state carrier), and have `SKILL.md` Step 7 enumerate the five items inline exactly as Step 10 does for `self-review`; sweep `reference.md:17,27,52` for the `design` agent's spawn templates against `design.md`'s own contract, if it has one. **(Escalated in this same commit** — both design-review templates now carry the closed list and `SKILL.md` Step 7 enumerates it inline. The two `design` templates keep their `Context:` line: that agent declares no closed-list contract, and the amendment description is its actual input, not framing. Left open on purpose.**)**
 **at:** a11f637
+**Forge:** forge-6
 
 ### 2026-09-02 — `[measured:]` tags certify a statement without naming the input classes the probe sent
 **target:** `.claude/agents/design.md` (§ Rules, the measured/derived tag contract); `.claude/agents/design-review.md` (the tag re-run check)
@@ -122,6 +142,7 @@ Entries are appended at the END, newest last.
 **Proposed edit:** (1) `design.md` / `spec-writer.md`: a citation into existing code or config is a **pinned coordinate** — `<commit>:<path>:<lines>` — and nothing else; a claim about an artefact this task creates or rewrites is never `[measured:]` — it is `[derived → <AC or test that will establish it>]`, with no line, count or exact-string content. (2) `spec-writer.md` PROC-2/PROC-3 and `/task` Step 9: an AC is **declarative** — "no line matches regexp R in files matching glob G", "file X mentions Y", "test T exists and passes" — and the command that checks it belongs to the verifier (Step 9 orchestrator, self-review), recorded in the progress file's verifying-command column, never in the AC; an AC row therefore never contains a shell command, and the pipe-escaping class disappears with it. (3) `design.md` § Quality checklist: counts, sizes, LoC, dependency-list lengths and file positions are out of the design's remit — a design names things, it does not count them. (4) `self-review.md` / `/task` Step 11: a locator drift in spec or design is a **verifier-side re-resolution**, not an amendment trigger — the register row records the re-resolved coordinate; only a changed criterion or a changed design decision opens the amendment recipe. (5) Propagate the same three-way split (pinned coordinate / declarative AC / derived claim) to `design-review.md`'s tag check so it stops rewarding pasted output. **(All five escalated in this same commit.** One addition the diagnosis did not name: counts are now out of the design's remit outright, rather than merely required to be pinned — re-measuring a count is what makes it come back on the next commit.**)**
 **at:** f343909
 **Superseded by:** 2026-09-04 — the `target:` line's first coordinate names `.claude/agents/design.md`, which does not exist; the `[measured:]` / `[derived →]` contract lives in `design-writer.md` § *Quality checklist* → *Claims*. The entry is closed (all five escalated in its own commit); only the coordinate is stale.
+**Forge:** forge-6
 
 ### 2026-09-02 — gitignored durable state has no protection, and the progress file is the loop's only memory
 **target:** `.claude/settings.json` (a `PreToolUse` snapshot hook on `Write|Edit`); `ai-docs/templates/progress-format.md` (a writer contract); `.claude/skills/task/SKILL.md` Step 8 (commit the spec/design pair at Step-8 entry); `.claude/agents/{self-review,code-writer,review-findings,design,spec-writer}.md` (whole-file rewrite discipline)
@@ -130,6 +151,7 @@ Entries are appended at the END, newest last.
 **Proposed edit:** (1) a `PreToolUse` hook on `Write|Edit` whose `file_path` matches the four gitignored state globs: copy the current file to a rotating snapshot (`<path>.bak.N`, keep the last few, itself gitignored) before the write lands — machine-enforced, so it covers delegates that never read a rule. (2) `progress-format.md` gains a writer contract: append or edit named fields; a whole-file rewrite of a progress/trace/state file is forbidden, and any script-driven edit asserts the result still contains a known tail marker before writing. (3) `/task` Step 8 commits the spec and design at entry rather than at Step 12, so the implementation contract is recoverable while every delegate reads it; Step 12's move into `done/` becomes a `git mv`. (4) the same whole-file-rewrite discipline is stated in each agent that edits a document deliverable, since the truncation came from a delegate, not the orchestrator.
 **at:** 1288e9a
 **Superseded by:** 2026-09-04 — the `design` member of the `target:` brace list names `.claude/agents/design.md`, which does not exist; the whole-file-rewrite discipline belongs in `design-writer.md`. Every other target in the list resolves, and the gap itself stands as recorded.
+**Forge:** forge-7
 
 ### 2026-09-02 — protect state files by committing them during the task and untracking them before the PR (owner's design)
 **target:** `.gitignore`; `.claude/skills/task/SKILL.md` (Step 8 entry and Step 12); `ai-docs/templates/progress-format.md` (the "never committed / never staged" lines); `.claude/agents/code-writer.md` (§ Mode A step 3's "Do NOT commit `.progress.md`"); `.claude/agents/{self-review,review-findings}.md`; `.claude/skills/{pr-commented,bugfix,triage,pr-merged}/SKILL.md`
@@ -138,6 +160,7 @@ Entries are appended at the END, newest last.
 **Cost to record with the decision:** committing during the task keeps the content in the branch's commit objects forever, so it reaches `main` through the merge commit even though the net diff and the final tree are clean. That is the price of using git as the backup; the alternative in the entry above (a snapshot hook writing `<path>.bak.N`) leaves no history but adds a hook and needs its own ignore rule — measured today: `git check-ignore` matches no rule for a `.bak.N` sibling of a progress file, so that variant must add one in the same change.
 **Proposed edit:** (1) `.gitignore`: replace the `*.progress.md` globs with an ignored **directory** for retired state (`/ai-docs/plans/local/`, `/ai-docs/triage/local/`, `/ai-docs/bugfix/local/`), so the live files are trackable while the retired ones are not. (2) `/task` Step 8 entry: create and **commit** the progress file with the spec and design; every step boundary and every delegate commit stages it like any other artefact. (3) `/task` Step 12, immediately before `gh pr create`: `git rm --cached` each state file, `mv` it into the ignored directory, commit that as the last commit — the PR diff and the head tree are then clean by measurement, and the file survives on disk for `/pr-commented` and `/pr-merged`. (4) flip the prohibition at every site listed under **target**, in one change, and restate `/pr-merged`'s deletion against the new path. (5) keep the whole-file-rewrite discipline from the entry above — git protects against loss, not against a truncating writer landing in a commit.
 **at:** 1288e9a
+**Forge:** forge-7
 
 ### 2026-09-03 — the byte-cap figures are stated in the one file every flow loads, to an audience forbidden to use them
 **target:** `AGENTS.md` § *Build & Test* (the AXIOM's two figures and the 200-line K1 figure); `ai-docs/agent-writing-style.md` § 8 (the duplicate figures and the rule-of-truth circularity); `.claude/skills/ai-audit/checklist-m.md` (the intended sole home)
@@ -145,6 +168,7 @@ Entries are appended at the END, newest last.
 **Gap:** the AXIOM separates *ownership* from *knowledge* in its prose but not in its placement. Enforcement needs the numbers; the prohibition does not — a flow that must never name a threshold does not need to be told which threshold, and telling it anyway is what makes the rule tempting to "check compliance against". Nothing in `AGENTS.md`'s figures is load-bearing for any reader of `AGENTS.md`: `checklist-m.md` sub-check 9 is, by its own line 49, the **only** enforcement surface, and it already restates every figure independently. The duplication also carries a circular citation — `checklist-m.md:18` names `agent-writing-style.md` § 8 as the rule-of-truth, while `agent-writing-style.md:161` names Checklist M9 as the enforcer — so there is today no single answer to "which file owns this number".
 **Proposed edit:** (1) strip the figures from `AGENTS.md` § *Build & Test*: the AXIOM keeps the prohibition, the `/ai-audit`-exclusivity, the `wc -c`-vs-character-count warning (that one is about *how* to measure and matters to whoever measures, so it moves with the numbers), and the covered-file enumeration; the thresholds become an unnumbered pointer to `checklist-m.md`. The K1 `200 lines` figure moves the same way — a line count is a file size. (2) make `checklist-m.md` the single home and say so in it, resolving the rule-of-truth circularity in one direction; `agent-writing-style.md` § 8 keeps the *rationale* (why a cap exists, why bytes not characters) and drops the numbers, or is named the owner and `checklist-m.md` cites it — either way, one owner, stated. (3) verify the citation at `checklist-m.md:18` ("source AXIOM: `AGENTS.md § Build & Test`") still resolves after the strip: it should, since the AXIOM survives without its figures. (4) `AGENTS.md` is a Propagation Rule trigger, so sweep `grep -rni '40,\?000\|35,\?000\|byte cap\|instruction-file size' .claude/ AGENTS.md ai-docs/` and reconcile every match in the same change.
 **at:** 9a38af1
+**Forge:** forge-9
 
 ### 2026-09-03 — the context-status PR locator has no sub-step that fills it, and has already shipped unfilled
 **target:** `.claude/skills/task/SKILL.md` § Step 12 (a sub-step after `gh pr create`); `ai-docs/context-status.md` (the template line)
@@ -152,6 +176,7 @@ Entries are appended at the END, newest last.
 **Gap:** Step 9.5 is required to write a locator whose value does not exist until sub-step 10, and no sub-step of Step 12 closes the loop. Nothing measures it either: no AC covers a heading locator, and the citation guard's namespace invariant does not reach `#TBD-at-Step-12`. The failure is therefore silent and durable, and its one prior occurrence reached `main` unnoticed.
 **Proposed edit:** one of two, not both. (1) Add a Step-12 sub-step **after** `gh pr create` — rewrite the run's `context-status.md` heading placeholder to the returned number, commit, push — and state it in the numbered list so it is not an intention held in a retired file; the same sub-step is the natural home for any other post-PR backfill. Or (2) drop the PR locator from the template: the entry is reachable from the commit that added it, `git log -S` finds it, and a field that cannot be filled at write time is a field that will be wrong. If (1), also fix the merged `:47` placeholder, which no future run will revisit.
 **at:** 7efdbb7
+**Forge:** forge-9
 
 ### 2026-09-04 — the closed-list spawn contract was contradicted by two of the harness's own spawn templates
 **target:** `.claude/agents/self-review.md` § *Spawn prompt contract*; `.claude/skills/bugfix/SKILL.md` step 2; `.claude/skills/project-review/SKILL.md` Step 5; `.claude/settings.json` (the gate)
@@ -159,6 +184,7 @@ Entries are appended at the END, newest last.
 **Gap:** the contract was authored against `/task`'s prompt and never reconciled with the other two spawn sites, and nothing mechanical held the three together: no propagation group named them as one surface, so the contract and the templates drifted in a file nobody diffs against the other. The consequence is worse than the finding: a closed list two flows must violate cannot be enforced by a hook — the gate that would have caught the 2026-09-03 `/task` contamination before it cost a round (`ai-docs/learnings.md` 2026-09-03) was unbuildable while the corpus disagreed with the rule.
 **Proposed edit:** **escalated in this same commit.** (1) Both templates reduced to the closed list — paths and a commit range only. (2) Everything they used to explain moved into `self-review.md` § *What the prompt paths already tell you*, keyed on **which** paths arrived, so the reviewer derives the no-spec / no-design / trace-as-AC case from the prompt it is allowed to receive; the agent file is read by the agent on every spawn, which is where knowledge belongs and a prompt is not. (3) A `PreToolUse` hook on `Task|Agent` refuses a reviewer spawn carrying any line outside the permitted shapes, naming them; it keys on `subagent_type`, fails open on instrument failure, and leaves the reviewer-side finding as the backstop. (4) A regression suite runs the live hook body against the four shipped templates (must-allow) and the recorded contaminated prompt plus both pre-unification shapes (must-block). (5) A *Spawn group* row in `ai-docs/propagation-groups.md` binds the templates, the two contracts, the hook and the suite into one surface, so the next divergence is a propagation failure with a named sibling rather than a silent drift.
 **at:** c590853
+**Forge:** forge-9
 
 ### 2026-09-04 — a textual gate's hit has no prescribed discharge, so "make it stop matching" is available
 **target:** `.claude/agents/code-writer.md`
@@ -262,6 +288,7 @@ Entries are appended at the END, newest last.
 **Gap:** one file states both rules and they contradict. Rule 8 requires `[source: <commit>:<file>:<lines> · <command>]` and says in terms that "a `[source:` whose coordinate carries no commit" is "a spec defect a reviewer must raise". The `## Source conflicts` template requires "each with file:line" and names neither a commit nor a symbol. A delegate obeying the section template violates the file's own general rule, and nothing downstream catches it — `design-review` has no coordinate-form check, and the citation guard checks whether a citation resolves, not how it is spelled. Separately, the project's own recorded convention for this ("a reference written down to be read later names a **symbol** … a coordinate carries the commit it was taken at") lives only in `ai-docs/learnings.md` with `Escalated? no`, so it binds nothing.
 **Proposed edit:** bring the `## Source conflicts` template under Rule 8 — the conflicting sites are read from a tree, so each site takes the same `[source: <commit>:<file>:<lines> · <command>]` annotation as every other figure, or names the symbol where one exists. Before writing it, check the other section templates in the same file for the same drift, and check whether `design-writer.md` and `review-findings.md` carry a comparable "cite with file:line" instruction. Verification that would distinguish a real fix from a tautological one: re-run this task's round-1 spec against the amended template and confirm the five Source-conflicts rows flip while the already-pinned `[source:` rows do not move.
 **at:** f5b236a
+**Forge:** forge-13
 
 ### 2026-09-08 — Rule 8 enforces the number half of `[source: … · <command>]` and nothing enforces the command half, so a spec stores results whose recipe does not run
 **target:** `.claude/agents/spec-writer.md` Rule 8 (the pinned-coordinate requirement) against `.claude/agents/design-review.md` (the rule that a count anywhere in a design is to be REMOVED, not re-measured)
@@ -270,6 +297,7 @@ Entries are appended at the END, newest last.
 **Proposed edit:** require the `· <command>` of a `[source:` annotation to be a command with no unbound placeholder — pasteable and runnable at the pinned commit — and say so where Rule 8 already says the coordinate must carry a commit, since that is the sentence a drafting agent reads as the row's acceptance test. Then decide the sibling question deliberately rather than by omission: whether a spec's sizing figures should be stored at all, or replaced by the runnable recipe alone, given that `design-review` has already ruled the stored form a defect one document downstream. Verification that would distinguish a real fix from a tautological one: take this task's round-1 spec, extract every `· <command>`, run each in a clean checkout at its pinned commit, and require every one to exit 0 and print the figure the row claims — today that check fails on every row, which is the measurement the amended rule has to flip.
 **at:** 76a7b41
 **Superseded by:** 2026-09-08 — «a spec-writer's measured figures are worth nothing to a reader…» (the owner's ruling). This entry's premise — that Rule 8 *requires* the spec to store figures and only the recipe half is unenforced — was withdrawn in the same session (`ai-docs/learnings.md` 2026-09-08, «read a conditional rule as a mandate»): Rule 8 governed the form of a figure that enters, never told one to enter. The runnable-command half survives as a sub-rule of the superseding entry's amendment; the storing of tallies does not.
+**Forge:** forge-13
 
 ### 2026-09-08 — a spec-writer's measured figures are worth nothing to a reader and cost every downstream agent's context; only the measurement instruction should be stored, and declaratively
 **target:** `.claude/agents/spec-writer.md` Rule 8 (PROC-2, the pinned-coordinate requirement) — with Rule 9/PROC-3's declarative-AC clause as the model the amendment should copy
@@ -278,6 +306,7 @@ Entries are appended at the END, newest last.
 **Gap:** Rule 8 regulates the FORM of a figure that enters the spec and never asks whether it should enter. Read by a drafting agent it is permission with a procedure attached, and the procedure — a pinned coordinate — is satisfiable by a well-formed annotation whose command does not run, since nothing checks the `· <command>` half. So the rule's cost lands entirely on the reader: a stale number, an unrunnable recipe under it, and a context bill paid by every agent that opens the spec afterwards. Rule 9/PROC-3 already solved the same problem one row down for acceptance criteria — "an AC row states a condition over the tree … and it never contains a shell command … the criterion stops rotting, because a regexp and a glob survive an added import that a line number does not" — and the sibling documents disagree in the same way they did on the AC-shape gap: the design may not store a tally, the spec is invited to.
 **Proposed edit:** restate Rule 8 so a MEASURED figure never enters the spec at all, and what enters is the declarative measurement instruction — the class, the glob, the exclusions, in the same shape Rule 9 requires of an AC, no shell pipeline and no placeholder for a reader to bind. Say in the rule that an invalid or unrunnable instruction is rejected exactly as hard as a stale figure, since it is the same defect while looking checkable. Two questions the amendment must answer rather than leave implicit, because a drafting agent will read them either way: whether a value QUOTED from a named source (a configured threshold, a version, an enum's cardinality) is inside or outside the ban — it has no measurement instruction, being a citation — and where the figures the owner does need to choose between options live, given that a question is read once and discarded while a spec is read by every downstream agent. Also check the same drift in `.claude/agents/design-writer.md` and `.claude/agents/review-findings.md` before writing, and propagate to `.claude/skills/interview/SKILL.md` per the Interview sync group. Verification that would distinguish a real fix from a tautological one: take this task's round-1 and round-2 specs, apply the amended rule, and require that the `### Sizing` subsection and the candidate table's count columns are both refused while the surviving `[source:` citations of quoted values are untouched — a rule that also strikes the citations has overshot, and one that leaves the tallies has not moved.
 **at:** a386fe7
+**Forge:** forge-13
 
 ### 2026-09-08 — /interview spells out the commit command for the state file and states the spec's tracking as a fact, and the loss landed on the one without the command
 **target:** `.claude/skills/interview/SKILL.md` — Step 2 item 4 (the state-file creation step) against the § *State file* prose that asserts the spec is tracked from round 1
@@ -286,6 +315,7 @@ Entries are appended at the END, newest last.
 **Gap:** the skill teaches by example that an artefact is protected when a numbered step carries its `git add`, and it protects the less valuable of the two artefacts that way. `/task` Step 8 has the same shape done correctly for the progress file — "Commit the progress file at creation — `git add -f …`" with the reason attached — so the pattern the interview needs already exists one document over.
 **Proposed edit:** give the spec its own commit step where the spec first exists, at the return of round 1, phrased like `/task` Step 8's progress-file line: the command, then the one-sentence reason it is not optional. Then check whether any other durable artefact in this skill or in `/task` is protected only by prose. Verification that would distinguish a real fix from a tautological one: on the next interview run, assert after round 1 that `git ls-files --error-unmatch <spec_path>` exits 0 — today it exits 1, which is the measurement the amended step has to flip.
 **at:** 8900775
+**Forge:** forge-13
 
 ### 2026-09-09 — the instruction-edit guard's Bash matcher correlates no path, so a command that merely names an instruction file and separately performs any Python write is refused
 **target:** `.claude/settings.json` — the `PreToolUse` hook on the `Bash` matcher that enforces Learning Log Boundary rule 2, specifically the last alternative of its `write` alternation
@@ -308,6 +338,7 @@ Entries are appended at the END, newest last.
 **Gap:** the charter states the rule as a disposition and never as a condition on the output. "Pre-resolved rules apply silently — never ask" and "Apply AGENTS.md defaults silently to anything pre-resolved" both regulate whether the agent *asks the owner* about a pre-resolved rule; neither says the rule may not then be written into the spec as a criterion, and a drafting agent optimising for a self-contained spec reads restating them as diligence rather than as the defect it is. `check-ac-shape.sh` refuses exactly one shape — a row that prescribes a test — and its header argues that a substring gate is sound there because the phrase "occurs essentially only in its forbidden sense"; nothing examines whether a row's condition is one this task makes true. The cost is the same one Rule 8/PROC-2 was rewritten for on 2026-09-08: rows that are stale-proof but content-free, paid for in the context of every agent that opens the spec, and worse here than a tally, because a standing-rule row looks like a requirement and will be re-verified per-AC at Step 9 and again by `self-review`.
 **Proposed edit:** give the "silently" clauses a second half that binds the OUTPUT — a pre-resolved AGENTS.md rule, and any condition an existing linter, Makefile gate or committed test already enforces, is applied and not written as an acceptance criterion — and state the membership test in the declarative form Rule 9 already requires: does this condition become true because of this task, or does it hold on every branch regardless. Decide in the same edit whether the mechanical half belongs in `check-ac-shape.sh`; note that the sound-substring-gate argument its own header makes does NOT transfer, because this distinction is semantic, so the honest options are a review-judged rule, or a gate keyed on a maintained list of rule phrases rather than on shape. Check `.claude/agents/design-writer.md` and `.claude/agents/self-review.md` for the same drift before writing — a design that inherits these rows will re-verify them — and propagate to `.claude/skills/interview/SKILL.md` per the Interview sync group. Verification that would distinguish a real fix from a tautological one: run the amended rule against this task's round-2 spec and require that the seven standing-rule rows and the two live-test duplicates are all refused while the rows the issue's own Scope list generates — the composition root, the migration policy, readiness, shutdown, the restart-hygiene shift — are untouched. A rule that also strikes those has overshot; one that leaves the standing-rule rows has not moved.
 **at:** 1c71715
+**Closed by:** #76
 
 ### 2026-09-11 — the review-register gate exits 0 with no argument, so a mis-invocation records as a pass
 **target:** `ai-docs/scripts/check-review-register.sh` — its argument handling, and the `PreToolUse` hook in `.claude/settings.json` that invokes it
@@ -322,6 +353,7 @@ Entries are appended at the END, newest last.
 **Gap:** the contract obtains the pre-change state "by not having applied anything yet", which is sound for the instruction files a proposal edits and unsound for the corpus it is derived from. A `Kind: correction` entry's content **is** the rule — that is what its `Rule:` line is — and every `/improve` proposal is by construction escalated from entries that are already committed. So the pre-change tree always contains the rule under test, on an append-only surface any dispatched agent can grep, and escalation is not "adding a rule" but "moving one to a surface that is loaded by default". A pre-change FAIL is therefore unobtainable for the entire proposal class, not merely hard to attribute. The contract anticipates the adjacent failure — a FAIL that cannot be attributed to the rule's absence — and does not anticipate this one, a FAIL that cannot be obtained at all; its terminal `no valid reproducer` state, which it says must never commit, becomes the only reachable outcome, so a faithful reading blocks every proposal the mechanism was built to gate. A second, independent half compounds it: every violation in the corpus happened mid-task under competing demands, while a reproducer is one question put to an idle agent with nothing else to spend attention on, which is why the history-excluded re-runs also passed. `ai-docs/harness-gaps.md` 2026-09-04 already suspected this class was unreachable by clean-context dispatch; this run is the measurement rather than the suspicion. Note also that the run matches **neither** signature `improve-eval-contract.md` § D1 lists for its deferred authorship gap — the cells did not collapse into one, and FAIL-before/PASS-after was not near-universal. The observed signature is the mirror image, PASS-before being universal, and D1 does not name it.
 **Proposed edit:** decide what the baseline is comparing, given that the corpus and the target surface both live in the same tree. Candidates worth weighing, none of them free: exclude the append-only logs from the dispatched agent's reach and define the baseline as "the tree minus its own history", which is the condition escalation actually changes, and say so on the contract page rather than leaving it to a spawn prompt; or accept that clean-context dispatch cannot reach an attention-under-load failure and replace the gate for that class with something that can — a reproducer carrying a primary task with the rule-relevant step incidental to it; or keep the gate and add a fourth verdict for "instrument cannot reach this class", with an explicit rule about what may commit under it, which is the one thing the current page forbids by name and therefore the change that must be argued rather than assumed. Whichever is chosen, § *Verdict space*'s claim that the split "extends **no** blocking power" needs re-reading: on this corpus it blocks everything. Verification that would distinguish a real fix from a tautological one: re-run this run's own 8 reproducers under the amended contract and require that at least one goes RED for a reason attributable to the absence of the clause under test — today all 8 are green in both regimes, which is the measurement the fix has to flip; a mechanism that merely relabels the green as a pass has not moved.
 **at:** 52b127cfcc7f6e1faf381b6e7b17b77a56290131
+**Closed by:** #77
 
 ### 2026-09-11 — `/improve` is a self-review-covered surface with no progress file, so the review loop has nowhere to keep its register
 **target:** `.claude/skills/improve/SKILL.md` and `.claude/agents/self-improve.md` § Step 5 — neither creates or names a progress file — with `.claude/agents/self-review.md` instruction 8 as the requirement they cannot satisfy
@@ -329,3 +361,11 @@ Entries are appended at the END, newest last.
 **Gap:** the register is described elsewhere in the harness as the review loop's only cross-round memory, and `ai-docs/scripts/check-review-register.sh` exists to gate it — so on this surface the loop runs with its durable memory absent and its gate structurally inapplicable, while every other reviewed flow has both. The failure is silent in the usual way: an in-message register and a committed one are indistinguishable from the verdict alone, and nothing in the run refuses to proceed. It also means a compaction between rounds would lose the findings entirely, which is the exact loss the progress-file convention exists to prevent.
 **Proposed edit:** decide whether `/improve` gets a progress file or an explicit exemption, and say which in both files rather than leaving the reviewer to improvise. If a file: name it at Step 5 alongside the branch check, give `self-review.md`'s path table a row for `Progress:` with neither `Spec:` nor `Design:` on an instruction-file run, and consider whether `check-review-register.sh` should reach it. If an exemption: state in `self-review.md` what the reviewer does with its register when no progress file exists, so the answer is not re-invented per run. Verification that would distinguish a real fix from a tautological one: run an `/improve` self-review loop to at least two rounds and require the round-2 reviewer to recover round 1's findings from a durable artefact rather than from its own context — today a cold reviewer on round 2 would recover nothing.
 **at:** 1df8530956a7e443c11bf92984519decd59a0f26
+
+### 2026-09-11 — this log named `/improve` as its reader in three places and wired it in none, and no field recorded which entries had been dealt with
+**target:** `AGENTS.md` § *Learning Log* (the two-logs paragraph); `ai-docs/harness-gaps.md` (header and skeleton); `ai-docs/agent-docs-index.md` (this log's row)
+**Observed:** forge-1 (`97deb16`) created this file naming `/improve` as its reader — "addressed to `/improve`" and "`/improve` reads both" in `AGENTS.md`, "queued for `/improve`" in this header — and `ai-docs/agent-docs-index.md`'s row repeated it from `e97768c`. Neither `.claude/skills/improve/SKILL.md` nor `.claude/agents/self-improve.md` takes this file as input: both read `ai-docs/learnings.md`, the run threshold counts only that log's entries, and since PR #77 the subagent names this file only to keep it out of an eval dispatch's reach. Three `/improve` runs (PR #9, PR #51, PR #76) appended eight entries here. Of the gaps recorded here, two were fixed in full by those runs through their twin entries in `ai-docs/learnings.md` (PR #51, PR #76), one by a flow the owner ran for it (PR #77), and every other one closed so far by a forge patch — a `harness/forge-<N>` branch assembled outside this repository and merged by the owner. None of it was visible here: which forge or pull request dealt with which entry was recorded only in the forge's own instructions or in the pull request, so the open set could not be read off this file.
+**Gap:** a routing claim with no reader behind it, and no state field: nothing in an entry distinguishes one that was dealt with from one nobody has read.
+**Proposed edit:** name the actual route in all three places; add two closing fields that only a forge writes — `**Forge:**` for the forge that took an entry, `**Closed by:**` for a pull request that fixed one in full elsewhere — gated in CI on the branch name; mark every existing entry either field applies to (escalated in this same commit).
+**at:** 964c657
+**Forge:** forge-15

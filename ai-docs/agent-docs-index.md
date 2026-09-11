@@ -9,7 +9,7 @@ The full map of `ai-docs/**` and the harness's supporting pages. `AGENTS.md` § 
 | [`ai-docs/plans/INDEX.md`](plans/INDEX.md) | Plan index — statuses and dependency order |
 | `plans/*.spec.md` / `*.design.md` | Active task spec + design, committed from creation (`/interview` and Step 6); `*.progress.md` and `*.spec.md.state.md` are committed too and retired to `plans/ignored/` before the PR |
 | `ai-docs/plans/done/` | Completed plans (spec + design, implemented) |
-| `ai-docs/scripts/` | Shared shell guards: hook regression suites, CI gates over specs and registers, the document-edit guard, the script-shape checker — every script whose caller is not a single skill (`claude-tools-hierarchy.md` § Shell guards has the placement rule and one row per script) |
+| `ai-docs/scripts/` | Shared shell guards: hook regression suites, CI gates over specs, registers and the harness-gaps log, the document-edit guard, the script-shape checker — every script whose caller is not a single skill (`claude-tools-hierarchy.md` § Shell guards has the placement rule and one row per script) |
 | [`ai-docs/deferred/_inbox.jsonl`](deferred/_inbox.jsonl) | Triage queue — rows from completed specs |
 | [`ai-docs/templates/progress-format.md`](templates/progress-format.md) | Canonical `.progress.md` format |
 | [`ai-docs/templates/inbox-row.md`](templates/inbox-row.md) | Canonical `_inbox.jsonl` row shape |
@@ -34,7 +34,7 @@ The full map of `ai-docs/**` and the harness's supporting pages. `AGENTS.md` § 
 | [`ai-docs/panic-index.md`](panic-index.md) | Every panicking call in production code, with its justification |
 | [`ai-docs/templates/learnings-entry.md`](templates/learnings-entry.md) | Canonical `learnings.md` entry skeleton — consult instead of the live log |
 | [`ai-docs/learnings.md`](learnings.md) | Corrections log — feed for `/improve` |
-| [`ai-docs/harness-gaps.md`](harness-gaps.md) | Harness diagnoses — the second learning log, addressed to `/improve` (see AGENTS.md § *Learning Log*) |
+| [`ai-docs/harness-gaps.md`](harness-gaps.md) | Harness diagnoses — the second learning log, read outside this repository by the harness supervisor; an entry's `**Forge:**` / `**Closed by:**` field names the forge or the pull request that dealt with it, and only a forge writes either (see AGENTS.md § *Learning Log*) |
 | [`ai-docs/harness-restart-metrics.md`](harness-restart-metrics.md) | Restart/recovery measurements behind the harness's flow decisions |
 
 **Reading order for a newcomer to this repo:** `context.md` → `docs/DESIGN.md` §0–§3 → `domain-invariants.md` → `key-decisions.md`. Everything else is read when the task touches it.
