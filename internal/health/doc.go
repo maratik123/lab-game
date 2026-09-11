@@ -1,9 +1,17 @@
 // Package health exposes lab-game's whole health-metrics and canary
 // surface: a Prometheus registry, one adapter per consumer-declared
-// Observer interface, a pgx connection-pool collector, the /metrics
-// endpoint's server, and the two-leg Telegram canary. Every constructor
-// takes a prometheus.Registerer and registers only its own family on it —
-// there is no aggregate constructor and no global default registerer.
+// Observer interface, a pgx connection-pool collector, the process-
+// identity and restart-hygiene collector, the /metrics and /readyz
+// endpoints' shared server, and the two-leg Telegram canary. Every
+// constructor takes a prometheus.Registerer and registers only its own
+// family on it — there is no aggregate constructor and no global
+// default registerer.
+//
+// Readiness is one definition, a ReadyFunc, shared by the /readyz HTTP
+// path and the labgame_ready gauge: the composition root supplies it
+// once, at NewServer/NewProcess construction, and both consumers call
+// it with an internally-bounded context so neither a probe nor a scrape
+// can hang on it.
 //
 // # Observation-field register
 //

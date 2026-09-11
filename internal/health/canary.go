@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -53,6 +54,10 @@ type LegsOptions struct {
 	// RetryMaxAttempts always forced to exactly one attempt per call —
 	// the canary's own attempt count is structural, not configured.
 	Transport config.Transport
+	// HTTPClient, when non-nil, is threaded into each leg's
+	// TelegramProberOptions.HTTPClient — the composition root's one
+	// process-wide client, or a test's own.
+	HTTPClient *http.Client
 	// ProberFactory builds one leg's Prober. Nil means
 	// NewTelegramProber. A test installs a recording factory to assert
 	// the exact (Token, BaseURL) pair each leg is built from — the seam
@@ -78,9 +83,10 @@ func NewLegs(opts LegsOptions) (*Legs, error) {
 	}
 
 	own, err := factory(TelegramProberOptions{
-		Token:     opts.OwnToken,
-		BaseURL:   opts.OwnBaseURL,
-		Transport: opts.Transport,
+		Token:      opts.OwnToken,
+		BaseURL:    opts.OwnBaseURL,
+		Transport:  opts.Transport,
+		HTTPClient: opts.HTTPClient,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("health: build own-instance canary leg: %w", err)
@@ -89,9 +95,10 @@ func NewLegs(opts LegsOptions) (*Legs, error) {
 	legs := &Legs{Own: own}
 	if opts.CloudToken != "" {
 		cloud, err := factory(TelegramProberOptions{
-			Token:     opts.CloudToken,
-			BaseURL:   opts.CloudBaseURL,
-			Transport: opts.Transport,
+			Token:      opts.CloudToken,
+			BaseURL:    opts.CloudBaseURL,
+			Transport:  opts.Transport,
+			HTTPClient: opts.HTTPClient,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("health: build cloud-reference canary leg: %w", err)

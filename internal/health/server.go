@@ -18,10 +18,55 @@ import (
 // mux's own 404.
 const metricsPath = "/metrics"
 
+// readyzPath is the readiness endpoint's path, beside metricsPath on the
+// same listener — a contract with the probe, not a configuration key.
+// This module gains no second listen address and no second
+// configuration key for it.
+const readyzPath = "/readyz"
+
 // readHeaderTimeout bounds how long the server waits to read a request's
 // headers, closing the slow-request attack surface an unbounded server
 // leaves open.
 const readHeaderTimeout = 5 * time.Second
+
+// readyzTimeout bounds how long the /readyz handler waits on Ready, so a
+// probe that blocks server-side never hangs a request — a named
+// constant, not a configuration key.
+const readyzTimeout = 5 * time.Second
+
+// readyzReadyBody and readyzNotReadyBody are the /readyz response
+// bodies. Fixed text, never the underlying error: a secret or any other
+// diagnostic detail must never reach a probe response.
+const (
+	readyzReadyBody    = "ready\n"
+	readyzNotReadyBody = "not ready\n"
+)
+
+// reasonMustNotBeNil is the rejection reason for every required nil
+// ServerOptions field.
+const reasonMustNotBeNil = "must not be nil"
+
+// OptionError is returned by NewServer when an Options field is
+// invalid.
+type OptionError struct {
+	// Field names the invalid ServerOptions field.
+	Field string
+	// Reason describes why the value was rejected.
+	Reason string
+}
+
+// Error renders "health: <field>: <reason>".
+func (e *OptionError) Error() string {
+	return fmt.Sprintf("health: %s: %s", e.Field, e.Reason)
+}
+
+// ReadyFunc reports whether the process is ready to serve: nil means
+// ready, and a non-nil error names why not (never rendered to a probe
+// response — see readyzNotReadyBody). The /readyz handler and the
+// labgame_ready gauge share this one definition, each calling it with
+// an internally-bounded context so neither a scrape nor a probe can
+// hang on it.
+type ReadyFunc func(ctx context.Context) error
 
 // Server serves the metrics endpoint over one *http.Server, with an
 // explicit Start/Shutdown pair the caller owns.
@@ -37,17 +82,61 @@ type Server struct {
 	shutdownErr  error
 }
 
-// NewServer builds a Server that gathers from gatherer at the fixed
-// metrics path.
-func NewServer(addr string, gatherer prometheus.Gatherer) *Server {
+// ServerOptions configures NewServer.
+type ServerOptions struct {
+	// Addr is the listen address Start binds — "host:port", or
+	// "host:0" to let the kernel choose a port (read back afterwards
+	// through Addr()).
+	Addr string
+	// Gatherer is scraped at the metrics path. Must not be nil.
+	Gatherer prometheus.Gatherer
+	// Ready answers both /readyz and the labgame_ready gauge. Must not
+	// be nil.
+	Ready ReadyFunc
+}
+
+// NewServer builds a Server that gathers from opts.Gatherer at the
+// fixed metrics path and answers opts.Ready at the fixed readiness
+// path, refusing a nil Gatherer or Ready with an *OptionError naming
+// the field.
+func NewServer(opts ServerOptions) (*Server, error) {
+	if opts.Gatherer == nil {
+		return nil, &OptionError{Field: "Gatherer", Reason: reasonMustNotBeNil}
+	}
+	if opts.Ready == nil {
+		return nil, &OptionError{Field: "Ready", Reason: reasonMustNotBeNil}
+	}
+
 	mux := http.NewServeMux()
-	mux.Handle(metricsPath, promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{}))
+	mux.Handle(metricsPath, promhttp.HandlerFor(opts.Gatherer, promhttp.HandlerOpts{}))
+	mux.HandleFunc(readyzPath, readyzHandler(opts.Ready))
 	return &Server{
 		httpSrv: &http.Server{
-			Addr:              addr,
+			Addr:              opts.Addr,
 			Handler:           mux,
 			ReadHeaderTimeout: readHeaderTimeout,
 		},
+	}, nil
+}
+
+// readyzHandler answers 200 with readyzReadyBody when ready returns nil,
+// and 503 with readyzNotReadyBody otherwise — never the underlying
+// error, so a probe response can never carry a secret or any other
+// diagnostic detail. ready is called with a context bounded by
+// readyzTimeout, derived from the request's own context, so a blocking
+// Ready can never hang the handler past that bound.
+func readyzHandler(ready ReadyFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), readyzTimeout)
+		defer cancel()
+
+		if err := ready(ctx); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(readyzNotReadyBody))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(readyzReadyBody))
 	}
 }
 

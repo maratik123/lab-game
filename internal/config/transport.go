@@ -263,6 +263,21 @@ func lookupFactor(lookup Lookup, key string) (float64, bool, error) {
 	return f, true, nil
 }
 
+// lookupBool queries key through lookup, returning (false, false, nil)
+// when absent, the parsed value and true when present and a
+// strconv.ParseBool-legal string, or a *KeyError when present and not.
+func lookupBool(lookup Lookup, key string) (bool, bool, error) {
+	val, ok := lookup(key)
+	if !ok {
+		return false, false, nil
+	}
+	b, err := strconv.ParseBool(strings.TrimSpace(val))
+	if err != nil {
+		return false, false, keyErrorf(key, ErrInvalidValue, "must be a boolean, got %q", val)
+	}
+	return b, true, nil
+}
+
 // lookupRate queries key through lookup, returning (Rate{}, false, nil)
 // when absent, the parsed Rate and true when present and either the
 // literal "off" (Rate{}, unbounded) or "<count>/<duration>" with both

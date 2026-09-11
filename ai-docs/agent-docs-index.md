@@ -16,6 +16,7 @@ The full map of `ai-docs/**` and the harness's supporting pages. `AGENTS.md` § 
 | [`ai-docs/domain-invariants.md`](domain-invariants.md) | Ledger, telemetry, scheduler and Telegram-safety invariants — read before touching those paths |
 | [`ai-docs/key-decisions.md`](key-decisions.md) | Key design decisions with rationale |
 | [`ai-docs/alert-contract.md`](alert-contract.md) | The health surface's metric catalogue and the alert shapes over it — names and shapes for the infrastructure pass, which sets every number |
+| [`ai-docs/process-lifecycle.md`](process-lifecycle.md) | The bot process's lifecycle: the start-up order with a failure mode per step, the migration-apply policy, restart hygiene, readiness, the drain and the exit codes |
 | [`ai-docs/code-style.md`](code-style.md) | Go code-style reference — read on demand |
 | [`ai-docs/go-api-naming.md`](go-api-naming.md) | Naming rules incl. the `…Unchecked` contract |
 | [`ai-docs/doc-convention.md`](doc-convention.md) | godoc conventions — read on demand |

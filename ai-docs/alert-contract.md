@@ -27,6 +27,14 @@ duration. Where an expression needs a number, it carries one of these.
   defaults to a loopback address — a scrape from another host needs either
   a changed value or a local scraper, and that is the infrastructure pass's
   choice to make.
+- **`/readyz` is served by the same listener**, at a path of its own: `200`
+  with the body `ready`, `503` with the body `not ready`, and no reason text
+  in either — the refusal's cause never reaches the response or a scrape.
+  It is a probe surface, not an alerting one; the same answer is on the
+  registry as `labgame_ready`, which is what an expression reads. The
+  listener binds **before** the migration step and stays up through the
+  whole drain, so "starting" and "draining" both read as `503` rather than
+  as a refused connection, and a scrape during either is still served.
 - The canary cadence is `LAB_GAME_HEALTH_CANARY_INTERVAL`, one value driving
   both legs on the same tick, defaulting to once a minute. Every expression
   below that counts probes assumes `W` covers at least `N` such intervals;
@@ -68,9 +76,9 @@ it. Three consequences bind every rule the pass writes:
   principle.
 
 Histograms expose the usual `_bucket`, `_sum` and `_count` series. The
-Go-runtime and process collectors, where the composition root installs them,
-keep the client library's own `go_` and `process_` prefixes rather than this
-project's.
+Go-runtime and process collectors, which the composition root installs at
+its metrics-registry step, keep the client library's own `go_` and `process_`
+prefixes rather than this project's.
 
 ## 3. The metric catalogue
 
@@ -169,6 +177,39 @@ on; it is not what any condition below tests.
 `leg="own"` probes the chain this project owns — own `telegram-bot-api`
 instance, MTProto, the DC behind it. `leg="cloud"` probes the cloud Bot API
 directly, with a **different bot's** credential, as a reference.
+
+### Process identity and readiness
+
+| Family | Type | Labels |
+|---|---|---|
+| `labgame_build_info` | gauge, always 1 | `version` |
+| `labgame_start_time_seconds` | gauge | — |
+| `labgame_ready` | gauge | — |
+| `labgame_restart_downtime_seconds` | gauge | — |
+| `labgame_restart_shifted_tasks` | gauge | — |
+
+The build version is a **label value on a gauge that is always 1**, never a
+metric-name component — the shape that lets a `version` change be a series
+change rather than a new family, and the reason `version` is in this
+project's allowed-label-name set.
+
+`labgame_start_time_seconds` is this module's own assembly instant, not the
+client library's `process_start_time_seconds` (which comes from the process
+collector and yields nothing outside a Linux-style procfs or Windows). It is
+what an operator correlates with a deploy.
+
+`labgame_ready` is `1` exactly when `/readyz` answers `200`, evaluated at
+scrape time under an internal bound, so a scrape can never hang on it. It is
+`0` while migrations are being applied, while the pool round trip fails, and
+from the instant the drain begins.
+
+The two restart gauges are written **once**, by the start-up restart-hygiene
+step, and never move again in that process's lifetime: the gap it measured
+against the persisted liveness instant, and how many overdue pending
+scheduler rows it moved forward by that gap. They are the record of a step
+that rewrites scheduler rows before anything else runs, so a shift that
+happened is reconstructable afterwards. Expect `0` on an ordinary restart
+and on a first start against a fresh database.
 
 ## 4. The alerts
 
@@ -374,5 +415,8 @@ asserts against the loader's, and a deleted line diverges from it.
   this contract — the bot does not read it and does not re-export it — and
   the pass that owns the instance's configuration decides which of its
   series to scrape and how to name them.
-- A readiness endpoint beside `/metrics`, if start-up and shutdown
-  orchestration ever wants one.
+- **Discharged, not deferred:** the readiness endpoint this list used to
+  defer now exists (`/readyz`, § 1 and § 3). What is left to the pass is
+  only who reads it — a container healthcheck, an orchestrator probe or a
+  human — and, if the reader lives on another host, the listen address that
+  reaches it.

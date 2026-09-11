@@ -55,6 +55,29 @@ The ledger's invariants are database behaviour — the zero-sum check, the `CHEC
 - Idempotency has its own tests: the same Telegram update delivered twice creates one basis document and one set of postings; a stale `seq` in `callback_data` redraws instead of acting.
 - Time is injected, never read from the wall clock, so a timer edge can be tested without sleeping.
 
+## Structural guards
+
+A proposition about the *shape* of the source — no `func init()`, no package-level subsystem
+variable, no Go clock call on a determinism path, no `promauto` — is asserted by a test that
+parses the package's own non-test files, not by a grep in a `Makefile`.
+
+- **Enumerate and parse through `internal/srcguard`**, never a hand-rolled walk. Three packages
+  had grown their own copies and had already drifted apart in shape; the shared package owns the
+  mechanical half — listing a package's non-test files, walking a subtree, parsing, and writing a
+  scratch package into `t.TempDir()`. **Every predicate stays in the package that owns the
+  proposition**, so a rule has exactly one place to look for it. *Scoped exception:*
+  `internal/tg/guards_test.go`'s `walkGoFiles` is the third package's copy and was deliberately left
+  hand-rolled — migrating it was out of the scope of the task that introduced `internal/srcguard`
+  and only `internal/health` and `internal/ingest` moved onto it. The rule records no violation
+  where the tree has not been migrated yet.
+- **The repository root arrives as an argument**, resolved by `internal/repotest` — the module's
+  one file-location-ascent resolver, itself held by a whole-tree walk that fails on any second one.
+- **Prove the guard discriminating in the same file.** A guard that returns clean is a claim about
+  the *instrument* until you have watched it go red: pair each one with a case that runs the same
+  walk over a scratch package which *does* contain the forbidden construct, and asserts it is
+  found. Without that pair, a walk over an empty file list and a walk over a clean tree are
+  indistinguishable.
+
 ## Panics
 
 No `panic` / `log.Fatal` in production code. A `PostToolUse` hook flags them on write. Any survivor is justified in its doc comment **and** listed in [`panic-index.md`](panic-index.md) — the comment states the justification itself and does not point at the index, because a comment naming a markdown path is what the reference ban forbids ([`doc-convention.md`](doc-convention.md) § DOC-4). Tests may panic freely (`t.Fatal` is the idiomatic failure).

@@ -16,6 +16,10 @@ import (
 // Scheduler config field.
 const reasonMustBePositive = "must be positive"
 
+// reasonMustNotBeNil is the rejection reason for every required nil
+// pointer/interface field across this package's option structs.
+const reasonMustNotBeNil = "must not be nil"
+
 // OptionError is returned by New when an Options field is invalid.
 type OptionError struct {
 	// Field names the invalid Scheduler config field.
@@ -57,6 +61,13 @@ type Worker struct {
 	// Run and a caller's RunOnce may both touch it.
 	pendingMu sync.Mutex
 	pending   map[TaskID]pendingSettlement
+
+	// stopOnce/stopCh implement Stop: closed once, selected on beside
+	// ctx.Done() in Run, so Run returns nil when stopped and ctx.Err()
+	// when cancelled — the drain's lever, shared in shape with Liveness
+	// and (*Loop).Stop.
+	stopOnce sync.Once
+	stopCh   chan struct{}
 }
 
 // New builds a Worker from opts, refusing a nil Pool, a nil Registry, or
@@ -64,10 +75,10 @@ type Worker struct {
 // field.
 func New(opts Options) (*Worker, error) {
 	if opts.Pool == nil {
-		return nil, &OptionError{Field: "Pool", Reason: "must not be nil"}
+		return nil, &OptionError{Field: "Pool", Reason: reasonMustNotBeNil}
 	}
 	if opts.Registry == nil {
-		return nil, &OptionError{Field: "Registry", Reason: "must not be nil"}
+		return nil, &OptionError{Field: "Registry", Reason: reasonMustNotBeNil}
 	}
 	positiveFields := []struct {
 		name  string
@@ -93,6 +104,7 @@ func New(opts Options) (*Worker, error) {
 		registry: opts.Registry,
 		cfg:      opts.Config,
 		observer: opts.Observer,
+		stopCh:   make(chan struct{}),
 	}, nil
 }
 
@@ -141,6 +153,12 @@ func (w *Worker) RunOnce(ctx context.Context) error {
 // cycle already reports it through ObserveLoop — because a
 // worker that stopped on a transient discovery failure would need an
 // external restart for no reason.
+//
+// Stop makes Run return nil after the cycle in flight (if any)
+// completes, rather than waiting for ctx to be done: Run returns nil
+// when stopped and ctx.Err() when cancelled, which is what lets a
+// caller tell a completed drain from an abandoned one. Stop called
+// before Run's first cycle makes Run return nil without starting one.
 func (w *Worker) Run(ctx context.Context) error {
 	if err := w.Reconcile(ctx); err != nil {
 		return fmt.Errorf("scheduler: run: %w", err)
@@ -151,6 +169,8 @@ func (w *Worker) Run(ctx context.Context) error {
 
 	for {
 		select {
+		case <-w.stopCh:
+			return nil
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
@@ -159,11 +179,20 @@ func (w *Worker) Run(ctx context.Context) error {
 		_ = w.RunOnce(ctx)
 
 		select {
+		case <-w.stopCh:
+			return nil
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
 		}
 	}
+}
+
+// Stop makes Run return nil after the cycle in flight (if any)
+// completes, rather than waiting for ctx to be done. Safe to call more
+// than once and from any goroutine.
+func (w *Worker) Stop() {
+	w.stopOnce.Do(func() { close(w.stopCh) })
 }
 
 // observeTask reports obs to w's Observer, when one is installed.

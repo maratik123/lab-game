@@ -12,7 +12,11 @@
 // instants the database returned. Go time survives in this package only
 // as intervals — the poll interval, the per-task execution deadline, and
 // the loop's observed duration — none of which is ever compared against
-// a persisted instant.
+// a persisted instant. The liveness heartbeat and its restart-hygiene
+// downtime shift follow the same rule at its strictest: the file that
+// implements them calls none of time.Now, time.Since or time.Until at
+// all, and a guard in this package's test suite holds that
+// structurally.
 //
 // This package never imports the ledger package: it moves no balance of
 // its own, and the code that posts a mechanic's effects is that

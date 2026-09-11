@@ -112,7 +112,7 @@ Every regression suite must pass `shellcheck -s bash` and run green before `git 
 | Job | Runs when | Gates |
 |---|---|---|
 | Format | `go` paths changed | `make fmt-check` — `golangci-lint fmt -d` prints no diff |
-| Build | `go` paths changed | `make build`, `make vet`, `make tidy-check` (`go mod tidy` leaves no delta) |
+| Build | `go` paths changed | `make build`, `make vet`, `make tidy-check` (`go mod tidy` leaves no delta), `make import-guard` (no rule-table package's non-test dependency graph carries a forbidden module — today, the container runtime in the bot's) |
 | Test | `go` paths changed | `make test` then `make test-race` |
 | Lint | `go` paths changed | `make lint` at the pinned `golangci-lint` version, then `make file-limits` (hard 1000 / 1500 line limits) |
 | Harness guards | `.claude/**`, `ai-docs/**`, `AGENTS.md`, `CLAUDE.md`, `.githooks/**`, `Makefile` changed | `make shellcheck` — the same command a local run uses, so the two cannot disagree about which scripts are checked — plus shellcheck on every hook body; the citation guard; the `context-status.md` PR-locator check; the script-shape checker; every guard regression suite; every relative markdown link resolves. **No size check**: instruction-file bytes are `/ai-audit`'s exclusive property per the AXIOM in [`checklist-m.md`](../.claude/skills/ai-audit/checklist-m.md) § *Sub-check 9*, and CI deliberately carries no gate over them |
