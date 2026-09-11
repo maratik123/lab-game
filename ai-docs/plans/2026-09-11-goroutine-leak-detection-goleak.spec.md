@@ -10,19 +10,22 @@
    make.** A goroutine that this module's code starts or runs, and that a test leaves running,
    fails the suite on the routes where the suite is a gate
    [task: "condition in the test suite rather than a reviewed one"].
-2. **The detection runs in every covered package, whatever owns that package's test entry point
-   today** — the database-backed packages included, where `internal/testdb.Main` owns `TestMain`.
-   How the detection composes with that entry point is the design's call, and the design makes it
-   explicitly [task: "it has to be made rather than discovered"].
-3. **The ignore set** — the goroutines the detection deliberately does not report, such as those
+2. **Every package of this module that has tests runs the detection**, whether or not its code
+   starts a goroutine today [answer 1.2: "Every package with tests runs it."].
+3. **The detection composes with whatever owns a package's test entry point today** — the
+   database-backed packages included, where `internal/testdb.Main` owns `TestMain`. How it
+   composes is the design's call, and the design makes it explicitly
+   [task: "it has to be made rather than discovered"].
+4. **The ignore set** — the goroutines the detection deliberately does not report, such as those
    the pgx pool, the container runtime, the Prometheus client and HTTP keep-alive connections hold
    across tests — **carries a reason per entry and stays honest as dependencies move**
    [task: "The ignore set, with a reason per entry."].
-4. **A detection identifies what leaked**: the failure names the leaked goroutine's stack, not
+5. **A detection identifies what leaked**: the failure names the leaked goroutine's stack, not
    merely that a count is non-zero [task: "a failure that names the leaked goroutine's stack"].
-5. **Every leak the detection surfaces in today's code when it lands is handled under one stated
-   policy** (Key decisions) [task: "A pre-existing leak surfaced by adoption"].
-6. **Propagation.** This task adds a check to the suite's gates; every live site whose claim the
+6. **Every leak the detection surfaces in today's code when it lands is fixed inside this task**;
+   none lands excused by an ignore entry
+   [answer 1.1: "Every leak found at adoption is fixed here, so none lands excused."].
+7. **Propagation.** This task adds a check to the suite's gates; every live site whose claim the
    diff falsifies is updated in the same PR, per AGENTS.md § *Propagation Rule* step 4
    [task: "condition in the test suite rather than a reviewed one"].
 
@@ -47,19 +50,21 @@ _None._
 
 | Question | Decision |
 |---|---|
-| A leak the detection surfaces in today's code when it lands — fixed inside this task, or ignored explicitly with its own tracking issue? | TBD |
-| Which packages the detection covers — every package with tests, or only the packages that start goroutines today? | TBD |
-| What keeps the ignore set honest as dependencies move? | TBD |
+| A leak the detection surfaces in today's code when it lands — fixed inside this task, or ignored explicitly with its own tracking issue? | Fixed inside this task. Every leak found at adoption is fixed here, and none lands excused by an ignore entry. [answer 1.1: "Every leak found at adoption is fixed here, so none lands excused."] |
+| Which packages the detection covers — every package with tests, or only the packages that start goroutines today? | Module-wide: every package of this module that has tests runs the detection, whether or not its code starts a goroutine today. [answer 1.2: "Every package with tests runs it."] |
+| What keeps the ignore set honest as dependencies move? | A stale entry fails the suite. An entry that matches no goroutine in the runs it applies to fails the suite, so a dependency move that drops or renames a goroutine forces the entry to be updated or deleted; every entry still carries its reason. [answer 1.4: "An entry that matches no goroutine in the runs it applies to fails the suite"] |
+| Does module-wide coverage bind a package added after this task — held by a check — or is it the state this task leaves, kept by review? | TBD |
 
 ## Acceptance Criteria
 
 | # | Criterion |
 |---|-----------|
-| AC1 | In every covered package, a goroutine started by, or running, this module's code that is still running when that package's tests have finished fails that package's tests as `make verify` and CI run them. [task: "condition in the test suite rather than a reviewed one"] |
+| AC1 | In every package that runs the detection (AC4), a goroutine started by, or running, this module's code that is still running when that package's tests have finished fails that package's tests as `make verify` and CI run them. [task: "condition in the test suite rather than a reviewed one"] |
 | AC2 | The failure a detection produces carries the stack of each leaked goroutine it reports, so the goroutine is identifiable from the failure output alone. [task: "a failure that names the leaked goroutine's stack"] |
 | AC3 | Every entry of the ignore set states why the goroutine it matches is not a leak. [task: "each entry carries its justification"] |
-| AC4 | TBD — the set of covered packages (Key decisions). |
-| AC5 | TBD — the state of every leak the detection surfaces in today's code when it lands (Key decisions). |
-| AC6 | TBD — the condition that keeps the ignore set honest as dependencies move (Key decisions). |
+| AC4 | Every package of this module that has tests runs the detection. [answer 1.2: "Every package with tests runs it."] |
+| AC5 | No ignore-set entry excuses a goroutine started by, or running, this module's code: every leak the detection surfaced in today's code is fixed, not ignored. [answer 1.1: "Every leak found at adoption is fixed here, so none lands excused."] |
+| AC6 | An ignore-set entry that matches no goroutine in the runs it applies to fails the test suite as `make verify` and CI run it. [answer 1.4: "An entry that matches no goroutine in the runs it applies to fails the suite"] |
+| AC7 | TBD — whether a package added after this task is held to AC4 by a check (Key decisions). |
 
 ## Open questions
