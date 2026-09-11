@@ -66,7 +66,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 3
+round: 4
 agent_id: aa4d3b7e2006369e6
 prior_qa:
   - round: 1
@@ -87,4 +87,7 @@ prior_qa:
   - round: 3
     question: "Approve and post cross-link comment?"
     answer: "Approve — Approve the spec and its Acceptance Criteria, post the cross-link comment on #74, and continue to the design phase."
+  - round: 4
+    question: "Design review round 1 (GO) raised a SPEC-REMIT against spec Scope 8 — trigger (c), a row outside the spec's zone. The row: «**Propagation.** This task adds a check to the suite's gates; every live site whose claim the diff falsifies is updated in the same PR, per AGENTS.md § *Propagation Rule* step 4 [task: \"condition in the test suite rather than a reviewed one\"]». Reviewer, verbatim: \"It restates a standing rule, and its anchor does not ask for propagation. This is a finding against the spec, not the design; the design already flags it and designs to the outcome.\" Suggestion: \"either restate it as the outcome it protects or strike it. The row binds until then.\" What happens to Scope 8? → spec amendment via spec-writer + design-review re-run"
+    answer: "Strike it (Recommended) — Scope 8 is removed from the spec. AGENTS.md § Propagation Rule still binds this PR on its own, and the design keeps its § Propagation (with the retry_test.go site the reviewer found). → spec amendment via spec-writer + design-review re-run"
 ```
