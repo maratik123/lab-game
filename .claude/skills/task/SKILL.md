@@ -116,7 +116,7 @@ First action: confirm the spec exists. Spawn the `design-writer` Subagent (per `
 Spawn the `design-review` Subagent with **exactly** these five things: the invocation line (`Read .claude/agents/design-review.md and follow it.`), the spec path, the design path, the progress-file path (when one exists), and the round number — **nothing else**. No `Context:` paragraph, no amendment history, no "verify that X now matches Y", no framing of what changed. Anything beyond the list becomes a `major` `PROMPT-CONTAMINATION` finding against this orchestrator, and the reviewer then ignores the content it flagged. The amended artefacts are on disk; the round number is the only state a gate prompt carries. (Enumerated here rather than left as "per `design-review.md`" because the one in-flow spawn example an orchestrator used to meet — the amendment recipes' template — carried a `Context:` line and shipped the contamination: `ai-docs/harness-gaps.md` 2026-09-02.)
 
 Verdict: GO / ITERATE / STOP.
-- **GO** → proceed to Step 8. Spec-amending notes (AC/constraint changes) need Step 6 → Step 7 re-run, not a fold-in — see `reference.md` § Spec Amendment recipe.
+- **GO** → proceed to Step 8. Spec-amending notes (AC/constraint changes) need Step 6 → Step 7 re-run, not a fold-in — see `reference.md` § Spec Amendment recipe. A note is spec-amending only on one of the four triggers of the AXIOM *the orchestrator originates no spec row* (below, § Design Amendment); any other note is the design's to fold in or a follow-up, whatever its severity.
 - **ITERATE** → back to Step 6 (max 3 rounds total).
 - **STOP** → fundamental flaw with the approach. Surface the verdict and `Issues` table to the user, do not start Step 8. Wait for direction (e.g., narrow scope, change approach, abandon).
 
@@ -132,6 +132,17 @@ If implementation (Step 8) reveals a necessary deviation from the design, **or**
 > Orchestrator-side direct edits to `*.design.md` / `*.spec.md` — FORBIDDEN (per the AXIOM above).
 
 > **AXIOM — a scope question carries its route.** A question whose "yes" changes Scope, an AC, a KD, or a standing constraint (incl. `settings.json` permissions) names its amendment route in its text: `→ spec amendment via spec-writer + design-review re-run` (or `→ design amendment via design-writer`). Every phase, every originator. "Yes" to a bare question authorises the CHANGE, never a silent fold-in (`reference.md` § Amendment-route rule).
+
+> **AXIOM — the orchestrator originates no spec row; after `ready` the spec changes on four triggers only.**
+>
+> | Trigger | What the amendment does |
+> |---|---|
+> | (a) The task's own words ask for something no row covers | Adds the missing row, anchored to those words |
+> | (b) An AC the design shows cannot be satisfied, or two rows that contradict | Restates them as outcomes; the reason and both rows quoted |
+> | (c) A row outside the spec's zone — `design-review`'s `SPEC-REMIT`, or a `design-writer` open question tagged so: a prescribed mechanism, a file set, a restated standing rule | Restates the row as the outcome it protects, or strikes it — never widens it into more mechanism |
+> | (d) The owner's own words change the task — an answer, or an unprompted message | Records the words in `prior_qa` verbatim **first**, then writes the row that anchors to them |
+>
+> Everything else a reviewer or a delegate raises about code the task merely touches — a duplicate, an adjacent defect, a refactor worth doing — is the design's to decide or a follow-up issue, never a Scope item, a Key decision or an AC (`spec-writer.md` Rule 10). **A question to the owner never offers "do it now" and "amend the spec" as one option:** the owner's go-ahead for extra work authorises it **in the design**, recorded there with their words. Measured 2026-09-09: that bundle turned a `note` about a test helper into a chain of spec amendments, with the design and review rounds they cost, on an issue that never mentioned the helper (`ai-docs/learnings.md` 2026-09-09). The orchestrator neither widens nor narrows the spec and writes none of its words: it routes, and it records the owner's answers.
 
 > **Amendment re-review is unconditional — exemption is the owner's, per instance.** No category of "mechanical" edits exempts a re-run; only the owner's explicit word in the surfaced answer does, for that instance only. Cap exhausted + amendment required → the owner raises the cap as an explicit number; the orchestrator never invents a bypass.
 
@@ -205,7 +216,7 @@ Spawn the `self-review` Subagent with **exactly**: the invocation line (`Read .c
 > | If the proposed Step 11 fix diff includes... | Action |
 > |---|---|
 > | A `*.design.md` file under `ai-docs/plans/` (active or `done/`) | **STOP.** Trigger the **Design Amendment recipe** above — surface to user, update the design, re-run Step 7 design-review on the amended design (max 3 rounds), then resume Step 11 from the GO verdict. Mark the originating finding `✅ Fixed (design amended)`. Do NOT commit the design-doc edit as a code-fix commit. |
-> | A `*.spec.md` file under `ai-docs/plans/` (active or `done/`) | **STOP.** Trigger the **Spec Amendment recipe** (`reference.md` § Spec Amendment recipe) — surface to user, update the spec, re-run Step 6 design → Step 7 design-review on the amended (spec, design) pair, then resume Step 11. Mark the originating finding `✅ Fixed (spec amended)`. |
+> | A `*.spec.md` file under `ai-docs/plans/` (active or `done/`) | **STOP.** Trigger the **Spec Amendment recipe** (`reference.md` § Spec Amendment recipe) — surface to user, update the spec, re-run Step 6 design → Step 7 design-review on the amended (spec, design) pair, then resume Step 11. Mark the originating finding `✅ Fixed (spec amended)`. Only on one of the four triggers of the AXIOM *the orchestrator originates no spec row*; a fix that would add a row about code the task merely touches is a design amendment or a follow-up instead. |
 > | A `*.spec.md` / `*.design.md` **coordinate only** — the cited claim still describes the artefact correctly, but its line number, path or offset moved (an added import, a `git mv`, a re-ordered block) | **NOT an amendment.** Re-resolve the coordinate yourself, record the re-resolved value in the register row, and continue the code-fix path. No `spec-writer`, no `design-writer`, no re-review, no round. This row is the cheap half of the pair: four self-review rounds and two design-review rounds were spent on this class before it existed (`ai-docs/harness-gaps.md` 2026-09-02). A changed **criterion** or a changed **design decision** is not a coordinate drift and takes the rows above. |
 > | Only `*.go` / `go.mod` / migrations / non-`ai-docs/plans/` `*.md` / other source files | Normal Step 11 code-fix path — apply, re-run gates, push. |
 
