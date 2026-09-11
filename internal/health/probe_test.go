@@ -161,8 +161,13 @@ func TestTelegramProber_Timeout(t *testing.T) {
 	srv := tgtest.New(t, tgtest.Delayed(time.Hour, tgtest.Success(nil)))
 	p := newTestProber(t, srv)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+	// A pause before the call, as a descheduled goroutine takes on a
+	// loaded machine: the deadline has to outlast it, so that it breaches
+	// during the HTTP wait this test classifies rather than before the
+	// call reaches the transport at all.
+	time.Sleep(50 * time.Millisecond)
 	result, err := p.Probe(ctx)
 	if err == nil {
 		t.Fatal("Probe: expected an error from the deadline")
