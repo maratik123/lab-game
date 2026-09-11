@@ -1,17 +1,17 @@
 # Progress: Canary limiter refusal label — ACTIVE
-_Updated: 2026-09-11 23:04_
+_Updated: 2026-09-11 23:14_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
 **Branch:** feat/2026-09-12-canary-limiter-refusal-label
 **base_commit:** c6b3ce89c401763dbcb102c51791094761ebb2d0
-**Last build:** not run
+**Last build:** PASS
 
 **Issue:** #89
 **Spec:** ai-docs/plans/2026-09-12-canary-limiter-refusal-label.spec.md
 
-**current_step:** Step 8 — subtask 2 of 2 complete (Group A done)
-**last_passed_gate:** go build ./... + go vet ./... + golangci-lint run + golangci-lint fmt -d + go test -race ./internal/tg/... ./internal/health/... | 2026-09-12 | 9dbd45e
+**current_step:** Step 9.5 — docs updated
+**last_passed_gate:** make verify (fmt-check, build, vet, lint, file-limits, test, test-race, tidy-check, actionlint, shellcheck, comment-refs, import-guard) | 2026-09-11T23:12Z | c8b4e385ae632d1ac7d46c18b043e2d26fdf4e20
 **entry_args:** 89
 
 ## Next action
@@ -30,6 +30,10 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: design-review returned GO on round 1; all four `## Issues` rows and both recommendations were design-internal, so they were folded by `design-writer` and design-review did not run again.
 - **Step 8 (subtask 1)**: the helper's doc comment and the two new end-to-end test doc comments initially named "AC1"/"AC3"/"D4"/"KD-26" as their rationale; `make comment-refs` flagged all four as forbidden ac-id/decision-anchor references (DOC-4), so the comments were reworded to describe the property directly instead of citing the spec/design anchor. Re-ran the gate clean afterward.
 - **Step 8 (subtask 2)**: verified the new `TestTelegramProber_ExpiredDeadlineCountsAsTimeout` test's discriminating power directly — checked out `internal/tg/caller.go` at the pre-subtask-1 commit (HEAD~1) with the new test still in place, ran it, and it failed with `classifyFailure = "network"` as expected; restored the post-subtask-1 file (`git diff` confirmed byte-identical) before continuing.
+- **Step 9**: panic-index needs no row — the only changed production file carries no `panic(` / `log.Fatal*` / `Must…` site, and both scan patterns were confirmed against a constructed control before the clean result was accepted.
+- **Step 9**: domain-invariant sweep — sweeps 1, 2, 3 and 5 clean (each pattern confirmed against a constructed control first); sweep 4 hits `time.Now()` in the transport caller and its tests. Legitimate: the determinism rule binds world generation, combat and PvP-trail replay, and the Bot API transport is none of them — it is wall-clock by nature (rate-limit windows, retry backoff, latency observation). The one new read, `caller.go:69`, is the per-pass hoist the design mandates so the limiter's decision and the caller's classification read one instant.
+- **Step 9**: the per-AC sweep ran three mutants rather than trusting the green suite — a non-strict predicate (`!now.Before`), the already-passed condition dropped entirely, and the call site reverted to the pre-change cause. Each was confirmed to BUILD first; each turned the expected test RED with a failure line naming the asserted property. `internal/tg/caller.go` was restored from a cp-backup and `git status` re-checked clean afterwards.
+- **Step 9.5**: `context.md` left untouched — no block's high-level state moved (no new package, no new capability; the change refines which cause one existing branch carries) and its open-question line points at `docs/DESIGN.md` §16, none of whose entries this answers. `alert-contract.md` also left untouched: its `reason` sentence enumerates a status code else `timeout` / `canceled` / `network`, and option 1 adds no value to that set, so the sentence stays true. No repo-root user-facing doc exists to contradict.
 
 ## GO notes
 
@@ -50,11 +54,12 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | PASS — `TestCaller_ExpiredDeadlineAtLimiterIsContextError`, `internal/tg/caller_test.go` |
-| AC2 | PASS — `TestTelegramProber_ExpiredDeadlineCountsAsTimeout`, `internal/health/probe_test.go` |
-| AC3 | PASS — `TestCaller_RealWaitPastDeadlineIsNotContextError`, `internal/tg/caller_test.go` |
+| AC | Status | Verifying command (orchestrator's own, Step 9) | Mutant that turned it RED |
+|----|--------|-----------------------------------------------|---------------------------|
+| AC1 | PASS — `TestCaller_ExpiredDeadlineAtLimiterIsContextError`, `internal/tg/caller_test.go` | `go test ./internal/tg -run TestCaller_ExpiredDeadlineAtLimiterIsContextError -count=1` | call site reverted to the pre-change cause → `errors.Is(err, context.DeadlineExceeded) = false, want true` |
+| AC2 | PASS — `TestTelegramProber_ExpiredDeadlineCountsAsTimeout`, `internal/health/probe_test.go` | `go test ./internal/health -run TestTelegramProber_ExpiredDeadlineCountsAsTimeout -count=1` | same mutant → `classifyFailure = "network", want "timeout"` |
+| AC3 | PASS — `TestCaller_RealWaitPastDeadlineIsNotContextError`, `internal/tg/caller_test.go` | `go test ./internal/tg -run TestCaller_RealWaitPastDeadlineIsNotContextError -count=1` | already-passed condition dropped (`if hasDeadline {`) → `errors.Is(err, context.DeadlineExceeded) = true, want false` |
+| — | boundary + message, `TestLimiterRefusalCause` | `go test ./internal/tg -run TestLimiterRefusalCause -count=1` | predicate relaxed to `!now.Before(deadline)` → the `now_equal_to_deadline` row fails on both the chain and the wording |
 
 ## Review register
 
