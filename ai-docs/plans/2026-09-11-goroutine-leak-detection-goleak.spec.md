@@ -28,9 +28,6 @@
 7. **Every leak the detection surfaces in today's code when it lands is fixed inside this task**;
    none lands excused by an ignore entry
    [answer 1.1: "Every leak found at adoption is fixed here, so none lands excused."].
-8. **Propagation.** This task adds a check to the suite's gates; every live site whose claim the
-   diff falsifies is updated in the same PR, per AGENTS.md § *Propagation Rule* step 4
-   [task: "condition in the test suite rather than a reviewed one"].
 
 ## Out of scope
 
