@@ -29,7 +29,7 @@
 
 | Question | Decision |
 |---|---|
-| Two checkouts whose project directories carry the same name, under different parents — one server between them, or one each? | TBD |
+| Two checkouts whose project directories carry the same name, under different parents — one server between them, or one each? | One server between them. The name follows the project directory's name and nothing else. [answer 1.1: "Two checkouts with the same directory name under different parents share one server."] |
 
 ## Acceptance Criteria
 
@@ -39,5 +39,6 @@
 | AC2 | Taking the long-lived test server down in one checkout leaves a long-lived test server belonging to a checkout with a differently-named project directory running and reachable. [task: "для параллелизации разработки"] |
 | AC3 | Gates run in one checkout address that checkout's own long-lived test server, and never one another checkout brought up. [task: "для параллелизации разработки"] |
 | AC4 | Every live surface whose claim this change falsifies — each site stating the long-lived test server's container name as one fixed name for the host — states how the name is derived instead, per AGENTS.md § Propagation Rule step 4. [task: "имя контейнера бд выводилось из имени каталога проекта"] |
+| AC5 | Two checkouts whose project directories carry the same name address one and the same long-lived test server. [answer 1.1: "Two checkouts with the same directory name under different parents share one server."] |
 
 ## Open questions
