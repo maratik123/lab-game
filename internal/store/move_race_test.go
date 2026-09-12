@@ -328,6 +328,38 @@ pollLoop:
 		}
 	}
 
+	// A refused Move leaves no half-written document behind: the loser's
+	// basis document, its journal entry, its postings and its movement are
+	// all absent once its transaction is rolled back. The winner's are
+	// asserted present through the same queries, because a query that
+	// cannot see rows at all would report the loser clean whatever Move
+	// did.
+	underReason := []struct {
+		what  string
+		query string
+	}{
+		{"basis document", `SELECT 1 FROM manual_correction mc WHERE mc.reason = $1`},
+		{"journal entry", `SELECT 1 FROM journal_entry je
+			JOIN manual_correction mc ON mc.id = je.manual_correction_id
+			WHERE mc.reason = $1`},
+		{"posting", `SELECT 1 FROM posting p
+			JOIN journal_entry je ON je.id = p.journal_entry_id
+			JOIN manual_correction mc ON mc.id = je.manual_correction_id
+			WHERE mc.reason = $1`},
+		{"movement", `SELECT 1 FROM item_movement m
+			JOIN journal_entry je ON je.id = m.journal_entry_id
+			JOIN manual_correction mc ON mc.id = je.manual_correction_id
+			WHERE mc.reason = $1`},
+	}
+	for _, c := range underReason {
+		if n := countRows(t, ctx, setupPool, c.query, "loser"); n != 0 {
+			t.Fatalf("the loser left %d %s row(s) behind: a refused Move writes neither its document nor anything under it", n, c.what)
+		}
+		if n := countRows(t, ctx, setupPool, c.query, "winner"); n == 0 {
+			t.Fatalf("the winner has no %s row, so the absence asserted for the loser is a blind query rather than a property of the refusal", c.what)
+		}
+	}
+
 	row := selectItemHolder(t, ctx, setupPool, item)
 	if row == nil || row.HolderID != destA {
 		t.Fatalf("item_holder = %+v, want the winner's destination %d", row, destA)

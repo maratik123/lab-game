@@ -3,7 +3,7 @@
 // moves a balance — and the item machine built on top of it: item and
 // item_movement, and Move, which moves an instance and its derived
 // capacity postings under one basis document. Post and Move are the only
-// two functions that write a balance; both fund through the package's
+// two functions that write a balance; both funnel through the package's
 // unexported post. Nothing here redesigns the game's double-entry
 // accounting design against a single global account.
 package store

@@ -62,7 +62,7 @@ const (
 //	   ErrUnknownEventType on an event basis naming an unregistered type,
 //	   aborted; any other error: aborted). Post's own beforeBalances hook
 //	   is nil; Move's runs here, once the journal entry exists and before
-//	   phase e touches a balance — see post's doc comment.
+//	   phase e touches a balance.
 //	e. one plain UPDATE per controlled account with a non-zero delta, in
 //	   ascending account_id (ErrOverdraft or ErrBalanceRowMissing, or any
 //	   other wrapped database error — all leave the transaction aborted,
