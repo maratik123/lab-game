@@ -8,22 +8,23 @@ _Updated: 2026-09-12 14:42_
 **Last build:** not run
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 8 — Design Amendment in flight (triggered by Group A); Group B (subtask 6) not yet started
+**current_step:** Step 8 — Design Amendment written, awaiting design-review round 3; Groups B (subtask 7) and C (subtask 6) not yet started
 **last_passed_gate:** go build ./... + go test ./... (whole module) + go test -race ./internal/store/... + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | a0a3cdf
 **entry_args:** 25
 
 ## Next action
 
-**Do this immediately:** spawn the Group A handoff (`code-writer`, subtasks 1–5) per the design's `## Handoff plan`; the first subtask is the forward migration `00006_capacity_kinds.sql` / `00007_item_machine.sql` plus the Go mirrors and the existing assertions the schema change moves.
+**Do this immediately:** re-run design-review on the amended design (round 3 of 3). On GO, spawn the Group B handoff (`code-writer`, subtask 7) per the design's `## Handoff plan` — the `post` `beforeBalances` hook that moves the chain insert ahead of the balance `UPDATE`s, plus the ordered-conflict test on the single-item fixture.
 
 ## Subtasks
 
-- [x] 1. Forward migration + Go mirrors + the assertions the schema change moves
-- [x] 2. The schema's own refusals, by SQLSTATE and constraint name
-- [x] 3. The reconciliation views' tests, each anomaly class planted and seen red (done after subtask 4, see the order-deviation decision below)
-- [x] 4. `Move`: extract `post`, add `Movement` / `Move` / the sentinels
-- [x] 5. The `rapid` property test and the `-race` concurrency test
-- [ ] 6. Propagation sweep over every live surface the diff falsifies (Group B — orchestrator's group, not Group A)
+- [x] 1. Forward migration + Go mirrors + the assertions the schema change moves — Group A
+- [x] 2. The schema's own refusals, by SQLSTATE and constraint name — Group A
+- [x] 3. The reconciliation views' tests, each anomaly class planted and seen red — Group A (done after subtask 4, see the order-deviation decision below)
+- [x] 4. `Move`: extract `post`, add `Movement` / `Move` / the sentinels — Group A
+- [x] 5. The `rapid` property test and the `-race` concurrency test — Group A
+- [ ] 7. The `beforeBalances` hook: the chain insert moves ahead of the balance `UPDATE`s, and the ordered-conflict test on the single-item fixture — Group B  ← CURRENT
+- [ ] 6. Propagation sweep over every live surface the diff falsifies — Group C, terminal
 
 ## Decisions log
 
@@ -41,6 +42,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 - **Step 8, Design Amendment**: two Group-A deviations verified against the tree by the orchestrator, not accepted on the delegate's report — `item_capacity_divergence` shipped as a `FULL JOIN` (strictly better than D6's sketch, no decision open), and `Move`'s phase order breaks D4's sentinel promise for a lost race off a single-item holder (phase d posts the capacity legs and trips `CHECK (balance >= 0)` before phase f's chain insert can serialise the race, so the loser sees `ErrOverdraft`, and the race test had been narrowed to avoid the case).
 - **Step 8, Design Amendment**: owner ruled *"Fix it — keep the promise"* — the code is reworked so a lost race reports `ErrMoveConflict` while a full destination still reports `ErrOverdraft`; `design-writer` picks the mechanism, and the single-item race fixture is restored as the discriminator.
+
+- **Step 8, Design Amendment**: `design-writer` rejected the owner's illustrated mechanism (lock the head movement in phase b) on a probe — a row lock protects a row, but head-ness is the *absence* of a successor, so the blocked `SELECT … FOR UPDATE` returned the stale head and the mechanism needs a paired re-read. Chosen instead: `post` gains a `beforeBalances` hook running after the journal entry exists and before the first balance `UPDATE`, so nothing inside `post` reorders and D4's standing claim about its phase order holds. Decomposition grows subtask 7; groups become A (returned) → B (subtask 7) → C (subtask 6).
 
 ## GO notes
 
