@@ -78,15 +78,17 @@ func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 	return post(ctx, tx, basis, nil, postings...)
 }
 
-// post is Post's body: the second (and only other) write path to a
-// balance. beforeBalances, when non-nil, runs once the basis document and
-// the journal entry exist and before the first balance UPDATE — the seam
-// Move needs so its chain rows (item_movement) take their successor slots
-// ahead of the capacity legs, which is what lets a lost chain race surface
-// as ErrMoveConflict rather than as a spurious ErrOverdraft on a balance
-// that another transaction has not yet committed. beforeBalances's error is
-// returned unwrapped, so errors.Is still finds a sentinel it names (for
-// example ErrMoveConflict). Post passes nil.
+// post is Post's body, and the one function here whose own body writes a
+// balance: Post and Move are separate entry points that each reach a
+// balance through it. beforeBalances, when non-nil, runs once the basis
+// document and the journal entry exist and before the first balance
+// UPDATE — the seam Move needs so its chain rows (item_movement) take
+// their successor slots ahead of the capacity legs, which is what lets a
+// lost chain race surface as ErrMoveConflict rather than as a spurious
+// ErrOverdraft on a balance that another transaction has not yet
+// committed. beforeBalances's error is returned unwrapped, so errors.Is
+// still finds a sentinel it names (for example ErrMoveConflict). Post
+// passes nil.
 func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, beforeBalances func(journalEntryID int64) error, postings ...Posting) error {
 	// Phase a.
 	if basis == nil {
