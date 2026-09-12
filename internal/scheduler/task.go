@@ -93,12 +93,17 @@ type DeadTask struct {
 // by the consumer and registered once, at start-up, through Declaration.
 //
 // A Handler MUST propagate the ctx it is handed to every call it makes on
-// tx: this is the contract the per-task execution deadline
-// depends on to reclaim a task's locked row after a breach. A Handler
-// that issues statements on a context of its own — context.Background(),
-// or a fresh context.WithTimeout — never sees the deadline's
-// cancellation, and its row stays locked until the handler returns on its
-// own, however long that takes.
+// tx: this is the contract the per-task execution deadline depends on. A
+// Handler that issues statements on a context of its own —
+// context.Background(), or a fresh context.WithTimeout — never sees the
+// deadline's cancellation directly, but after a breach the worker
+// terminates this attempt's own database backend from another
+// connection regardless, so the row's lock is reclaimed either way. Only
+// the handler's own goroutine can outlive the breach, and only for as
+// long as it makes no further call on tx: a Handler that does gets an
+// error back from its terminated backend and can return on it, while one
+// that never touches tx again keeps running until it returns on its own,
+// however long that takes.
 type Handler interface {
 	// Execute runs task's effects inside tx, the worker's own transaction
 	// for this attempt. tx is already under a per-task statement and

@@ -76,6 +76,8 @@ func schedulerFailureLabel(f scheduler.FailureKind) string {
 		return "deadline"
 	case scheduler.FailureRolledBack:
 		return "rolled_back"
+	case scheduler.FailurePanic:
+		return "panic"
 	default:
 		return unknownLabelValue
 	}

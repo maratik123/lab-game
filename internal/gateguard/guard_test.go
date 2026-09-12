@@ -117,13 +117,13 @@ var launchTable = map[launchKey][]launchAnswer{
 	},
 	{"internal/scheduler", "(*Worker).executeOne"}: {
 		{
-			stops:    "the savepoint helper it runs returns, bounded by the deadline context when the handler itself respects it",
+			stops:    "the savepoint helper it runs returns, bounded by the deadline context when the handler respects it, or by the breach branch's own synchronous terminate of this attempt's backend when the handler is blocked in the database instead — a handler blocked outside the database and never touching tx again stays unbounded, the ownership rules' one remaining named exception",
 			waitedBy: "the enclosing select's result case, or the deadline watchdog launch below",
 			errorTo:  "a buffered result channel, read by the settlement path or by the watchdog once the deadline already fired",
-			panicTo:  "unrecovered — the scheduler's own handler-panic recovery is tracked as separate follow-up work",
+			panicTo:  "recovered at the Handler.Execute boundary by callHandlerRecovered, logged, and routed into the same failure path a returned error takes",
 		},
 		{
-			stops:    "first an unbounded receive on the orphaned handler's buffered result channel, which cannot wake on cancellation — the one launch the ownership rules name as their exception — and only then the connection close, bounded by its own named-constant timeout",
+			stops:    "first a receive on the orphaned handler's buffered result channel — bounded by the breach branch's own terminate when the handler was blocked in the database, since ending its backend lets it return; still unbounded when the handler is blocked outside the database and never touches tx again, the ownership rules' one remaining named exception — and only then the connection close, bounded by its own named-constant timeout",
 			waitedBy: "nothing — this is the module's one deliberately detached launch",
 			errorTo:  "discarded",
 			panicTo:  "unrecovered",

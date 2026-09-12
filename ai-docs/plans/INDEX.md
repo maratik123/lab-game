@@ -21,6 +21,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | [2026-09-12 — test database container named per checkout](done/2026-09-12-test-container-name-per-checkout.spec.md) | ✅ implemented | #91 | #67 |
 | [2026-09-12 — split the CI Test job: each test gate gets its own concurrently-scheduled job](done/2026-09-12-split-ci-test-job.spec.md) | ✅ implemented | #99 | #67 |
 | [2026-09-12 — goroutine-leak prevention: ownership rules and the gates that hold them](done/2026-09-12-goroutine-ownership-rules-gates.spec.md) | ✅ implemented | #80 | #74 · #24 |
+| [2026-09-12 — scheduler handler panics and deadline reclaim: recover at the boundary, terminate the breached backend](done/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md) | ✅ implemented | #81 | #80 · #74 · #20 |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 

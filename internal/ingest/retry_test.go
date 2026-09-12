@@ -3,7 +3,10 @@ package ingest
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -38,6 +41,68 @@ type panickingHandler struct{}
 
 func (panickingHandler) Handle(context.Context, pgx.Tx, Update) error {
 	panic("boom")
+}
+
+// panicOnceThenSucceedsHandler panics on its first Handle call and
+// succeeds — returning nil, having posted nothing — on every call after
+// that. A fixture for the log-only surface: a panic on an earlier
+// attempt that a later attempt supersedes leaves no give-up row of its
+// own.
+type panicOnceThenSucceedsHandler struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (h *panicOnceThenSucceedsHandler) Handle(context.Context, pgx.Tx, Update) error {
+	h.mu.Lock()
+	h.calls++
+	first := h.calls == 1
+	h.mu.Unlock()
+	if first {
+		panic("panicOnceThenSucceedsHandler: first-call panic")
+	}
+	return nil
+}
+
+// recordedLogEntry is one Handle call's message, level and attributes,
+// captured eagerly so the underlying slog.Record need not survive past
+// Handle itself.
+type recordedLogEntry struct {
+	message string
+	level   slog.Level
+	attrs   map[string]string
+}
+
+// recordingLogHandler is a slog.Handler test double collecting every
+// record behind a mutex.
+type recordingLogHandler struct {
+	mu      sync.Mutex
+	entries []recordedLogEntry
+}
+
+func (h *recordingLogHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *recordingLogHandler) Handle(_ context.Context, r slog.Record) error {
+	entry := recordedLogEntry{message: r.Message, level: r.Level, attrs: map[string]string{}}
+	r.Attrs(func(a slog.Attr) bool {
+		entry.attrs[a.Key] = a.Value.String()
+		return true
+	})
+	h.mu.Lock()
+	h.entries = append(h.entries, entry)
+	h.mu.Unlock()
+	return nil
+}
+
+func (h *recordingLogHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *recordingLogHandler) WithGroup(string) slog.Handler      { return h }
+
+func (h *recordingLogHandler) Entries() []recordedLogEntry {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]recordedLogEntry, len(h.entries))
+	copy(out, h.entries)
+	return out
 }
 
 // txClosingHandler rolls its own attempt's transaction back and returns
@@ -198,6 +263,121 @@ func TestLoop_panicIsRecoveredAndRetried(t *testing.T) {
 	}
 	if len(dead) != 1 || dead[0].UpdateID != 25 {
 		t.Fatalf("DeadUpdates = %+v, want exactly one row for update_id=25", dead)
+	}
+}
+
+// TestLoop_panicRowAndLogBothCarryStack asserts the row surface: after
+// every attempt panics, the give-up row's last_error contains the panic
+// value and a frame naming the panicking fixture, and the recording
+// logger holds a record per recovered panic whose stack attribute
+// contains the same frame.
+func TestLoop_panicRowAndLogBothCarryStack(t *testing.T) {
+	t.Parallel()
+	pool := newIngestPool(t)
+	rec := &recordingObserver{}
+	srv := tgtest.New(t, nil)
+
+	raw := telego.Update{UpdateID: 30, Message: &telego.Message{Date: time.Now().Unix(), Chat: telego.Chat{ID: 1}}}
+	srv.SetHandler(tgtest.Success(updatesJSON(t, []telego.Update{raw})))
+
+	router, err := NewRouter(Route{Kind: KindMessage, Handler: panickingHandler{}})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	logs := &recordingLogHandler{}
+	l := newLoopWithLogger(t, srv, pool, router, rec, slog.New(logs))
+
+	if err := l.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+
+	cfg := testIngestConfig()
+
+	tx, err := pool.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	dead, err := DeadUpdates(context.Background(), tx, 10)
+	if err != nil {
+		t.Fatalf("DeadUpdates: %v", err)
+	}
+	if len(dead) != 1 || dead[0].UpdateID != 30 {
+		t.Fatalf("DeadUpdates = %+v, want exactly one row for update_id=30", dead)
+	}
+	if !strings.Contains(dead[0].LastError, "boom") || !strings.Contains(dead[0].LastError, "panickingHandler") {
+		t.Fatalf("last_error = %q, want it to contain the panic value and a frame naming panickingHandler", dead[0].LastError)
+	}
+
+	entries := logs.Entries()
+	if len(entries) != cfg.RetryMaxAttempts {
+		t.Fatalf("log entries = %d, want %d (one per recovered panic)", len(entries), cfg.RetryMaxAttempts)
+	}
+	for _, e := range entries {
+		if e.level != slog.LevelError {
+			t.Errorf("log level = %v, want error", e.level)
+		}
+		if !strings.Contains(e.attrs["stack"], "panickingHandler") {
+			t.Errorf("log stack attribute = %q, want it to name panickingHandler", e.attrs["stack"])
+		}
+	}
+}
+
+// TestLoop_panicLogOnlySurface_supersededAttemptLeavesNoRow asserts the
+// narrowed log-only clause's ingest half: a route whose handler panics
+// on its first attempt and succeeds on a later one leaves no give-up row
+// at all, while the recording logger still holds a record naming the
+// panicking fixture — asserting the row's absence alongside the record
+// is what makes this a test of the amended rule rather than of the log
+// alone.
+func TestLoop_panicLogOnlySurface_supersededAttemptLeavesNoRow(t *testing.T) {
+	t.Parallel()
+	pool := newIngestPool(t)
+	rec := &recordingObserver{}
+	srv := tgtest.New(t, nil)
+
+	raw := telego.Update{UpdateID: 31, Message: &telego.Message{Date: time.Now().Unix(), Chat: telego.Chat{ID: 1}}}
+	srv.SetHandler(tgtest.Success(updatesJSON(t, []telego.Update{raw})))
+
+	h := &panicOnceThenSucceedsHandler{}
+	router, err := NewRouter(Route{Kind: KindMessage, Handler: h})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	logs := &recordingLogHandler{}
+	l := newLoopWithLogger(t, srv, pool, router, rec, slog.New(logs))
+
+	if err := l.PollOnce(context.Background()); err != nil {
+		t.Fatalf("PollOnce: %v", err)
+	}
+
+	tx, err := pool.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	dead, err := DeadUpdates(context.Background(), tx, 10)
+	if err != nil {
+		t.Fatalf("DeadUpdates: %v", err)
+	}
+	if len(dead) != 0 {
+		t.Fatalf("DeadUpdates = %+v, want none (the second attempt succeeded)", dead)
+	}
+
+	entries := logs.Entries()
+	if len(entries) != 1 {
+		t.Fatalf("log entries = %d, want exactly 1 (the recovered first-attempt panic)", len(entries))
+	}
+	if !strings.Contains(entries[0].attrs["stack"], "panicOnceThenSucceedsHandler") {
+		t.Errorf("log stack attribute = %q, want it to name panicOnceThenSucceedsHandler", entries[0].attrs["stack"])
+	}
+
+	var outcomes []Outcome
+	for _, o := range rec.Updates() {
+		outcomes = append(outcomes, o.Outcome)
+	}
+	if len(outcomes) != 2 || outcomes[0] != OutcomePanic || outcomes[1] != OutcomeHandled {
+		t.Fatalf("observed outcomes = %v, want [OutcomePanic OutcomeHandled] — the reported outcome is unchanged by the added logging", outcomes)
 	}
 }
 

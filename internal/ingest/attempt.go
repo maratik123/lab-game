@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/maratik123/lab-game/internal/backoff"
+	"github.com/maratik123/lab-game/internal/panicguard"
 	"github.com/maratik123/lab-game/internal/store"
 )
 
@@ -76,7 +78,7 @@ func (l *Loop) attemptOnce(ctx context.Context, h Handler, u Update, attempt int
 	// database has no bearing on this number and a fast handler always
 	// reports as fast, whatever its transaction later does.
 	handlerStart := time.Now()
-	handlerErr, panicked := safeHandle(ctx, h, tx, u)
+	handlerErr, panicked := safeHandle(ctx, h, tx, u, attempt, l.logger)
 	duration := time.Since(handlerStart)
 
 	switch {
@@ -118,15 +120,28 @@ func (l *Loop) attemptOnce(ctx context.Context, h Handler, u Update, attempt int
 	}
 }
 
-// safeHandle calls h.Handle under recover: a panic never
-// terminates the process, and is reported to the caller as an error
-// distinct from a returned one via the panicked return.
-func safeHandle(ctx context.Context, h Handler, tx pgx.Tx, u Update) (err error, panicked bool) {
+// safeHandle calls h.Handle under recover: a panic never terminates the
+// process, and is reported to the caller as an error distinct from a
+// returned one via the panicked return. A recovered panic is logged at
+// error level, with u's identity, the attempt ordinal and the stack as
+// its own attribute, at this recovery point — the only guaranteed
+// surface for a panic on an attempt a later one supersedes, since a
+// give-up row is written only once every attempt is spent and then
+// carries only the last attempt's error.
+func safeHandle(ctx context.Context, h Handler, tx pgx.Tx, u Update, attempt int, logger *slog.Logger) (err error, panicked bool) {
 	defer func() {
-		if r := recover(); r != nil {
-			panicked = true
-			err = fmt.Errorf("ingest: handler panic: %v", r)
+		rec := panicguard.New(recover())
+		if rec == nil {
+			return
 		}
+		panicked = true
+		err = fmt.Errorf("ingest: handler panic: %w", rec)
+		logger.LogAttrs(ctx, slog.LevelError, "ingest: recovered handler panic",
+			slog.String("kind", string(u.Kind)),
+			slog.Int64("update_id", int64(u.Raw.UpdateID)),
+			slog.Int("attempt", attempt),
+			slog.String("stack", string(rec.Stack)),
+		)
 	}()
 	err = h.Handle(ctx, tx, u)
 	return err, false
