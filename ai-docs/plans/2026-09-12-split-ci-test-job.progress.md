@@ -1,5 +1,5 @@
 # Progress: Split the CI Test job into four parallel jobs — ACTIVE
-_Updated: 2026-09-12 02:46_
+_Updated: 2026-09-12 02:49_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -10,13 +10,13 @@ _Updated: 2026-09-12 02:46_
 **Issue:** #99
 **Spec:** ai-docs/plans/2026-09-12-split-ci-test-job.spec.md
 
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** golangci-lint run | 2026-09-12T05:35:00Z | b5497363229f85f6271004ef02a56c64981026cd
 **entry_args:** ускоряем gh ci: job Test надо разбить на 4 отдельные джобы, выполняющиеся параллельно: make test, make test-race, make cover-ratchet и make test-fallback
 
 ## Next action
 
-**Do this immediately:** Step 9 is complete, every gate PASS and every AC verified by the orchestrator's own command. Next is Step 9.5 — append this task's entry to `ai-docs/context-status.md` with the literal `#TBD-at-Step-12` locator, and bump the affected summary bullet in `ai-docs/context.md`.
+**Do this immediately:** Step 9.5 is complete. Next is Step 10 — spawn `self-review` with exactly the invocation line, the spec path, the design path, this progress path, and the range `ad9414eaf672116d4f67b3989d3a53246d402af3..HEAD`, and nothing else.
 
 ## Subtasks
 
@@ -51,6 +51,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 9**: the coverage ratchet reads 90.04% against a recorded 90.04% at a 0.60 pp tolerance — it holds with no margin, and the local measurement is **not an independent draw**: the diff changes no Go file, so the profile replayed from the test cache. CI measures it fresh on a runner, where the suite's timing-dependent statements can move it inside the tolerance. Recorded so a red `Coverage ratchet` on this PR is read as that known behaviour rather than as a regression this task introduced.
 - **Step 9**: my own AC4 sweep's first pattern set MISSED `AGENTS.md:138` — the middle-dot enumeration there reads `· Test (incl. `-race`) ·`, and a pattern written as `· Test ·` cannot match it. The control at the merge base is what exposed it, before any verdict on the live tree; widening the pattern took the control from 10 hits in 7 files to 49 in 12. A clean live sweep under the narrow pattern would have been a claim about the pattern. Decided-and-left after reading each sentence: `key-decisions.md:53` and `:97`, `context.md:27`, `coverage-ratchet.sh:4-5` and `:121`, `harness-gaps.md:260` and `:332` (both about the pre-commit hook, not CI), `test-piped-gate-guard.sh:83` (a fixture), and three `_inbox.jsonl` rows — which are also uneditable by hand under the standing AXIOM.
 - **Step 9**: panic index needs no change (the diff adds no `panic(` / `log.Fatal`), and the domain-invariant sweep is vacuous by construction — the diff touches no `*.go`, no `*.sql` and no `go.mod`, so no ledger, schema, scheduler or telemetry surface is in it.
+
+- **Step 9.5**: `ai-docs/context-status.md` gained this task's entry with the literal `#TBD-at-Step-12` locator, so the placeholder occurs exactly once in the file and sub-step 10a's `Edit` has the unique match it needs. `ai-docs/context.md`'s Gates bullet gained one orientation-level clause, phrased without a job tally so it stays true if a fifth test gate is ever added. No repo-root user-facing doc was touched: `README.md` carries no CI claim and `docs/DESIGN.md`'s one CI sentence is about evals, not job structure. The removal sweep over every doc touched found the deleted `(incl. -race)` phrasing only inside the new entry's own account of deleting it.
 
 ## GO notes
 
