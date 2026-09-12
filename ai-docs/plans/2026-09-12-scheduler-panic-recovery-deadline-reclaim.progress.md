@@ -10,8 +10,8 @@ _Updated: 2026-09-12 18:05_
 **Issue:** #81
 **Spec:** ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md
 
-**current_step:** Step 8 — Group A subtask 2 of 9 complete
-**last_passed_gate:** go build ./... + go test ./internal/scheduler/... + golangci-lint run ./internal/scheduler/... + go vet | subtask 2
+**current_step:** Step 8 — Group A subtask 3 of 9 complete
+**last_passed_gate:** go build ./... + go test ./internal/scheduler/... + golangci-lint run ./internal/scheduler/... + go vet ./... | subtask 3
 **entry_args:** 81
 
 ## Next action
@@ -24,7 +24,7 @@ Group A — code (`code-writer`, `sonnet`/`medium`):
 
 - [x] 1. `internal/panicguard`: the shared recovered-panic type, its constructor from a `recover()` result, its `error` rendering, package comment, tests, leak-check `TestMain`
 - [x] 2. `scheduler.Options` gains `Logger`; `Worker` carries it; nil → discard handler; correct `RunOnce`'s "no logger" clause
-- [ ] 3. `FailureKind` gains the panic member; `FailureRolledBack`'s doc excludes a panic; correct `LoopObservation.Err`'s "no logger" clause
+- [x] 3. `FailureKind` gains the panic member; `FailureRolledBack`'s doc excludes a panic; correct `LoopObservation.Err`'s "no logger" clause
 - [ ] 4. Handler-boundary recovery and its settlement; logger threaded into `runHandlerWithSavepoint` as a parameter; unusable transaction routed into the pending-settlement set
 - [ ] 5. Deadline reclaim: PID read before the handler goroutine launches; one-argument terminate; two non-success shapes reported apart; `TestDeadline_ctxIgnoringHandler_negativeCase` assertion reversed; falsified comments corrected
 - [ ] 6. Update ingestion: `Options` gains `Logger`; the recovery helper returns the shared value; stack into the give-up row and the log; reported outcome unchanged
@@ -92,3 +92,4 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `internal/panicguard/main_test.go` (new)
 - `internal/scheduler/worker.go` (Options.Logger, discard-handler substitution, RunOnce doc fix)
 - `internal/scheduler/worker_test.go` (Logger nil/given coverage)
+- `internal/scheduler/observe.go` (FailurePanic member, doc fixes)
