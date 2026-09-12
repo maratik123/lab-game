@@ -850,3 +850,9 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** Writing the rule down does not install it. When a command's exit status is going to be read, the pipe is decided before the command is typed — `cmd > tmp/x.log 2>&1; echo $?` is the default shape for any status-bearing invocation, and truncation with `cut`/`head` is applied to the SAVED file, never to the live pipeline.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — spawning a gate reviewer without reading its own spawn-prompt contract
+**What happened:** Spawned `design-review` at `/task` Step 7 carrying exactly the five items that step enumerates, but written as `spec_path:` / `design_path:` / `round:` — the snake_case shape of the `spec-writer` and `design-writer` input contracts I had just used. The `PreToolUse` hook refused the spawn and printed the closed list: the permitted lines are `Spec:` / `Design:` / `Progress:` / `Round:`. The orchestrating skill describes the prompt's *content* in prose ("exactly these five things") and does not carry the line grammar, which lives in the callee's own agent file under its spawn-prompt contract.
+**Rule:** Before spawning an agent whose prompt is machine-checked, read that agent file's spawn-prompt contract and copy its line forms — a prose enumeration of what the prompt must *contain* is not a statement of the shape it must *take*, and a field name carried over from a sibling agent's contract is an assumption, not a form. The general form of this is already written down for design work (`design-writer.md`: read the callee's own instruction file whenever one harness component invokes another); it binds the orchestrator at a spawn exactly as it binds a designer at a specification.
+**Kind:** correction
+**Escalated?** no
