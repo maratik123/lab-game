@@ -19,6 +19,12 @@ const (
 	ClassRepoPath       Class = "repo-path"
 	ClassURL            Class = "url"
 	ClassModuleSymbol   Class = "module-symbol"
+
+	// ClassReviewRegisterID is a self-review register finding id
+	// (the `R<round>-<n>` / `SR<round>-<n>` anchors the review loop
+	// generates), which outlives the round that minted it and reads as
+	// a dangling anchor once the register itself moves on.
+	ClassReviewRegisterID Class = "review-register-id"
 )
 
 // Finding is one banned reference the classifier decided, carrying the
@@ -30,16 +36,17 @@ type Finding struct {
 }
 
 var (
-	reTODOIssue    = regexp.MustCompile(`\bTODO\(#[0-9]+\)`)
-	reURL          = regexp.MustCompile(`\bhttps?://\S+`)
-	reLocator      = regexp.MustCompile(`\b[A-Za-z0-9_./-]*[./][A-Za-z0-9_./-]*:[0-9]+\b`)
-	reMarkdownPath = regexp.MustCompile(`\S*\.md\b`)
-	reACID         = regexp.MustCompile(`\bAC[0-9]+\b`)
-	reDecisionRef  = regexp.MustCompile(`\b(?:KD-[0-9]+|D[0-9]+)\b`)
-	reSection      = regexp.MustCompile(`§`)
-	reIssue        = regexp.MustCompile(`#[0-9]+`)
-	rePathToken    = regexp.MustCompile(`[A-Za-z0-9_./-]+`)
-	reModuleSymbol = regexp.MustCompile(`\b([a-z][A-Za-z0-9]*)\.([A-Z][A-Za-z0-9_]*)\b`)
+	reTODOIssue        = regexp.MustCompile(`\bTODO\(#[0-9]+\)`)
+	reURL              = regexp.MustCompile(`\bhttps?://\S+`)
+	reLocator          = regexp.MustCompile(`\b[A-Za-z0-9_./-]*[./][A-Za-z0-9_./-]*:[0-9]+\b`)
+	reMarkdownPath     = regexp.MustCompile(`\S*\.md\b`)
+	reACID             = regexp.MustCompile(`\bAC[0-9]+\b`)
+	reDecisionRef      = regexp.MustCompile(`\b(?:KD-[0-9]+|D[0-9]+)\b`)
+	reSection          = regexp.MustCompile(`§`)
+	reIssue            = regexp.MustCompile(`#[0-9]+`)
+	rePathToken        = regexp.MustCompile(`[A-Za-z0-9_./-]+`)
+	reModuleSymbol     = regexp.MustCompile(`\b([a-z][A-Za-z0-9]*)\.([A-Z][A-Za-z0-9_]*)\b`)
+	reReviewRegisterID = regexp.MustCompile(`\bS?R[0-9]+-[0-9]+\b`)
 )
 
 // gatedSourceExts are the extensions of the gated set a repo-path finding
@@ -107,6 +114,9 @@ func Classify(c Comment, ownPackage string, modulePackages map[string]struct{}) 
 	}
 	for _, m := range reDecisionRef.FindAllString(text, -1) {
 		add(ClassDecisionAnchor, m)
+	}
+	for _, m := range reReviewRegisterID.FindAllString(text, -1) {
+		add(ClassReviewRegisterID, m)
 	}
 	for _, m := range reSection.FindAllString(text, -1) {
 		add(ClassSection, m)

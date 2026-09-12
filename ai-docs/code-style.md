@@ -46,7 +46,7 @@ Go only, under `cmd/<binary>/` (process entry points) and `internal/<package>/` 
 
 ## Comments
 
-Comments carry no outward reference — no markdown path, design-section number, acceptance-criterion id, decision anchor, issue number outside `TODO(#…)`, repository path, URL, or package-qualified symbol of this module named outside the comment's own package. `make comment-refs` gates the lexical half; narration and a bare unqualified name used as a pointer are review-judged. The rule, its exemptions and the gated file set live in [`doc-convention.md`](doc-convention.md) § DOC-4.
+Comments carry no outward reference — no markdown path, design-section number, acceptance-criterion id, decision anchor, review-register finding id, issue number outside `TODO(#…)`, repository path, URL, or package-qualified symbol of this module named outside the comment's own package. `make comment-refs` gates the lexical half; narration and a bare unqualified name used as a pointer are review-judged. The rule, its exemptions and the gated file set live in [`doc-convention.md`](doc-convention.md) § DOC-4.
 
 A shell script does not document its own invocation grammar in a comment either: it answers `-h` / `--help` with that grammar and exits 0, in one shape copied across every script, gated by `ai-docs/scripts/check-script-shape.sh`.
 

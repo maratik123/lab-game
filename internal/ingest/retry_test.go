@@ -201,7 +201,7 @@ func TestLoop_panicIsRecoveredAndRetried(t *testing.T) {
 	}
 }
 
-// TestLoop_advanceOffsetFailureReportsFailed covers R1-5's first gap:
+// TestLoop_advanceOffsetFailureReportsFailed covers the gap where
 // attemptOnce's handlerErr==nil branch must report OutcomeFailed when
 // advanceOffset itself fails, not silently count the attempt without an
 // observation.
@@ -243,7 +243,7 @@ func TestLoop_advanceOffsetFailureReportsFailed(t *testing.T) {
 	}
 }
 
-// TestLoop_commitFailureReportsFailed covers R1-5's second gap:
+// TestLoop_commitFailureReportsFailed covers the companion gap where
 // attemptOnce's handlerErr==nil branch must report OutcomeFailed when
 // tx.Commit itself fails (advanceOffset having already succeeded), not
 // silently count the attempt without an observation. deferredConstraintHandler
