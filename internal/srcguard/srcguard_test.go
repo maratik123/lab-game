@@ -139,3 +139,31 @@ func TestWriteScratchFile_WritesUnderItsOwnTempDir(t *testing.T) {
 		t.Fatalf("PackageFiles(root/internal/scratch) = %v, want [%s]", found, path)
 	}
 }
+
+// TestExcludedByDirName covers the shapes the go tool itself never
+// compiles, and the shapes it does — including the case a directory-only
+// predicate must NOT catch: a file whose own name is excluded-looking but
+// whose directories are not.
+func TestExcludedByDirName(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		relPath string
+		want    bool
+	}{
+		{"file directly under root", "main.go", false},
+		{"under testdata", "internal/pkg/testdata/fixture.go", true},
+		{"under a dot-prefixed directory", "internal/pkg/.hidden/f.go", true},
+		{"under an underscore-prefixed directory", "internal/pkg/_ignored/f.go", true},
+		{"underscore-prefixed file name, non-excluded directories", "internal/pkg/_helper.go", false},
+		{"only an inner segment excluded", "internal/pkg/testdata/nested/deep.go", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := srcguard.ExcludedByDirName(tc.relPath); got != tc.want {
+				t.Errorf("ExcludedByDirName(%q) = %v, want %v", tc.relPath, got, tc.want)
+			}
+		})
+	}
+}

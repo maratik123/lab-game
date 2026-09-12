@@ -826,3 +826,27 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** eeda7c7
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — spawned design-review with lowercase `key: value` lines instead of the contract's line shapes
+**What happened:** At `/task` Step 7 I built the design-review spawn prompt as `spec: …` / `design: …` / `round: 1`. The content was exactly the five permitted things and nothing else, but the spawn-prompt contract fixes the line SHAPES — `Spec:` / `Design:` / `Round:` — and the `PreToolUse` hook refused the spawn, naming all three lines as outside the closed list. Re-spawning with the capitalised shapes went through. A near-identical entry dated the same day already sits in this log from the sibling checkout, recording the `spec_path:` spelling of the same mistake; I had not read it, and reading it would have cost less than the refused spawn.
+**Rule:** A gate subagent's spawn prompt is a fixed set of line shapes, not a set of facts to render in whatever style the previous prompt used. Copy the permitted lines from the agent's own spawn-prompt contract literally before spawning, and never carry a sibling flow's field style across — the `spec-writer` prompt's `issue_ref:` / `round:` style is not the reviewer's.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — tooling — read `$?` from the tail of a pipeline and nearly recorded an instrument error as a clean sweep
+**What happened:** Verifying AC13 at `/task` Step 9, I swept for falsified claims with `grep -rniE '…' README.md docs/*.md | head -10` and printed `$?`, which reported `0`. That was `head`'s status. Re-running the same sweep without the pipe returned grep's real status, **exit 2** — an error, not "no matches": this repository has no `README.md` at all, so the AC clause naming it has no target. Under the piped form I would have recorded "README and docs carry no falsified claim, verified" on an exit code produced by a program that had read nothing. The piped-gate hook does not reach this shape; it matches Go gates and `make`, not `grep`.
+**Rule:** The no-piping rule is about the load-bearing exit code, not about the Go toolchain: it binds any command whose status decides what I record, `grep` and `comm` included. And grep's exit 2 is an instrument failure, never a clean result — a sweep that names a path must establish the path exists before its silence counts as evidence.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — process — recorded an acceptance criterion PASS from a sweep taken before the edit that falsified it
+**What happened:** At `/task` Step 9 I ran AC13's propagation sweep, then a design amendment added a third pinned lint setting, then I wrote `AC13 | PASS` into the progress file's AC table without re-running the sweep. Three live surfaces — `ai-docs/code-style.md`, `ai-docs/key-decisions.md` KD-16 and `ai-docs/context.md` — still said two settings were pinned. `self-review` round 1 found all three as one `major`. The sweep itself had been sound; what was unsound was recording its result after a later edit had moved what it measured, and the tell was available: `ai-docs/context-status.md`, written after the amendment, had it right, so the tree disagreed with itself.
+**Rule:** A measurement is recorded only after the LAST edit that can move it, and an amendment landing mid-step invalidates every criterion already measured against files it touches — re-run those, do not carry the earlier PASS forward. Before writing any status table, list the edits made since each row was measured; a non-empty list is a re-run list, not a note.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — tooling — read `$?` from the tail of a pipeline again, in the same session that logged the first one
+**What happened:** Running a review-register row's verifying command at `/task` Step 11, I wrote `grep -n 'resultCh' <file> | cut -c1-150` and printed `$?`, which reported `cut`'s status. I had appended an entry about this exact shape roughly forty minutes earlier in the same session, after nearly recording a `grep` exit 2 as a clean sweep. Re-running without the pipe gave the real answer, and it was the interesting one: the literal symbol was absent, and the fix names the channel descriptively instead.
+**Rule:** Writing the rule down does not install it. When a command's exit status is going to be read, the pipe is decided before the command is typed — `cmd > tmp/x.log 2>&1; echo $?` is the default shape for any status-bearing invocation, and truncation with `cut`/`head` is applied to the SAVED file, never to the live pipeline.
+**Kind:** correction
+**Escalated?** no

@@ -41,7 +41,7 @@ Every suspicion — investigate via Read/grep, don't guess. Don't invent problem
 - **Context:** `ctx` threaded through every database / network / scheduler call, never stored in a struct, never replaced with `context.Background()` mid-request?
 - **Integer conversions:** any `int` → `int32`/`uint` conversion that can silently truncate a coordinate, a chat id, or a balance?
 - **Database:** every `rows.Err()` checked, every `rows`/`stmt` closed, every query parameterised (never string-built)?
-- **Concurrency:** every goroutine has an owner that can stop it and a documented exit condition? Any state held in memory between updates that belongs in Postgres?
+- **Concurrency** ([`ai-docs/code-style.md`](../../ai-docs/code-style.md) § *Concurrency*): does every `go` statement answer how it stops, who waits for it, and where its error and its panic go? Any goroutine started from `init()` or as a constructor's side effect; any long-lived component joined as a free goroutine rather than as a runner or a closer; any blocking operation inside a goroutine that cannot wake on cancellation; any timer or ticker never stopped; any channel closed by other than its sender; any goroutine per inbound update without a bound; any interface-supplied handler run without a recover at that boundary? Any state held in memory between updates that belongs in Postgres?
 - Logic: off-by-one, wrong comparison direction, always-true conditions?
 
 ### 1a. Domain invariants

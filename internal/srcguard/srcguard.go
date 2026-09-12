@@ -75,6 +75,24 @@ func WalkSubtree(tb testing.TB, root string, fn func(path string)) {
 	}
 }
 
+// ExcludedByDirName reports whether relPath — a file path relative to a
+// tree's root — lies under a directory the go tool itself never
+// descends into: testdata, or a directory whose name begins with "."
+// or "_". It examines relPath's directory segments only, never the
+// file's own name.
+func ExcludedByDirName(relPath string) bool {
+	dir := filepath.Dir(relPath)
+	if dir == "." {
+		return false
+	}
+	for _, part := range strings.Split(dir, string(filepath.Separator)) {
+		if part == "testdata" || strings.HasPrefix(part, ".") || strings.HasPrefix(part, "_") {
+			return true
+		}
+	}
+	return false
+}
+
 // NonTestFile reports whether path is a non-test Go source file — the
 // filter a WalkSubtree caller applies when it wants the same
 // test-excluded scope PackageFiles already applies for a single

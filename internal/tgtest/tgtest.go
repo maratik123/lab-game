@@ -72,7 +72,7 @@ type Server struct {
 // read.
 func New(tb testing.TB, handler Handler) *Server {
 	tb.Helper()
-	baseCtx, cancelBase := context.WithCancel(context.Background())
+	baseCtx, cancelBase := context.WithCancel(context.Background()) //nolint:forbidigo // this is New's own base context: the tb.Cleanup below cancels it and closes the server and listener
 	s := &Server{
 		tb:       tb,
 		handler:  handler,

@@ -180,7 +180,7 @@ func (c *Canary) Start() error {
 		return errors.New("health: canary already started")
 	}
 	c.started = true
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:forbidigo // this is the tick loop's own root: Shutdown owns it, cancelling it and waiting on c.done
 	c.cancel = cancel
 	c.done = make(chan struct{})
 	go c.run(ctx)

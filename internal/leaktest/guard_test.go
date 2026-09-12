@@ -37,26 +37,9 @@ func buildConfigs() []buildConfig {
 	}
 }
 
-// excludedByDirName reports whether relPath — a file path relative to the
-// tree's root — lies under a directory the go tool itself never
-// descends into: testdata, or a directory whose name begins with "."
-// or "_".
-func excludedByDirName(relPath string) bool {
-	dir := filepath.Dir(relPath)
-	if dir == "." {
-		return false
-	}
-	for _, part := range strings.Split(dir, string(filepath.Separator)) {
-		if part == "testdata" || strings.HasPrefix(part, ".") || strings.HasPrefix(part, "_") {
-			return true
-		}
-	}
-	return false
-}
-
 // testDirs returns the sorted, root-relative set of directories under
 // root holding at least one Go test source file, going by its filename
-// suffix alone — excludedByDirName's directories left out. A directory
+// suffix alone — the go-tool-excluded directories left out. A directory
 // whose only such file the go tool itself would never compile (a
 // leading underscore or dot in the file's own name) is still returned
 // here, and checkTree examines it and finds no compiled test file to
@@ -72,7 +55,7 @@ func testDirs(t *testing.T, root string) []string {
 		if err != nil {
 			t.Fatalf("Rel(%s): %v", path, err)
 		}
-		if excludedByDirName(rel) {
+		if srcguard.ExcludedByDirName(rel) {
 			return
 		}
 		set[filepath.Dir(rel)] = true

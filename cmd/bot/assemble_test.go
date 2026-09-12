@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
@@ -93,7 +94,7 @@ func TestAssemble_HappyPath(t *testing.T) {
 	if len(a.runners) != 3 {
 		t.Errorf("len(runners) = %d, want 3", len(a.runners))
 	}
-	wantOrder := []string{"signal registration", "pool", "health listener", "liveness final write", "canary"}
+	wantOrder := []string{"signal registration", "pool", "health listener", "liveness final write", "http client", "canary"}
 	if len(a.closers) != len(wantOrder) {
 		t.Fatalf("closers = %v, want names %v", closerNames(a), wantOrder)
 	}
@@ -137,6 +138,101 @@ func closerNames(a *app) []string {
 		names[i] = c.name
 	}
 	return names
+}
+
+// TestAssemble_BuildsItsOwnHTTPClientWhenNoneSupplied proves that with
+// no HTTPClient in assembleOptions, the process still holds a non-nil
+// client of its own, and never the package-level http.DefaultClient —
+// the shared global every other package in the binary could also
+// mutate or close.
+func TestAssemble_BuildsItsOwnHTTPClientWhenNoneSupplied(t *testing.T) {
+	t.Parallel()
+
+	var stderr bytes.Buffer
+	a, err := assemble(context.Background(), assembleOptions{
+		Lookup:    mapLookup(assembleTestEnv(t)),
+		Stderr:    &stderr,
+		Version:   "test-version",
+		StartedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("assemble: %v (stderr: %s)", err, stderr.String())
+	}
+	t.Cleanup(func() { teardown(t, a) })
+
+	if a.httpClient == nil {
+		t.Fatal("httpClient is nil, want a process client of its own")
+	}
+	if a.httpClient == http.DefaultClient {
+		t.Error("httpClient == http.DefaultClient, want a client the process built and owns")
+	}
+}
+
+// TestAssemble_UsesTheSuppliedHTTPClient proves that when a client is
+// supplied, the process holds that exact one rather than building its
+// own.
+func TestAssemble_UsesTheSuppliedHTTPClient(t *testing.T) {
+	t.Parallel()
+	srv := tgtest.New(t, tgtest.Success(nil))
+	supplied := srv.Client()
+
+	var stderr bytes.Buffer
+	a, err := assemble(context.Background(), assembleOptions{
+		Lookup:     mapLookup(assembleTestEnv(t)),
+		Stderr:     &stderr,
+		Version:    "test-version",
+		StartedAt:  time.Now(),
+		HTTPClient: supplied,
+	})
+	if err != nil {
+		t.Fatalf("assemble: %v (stderr: %s)", err, stderr.String())
+	}
+	t.Cleanup(func() { teardown(t, a) })
+
+	if a.httpClient != supplied {
+		t.Errorf("httpClient = %p, want the supplied client %p", a.httpClient, supplied)
+	}
+}
+
+// TestAssemble_TransportCloneFailureReturnsStepErrorNotPanic drives the
+// panic-surface risk row: when http.DefaultTransport is not the
+// concrete *http.Transport this step's clone assumes, assemble must
+// return its stepError naming the Telegram-client step rather than
+// panicking on the failed type assertion.
+func TestAssemble_TransportCloneFailureReturnsStepErrorNotPanic(t *testing.T) {
+	prevDefaultTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("unreachable: this transport is never invoked")
+	})
+	t.Cleanup(func() { http.DefaultTransport = prevDefaultTransport })
+
+	var stderr bytes.Buffer
+	a, err := assemble(context.Background(), assembleOptions{
+		Lookup:    mapLookup(assembleTestEnv(t)),
+		Stderr:    &stderr,
+		Version:   "test-version",
+		StartedAt: time.Now(),
+	})
+	t.Cleanup(func() { teardown(t, a) })
+
+	if err == nil {
+		t.Fatal("assemble: err = nil, want a stepError naming the telegram-client step")
+	}
+	var stepErr *stepError
+	if !errors.As(err, &stepErr) {
+		t.Fatalf("assemble: err = %v, want a *stepError", err)
+	}
+	if stepErr.step != "telegram client" {
+		t.Errorf("stepError.step = %q, want %q", stepErr.step, "telegram client")
+	}
+}
+
+// roundTripperFunc adapts a function to http.RoundTripper, for a
+// fixture http.DefaultTransport that is deliberately not *http.Transport.
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func TestAssemble_MissingConfiguration(t *testing.T) {

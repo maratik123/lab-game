@@ -58,9 +58,9 @@ resource returned nil), and the error names the step.
 | 8 | migrations | with auto-apply on, the migration apply under the process advisory lock; with it off, the pending check plus a refusal; then the `migrated` latch | a migration that fails to apply; auto-apply off with a migration pending (§ 3) | `migrations` | the listener, the pool, the signal registration |
 | 9 | restart hygiene | the liveness value, `AbsorbDowntime`, and the restart gauges over what it returns | the transaction fails | `restart hygiene` | the listener, the pool, the signal registration |
 | 10 | scheduler | the worker over an **empty** task registry, then `Reconcile` — called here so a reconcile failure is a start-up failure, not a mid-life return from the worker | an option the constructor refuses; a reconcile that fails | `scheduler` | the final liveness write, the listener, the pool, the signal registration |
-| 11 | telegram client | the allowlist gate over the pool, then the Bot API client over the token, base URL, transport tuning and transport observer | an option the constructor refuses — including a token the client library's own format check rejects, which is what the example file's placeholder is | `telegram client` | the final liveness write, the listener, the pool, the signal registration |
-| 12 | ingest loop | the loop over the client, the pool, an **empty** router and the ingest observer | an option the constructor refuses | `ingest loop` | the final liveness write, the listener, the pool, the signal registration |
-| 13 | canary | both canary legs over the process HTTP client, the canary, then `Start` | a leg option the constructor refuses; a canary already started | `canary` | the final liveness write, the listener, the pool, the signal registration |
+| 11 | telegram client | the process HTTP client — the caller's when one is supplied, otherwise a clone of the default transport — then the allowlist gate over the pool, then the Bot API client over the token, base URL, transport tuning and transport observer; that one HTTP client is threaded into this client and into step 13's canary legs | an option the constructor refuses — including a token the client library's own format check rejects, which is what the example file's placeholder is; and a `http.DefaultTransport` that is not a `*http.Transport`, returned as this step's error rather than panicking | `telegram client` | the HTTP client once its closer is appended, the final liveness write, the listener, the pool, the signal registration |
+| 12 | ingest loop | the loop over the client, the pool, an **empty** router and the ingest observer | an option the constructor refuses | `ingest loop` | the HTTP client, the final liveness write, the listener, the pool, the signal registration |
+| 13 | canary | both canary legs over the process HTTP client, the canary, then `Start` | a leg option the constructor refuses; a canary already started | `canary` | the HTTP client, the final liveness write, the listener, the pool, the signal registration |
 | 14 | runners | the runner set — ingest loop, scheduler worker, liveness heartbeat — constructed here, started by `serve` | none | — | — |
 
 A failure *at* step 7 or step 13 does not unwind that step's own resource:
@@ -302,9 +302,10 @@ The drain, in order:
    error is read — it is reachable on a drain that finished well inside its
    budget. The scheduler worker's reconcile failure and the liveness
    heartbeat's spent tolerance both reach it.
-4. **Walk the closer list backwards** — the canary, the final liveness write,
-   the health listener, the pool, the signal deregistration — under a fresh
-   context bounded by the same duration. That walk is the process's own final
+4. **Walk the closer list backwards** — the canary, the process HTTP client's
+   idle connections, the final liveness write, the health listener, the pool,
+   the signal deregistration — under a fresh context bounded by the same
+   duration. That walk is the process's own final
    close: the drain's bound covers the join, and the close that follows it is
    what the process spends *beyond* that bound. **A closer that returns an
    error is reported by name and never changes the exit code** — the process
@@ -320,10 +321,17 @@ The closer list is the single place the shutdown order is written down:
 and the drain walk that same list backwards. There is no second, parallel
 order to keep in step by hand.
 
-**No goroutine of this module survives the drain.** `serve` and the drain
-select on the signal channel directly rather than through a watcher, so there
-is nothing parked on it to outlive the process, and the deregistration is the
-closer list's first entry — hence the last thing every exit path performs.
+**Nothing of this module is parked on the drain, and exactly one goroutine can
+outlive it.** `serve` and the drain select on the signal channel directly rather
+than through a watcher, so there is nothing parked on it to outlive the process,
+and the deregistration is the closer list's first entry — hence the last thing
+every exit path performs. The one launch nothing joins is the scheduler's
+deadline watchdog: after a breach it waits for the orphaned handler and then
+closes the hijacked connection under its own bounded context, so a drain that
+ends while such a handler still runs leaves that goroutine behind, ended by the
+process exit rather than by an owner. It is the module's one deliberately
+detached launch and is recorded as such in the launch allow list; reclaiming the
+handler under it is #81.
 
 **What the budget does and does not cover.** `30s` is the bound on the whole
 drain, sized to the ingest side, where a cycle in flight is one already-
