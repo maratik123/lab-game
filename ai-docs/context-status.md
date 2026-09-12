@@ -360,7 +360,7 @@ Entry shape:
   - The pinned settings stay pinned — the relative-path mode, both truncation caps and the line dedup — and the configuration guard asserts each one rather than trusting a one-time probe.
   - The scheduler's deadline watchdog is the one goroutine no shutdown path joins. The allow list records that honestly instead of hiding it, and the reclamation belongs to its own issue.
 
-## Item machine — `item`, `item_movement`, and the shared holder address space (PR #TBD-at-Step-12, 2026-09-12)
+## Item machine — `item`, `item_movement`, and the shared holder address space (PR #107, 2026-09-12)
 
 - **What landed:** the second accounting machine. `00006_capacity_kinds.sql` adds the `slots` and `weight` members of `ledger_kind` and nothing else, because the migration hygiene gate forbids an `ADD VALUE` file doing anything besides. `00007_item_machine.sql` adds the `capacity_role` enum (`free` / `used`), the `account_definition` column carrying it with a partial unique index over `(scope_definition_id, kind, capacity_role)`, the `backpack` scope definition and its capacity account definitions, a backfill of `scope` / `account` / `account_balance` for owners that already exist, `item`, `item_movement`, and the views `item_holder`, `item_chain_break` and `item_capacity_divergence`. `internal/store` gains `Movement`, `Move`, the identity types `ItemID` / `HolderID` with the `NewItem` and `WorldHolder` constants, and a sentinel per refusal condition; `post` gains a `beforeBalances` hook and `Post` becomes the thin wrapper that passes `nil`, its exported signature untouched. The propagation sweep corrected every live surface that named the machine's tables in the plural or called `store.Post` the only mover of a balance.
 
