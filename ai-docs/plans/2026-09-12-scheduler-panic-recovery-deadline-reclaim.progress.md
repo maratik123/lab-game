@@ -10,8 +10,8 @@ _Updated: 2026-09-12 18:05_
 **Issue:** #81
 **Spec:** ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md
 
-**current_step:** Step 8 — entering Group A (subtasks 1–9)
-**last_passed_gate:** check-spec-anchors.sh + check-spec-shape.sh + check-ac-shape.sh | 2026-09-12T15:41Z | 6a981f9
+**current_step:** Step 8 — Group A subtask 1 of 9 complete
+**last_passed_gate:** go build ./... + go test ./internal/panicguard/... + golangci-lint run ./internal/panicguard/... | subtask 1
 **entry_args:** 81
 
 ## Next action
@@ -22,7 +22,7 @@ _Updated: 2026-09-12 18:05_
 
 Group A — code (`code-writer`, `sonnet`/`medium`):
 
-- [ ] 1. `internal/panicguard`: the shared recovered-panic type, its constructor from a `recover()` result, its `error` rendering, package comment, tests, leak-check `TestMain`  ← CURRENT
+- [x] 1. `internal/panicguard`: the shared recovered-panic type, its constructor from a `recover()` result, its `error` rendering, package comment, tests, leak-check `TestMain`
 - [ ] 2. `scheduler.Options` gains `Logger`; `Worker` carries it; nil → discard handler; correct `RunOnce`'s "no logger" clause
 - [ ] 3. `FailureKind` gains the panic member; `FailureRolledBack`'s doc excludes a panic; correct `LoopObservation.Err`'s "no logger" clause
 - [ ] 4. Handler-boundary recovery and its settlement; logger threaded into `runHandlerWithSavepoint` as a parameter; unusable transaction routed into the pending-settlement set
@@ -87,4 +87,6 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## Files touched
 
-- (none yet)
+- `internal/panicguard/panicguard.go` (new)
+- `internal/panicguard/panicguard_test.go` (new)
+- `internal/panicguard/main_test.go` (new)
