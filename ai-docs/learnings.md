@@ -530,3 +530,10 @@ wrong-surface text by message twelve.
 **Rule:** A scratch copy of a Go source file never keeps a `.go` extension under `tmp/`. Save it as `.go.txt` or `.bak`, or delete it in the same command that used it. Whoever finds a stray `*.go` under `tmp/` reads it before deleting — confirm it is a copy of a tracked state and not the only copy of something — and then removes it, because a gate cannot run until it is gone.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — testing — measuring the instrument found the bug that both the report and the gate had misnamed
+**What happened:** Issue #85 reported `make test-contention` red as "cmd/bot migrations lose the advisory-lock connection under load", and the gate itself printed `test-contention: exhaustion scan clean` before handing back the race gate's exit status — both pointing at contention, one of them in the voice of a passed check. Sampling the provisioned container's PGDATA mount every 0.5 s during the run showed it going 47 MB to 445 MB in ten seconds, `pg_wal` alone 16 MB to 262 MB and still climbing, against a 512 MB tmpfs and an image-default `max_wal_size` of 1024 MB. The server was dying of `SQLSTATE 53100`, and `pg_try_advisory_lock` was merely the statement in flight when it did. The advisory lock, the connection ceiling and the goose retry loop were all innocent.
+**Rule:** A gate's clean scan is a claim about the scan's VOCABULARY, not about the run: a guard can only report the one failure mode it was taught to name, so "scan clean" plus a red result is the shape that most invites fixing the wrong thing. Before believing either a bug report's stated mechanism or a gate's own verdict, put a sampler on the instrument while it runs and read what it says — one 0.5 s loop over the container's mount replaced the entire hypothesis space here, and it cost two minutes.
+**at:** 02735e75fcb66222e1e817a719c36791e65c9b0e
+**Kind:** validation
+**Escalated?** no
