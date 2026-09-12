@@ -36,9 +36,21 @@ GO_MAX_TEST_LINES ?= 1500
 CLIENTS ?= 1
 CONTENTION_PARALLEL ?= $(shell nproc 2>/dev/null || echo 4)
 
-.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet comment-refs import-guard test-db-up test-db-down test-fallback test-contention
+# The second architecture the determinism gate re-runs under, the packages it
+# covers, and the package its host-side reference binary is built from. 386 is
+# the instrument a 64-bit host actually has: it builds and executes natively,
+# it moves the word size from 64 to 32, and it moves the random stream off its
+# per-architecture assembly onto the generic implementation. The two packages
+# are pure Go and touch no database, which is what makes a 32-bit build
+# trivial; a module-wide 32-bit run would drag the container runtime and
+# Postgres in for no determinism gain.
+ARCH_GOARCH ?= 386
+ARCH_PKGS ?= ./internal/hexgrid/ ./internal/maze/
+ARCH_REFERENCE_PKG ?= ./internal/hexgrid/
 
-verify: fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs import-guard
+.PHONY: verify fmt-check build vet lint file-limits test test-race test-arch tidy-check actionlint shellcheck cover-ratchet comment-refs import-guard test-db-up test-db-down test-fallback test-contention
+
+verify: fmt-check build vet lint file-limits test test-race test-arch tidy-check actionlint shellcheck comment-refs import-guard
 
 fmt-check:
 	golangci-lint fmt -d
@@ -66,6 +78,77 @@ test:
 
 test-race:
 	go run ./cmd/testpg -- go test -race ./...
+
+# The architecture gate: the two generation packages' whole test set, rebuilt
+# and re-run under a second architecture, so their determinism goldens are
+# compared across a word-size boundary and across the two implementations the
+# standard library ships for the primitives in the chain, rather than only
+# across processes.
+#
+# Whole packages rather than a name filter over the determinism block: a -run
+# pattern that matches nothing reports the clean answer, and the tests this
+# gate exists for are exactly the ones whose names move.
+#
+# Two expectations, and the second is what makes this an instrument rather
+# than a formality: the cross-built run must PASS, and the word size it was
+# built at must DIFFER from the host's -- a probe that silently rebuilt for
+# the host would report the clean answer for any chain at all. Both widths are
+# read off the ELF class byte of built binaries, the cross side from the very
+# binary that is then executed and the host side from the same package rebuilt
+# for the host architecture, so neither half is a name-to-width table that can
+# go stale, and an ambient architecture override cannot move the reference.
+#
+# Three outcomes, separated, because they carry three different directions:
+#   * ran and agreed -- pass.
+#   * ran and disagreed -- red, and the loudest result in the set: the
+#     generation chain is not architecture-independent.
+#   * built but could not execute -- a missing capability, not a finding. A
+#     shell answers 126 or 127 for a binary it cannot exec, and that status is
+#     the whole classifier: the diagnostic text is localised and unreadable by
+#     a gate. Locally this SKIPS, loudly -- a developer machine's 32-bit exec
+#     support is not the change under test, and the coverage ratchet sets the
+#     precedent for a loud skip on an absent capability. In CI it REFUSES,
+#     loudly -- CI is the reference environment, and what it asserts is the
+#     run passing, never merely having been attempted.
+test-arch:
+	mkdir -p tmp
+	GOARCH=$$(go env GOHOSTARCH) go test -c -o tmp/arch-host-reference.test $(ARCH_REFERENCE_PKG)
+	word_size() { \
+	  case "$$(od -An -t u1 -j 4 -N 1 "$$1" | tr -dc '0-9')" in \
+	  1) echo 32 ;; \
+	  2) echo 64 ;; \
+	  *) echo unknown ;; \
+	  esac; \
+	}; \
+	host_bits=$$(word_size tmp/arch-host-reference.test); \
+	test "$$host_bits" != unknown \
+	  || { echo 'test-arch: unreadable word size on the host reference binary; no comparison was made' >&2; exit 2; }; \
+	unexecutable=; \
+	for pkg in $(ARCH_PKGS); do \
+	  name=$$(basename "$$pkg"); \
+	  bin=$(CURDIR)/tmp/arch-$$name.test; \
+	  GOARCH=$(ARCH_GOARCH) go test -c -o "$$bin" "$$pkg"; \
+	  bits=$$(word_size "$$bin"); \
+	  test "$$bits" != unknown \
+	    || { echo "test-arch: unreadable word size on the $$name test binary; no comparison was made" >&2; exit 2; }; \
+	  test "$$bits" != "$$host_bits" \
+	    || { echo "test-arch: $(ARCH_GOARCH) built $$name at the host word size ($$bits-bit), so the re-run would compare nothing; name an architecture of a different width" >&2; exit 1; }; \
+	  status=0; \
+	  ( cd "$$pkg" && "$$bin" ) >tmp/test-arch-"$$name".log 2>&1 || status=$$?; \
+	  case "$$status" in \
+	  0) echo "test-arch: $$name agreed at $$bits-bit, host at $$host_bits-bit" ;; \
+	  126|127) unexecutable=$$name; break ;; \
+	  *) echo "test-arch: $$name DISAGREED at $$bits-bit, host at $$host_bits-bit -- generation is not architecture-independent" >&2; \
+	     cat tmp/test-arch-"$$name".log >&2; \
+	     exit 1 ;; \
+	  esac; \
+	done; \
+	test -z "$$unexecutable" || { \
+	  echo "test-arch: built the $(ARCH_GOARCH) binaries, but this host cannot execute one of them ($$unexecutable); nothing was compared" >&2; \
+	  test -z "$${CI:-}" \
+	    || { echo 'test-arch: REFUSING -- the reference environment must run this gate, not merely build it' >&2; exit 1; }; \
+	  echo 'test-arch: SKIPPED -- add this architecture to the exec support of this machine to run it' >&2; \
+	}
 
 # Creates (or reuses) the long-lived shared server sized for CLIENTS
 # concurrent whole-module runs, and prints its DSN.

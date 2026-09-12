@@ -162,8 +162,8 @@ The decision, its composition and its rejected alternatives are
 - **The filtered-run skip.** Under `-run`, `-skip`, `-list` or `-short` a package's tests may never
   start the goroutine an entry exists for, so the per-entry evaluation is skipped, with one
   `leaktest:` line saying so; the leak check itself still runs. No gate filters — `make test`,
-  `make test-race`, `make test-fallback`, `make test-contention` and the coverage ratchet pass none
-  of those flags — so a stale entry that survives a developer's filtered run fails the next gate.
+  `make test-race`, `make test-fallback`, `make test-contention`, `make test-arch` and the coverage
+  ratchet pass none of those flags — so a stale entry that survives a developer's filtered run fails the next gate.
 - **The guard — coverage is enforced, not remembered.**
   `TestGuard_EveryPackageWithTestsRunsTheDetection` in `internal/leaktest` fails the suite when a
   directory holding tests lacks the form above, naming each such directory with the build

@@ -32,7 +32,7 @@ Body:
 1. **Spawn `/pr-ci-failed`** via the Skill Tool, passing the [delegation-prompt template](#pr-ci-failed-delegation-prompt-template) verbatim as the spawn arguments. The child writes into its own fallback progress file `ai-docs/ci-fixes/pr-<N>.progress.md` (KD-14: the parent does not pass a path override).
 2. **Wait for the child to return.** The child EXITs between Step 3 and Step 4 per the prompt directive; no fix has been applied to the workspace, no commit, no push (KD-8 satisfied).
 3. **Read the child's progress file** `ai-docs/ci-fixes/pr-<N>.progress.md`. Extract two inputs:
-   - **`**Class:**`** field (set by the child at Step 2). One of `fmt` / `build` / `tidy` / `import-guard` / `test` / `race` / `lint` / `harness` / `comment-refs` / `actionlint` / `other`.
+   - **`**Class:**`** field (set by the child at Step 2). One of `fmt` / `build` / `tidy` / `import-guard` / `test` / `race` / `arch` / `lint` / `harness` / `comment-refs` / `actionlint` / `other`.
    - **`Step 3:` decisions-log bullet.** Records the reproducer outcome: "reproduced" or "NO REPRODUCE, surfaced to user". Treat `Step 3 — reproduced` lines as REPRODUCES; `Step 3 — NO REPRODUCE, surfaced to user` lines as NO-REPRODUCE.
 
    > **Exit-step caveat.** When `**Class:**` is `other`, the child pauses at Step 2 and never reaches Step 3. In that case the verdict-translation table maps `other` × (any reproducer outcome) → pause-for-user — so routing is robust to "Step 3 never ran". The parent reads the child's `**Class:**` field as the sole input for the `other` class.
@@ -98,7 +98,7 @@ The parent passes this prompt VERBATIM when spawning `/pr-ci-failed` from any `�
 
 | Class assigned at child Step 2 | Where the child stops |
 |---|---|
-| `fmt` / `build` / `tidy` / `import-guard` / `test` / `race` / `lint` / `harness` / `comment-refs` / `actionlint` | Step 3 (reproducer runs; outcome recorded; EXIT before Step 4) |
+| `fmt` / `build` / `tidy` / `import-guard` / `test` / `race` / `arch` / `lint` / `harness` / `comment-refs` / `actionlint` | Step 3 (reproducer runs; outcome recorded; EXIT before Step 4) |
 | `other` | Step 2 (pauses and surfaces logs; never enters Step 3) |
 
 The parent's verdict-translation table accommodates both exit shapes — the `other` row ignores the reproducer-outcome column.
@@ -137,6 +137,8 @@ The parent applies this table to `(class, reproducer outcome)` after the child r
 | `build` | does NOT reproduce | Transient | **`@dependabot rebase`** comment |
 | `test` | REPRODUCES locally | Real regression — semantic change in dep | **bail-with-issue** (KD-5: never silently fork the bump) |
 | `test` | does NOT reproduce | Transient or flaky test | **`@dependabot rebase`** comment |
+| `arch` | REPRODUCES locally | Real regression — the bumped module made generation depend on the word size | **bail-with-issue** (KD-5: never silently fork the bump) |
+| `arch` | does NOT reproduce | **Never transient.** Either this machine could not execute the second architecture's binaries — in which case nothing was reproduced and nothing is known — or the gate refused for a reason the runner alone sees | **pause-for-user**; print the child's surfaced log. A rebase comment is wrong here: it re-runs a gate whose verdict was never obtained locally |
 | `other` | (any — child may have exited at Step 2) | Insufficient signal for automation | **pause-for-user**; print child's surfaced log + parent's diagnostic context |
 
 **`@dependabot recreate` defaults.** Round 1 of the design considered `recreate` as the default for inline-fix REPRODUCE — Dependabot's `recreate` semantics regenerate the entire bump rather than apply a fix, so it does NOT solve the underlying problem (workspace lint exposed by the bump). REPRODUCE rows default to bail-with-issue; the user decides whether `recreate` is appropriate after reading the tracked issue.
@@ -158,7 +160,7 @@ Two side effects:
 **PR:** #<N> (`<pr-title>`)
 **Failing run:** https://github.com/<O>/<R>/actions/runs/<run-id>
 **Failing check:** <check-name>
-**Class:** <fmt|build|tidy|import-guard|test|race|lint|harness|comment-refs|actionlint>
+**Class:** <fmt|build|tidy|import-guard|test|race|arch|lint|harness|comment-refs|actionlint>
 **Reproducer outcome:** REPRODUCES locally
 **Local reproducer:** `<command>`
 

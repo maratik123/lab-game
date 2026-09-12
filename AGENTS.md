@@ -49,6 +49,7 @@ make test-db-up                                         # bring up a long-lived 
 make test-db-down                                       # remove it — no reaper will
 make test-fallback                                      # the per-binary container path's own gate
 make test-contention                                    # the race gate under induced cross-package load
+make test-arch                                          # the generation packages re-run under a second GOARCH (ARCH_GOARCH=N picks it)
 go vet ./...                                            # vet (also inside golangci-lint)
 golangci-lint run                                       # strict lint gate
 golangci-lint fmt                                       # apply every enabled formatter
@@ -135,7 +136,7 @@ go run ./cmd/bot migrate                                # apply pending migratio
 > environments, before changing the number; the script's header carries the recipe and `git log -p`
 > on it carries why the number is what it is.
 
-**CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta + the import gate) · Test · Race · Coverage ratchet · Test fallback · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Comment references · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
+**CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta + the import gate) · Test · Race · Coverage ratchet · Test fallback · Architecture · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Comment references · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
 
 Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-index.md)); fall back to `rg <pattern> --type go [-l | -C 3]` when `ast-index` returns empty.
 
