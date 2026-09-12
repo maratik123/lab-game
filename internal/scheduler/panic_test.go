@@ -317,13 +317,22 @@ func TestPanic_AC6_rowAndLogBothCarryStack(t *testing.T) {
 // then panics, released only after RunOnce has already returned. The
 // recording logger holds a record naming the panicking fixture, while
 // the row — after the next cycle's drain — records the deadline breach
-// that already settled the attempt, not the panic.
+// that already settled the attempt, not the panic. RetryMaxAttempts is
+// pinned to 1 so the drain's give-up branch always fires and leaves the
+// row in "dead": without that cap, the drain's own re-armed run_at could
+// still be in the past by the time the second RunOnce discovers pending
+// rows, letting a legitimate retry re-claim and re-settle the row before
+// the assertions run. The property under test is that the orphaned panic
+// gets no settlement of its own, not the wall-clock race between the
+// drain and the next discovery — an attempt budget of one removes the
+// race instead of assuming it favors this test's ordering.
 func TestPanic_AC6_logOnlySurface_blockedPastDeadlineThenPanics(t *testing.T) {
 	t.Parallel()
 
 	pool := newScheduler(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
+	cfg.RetryMaxAttempts = 1
 
 	h := &blockThenPanicHandler{release: make(chan struct{})}
 	reg, err := NewRegistry(Declaration{Type: "test.panic.ac6log", Handler: h})
@@ -370,9 +379,9 @@ func TestPanic_AC6_logOnlySurface_blockedPastDeadlineThenPanics(t *testing.T) {
 	if err := w.RunOnce(ctx); err != nil {
 		t.Fatalf("RunOnce (drain): %v", err)
 	}
-	_, failures, lastError, _, found := schedulerTaskRow(t, pool, id)
-	if !found || failures != 1 {
-		t.Fatalf("row after drain: failures=%d (found=%v), want 1", failures, found)
+	state, failures, lastError, _, found := schedulerTaskRow(t, pool, id)
+	if !found || state != "dead" || failures != 1 {
+		t.Fatalf("row after drain: state=%q failures=%d (found=%v), want dead/1", state, failures, found)
 	}
 	if lastError == nil || !strings.Contains(*lastError, "deadline") {
 		t.Fatalf("last_error = %v, want it to mention the deadline breach that settled this attempt, not the later panic", lastError)
