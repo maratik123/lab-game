@@ -72,7 +72,13 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: a1dad3c5a4aed674f
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "Where does a scheduler handler's panic stack have to be observable?"
+    answer: "Both — The row carries the stack and the log carries it — observable without log access, and searchable in the log stream."
+  - round: 1
+    question: "Does `internal/ingest`'s panic recovery also gain the stack, or does this task change the scheduler only?"
+    answer: "Ingest too — Ingest's recovery records the stack the same way, in this task — one rule, both handler boundaries."
 ```
