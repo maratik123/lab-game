@@ -44,6 +44,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 11**: both open findings fixed and each re-verified by execution, not by reading — the built wrapper run from a directory named `-badname` now prints one `testpg:` prefix, and the pointer comment is gone (control confirmed both greps match). `R1-4` was accepted by the reviewer and fixed anyway: `runDown` dials the located server through `sm.probe` before the derivation, so "on `--down` before anything is reached for at all" was false, and the append-only ground does not cover an entry added in this PR. The same over-strong clause survives in the design's D6 ground 3, whose correction is a Design Amendment trigger with the round cap already spent — surfaced to the owner rather than edited.
 - **Step 11**: a `git show` of a pre-change source file was redirected to `tmp/pre.go`, which put a package inside the module and turned `go build ./...` and `golangci-lint run` RED; deleted, gates green again, logged in `ai-docs/learnings.md` 2026-09-12.
 
+- **Step 11**: the owner ruled on the D6 ground-3 correction (state file `prior_qa` round 4): amend, with a per-instance exemption from a repeat design-review. `design-writer` corrected the one clause after re-reading `runDown` itself; the design now states the property is about the container, never about the dial, and names what `--down` does not spare. A scan of the whole design for the same over-strong shape returns nothing.
+
 ## GO notes
 
 | # | round | note | kind | route | resolution |

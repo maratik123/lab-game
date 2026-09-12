@@ -172,8 +172,19 @@ tests never touch the process-global working directory. Only the paths that name
      process environment before they provision
      [measured d41174f:cmd/testpg/run.go:239,306 · `grep -n 'TESTCONTAINERS_RYUK_DISABLED'
      cmd/testpg/run.go` → an `os.Setenv` in `runUp` and another in `runDown`; `grep -n 'sm.provision'`
-     puts each one above its own path's provision call]. A pre-check ahead of that leaves the process environment untouched on the
-     failing path, and on `--down` it also means nothing is reached for at all.
+     puts each one above its own path's provision call]. A pre-check ahead of that leaves the process
+     environment untouched on the failing path, and on `--down` it also means **no container** is
+     reached for under the derived name. What it does **not** spare on `--down` is the located server:
+     `runDown` reads the locator and dials the DSN it holds before anything else runs, so by the time a
+     derived name can be refused the server has already been probed
+     [measured 1e4eb8f:cmd/testpg/run.go · `awk '/^func runDown/,/^}/' cmd/testpg/run.go | grep -E
+     'sm\.locate|sm\.probe|Setenv|sm\.provision'` → `sm.locate()` first, then `sm.probe(ctx, dsn)`,
+     and only below them the `os.Setenv("TESTCONTAINERS_RYUK_DISABLED", …)` and the
+     `sm.provision(ctx, testdb.ServerOptions{ContainerName: containerName})` that names a container].
+     That ordering is D5's, and it is deliberate — it is what keeps the no-locator and stale-locator
+     exits side-effect-free [derived → the no-locator and stale-locator cases in § Test Design,
+     subtask 2]. So the property this ground claims on `--down` is about the **container**, never about
+     the dial.
 
   **The cost, stated rather than waved past.** The pattern is this project's copy of a rule the
   runtime owns, so it can drift. The drift is one-directional by construction: the pre-check is a
