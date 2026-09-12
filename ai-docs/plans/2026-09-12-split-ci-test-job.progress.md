@@ -1,22 +1,22 @@
 # Progress: Split the CI Test job into four parallel jobs — ACTIVE
-_Updated: 2026-09-12 05:22_
+_Updated: 2026-09-12 02:46_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
 **Branch:** chore/2026-09-12-split-ci-test-job
 **base_commit:** ad9414eaf672116d4f67b3989d3a53246d402af3
-**Last build:** not run
+**Last build:** PASS
 
 **Issue:** #99
 **Spec:** ai-docs/plans/2026-09-12-split-ci-test-job.spec.md
 
-**current_step:** Step 8 — Group B complete (subtasks 2–7); Group A + Group B done, no third group needed
-**last_passed_gate:** AC4 sweep, both passes, over 339 tracked files, after a positive control live on all five axes the design names | 2026-09-12 | this commit
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** golangci-lint run | 2026-09-12T05:35:00Z | b5497363229f85f6271004ef02a56c64981026cd
 **entry_args:** ускоряем gh ci: job Test надо разбить на 4 отдельные джобы, выполняющиеся параллельно: make test, make test-race, make cover-ratchet и make test-fallback
 
 ## Next action
 
-**Do this immediately:** Step 8 is complete — every subtask of both groups is done and committed. Next is `/task` Step 9 (Verify), which owns the AC Status table; the AC4 sweep's control output and findings are in the Decisions log below. The contingent third group is **not** needed: the sweep found no code change-type file whose sentence the diff falsifies.
+**Do this immediately:** Step 9 is complete, every gate PASS and every AC verified by the orchestrator's own command. Next is Step 9.5 — append this task's entry to `ai-docs/context-status.md` with the literal `#TBD-at-Step-12` locator, and bump the affected summary bullet in `ai-docs/context.md`.
 
 ## Subtasks
 
@@ -47,6 +47,11 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8, Group B, subtask 7 — the code-change-type branch did NOT fire, so no third group is needed.** The code change-type files the sweep names — `Makefile` (6 hits), `.githooks/coverage-ratchet.sh` (3), `.githooks/pre-commit` and `.githooks/pre-commit.sh`, `ai-docs/scripts/check-script-shape.sh`, `test-no-verify-guard.sh`, `test-piped-gate-guard.sh` (a `BLOCK make test | tail -5` fixture line) — carry no sentence the diff falsifies, which is what the design predicted from the two headers it measured. `.github/workflows/ci.yml`'s 11 hits are subtask 1's own rewritten comments and are not the sweep's to find; read once for correctness, they hold.
 - **Step 8, Group B, subtask 7 — two cross-checks beyond the design's two passes, each with its own control.** (a) Pass 1's completeness argument is that a sentence claiming where a gate runs must name the gate; to test it rather than trust it I swept the set for CI-job vocabulary the gate names cannot reach (`harness guards`, `actionlint`, `comment references`, `paths-filter`) and read the ten files that hit but that pass 1 had not: `ai-docs/code-style.md:17` (the `actionlint` make-versus-CI route), `ai-docs/task-run-schema.md:453`, `.claude/agents/code-writer.md`, `design-writer.md`, `self-improve.md`, `.claude/skills/dependabot-pr/SKILL.md`, `pr-commented/SKILL.md`, `task/SKILL.md`, `ai-docs/scripts/test-gate-log-path-guard.sh` — all gate-command lists, `allowed-tools` lines or fixtures, none naming a job for any of the four. (b) An encoding axis neither pass had: a claim keyed on the job **key** in backticks (`` the `test` job ``), which pass 2's `test job` cannot match because the backtick breaks the adjacency. Zero hits in the live set, with the pattern shown to match a constructed line first.
 
+- **Step 9**: every gate run by the orchestrator, not read from a return summary. Cheap gates PASS: `go build`, `go vet`, `golangci-lint fmt -d`, `golangci-lint run`, `make comment-refs`, `make import-guard`, `actionlint`, `make shellcheck`, `make file-limits`, `make tidy-check`. Suite gates PASS: `make test`, `make test-race` (17 `ok` lines, no `--- FAIL:`, no `WARNING: DATA RACE`), `make cover-ratchet`, `make test-fallback`. Harness gates PASS: hook-body shellcheck, citation guard, the context-status locator check, the four shape checkers, all sixteen guard regression suites, the relative-link check. `-race` was not earned by the diff (no `*.go` in it) and was run anyway, because CI's new `Race` job fires on this PR: the `go` paths-filter names `.github/workflows/**`.
+- **Step 9**: the coverage ratchet reads 90.04% against a recorded 90.04% at a 0.60 pp tolerance — it holds with no margin, and the local measurement is **not an independent draw**: the diff changes no Go file, so the profile replayed from the test cache. CI measures it fresh on a runner, where the suite's timing-dependent statements can move it inside the tolerance. Recorded so a red `Coverage ratchet` on this PR is read as that known behaviour rather than as a regression this task introduced.
+- **Step 9**: my own AC4 sweep's first pattern set MISSED `AGENTS.md:138` — the middle-dot enumeration there reads `· Test (incl. `-race`) ·`, and a pattern written as `· Test ·` cannot match it. The control at the merge base is what exposed it, before any verdict on the live tree; widening the pattern took the control from 10 hits in 7 files to 49 in 12. A clean live sweep under the narrow pattern would have been a claim about the pattern. Decided-and-left after reading each sentence: `key-decisions.md:53` and `:97`, `context.md:27`, `coverage-ratchet.sh:4-5` and `:121`, `harness-gaps.md:260` and `:332` (both about the pre-commit hook, not CI), `test-piped-gate-guard.sh:83` (a fixture), and three `_inbox.jsonl` rows — which are also uneditable by hand under the standing AXIOM.
+- **Step 9**: panic index needs no change (the diff adds no `panic(` / `log.Fatal`), and the domain-invariant sweep is vacuous by construction — the diff touches no `*.go`, no `*.sql` and no `go.mod`, so no ledger, schema, scheduler or telemetry surface is in it.
+
 ## GO notes
 
 | # | round | note | kind | route | resolution |
@@ -70,10 +75,10 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
+| AC1 | PASS |
+| AC2 | PASS |
+| AC3 | PASS |
+| AC4 | PASS |
 
 ## Review register
 
