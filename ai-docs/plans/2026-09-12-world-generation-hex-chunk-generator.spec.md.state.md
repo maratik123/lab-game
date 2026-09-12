@@ -61,9 +61,9 @@ gh_issue:
   linked_issues: ["#18", "#28", "#29", "#34", "#47"]
   issue_body_status: current
   linked_prs: []
-round_cap: 4
+round_cap: 5
 questions_per_round_cap: 3
-round: 4
+round: 5
 agent_id: ac11c6eef428a2106
 prior_qa:
   - round: 1
@@ -96,4 +96,9 @@ prior_qa:
         Kruskal and Prim are genuinely two different algorithms — you were right, and my round-1 bundling of them was the simplification. They are close relatives though: the maze literature notes that classical Prim over random edge weights would be stylistically identical to Kruskal, and the distinctness comes only from the frontier-based Prim, which grows outward from one start cell where Kruskal carves fragments all over the chunk that later merge. Kruskal on equally weighted edges tends toward regular, uniform patterns, and neither samples mazes without bias — Wilson's walk is the only one of the five that does. Does 'all five' still stand?
     answer: |
         вопрос, алгоритмы оценивались только по dead-end или другие параметры тоже брались для оценки, например, количество прямых, количество ветвлений, длина от ветвления до тупика? и еще вопрос - все алгоритмы годятся для генерации в гексагональноя ячейке? если да, то все 5, где prim - frontier-based вариант
+  - round: 4
+    question: |
+        Approve the spec and post the cross-link comment on issue #27?
+    answer: |
+        давай уберем AC20, откуда оно взялось? пусть будут разные имплементации, даже если при кравевых условиях дают похожий результат
 ```
