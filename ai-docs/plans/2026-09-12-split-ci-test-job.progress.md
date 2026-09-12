@@ -1,5 +1,5 @@
 # Progress: Split the CI Test job into four parallel jobs — ACTIVE
-_Updated: 2026-09-12 03:00_
+_Updated: 2026-09-12 03:12_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -10,7 +10,7 @@ _Updated: 2026-09-12 03:00_
 **Issue:** #99
 **Spec:** ai-docs/plans/2026-09-12-split-ci-test-job.spec.md
 
-**current_step:** Step 11 — review fixes complete (Round 1)
+**current_step:** Step 10 — self-review APPROVE (Round 2)
 **last_passed_gate:** actionlint + make comment-refs + the AC1/AC2/AC3 extractions re-run after the fix | 2026-09-12T02:55:00Z | c4761a3800fa2d5a5016540062a5774245539590
 **entry_args:** ускоряем gh ci: job Test надо разбить на 4 отдельные джобы, выполняющиеся параллельно: make test, make test-race, make cover-ratchet и make test-fallback
 
@@ -56,6 +56,14 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 - **Step 11 (Round 1)**: the one `major` was verified before it was fixed — the design does require the cluster comment to carry the reason as well as the prohibition, and a grep for the reason's vocabulary over the shipped workflow found it nowhere, so the finding stood on its own measurement rather than on the reviewer's reading. Fixed in the workflow comment, not by a design or spec amendment: the design was not contradicted, the implementation was incomplete against it. The fix-round measurement pass re-ran `actionlint`, `make comment-refs` and the AC1/AC2/AC3 extractions **after** the edit, since the edit lands in the very file those ACs measure. The register row's `verifying command` coordinate drifted (the comment grew) and was re-resolved in place — a coordinate drift, not an amendment.
 
+- **Step 10**: APPROVE at round 2, one round of fixes. Round 2 also found a defect in round 1's own register: the id `SR1-CLUSTER-WHY` fails the guard's join key, so the row was skipped by the parser and the `Fixed` round-table row joined to nothing — renumbered to `SR1-1`, and the guard verified in both directions (exit 0 now; a mutant flipping the row back to `open` still exits 1 naming it).
+- **Step 10**: the reviewer reported that the `PreToolUse` register hook had not blocked the earlier commit although the guard was red on the file as committed. Verified rather than accepted: the guard exits 1 on `git show <sha>:<progress file>`, and the hook body selects its inputs with `git diff --cached`, which at `PreToolUse` runs before the command — so a call that staged and committed in one invocation presented an empty index and the gate examined nothing. Already logged twice in `ai-docs/harness-gaps.md` (2026-09-07, 2026-09-09), both entries open, so no duplicate was filed; the conduct half — asserting that the hook had accepted the commit — went to `ai-docs/learnings.md`. Staging has been its own tool call since.
+- **Step 10**: the reviewer's second item — that the register's join-key grammar is documented only inside the guard script, so a reviewer following instruction 8 can write an internally correct register the gate cannot parse, and the resulting message names the wrong defect — is a harness diagnosis with no prior entry naming that target, and was filed in `ai-docs/harness-gaps.md`.
+
+- **Step 12**: the spec's `## Deferred` and `## Open questions` bodies are each a single `- (none)` / `- None.` bullet. Read as the parser's NONE sentinel and emitted zero rows, although the sentinel rule's letter excludes bodies containing a `- ` bullet line: that clause exists so a section holding real bullets alongside the word cannot be silently swallowed, and neither body holds one. Emitting a literal `(none)` row would have put junk in the inbox for `/triage` to clear. Six rows emitted in total — two out-of-scope from the spec, four open-question from the design — by a parser reading the item text out of the files rather than by retyping it, and the whole `_inbox.jsonl` re-parsed afterwards because one malformed line breaks every future read of it.
+- **Step 12**: the dedupe set is empty — `ai-docs/deferred/` holds no thematic `.jsonl` sibling yet, so no file-level skip could apply. Cardinality read before the verdict rather than after, since an empty right-hand side reports "not a duplicate" for every possible input.
+- **Step 12**: the task-run record wrote complete (`incomplete: false`), and both checks of the schema's verification block pass — trailing byte `0a`, and `instruction_corpus_lines` recomputed by the pinned command equal to the recorded value. A first `jq` over the record printed `null` for four fields, which was my query naming keys the schema does not use, not a degraded write.
+
 ## GO notes
 
 | # | round | note | kind | route | resolution |
@@ -88,13 +96,14 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
-| SR1-CLUSTER-WHY | 1 | major | fixed@c4761a3 | `sed -n '115,123p' .github/workflows/ci.yml` (range re-resolved after the fix; the comment grew) — the comment must state why the four are four jobs (the run costs the slowest rather than the sum, and every gate reports), not only the no-`needs:` prohibition |
+| SR1-1 | 1 | major | fixed@c4761a3 | `sed -n '115,123p' .github/workflows/ci.yml` (range re-resolved after the fix; the comment grew) — the cluster comment (`CLUSTER-WHY`) must state why the four are four jobs (the run costs the slowest rather than the sum, and every gate reports), not only the no-`needs:` prohibition. **Id renumbered in round 2**: it was `SR1-CLUSTER-WHY`, which does not parse as `check-review-register.sh`'s join key `^[A-Za-z]*[0-9]+-[0-9]+$`, so the row was skipped and the gate read "round 1 finding 1 is marked Fixed and has no register row" |
 | SR1-KD20-STEP | 1 | — | accepted@1 — `ai-docs/key-decisions.md:53` "run as its own CI step" is still true: `make test-fallback` is a `run:` step, now the only target-running step of its own job. KD-E's ruling re-verified independently, not carried over | `grep -n "run as its own CI step" ai-docs/key-decisions.md` |
 | SR1-RATCHET-HDR | 1 | — | accepted@1 — `.githooks/coverage-ratchet.sh:5` "`make cover-ratchet` and CI run it with --check" names no job and stays true; a code change-type file, so KD-E's keep test applies and no third group is owed | `sed -n '5p' .githooks/coverage-ratchet.sh` |
 | SR1-DEPENDABOT | 1 | — | accepted@1 — `.claude/skills/dependabot-pr/reference.md` carries class names only and names no CI job (checked case-insensitively for job/CI-job/paths-filter vocabulary against a control that prints on the sibling SKILL.md); the recorded no-change outcome is correct | `grep -niE "coverage ratchet\|test fallback\|test[ -]job\|ci's [A-Z]" .claude/skills/dependabot-pr/reference.md` |
 | SR1-REPRODUCER | 1 | — | accepted@1 — the `test` class's local reproducer (`go test ./...`) stays correct for all four jobs: with no DSN exported it IS the fallback route, and a suite failure is what `Coverage ratchet` reports. Not falsified by the split; the adjacent taxonomy gap is the design's surfaced open question | `sed -n '182p' .claude/skills/pr-ci-failed/SKILL.md` |
 | SR1-PER-BINARY | 1 | — | accepted@1 — the rewritten fallback comment changes "per-package" to "per-binary" beyond the design's keep-the-reason mandate; correct against the rest of the corpus (one container per database-backed test *binary*), so an alignment rather than scope creep | `sed -n '170,174p' .github/workflows/ci.yml` |
 | SR1-TBD-LOCATOR | 1 | — | accepted@1 — `ai-docs/context-status.md:297` carries the literal `#TBD-at-Step-12`; correct at Step 10, filled by Step 12 sub-step 10a, and the CI guard keeps it unique | `grep -c 'TBD-at-Step-12' ai-docs/context-status.md` |
+| SR2-REGISTER-ID | 2 | major | fixed-in-round@2 (reviewer-owned artefact, corrected in the round that found it) | `bash ai-docs/scripts/check-review-register.sh ai-docs/plans/2026-09-12-split-ci-test-job.progress.md` — was exit 1, "round 1 finding 1 is marked Fixed and has no register row", because round 1's id `SR1-CLUSTER-WHY` does not parse as the guard's join key `^[A-Za-z]*[0-9]+-[0-9]+$`; renumbered to `SR1-1`, now exit 0, and a mutant flipping that row to `open` still exits 1, so the green is earned and not an empty join. Free-form ids on rows with no round-table counterpart stay legitimate — the guard documents them as skipped by design |
 | SR1-PARENT-SKILL | 1 | — | accepted@1 — this progress file carries no `**parent_skill:**`; the canonical template makes it conditional ("omit when the current skill IS the parent flow") and this is a plain `/task` run. Every required field is present | `grep -nE '^\*\*(current_step\|last_passed_gate\|entry_args\|base_commit)' ai-docs/plans/2026-09-12-split-ci-test-job.progress.md` |
 
 ## Files touched
@@ -141,3 +150,57 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 **Progress-file re-entry fields.** `**base_commit:**`, `**Branch:**`, `**Last build:**`, `**current_step:**`, `**last_passed_gate:**`, `**entry_args:**` and `## Decisions log` all present; `**parent_skill:**` correctly omitted (conditional field, and this is the parent flow). Content not reviewed, per the calling skill's ownership.
 
 **Below the severity floor: 0 items.** Eight items were examined and ruled not-a-defect; each is an `accepted@1` row in the register rather than a note here, so round 2 does not re-litigate them.
+
+## Self-Review (Round 2)
+
+**Verdict:** APPROVE
+
+No `blocker` or `major` row is open. The round-1 finding is fixed and verified; one defect found in this round was in the reviewer-owned register and was corrected here, in the round that found it.
+
+### Round-1 finding: fixed, verified, not re-raised
+
+`SR1-1` reads `fixed@c4761a3`. Its verifying command on the post-fix file:
+
+```
+$ sed -n '115,123p' .github/workflows/ci.yml
+  # The Test job is split into four sibling jobs below — test, test-race,
+  # cover-ratchet, test-fallback — each gated exactly as the job it replaces:
+  # same needs, same if, one make target apiece. Four jobs rather than four
+  # steps of one because siblings run at the same time: a run costs the
+  # slowest of them instead of their sum, and a gate that goes red no longer
+  # stops the other three from reporting — which is the point, since a step
+  # that never executed tells you nothing. Sequencing any of them after
+  # another, however reasonable it looks for one pair, gives both of those
+  # back: none of the four may acquire a needs: on another.
+```
+
+Both halves the design specifies are now present, and the fix goes past the minimum in the one way that mattered: *"however reasonable it looks for one pair"* answers the re-merge argument the design's § Rejected alternatives names (`cover-ratchet` sequenced after `test`), which is precisely the hole round 1 cited. The prohibition is no longer justified circularly. Not re-raised.
+
+Both new claims re-derived rather than accepted: *"a run costs the slowest of them instead of their sum"* matches the spec's Scope item 1 wording; *"a gate that goes red no longer stops the other three from reporting"* rests on the pre-change file carrying no `continue-on-error` and no step-level `if:` (both greps exit 1 on `git show ad9414ea:.github/workflows/ci.yml`) and on the four new jobs sharing no `needs:` edge. The comment carries no path, section number, issue number, URL or package-qualified symbol, and narrates no implementation step.
+
+### A defect in this round's own instrument, found and corrected here
+
+`check-review-register.sh` was **RED** on this file at the start of the round:
+
+```
+$ bash ai-docs/scripts/check-review-register.sh ai-docs/plans/2026-09-12-split-ci-test-job.progress.md
+check-review-register: the register and a round table disagree.
+  ...  round 1 finding 1 is marked Fixed and has no register row
+exit=1
+```
+
+The cause was not the disagreement the gate is named for — the register and the round table agreed in substance. Round 1's register id was `SR1-CLUSTER-WHY`, which does not match the guard's documented join key `^[A-Za-z]*[0-9]+-[0-9]+$`, so the row was **skipped** by the parser and the Fixed round-table row joined to nothing. The gate's `PreToolUse` hook fires on any `git commit` staging a `*.progress.md`, so this would have refused the Step-12 commit. The id is reviewer-owned state (instruction 8), so it was renumbered to `SR1-1` here rather than surfaced as work for the orchestrator; the descriptive handle is preserved in the row text.
+
+Verified in both directions, not just the green one: the guard now exits 0, and a mutant flipping `SR1-1`'s register status to `open` still exits 1 with `SR1-1 reads "open" while round 1 marks finding 1 Fixed` — so the pass is a real join, not an empty one.
+
+### What was checked this round
+
+**Scope of the round, per instruction 7a.** The diff since round 1 is two commits: `c4761a3` (`.github/workflows/ci.yml`, comment only) and `a4fc43c` (this progress file only). No live document changed, so AC4's sweep has no new subject and is not re-run; the seven `accepted@1` rows are not re-raised, nothing having changed for any of them.
+
+**AC1/AC2/AC3 re-extracted on the post-fix file**, because the file changed even though only a comment did: each of `make test`, `make test-race`, `make cover-ratchet`, `make test-fallback` under exactly one job, count=1 each; all four `needs: changes` with no sibling edge anywhere in the workflow; the `changes` job block still byte-identical to `ad9414ea` (empty `diff`). PASS, PASS, PASS.
+
+**Gates re-run after the last edit of this round:** `actionlint .github/workflows/ci.yml` exit 0, `make comment-refs` exit 0, `go vet ./...` exit 0, `golangci-lint run` exit 0, `check-review-register.sh` exit 0.
+
+**Still vacuous, re-confirmed:** the range adds no `*.go`, `*.sql`, `go.mod` or `go.sum`, and no `panic(` / `log.Fatal*` / secret — so §3, §4 and §4a have no subject in round 2 either. No new `ai-docs/learnings.md` entry landed since round 1.
+
+**Below the severity floor: 0 items.**
