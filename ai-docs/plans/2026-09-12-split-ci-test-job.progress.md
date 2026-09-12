@@ -10,13 +10,13 @@ _Updated: 2026-09-12 05:22_
 **Issue:** #99
 **Spec:** ai-docs/plans/2026-09-12-split-ci-test-job.spec.md
 
-**current_step:** Step 8 — Group B subtask 4 of 6 complete
-**last_passed_gate:** citation guard + relative-markdown-link check (seen RED on a constructed broken link before its green was read) | 2026-09-12 | this commit
+**current_step:** Step 8 — Group B subtask 5 of 6 complete
+**last_passed_gate:** citation guard + relative-markdown-link check + `ai-docs/scripts/test-spawn-contract-guard.sh` + the executed KD-C premise (a plain failure emits `--- FAIL:` on all four routes, no `WARNING: DATA RACE`) | 2026-09-12 | this commit
 **entry_args:** ускоряем gh ci: job Test надо разбить на 4 отдельные джобы, выполняющиеся параллельно: make test, make test-race, make cover-ratchet и make test-fallback
 
 ## Next action
 
-**Do this immediately:** Group B is under way. Subtask 5 — `.claude/skills/pr-ci-failed/SKILL.md`'s `CI exists` enumeration and classification table, then the declared CI sync-group siblings.
+**Do this immediately:** Group B is under way. Subtask 6 — the shared-test-server entry's falsified sentence in `ai-docs/context-status.md` (KD-D).
 
 ## Subtasks
 
@@ -24,7 +24,7 @@ _Updated: 2026-09-12 05:22_
 - [x] 2. `AGENTS.md` — ratchet AXIOM + § Build & Test gate enumeration (Group B, complete)
 - [x] 3. `ai-docs/claude-tools-hierarchy.md` — CI job table (Group B, complete)
 - [x] 4. `ai-docs/go-test-conventions.md` — the fallback gate's CI sentence (Group B, complete)
-- [ ] 5. `.claude/skills/pr-ci-failed/SKILL.md` + CI sync-group siblings (Group B)
+- [x] 5. `.claude/skills/pr-ci-failed/SKILL.md` + CI sync-group siblings (Group B, complete)
 - [ ] 6. `ai-docs/context-status.md` — the shared-test-server entry's falsified sentence (Group B)
 - [ ] 7. AC4 falsified-claim sweep with its positive control (Group B, terminal)
 
@@ -39,6 +39,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8, Group B, subtask 2**: the gate enumeration's `Test (incl. -race)` entry became four middle-dot entries carrying the four shipped job *names* (`Test · Race · Coverage ratchet · Test fallback`) and no `make` targets — the enumeration is a list of CI job names, and the job-to-target mapping is subtask 3's table. The `(incl. -race)` parenthetical is deleted rather than moved: it existed to disclose that `-race` ran inside the `Test` job, which the split makes false. Both edited sentences were checked against the shipped `ci.yml`: each name written matches a `name:` value there, and the same extractor over the pre-change file reports `Race`, `Coverage ratchet` and `Test fallback` absent and `Test` present — so it discriminates rather than matching everything. `AGENTS.md` was then re-grepped whole for the four gate names and for job vocabulary; the remaining hits name no CI job and stay true.
 - **Step 8, Group B, subtask 3**: the old row's falsified half was the word "then" (`make test` **then** `make test-race`) and its silent omission of the other two targets; the four replacement rows each carry one target plus the one-clause reason the neighbouring rows' style already uses. Each row was checked against a job-name/target mapping extracted from the shipped `ci.yml`, whose pre-change control maps all four targets onto the single `Test` job. The extractor's first version printed nothing for the four-target filter — an empty right-hand side, not a clean answer — and was fixed before any verdict was read. The `Coverage ratchet` row's "never records a new mark" and the `Race` row's "the only one of the four whose target passes the flag" were both resolved against the script and the Makefile rather than carried over from the design.
 - **Step 8, Group B, subtask 4**: the corrected clause reads "CI runs it in a job of its own, Test fallback". A first draft said "as the one step of a job of its own", which the shipped job refutes — it has three steps (checkout, `setup-go`, the `run:`) — so the step-count claim was dropped rather than qualified; the sentence had to name the job, not count its steps. The file's other three `make test-fallback` mentions and its three `CI`/`CI's` mentions name no job and stay true. The markdown-link checker was pointed at a constructed broken link and seen to exit 1 before its green on the tree was read.
+- **Step 8, Group B, subtask 5**: KD-C's premise was executed here rather than copied — a throwaway module outside the tree whose one test calls `t.Fatal` emits `--- FAIL:` under the plain route, under `-race`, and under the fallback route (`LAB_GAME_TEST_DSN= go test -count=1`), and `WARNING: DATA RACE` occurs zero times in the `-race` log while the same pattern matches a constructed line. For the fourth route the signal reaches the job log through the ratchet script's own echo of `^(FAIL|---|ok)` lines on its not-green exit, verified against the captured failing log with a green log as the control. So the `test` row's new cell — all four jobs — is true of the log a classifier actually reads, and the `race` row's `Race` is the only origin because `test-race` is the only target passing `-race`. `.claude/skills/dependabot-pr/reference.md` is the third member of the declared CI sync group and was **not** edited: it carries the class names only (`fmt / build / … / actionlint`) and names no CI job anywhere — checked case-insensitively for `job`, `ci.yml` and `checks` — so this diff falsifies nothing in it. The `CI exists` enumeration's pre-existing omission of the `Comment references` job is left standing in both CI skills, per the design's open question.
 
 ## GO notes
 
@@ -78,4 +79,5 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `.github/workflows/ci.yml` (subtask 1, @ 606d7c4)
 - `AGENTS.md` (subtask 2, @ d8f8707)
 - `ai-docs/claude-tools-hierarchy.md` (subtask 3, @ b194121)
-- `ai-docs/go-test-conventions.md` (subtask 4)
+- `ai-docs/go-test-conventions.md` (subtask 4, @ 27aaa1e)
+- `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/SKILL.md` (subtask 5; `.claude/skills/dependabot-pr/reference.md` inspected, no falsified claim, unchanged)

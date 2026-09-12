@@ -5,7 +5,7 @@ disable-model-invocation: false
 allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git rev-parse *) Bash(git branch *) Bash(git checkout *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git fetch *) Bash(git merge-base *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr create *) Bash(gh pr edit *) Bash(gh pr comment *) Bash(gh issue create *) Bash(gh run view *) Bash(gh run list *) Bash(gh api *) Bash(make *)
 ---
 
-> **CI exists** (`.github/workflows/ci.yml`): Format · Build · Test · Lint · Harness guards · Actionlint, each `paths-filter`-gated. A job that is filtered out does not run and is **not** a failure. Note that `origin` enforces **no** required checks (private repo on a free plan — `AGENTS.md` § Permissions), so CI is advisory at the merge button and binding by discipline.
+> **CI exists** (`.github/workflows/ci.yml`): Format · Build · Test · Race · Coverage ratchet · Test fallback · Lint · Harness guards · Actionlint, each `paths-filter`-gated. A job that is filtered out does not run and is **not** a failure. Note that `origin` enforces **no** required checks (private repo on a free plan — `AGENTS.md` § Permissions), so CI is advisory at the merge button and binding by discipline.
 
 > **Commit authorisation.** The default rule "only commit when the user explicitly asks" does **not** apply inside this workflow. The single Step-6 commit, the Step-7 `git push`, and the Step-7 unconditional `gh pr view` read are pre-authorised by `/pr-ci-failed` itself — perform them without an extra prompt. Pause to confirm only when Step 3 cannot reproduce the failure locally, when self-review hits its loop cap, or when a precondition fails.
 
@@ -162,8 +162,8 @@ Classify the failure into exactly one class:
 | `build` | Build | a compile error from `go build ./...`, or a `go vet` finding |
 | `tidy` | Build | `go mod tidy` left a delta — `git diff --exit-code go.mod go.sum` failed |
 | `import-guard` | Build | `<package>: forbidden dependency <module>` from the transitive-import gate — a rule-table package's non-test dependency graph reaches a module it may not |
-| `test` | Test | `--- FAIL:` / `FAIL	github.com/...` |
-| `race` | Test | `WARNING: DATA RACE` under `go test -race` |
+| `test` | Test, Race, Coverage ratchet or Test fallback — a test that simply fails emits this signal under every one of the four | `--- FAIL:` / `FAIL	github.com/...` |
+| `race` | Race | `WARNING: DATA RACE` under `go test -race` |
 | `lint` | Lint | a `golangci-lint` finding with its linter name in brackets, or `<path>: N lines exceeds hard limit M` from the `file-limits` gate |
 | `harness` | Harness guards | a shellcheck finding, a RED citation, a guard-suite failure, a size-cap breach, or a broken link |
 | `comment-refs` | Comment references | `<file>:<line>: <class>: <text>` lines from the comment-reference gate — a comment in a gated file points outward |
