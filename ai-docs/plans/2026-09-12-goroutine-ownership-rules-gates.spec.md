@@ -11,7 +11,7 @@
 3. A context stored in a struct, a context nested inside a loop or a function literal, and a `defer` inside a loop fail the lint gate. [task: "A context stored in a struct, a context nested inside a loop or a function literal, and a `defer` inside a loop fail the lint gate."]
 4. A nil dereference or an impossible nil comparison that static analysis can prove within a function fails the lint gate. [task: "A nil dereference or an impossible nil comparison that static analysis can prove within a function fails the lint gate"]
 5. Every current site that breaks a new gate is fixed or carries its stated reason; none lands silently excused. [task: "Every current site that breaks a new gate is fixed or carries its stated reason"]
-6. Written rules an implementor and a reviewer read, stating at least: [task: "an implementor and a reviewer read"]
+6. Written rules an implementor and a reviewer read, carried by `ai-docs/code-style.md`, stating at least: [task: "an implementor and a reviewer read"] [answer 1.2: "ai-docs/code-style.md carries both"]
    - no goroutine is started from `init()` or as a constructor's side effect; a component that starts goroutines exposes an explicit lifecycle — a `Run(ctx) error` that blocks until it is stopped or cancelled, or `Start` plus `Stop` / `Close`;
    - a new long-lived component joins the composition root as a runner or as a closer, and not as a free goroutine [task: "never as a free goroutine"];
    - a goroutine does not outlive its context or its stop seam: every blocking operation inside it — a channel send or receive, a lock, a network call — can wake on cancellation, and a goroutine that outlives its context is a leak even if it ends eventually;
@@ -24,13 +24,15 @@
    - a library that holds background goroutines — an HTTP transport, a pool, a client, a logger — is closed on the shutdown path;
    - a test stops everything it started, through `t.Cleanup`;
    - a runner is covered both when it is stopped and when it is cancelled, each asserting that `Run` returns within a bound [task: "each asserting that `Run` returns within a bound"].
-7. A reviewer's checklist on the surfaces review actually reads, asking at least: [task: "lives on the surfaces review actually reads, and asks at least"]
+7. A reviewer's checklist on the surfaces review actually reads — `ai-docs/code-style.md` carries it — asking at least: [task: "lives on the surfaces review actually reads, and asks at least"] [answer 1.2: "ai-docs/code-style.md carries both"]
    - per `go` statement: who waits for it to finish, and if nobody does, why that is acceptable; how it stops, where no answer is a blocker; whether every blocking operation inside it can wake on cancellation; where its error and its panic go; whether the number of such goroutines is bounded;
    - per channel: who closes it, and whether that is the only closer; what happens to a sender when the receiver leaves early;
    - per context: why a `Background` / `TODO` sits below `main`; whether `cancel` is called on every path; whether a detached operation has its own timeout and an owner;
    - per resource: `Close` / `Shutdown` / `Stop` in a `defer` or on the service's explicit shutdown path;
    - per pull request: one that adds a goroutine says in its description how that goroutine dies.
 8. Every live site whose claim this change falsifies is updated in the same pull request, per `AGENTS.md` § *Propagation Rule* step 4 — the sites found while drafting illustrate that class and do not bound it. [task: "Every live site whose claim the diff falsifies is updated in the same PR"]
+9. Every gate this task adds binds the non-`_test.go` files of a package that only tests import on the same terms as it binds production code. [answer 1.1: "Gated exactly like production code: every current site in those packages is fixed or carries its stated reason."]
+10. The process's shutdown path releases the idle connections of the HTTP client the Bot API client and the canary legs use. [answer 1.3: "the shutdown path releases those idle connections"]
 
 ## Out of scope
 
@@ -50,15 +52,15 @@
 
 ## Deferred
 
-- Releasing the idle connections of the HTTP client the production path uses | round-1 question 3 decides whether this task closes it | TBD
+- (none)
 
 ## Key decisions
 
 | Question | Decision |
 |---|---|
-| Do the new gates bind the non-`_test.go` files of packages that only tests import? | TBD — round-1 question 1 |
-| Which review surfaces carry the written rules and the reviewer's checklist? | TBD — round-1 question 2 |
-| Does this task close the idle connections of the HTTP client the production path uses? | TBD — round-1 question 3 |
+| Do the new gates bind the non-`_test.go` files of packages that only tests import? | They bind them on the same terms as production code, and every current site there is fixed or carries its stated reason. [answer 1.1: "Gated exactly like production code: every current site in those packages is fixed or carries its stated reason."] |
+| Which review surfaces carry the written rules and the reviewer's checklist? | `ai-docs/code-style.md` carries both. [answer 1.2: "ai-docs/code-style.md carries both"] |
+| Does this task close the idle connections of the HTTP client the production path uses? | It does: the shutdown path releases them. [answer 1.3: "the shutdown path releases those idle connections"] |
 
 ## Acceptance Criteria
 
@@ -74,8 +76,10 @@
 | AC8 | A `defer` inside a loop fails the lint gate. [task: "A context stored in a struct, a context nested inside a loop or a function literal, and a `defer` inside a loop fail the lint gate."] |
 | AC9 | A nil dereference or an impossible nil comparison that static analysis can prove within a function fails the lint gate. [task: "A nil dereference or an impossible nil comparison that static analysis can prove within a function fails the lint gate"] |
 | AC10 | Every gate this task adds is green on the tree, and every site it would otherwise report is either changed so the shape is gone or carries its stated reason where the gate reports it. [task: "Every current site that breaks a new gate is fixed or carries its stated reason"] |
-| AC11 | The written rules an implementor and a reviewer read state every rule enumerated in Scope item 6 (the ownership rules). [task: "an implementor and a reviewer read"] |
-| AC12 | The reviewer's checklist asks, per `go` statement, per channel, per context, per resource and per pull request, at least the questions enumerated in Scope item 7 (the reviewer's checklist). [task: "lives on the surfaces review actually reads, and asks at least"] |
+| AC11 | `ai-docs/code-style.md` states every rule enumerated in Scope item 6 (the ownership rules). [task: "an implementor and a reviewer read"] [answer 1.2: "ai-docs/code-style.md carries both"] |
+| AC12 | `ai-docs/code-style.md` carries a reviewer's checklist that asks, per `go` statement, per channel, per context, per resource and per pull request, at least the questions enumerated in Scope item 7 (the reviewer's checklist). [task: "lives on the surfaces review actually reads, and asks at least"] [answer 1.2: "ai-docs/code-style.md carries both"] |
 | AC13 | No live instruction file, `README.md` or `docs/**` page carries a claim about the gate set or about goroutine ownership that this change falsifies; the class is every live site whose claim the diff falsifies, per `AGENTS.md` § *Propagation Rule* step 4. [task: "Every live site whose claim the diff falsifies is updated in the same PR"] |
+| AC14 | Every gate this task adds reports a violating shape in a non-`_test.go` file of a package that only tests import, on the same terms as it reports one in production code. [answer 1.1: "Gated exactly like production code: every current site in those packages is fixed or carries its stated reason."] |
+| AC15 | Once the process's shutdown path has run, no idle connection of the HTTP client the Bot API client and the canary legs use is still held open. [answer 1.3: "the shutdown path releases those idle connections"] |
 
 ## Open questions
