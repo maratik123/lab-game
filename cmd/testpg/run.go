@@ -288,11 +288,16 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 		return exitFailure
 	}
 
-	// Read before persist below overwrites it: a server already running
-	// under this name keeps the PGDATA mount it was created with, so the
-	// count a PRIOR invocation recorded is what that mount is actually
-	// bounded by, not the count this invocation is about to write.
-	_, prevSizedFor, hadPrev := sm.locate()
+	// Read before this invocation's own persist below overwrites it: a
+	// server already running under this name keeps the PGDATA mount it was
+	// created with, so the count a PRIOR invocation recorded is what that
+	// mount is actually bounded by — but only when that prior locator names
+	// the very server this invocation is about to reattach to. A locator
+	// left over from a different (or now-replaced) server proves nothing
+	// about the mount this call actually reaches, and is compared against
+	// dsn once provisioning below reports which server that turned out to
+	// be.
+	prevDSN, prevSizedFor, hadPrev := sm.locate()
 
 	// The reaper is controlled process-wide, read once at first use; this
 	// process must disable it before provisioning so the container it
@@ -312,10 +317,10 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 		return exitFailure
 	}
 
-	if err := sm.persist(dsn, clients); err != nil {
-		logf(stderr, "testpg: writing the locator file: %v\n", err)
-		return exitFailure
-	}
+	// sameServer is true only when the prior locator names the very server
+	// this invocation just reattached to: only then does prevSizedFor
+	// describe THIS mount rather than some other (or long-gone) container.
+	sameServer := hadPrev && prevDSN == dsn
 
 	logf(stdout, "%s\n", dsn)
 
@@ -329,23 +334,51 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 	// instead by the client count recorded for this container the LAST time
 	// it was brought up, checked below against the count this invocation
 	// asks for.
-	actual, err := sm.probe(ctx, dsn)
+	actual, probeErr := sm.probe(ctx, dsn)
+	var earned, failed bool
 	switch {
-	case err != nil:
-		logf(stderr, "testpg: shared server up, but its capacity could not be read: %v\n", err)
+	case probeErr != nil:
+		logf(stderr, "testpg: shared server up, but its capacity could not be read: %v\n", probeErr)
 	case actual < ceiling:
 		logf(stderr, "testpg: the shared server's capacity is %d, below the %d needed for clients=%d "+
 			"parallel=%d; a server already running under this name keeps the ceiling it was created with, "+
 			"so take it down and bring it up again to resize it\n", actual, ceiling, clients, parallel)
-		return exitFailure
-	case hadPrev && clients > prevSizedFor:
+		failed = true
+	case sameServer && clients > prevSizedFor:
 		logf(stderr, "testpg: the shared server's PGDATA mount was sized for %d client(s), this invocation asks "+
 			"for %d; a server already running under this name keeps the mount it was created with, so take it "+
 			"down and bring it up again to resize it\n", prevSizedFor, clients)
-		return exitFailure
+		failed = true
 	default:
+		earned = true
 		logf(stderr, "testpg: shared server %q up, capacity %d admits the %d needed (clients=%d, parallel=%d)\n",
 			containerName, actual, ceiling, clients, parallel)
+	}
+
+	// The recorded count must mean "a count this server is actually known to
+	// satisfy", never "a count someone asked for": earned records this
+	// invocation's own count, a refusal against a server the prior locator
+	// already vouches for leaves that server's truthful count standing, and
+	// a refusal with no such prior vouching (a fresh server, or a stale
+	// locator naming a different one) falls back to the conservative
+	// one-client count an absent count already reads as. The DSN is
+	// recorded on every path regardless, so --down can still find whatever
+	// this invocation reached or created.
+	toRecord := clients
+	if !earned {
+		if sameServer {
+			toRecord = prevSizedFor
+		} else {
+			toRecord = legacyLocatorClients
+		}
+	}
+	if err := sm.persist(dsn, toRecord); err != nil {
+		logf(stderr, "testpg: writing the locator file: %v\n", err)
+		return exitFailure
+	}
+
+	if failed {
+		return exitFailure
 	}
 	return 0
 }

@@ -574,6 +574,131 @@ func TestRun_upFresh_persistsThisInvocationsClientCount(t *testing.T) {
 	}
 }
 
+// A refused --up (capacity too small for what this invocation asked) must
+// not upgrade the recorded client count, and must still record the DSN so
+// --down can find the server it just reattached to.
+func TestRun_upRefusedOnCapacity_doesNotRaiseRecordedClients_stillRecordsDSN(t *testing.T) {
+	const dsn = "postgres://shared/db"
+	stub := &stubSeam{
+		provisionDSN:  dsn,
+		probeMaxConns: 8, // far below any computed ceiling
+		locateDSN:     dsn,
+		locateOK:      true,
+		locateClients: 3,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "5", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up --clients 5 --parallel 1) = 0, want non-zero; stderr: %s", stderr.String())
+	}
+	if !stub.persistCalled {
+		t.Fatalf("persist was not called; a refused --up must still record the DSN so --down can find the server")
+	}
+	if stub.persistDSN != dsn {
+		t.Errorf("persist was called with DSN=%q, want %q", stub.persistDSN, dsn)
+	}
+	if stub.persistClients != 3 {
+		t.Errorf("persist was called with clients=%d, want the prior recorded count 3 left unchanged", stub.persistClients)
+	}
+}
+
+// The mount-sizing refusal is the same story: it must not upgrade the
+// recorded count either.
+func TestRun_upRefusedOnMount_doesNotRaiseRecordedClients(t *testing.T) {
+	const dsn = "postgres://shared/db"
+	stub := &stubSeam{
+		provisionDSN:  dsn,
+		probeMaxConns: 100000, // ample connection capacity: only the mount check must decline this
+		locateDSN:     dsn,
+		locateOK:      true,
+		locateClients: 1,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up --clients 2) = 0, want non-zero; stderr: %s", stderr.String())
+	}
+	if !stub.persistCalled {
+		t.Fatalf("persist was not called")
+	}
+	if stub.persistClients != 1 {
+		t.Errorf("persist was called with clients=%d, want the prior recorded count 1 left unchanged", stub.persistClients)
+	}
+}
+
+// A probe error leaves the recorded count exactly where it was too: the
+// capacity (and by extension whether this invocation's own count is earned)
+// could not even be confirmed. The exit code stays 0 on this path: the
+// server IS up and usable (provisioning itself succeeded), only reading its
+// capacity back afterwards failed, which is weaker evidence than an actual
+// undersized answer and does not itself prove the server can't serve this
+// run.
+func TestRun_upProbeError_doesNotRaiseRecordedClients_exitsZero(t *testing.T) {
+	const dsn = "postgres://shared/db"
+	stub := &stubSeam{
+		provisionDSN:  dsn,
+		probeErr:      errUnreachable,
+		locateDSN:     dsn,
+		locateOK:      true,
+		locateClients: 3,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "5", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--up --clients 5 --parallel 1) = %d, want 0 when only the capacity probe failed; stderr: %s", code, stderr.String())
+	}
+	if !stub.persistCalled {
+		t.Fatalf("persist was not called; a probe error must still record the DSN")
+	}
+	if stub.persistDSN != dsn {
+		t.Errorf("persist was called with DSN=%q, want %q", stub.persistDSN, dsn)
+	}
+	if stub.persistClients != 3 {
+		t.Errorf("persist was called with clients=%d, want the prior recorded count 3 left unchanged", stub.persistClients)
+	}
+}
+
+// A successful --up does record this invocation's own client count.
+func TestRun_upSucceeds_recordsThisInvocationsClientCount(t *testing.T) {
+	const dsn = "postgres://shared/db"
+	stub := &stubSeam{
+		provisionDSN:  dsn,
+		probeMaxConns: 100000,
+		locateDSN:     dsn,
+		locateOK:      true,
+		locateClients: 1,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--up --clients 1) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if stub.persistClients != 1 {
+		t.Errorf("persist was called with clients=%d, want 1", stub.persistClients)
+	}
+}
+
+// A stale locator naming a DIFFERENT server than the one this invocation
+// just provisioned must not be trusted for the mount check, and a correctly
+// sized --up must not be refused because of it.
+func TestRun_upStaleLocatorNamesAnotherServer_notRefused_recordsThisCount(t *testing.T) {
+	stub := &stubSeam{
+		provisionDSN:  "postgres://shared/db",
+		probeMaxConns: 100000,
+		locateDSN:     "postgres://a-previous-server-now-gone/db",
+		locateOK:      true,
+		locateClients: 1, // would refuse a 2-client run if wrongly trusted
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--up --clients 2) = %d, want 0; a stale locator naming a different server must not refuse this: stderr: %s", code, stderr.String())
+	}
+	if stub.persistClients != 2 {
+		t.Errorf("persist was called with clients=%d, want this invocation's own count 2", stub.persistClients)
+	}
+}
+
 func TestRun_downWithNoLocator_isANoOp(t *testing.T) {
 	t.Parallel()
 

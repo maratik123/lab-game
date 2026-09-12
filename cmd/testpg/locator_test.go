@@ -11,19 +11,7 @@ import (
 // locator file.
 func withLocatorDir(t *testing.T) {
 	t.Helper()
-	dir := t.TempDir()
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir(%q): %v", dir, err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(orig); err != nil {
-			t.Fatalf("restoring working directory to %q: %v", orig, err)
-		}
-	})
+	t.Chdir(t.TempDir())
 }
 
 func TestLocator_roundTripsTheClientCountItWasWrittenWith(t *testing.T) {

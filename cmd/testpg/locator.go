@@ -7,9 +7,11 @@ import (
 )
 
 // locatorPath is where the long-lived server's connection string and the
-// client count it was provisioned for are recorded: the repository's own
+// client count it is KNOWN TO SATISFY are recorded: the repository's own
 // ignored scratch directory, relative to the working directory every target
-// and hook in this project already invokes its recipes from.
+// and hook in this project already invokes its recipes from. The recorded
+// count is never merely the count a caller asked for; it is a count the
+// writer has confirmed this server's PGDATA mount actually admits.
 const locatorPath = "tmp/testpg-dsn"
 
 // legacyLocatorClients is the client count assigned to a locator file that
@@ -22,11 +24,13 @@ const locatorPath = "tmp/testpg-dsn"
 const legacyLocatorClients = 1
 
 // readLocator reads the locator file and returns its trimmed DSN (the first
-// line) and the client count the server was provisioned for (the second
-// line). ok is false when the file does not exist, is empty, or has no
-// parseable DSN on its first line — all read as "no long-lived server
-// known", never as an error. A missing or unparseable second line reads as
-// legacyLocatorClients, never as an error and never as "big enough".
+// line) and the client count this server is KNOWN TO SATISFY (the second
+// line) — never a count that was merely asked for on some prior invocation,
+// only one a writer has confirmed the mount admits. ok is false when the
+// file does not exist, is empty, or has no parseable DSN on its first line —
+// all read as "no long-lived server known", never as an error. A missing or
+// unparseable second line reads as legacyLocatorClients, never as an error
+// and never as "big enough".
 func readLocator() (dsn string, clients int, ok bool) {
 	contents, err := os.ReadFile(locatorPath)
 	if err != nil {
@@ -52,10 +56,13 @@ func readLocator() (dsn string, clients int, ok bool) {
 	return dsn, clients, true
 }
 
-// writeLocator records dsn and the client count the server was provisioned
-// for in the locator file, creating its parent directory if needed. clients
-// below 1 is recorded as legacyLocatorClients, matching how readLocator
-// treats an absent or unparseable count.
+// writeLocator records dsn and clients in the locator file, creating its
+// parent directory if needed. The caller must pass only a count it has
+// confirmed this server's mount actually admits — never a count that was
+// merely asked for — since a later reader trusts whatever is recorded here
+// as ground truth about the mount, which cannot otherwise be discovered from
+// a live connection. clients below 1 is recorded as legacyLocatorClients,
+// matching how readLocator treats an absent or unparseable count.
 func writeLocator(dsn string, clients int) error {
 	if clients < 1 {
 		clients = legacyLocatorClients
