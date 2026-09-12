@@ -615,3 +615,15 @@ executed it, and the cheapest refutation is two lines of shell.
 **Rule:** The no-piping rule is about the load-bearing exit code, not about the Go toolchain: it binds any command whose status decides what I record, `grep` and `comm` included. And grep's exit 2 is an instrument failure, never a clean result — a sweep that names a path must establish the path exists before its silence counts as evidence.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — recorded an acceptance criterion PASS from a sweep taken before the edit that falsified it
+**What happened:** At `/task` Step 9 I ran AC13's propagation sweep, then a design amendment added a third pinned lint setting, then I wrote `AC13 | PASS` into the progress file's AC table without re-running the sweep. Three live surfaces — `ai-docs/code-style.md`, `ai-docs/key-decisions.md` KD-16 and `ai-docs/context.md` — still said two settings were pinned. `self-review` round 1 found all three as one `major`. The sweep itself had been sound; what was unsound was recording its result after a later edit had moved what it measured, and the tell was available: `ai-docs/context-status.md`, written after the amendment, had it right, so the tree disagreed with itself.
+**Rule:** A measurement is recorded only after the LAST edit that can move it, and an amendment landing mid-step invalidates every criterion already measured against files it touches — re-run those, do not carry the earlier PASS forward. Before writing any status table, list the edits made since each row was measured; a non-empty list is a re-run list, not a note.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — tooling — read `$?` from the tail of a pipeline again, in the same session that logged the first one
+**What happened:** Running a review-register row's verifying command at `/task` Step 11, I wrote `grep -n 'resultCh' <file> | cut -c1-150` and printed `$?`, which reported `cut`'s status. I had appended an entry about this exact shape roughly forty minutes earlier in the same session, after nearly recording a `grep` exit 2 as a clean sweep. Re-running without the pipe gave the real answer, and it was the interesting one: the literal symbol was absent, and the fix names the channel descriptively instead.
+**Rule:** Writing the rule down does not install it. When a command's exit status is going to be read, the pipe is decided before the command is typed — `cmd > tmp/x.log 2>&1; echo $?` is the default shape for any status-bearing invocation, and truncation with `cut`/`head` is applied to the SAVED file, never to the live pipeline.
+**Kind:** correction
+**Escalated?** no
