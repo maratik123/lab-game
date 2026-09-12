@@ -10,8 +10,8 @@ _Updated: 2026-09-12 21:32_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 8 — Group A subtask 2 of 10 complete
-**last_passed_gate:** `go build ./... && go test ./... && go vet ./... && golangci-lint run` (internal/hexgrid + internal/detguard) | 2026-09-13
+**current_step:** Step 8 — Group A subtask 3 of 10 complete
+**last_passed_gate:** `go build ./... && go test ./... && go vet ./... && golangci-lint run` (internal/maze derivation core) | 2026-09-13
 **entry_args:** 27
 
 ## Next action
@@ -21,9 +21,9 @@ _Updated: 2026-09-12 21:32_
 ## Subtasks
 
 - [x] 1. `internal/detguard` — the shared determinism predicates, each paired with a scratch red case carrying the blind shape
-- [x] 2. `internal/hexgrid` — axial coordinate, six directions, `Opposite`, canonical `Face`/`FaceOf`, `Dims`, `ChunkOf`, `ChunkDistance`  ← CURRENT (3 next)
-- [ ] 3. `internal/maze` derivation core — fixed-width preimage helpers with their G115 suppressions, the domain-tagged keys, the ChaCha8 stream behind an unexported one-method interface
-- [ ] 4. `Params` and its validation — decimal shares, bias, the enum-indexed weight array, the rounding
+- [x] 2. `internal/hexgrid` — axial coordinate, six directions, `Opposite`, canonical `Face`/`FaceOf`, `Dims`, `ChunkOf`, `ChunkDistance`
+- [x] 3. `internal/maze` derivation core — fixed-width preimage helpers with their G115 suppressions, the domain-tagged keys, the ChaCha8 stream behind an unexported one-method interface
+- [ ] 4. `Params` and its validation  ← CURRENT — decimal shares, bias, the enum-indexed weight array, the rounding
 - [ ] 5. The chunk cell graph — index mapping, six-neighbour adjacency, border-cell predicate, interior-face enumeration
 - [ ] 6. The five algorithms over the non-island induced subgraph — backtracker, Kruskal, frontier Prim, growing tree, Wilson
 - [ ] 7. The extra-passage pass and border-portal selection, with the canonical-lesser-chunk candidate ordering
@@ -44,6 +44,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8**: progress file created at `base_commit` 4315aef with `go build ./...` green; no code exists yet, so `Last build: PASS` describes the pre-existing tree.
 - **Step 8 (subtask 1)**: `internal/detguard` implements the five bans (clock/rand-v1/hash-maphash/crypto-rand/math imports, unpinned `math/rand/v2` identifiers, floating-point types, `math` import, decimal float accessors) and a best-effort map-range detector via a file-local assignment scan (no `go/types` dependency added). Each predicate has a scratch red case; the float-accessor case carries the blind shape (method-result only, no bare declaration).
 - **Step 8 (subtask 2)**: `internal/hexgrid` — `Direction` is `int8`, canonical order `DirE,DirNE,DirNW,DirW,DirSW,DirSE`; `Opposite` pairs (E,W),(NE,SW),(NW,SE); `FaceOf` canonicalises to the earlier direction of the opposite pair. `ChunkOf` floor-divides; `ChunkDistance` uses the standard axial hex-distance formula widened to `int64` before subtracting.
+- **Step 8 (subtask 3)**: `internal/maze` derivation core — `worldKey(seed)` folds the domain tag `"lab-game/maze/v1"` and the seed once; `cellKey`/`chunkKey`/`borderKey` each fold `worldKey` with their own purpose byte (`'c','i','a','s','x','b'`) so every stream/value is domain-separated by construction. `borderKey` canonicalises its chunk pair by (Q,R) before folding. `stream` is an unexported one-method interface; `newStream` is the sole `math/rand/v2` reference. `boundedDraw` is total (bound ≤1 returns 0, untouched) and uses reject-above-limit sampling, never a bare modulo. `testdata/derive.golden` pins the raw preimage encoding table plus the derived keys/cell seeds/border-key symmetry; minted via `-update` and read back before commit.
 
 ## GO notes
 
