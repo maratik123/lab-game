@@ -123,7 +123,7 @@ Per pull request:
 ## Database access
 
 - One transaction per game operation, with its basis document and postings inside it ([`domain-invariants.md`](domain-invariants.md)).
-- Balance `UPDATE`s go through `store.Post`, which owns the capture order; a handler that locks accounts by hand can deadlock and will be rejected in review.
+- Balance `UPDATE`s go through `store.Post`, or through `store.Move` when the same document also moves an item instance; `store.Post`'s body owns the capture order both of them take, and a handler that locks accounts by hand can deadlock and will be rejected in review.
 - Always check `rows.Err()` after iterating (`rowserrcheck` enforces it); always close what you open (`sqlclosecheck`).
 - Queries are parameterised. String-built SQL is a `gosec` finding and a security bug.
 

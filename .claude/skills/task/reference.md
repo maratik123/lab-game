@@ -210,7 +210,7 @@ Run this sweep whenever the diff touches balances, items, sessions, the schedule
 # 1. Balance mutation outside the ledger
 rg -n 'UPDATE\s+\w*(balance|stamina|money|resource)' --type go --type sql <changed-files>
 # 2. Postings and item movements — each under exactly one basis document
-rg -n 'INSERT INTO (postings|item_movements)|store\.Post\(' --type go --type sql <changed-files>
+rg -n 'INSERT INTO (posting|item_movement)\b|store\.(Post|Move)\(' --type go --type sql <changed-files>
 # 3. Balance constants compiled into Go instead of configuration
 rg -n '(?i)(cap|cost|timer|ttl|rate|price|budget|dice)\s*[:=]+\s*[0-9]' --type go <changed-files>
 # 4. Non-determinism on a pure path (generation / combat / replay)

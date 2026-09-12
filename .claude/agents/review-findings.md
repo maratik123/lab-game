@@ -50,7 +50,7 @@ Read [`ai-docs/domain-invariants.md`](../../ai-docs/domain-invariants.md) first.
 
 | Check | Trigger | Severity |
 |---|---|---|
-| **Ledger bypass** | A balance column mutated outside `store.Post`; an inventory row inserted outside the item machine | `major` |
+| **Ledger bypass** | A balance column mutated outside `store.Post` / `store.Move`; an inventory row inserted outside `store.Move` (`item_movement` today) | `major` |
 | **Posting without a basis** | A posting group not tied to exactly one basis document; a new document type without the `CHECK (num_nonnulls(...) = 1)` update | `major` |
 | **Hand-rolled capture order** | Balance `UPDATE`s locked in caller-chosen order instead of `store.Post`'s sorted, deduplicated order | `major` |
 | **Telemetry lag** (`docs/DESIGN.md` §13.4) | A mechanic with no declared event; a balance-moving mechanic with no posting signature or no contract test | `major` |
