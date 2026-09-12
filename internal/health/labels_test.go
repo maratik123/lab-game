@@ -41,6 +41,7 @@ func TestSchedulerFailureLabel(t *testing.T) {
 		{"unregistered", scheduler.FailureUnregistered, "unregistered"},
 		{"deadline", scheduler.FailureDeadline, "deadline"},
 		{"rolled back", scheduler.FailureRolledBack, "rolled_back"},
+		{"panic", scheduler.FailurePanic, "panic"},
 		{"out of range", scheduler.FailureKind(99), unknownLabelValue},
 	}
 	for _, tc := range cases {

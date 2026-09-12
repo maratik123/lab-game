@@ -10,8 +10,8 @@ _Updated: 2026-09-12 18:05_
 **Issue:** #81
 **Spec:** ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md
 
-**current_step:** Step 8 — Group A subtask 6 of 9 complete
-**last_passed_gate:** go build ./... + go test ./internal/ingest/... + go test -race ./internal/ingest/... + golangci-lint run ./internal/ingest/... + go vet ./... + go run ./cmd/commentrefs | subtask 6
+**current_step:** Step 8 — Group A subtask 7 of 9 complete
+**last_passed_gate:** go build ./... + go test ./internal/health/... + golangci-lint run ./internal/health/... + go vet ./... + go run ./cmd/commentrefs | subtask 7
 **entry_args:** 81
 
 ## Next action
@@ -28,7 +28,7 @@ Group A — code (`code-writer`, `sonnet`/`medium`):
 - [x] 4. Handler-boundary recovery and its settlement; logger threaded into `runHandlerWithSavepoint` as a parameter; unusable transaction routed into the pending-settlement set
 - [x] 5. Deadline reclaim: PID read before the handler goroutine launches; one-argument terminate; two non-success shapes reported apart; `TestDeadline_ctxIgnoringHandler_negativeCase` assertion reversed; falsified comments corrected
 - [x] 6. Update ingestion: `Options` gains `Logger`; the recovery helper returns the shared value; stack into the give-up row and the log; reported outcome unchanged
-- [ ] 7. Health: failure-label mapper gains the panic case; label test, observer test and closed-set guard take the new value
+- [x] 7. Health: failure-label mapper gains the panic case; label test, observer test and closed-set guard take the new value
 - [ ] 8. Composition root: thread the process logger into both constructors
 - [ ] 9. Goroutine-ownership allow list: the handler launch's `panicTo` and `stops`, and the watchdog launch's `stops`
 
@@ -106,3 +106,5 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `internal/ingest/observe.go` (LoopObservation.Err doc fix)
 - `internal/ingest/retry_test.go` (row + log-only surface tests)
 - `internal/ingest/loop_test.go` (newLoopWithLogger helper)
+- `internal/health/labels.go` (schedulerFailureLabel gains the panic case)
+- `internal/health/labels_test.go`, `internal/health/scheduler_test.go`, `internal/health/guards_test.go` (panic value driven/expected)

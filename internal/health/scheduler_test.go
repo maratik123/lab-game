@@ -61,6 +61,7 @@ func TestSchedulerObserver_ObserveTask_FailureLabel(t *testing.T) {
 		{scheduler.FailureUnregistered, "unregistered"},
 		{scheduler.FailureDeadline, "deadline"},
 		{scheduler.FailureRolledBack, "rolled_back"},
+		{scheduler.FailurePanic, "panic"},
 	}
 	o := newSchedulerObserverForTest(t)
 	for _, m := range members {
@@ -72,7 +73,7 @@ func TestSchedulerObserver_ObserveTask_FailureLabel(t *testing.T) {
 		t.Fatalf("gather: %v", err)
 	}
 	got := observedLabelValues(mfs, labelFailure)
-	want := map[string]bool{"none": true, "handler": true, "unregistered": true, "deadline": true, "rolled_back": true}
+	want := map[string]bool{"none": true, "handler": true, "unregistered": true, "deadline": true, "rolled_back": true, "panic": true}
 	if len(got) != len(want) {
 		t.Fatalf("observed failure values = %v, want exactly %v", got, want)
 	}

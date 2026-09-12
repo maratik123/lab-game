@@ -251,7 +251,7 @@ func driveEveryAdapterOnce(t *testing.T, reg prometheus.Registerer) {
 	}
 	for _, fk := range []scheduler.FailureKind{
 		scheduler.FailureNone, scheduler.FailureHandler, scheduler.FailureUnregistered,
-		scheduler.FailureDeadline, scheduler.FailureRolledBack,
+		scheduler.FailureDeadline, scheduler.FailureRolledBack, scheduler.FailurePanic,
 	} {
 		so.ObserveTask(scheduler.Observation{Type: "raid_extraction", Outcome: scheduler.OutcomeFailed, Failure: fk})
 	}
@@ -363,7 +363,7 @@ func TestGuard_LabelNamesAndClosedSetValues(t *testing.T) {
 	assertExactSet(t, labelValuesFor(mfs, []string{familySchedulerTasks}, labelOutcome),
 		[]string{"done", "noop", "failed"}, "labgame_scheduler_tasks_total.outcome")
 	assertExactSet(t, labelValuesFor(mfs, []string{familySchedulerTasks}, labelFailure),
-		[]string{"none", "handler", "unregistered", "deadline", "rolled_back"}, "labgame_scheduler_tasks_total.failure")
+		[]string{"none", "handler", "unregistered", "deadline", "rolled_back", "panic"}, "labgame_scheduler_tasks_total.failure")
 	assertExactSet(t, labelValuesFor(mfs, []string{familyIngestUpdateOutcomes, familyIngestHandlerDuration}, labelOutcome),
 		[]string{"handled", "duplicate", "unrouted", "failed", "panic", "given_up"}, "ingest outcome families.outcome")
 	assertExactSet(t, labelValuesFor(mfs, []string{familyIngestUpdateLag, familyIngestHandlerDuration, familyIngestUpdateOutcomes}, labelKind),
