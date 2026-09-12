@@ -49,8 +49,8 @@ func TestCreateOwner_player(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
-	if len(owner.Accounts) != 2 {
-		t.Fatalf("player accounts = %d, want 2", len(owner.Accounts))
+	if len(owner.Accounts) != 6 {
+		t.Fatalf("player accounts = %d, want 6 (money, experience, and the backpack's slots/weight free/used pairs)", len(owner.Accounts))
 	}
 	for _, a := range owner.Accounts {
 		if !a.Controlled {

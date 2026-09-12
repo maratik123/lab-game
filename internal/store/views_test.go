@@ -11,14 +11,18 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// viewNames is the exact set of views this migration set creates: exactly
-// the five MVP families, and no placeholder for any deferred one.
+// viewNames is the exact set of views this migration set creates: the five
+// MVP metric families plus the item machine's three reconciliation views,
+// and no placeholder for any deferred one.
 var viewNames = []string{
 	"metric_activation_funnel",
 	"metric_retention_daily",
 	"metric_death_by_depth",
 	"metric_faucet_sink",
 	"metric_notification_per_chat_day",
+	"item_holder",
+	"item_chain_break",
+	"item_capacity_divergence",
 }
 
 func TestViews_exactViewSet(t *testing.T) {
@@ -103,6 +107,23 @@ func TestViews_columnContract(t *testing.T) {
 			{"day", "date"},
 			{"chat_id", "bigint"},
 			{"notification", "bigint"},
+		}},
+		{"item_holder", []col{
+			{"item_id", "bigint"},
+			{"holder_id", "bigint"},
+			{"movement_id", "bigint"},
+		}},
+		{"item_chain_break", []col{
+			{"item_id", "bigint"},
+			{"reached_movement", "bigint"},
+			{"recorded_movement", "bigint"},
+			{"head_movement", "bigint"},
+		}},
+		{"item_capacity_divergence", []col{
+			{"holder_id", "bigint"},
+			{"item_count", "bigint"},
+			{"slots_used_balance", "numeric"},
+			{"reason", "text"},
 		}},
 	}
 

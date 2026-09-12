@@ -21,6 +21,7 @@ func TestEnums_mirror_database(t *testing.T) {
 		{"ledger_kind", stringsOf(kinds)},
 		{"operation_source", stringsOf(operationSources)},
 		{"event_volume_class", stringsOf(eventVolumeClasses)},
+		{"capacity_role", stringsOf(capacityRoles)},
 	} {
 		var members []string
 		if err := pool.QueryRow(ctx, `SELECT enum_range(NULL::`+tc.enum+`)::text[]`).Scan(&members); err != nil {
@@ -72,18 +73,20 @@ func TestCatalog_mirrors_database(t *testing.T) {
 	}
 
 	arows, err := pool.Query(ctx,
-		`SELECT id, scope_definition_id, code, kind, controlled FROM account_definition ORDER BY id`)
+		`SELECT id, scope_definition_id, code, kind, controlled, COALESCE(capacity_role::text, '')
+		 FROM account_definition ORDER BY id`)
 	if err != nil {
 		t.Fatalf("query account_definition: %v", err)
 	}
 	var gotAcc []AccountDefinition
 	for arows.Next() {
 		var ad AccountDefinition
-		var kind string
-		if err := arows.Scan(&ad.ID, &ad.ScopeDefinitionID, &ad.Code, &kind, &ad.Controlled); err != nil {
+		var kind, capacityRole string
+		if err := arows.Scan(&ad.ID, &ad.ScopeDefinitionID, &ad.Code, &kind, &ad.Controlled, &capacityRole); err != nil {
 			t.Fatalf("scan account_definition: %v", err)
 		}
 		ad.Kind = Kind(kind)
+		ad.CapacityRole = CapacityRole(capacityRole)
 		gotAcc = append(gotAcc, ad)
 	}
 	if err := arows.Err(); err != nil {

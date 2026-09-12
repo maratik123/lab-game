@@ -9,30 +9,45 @@ type ScopeDefinition struct {
 }
 
 // AccountDefinition mirrors a row of the seeded account_definition catalog:
-// a named account inside a scope, its ledger kind, and whether it is
-// controlled — i.e. carries an account_balance row.
+// a named account inside a scope, its ledger kind, whether it is
+// controlled — i.e. carries an account_balance row — and, for a capacity
+// account, which half of its kind's free/used pair it is. CapacityRole is
+// the empty string for SQL NULL (the money and experience rows), read via
+// COALESCE(capacity_role::text, the empty SQL string), never a pointer,
+// because the mirror comparison below is element-for-element on a
+// comparable struct.
 type AccountDefinition struct {
 	ID                int16
 	ScopeDefinitionID int16
 	Code              string
 	Kind              Kind
 	Controlled        bool
+	CapacityRole      CapacityRole
 }
 
-// scopeDefinitions mirrors the ledger-core migration's seeded
-// scope_definition rows exactly.
+// scopeDefinitions mirrors the ledger-core and item-machine migrations'
+// seeded scope_definition rows exactly.
 var scopeDefinitions = []ScopeDefinition{
 	{ID: 1, Code: "world", OwnerKind: OwnerWorld},
 	{ID: 2, Code: "attributes", OwnerKind: OwnerPlayer},
+	{ID: 3, Code: "backpack", OwnerKind: OwnerPlayer},
 }
 
-// accountDefinitions mirrors the ledger-core migration's seeded
-// account_definition rows exactly.
+// accountDefinitions mirrors the ledger-core and item-machine migrations'
+// seeded account_definition rows exactly.
 var accountDefinitions = []AccountDefinition{
 	{ID: 1, ScopeDefinitionID: 1, Code: "money", Kind: KindMoney, Controlled: false},
 	{ID: 2, ScopeDefinitionID: 1, Code: "experience", Kind: KindExperience, Controlled: false},
 	{ID: 3, ScopeDefinitionID: 2, Code: "money", Kind: KindMoney, Controlled: true},
 	{ID: 4, ScopeDefinitionID: 2, Code: "experience", Kind: KindExperience, Controlled: true},
+	{ID: 5, ScopeDefinitionID: 1, Code: "slots_free", Kind: KindSlots, Controlled: false, CapacityRole: CapacityFree},
+	{ID: 6, ScopeDefinitionID: 1, Code: "slots_used", Kind: KindSlots, Controlled: false, CapacityRole: CapacityUsed},
+	{ID: 7, ScopeDefinitionID: 1, Code: "weight_free", Kind: KindWeight, Controlled: false, CapacityRole: CapacityFree},
+	{ID: 8, ScopeDefinitionID: 1, Code: "weight_used", Kind: KindWeight, Controlled: false, CapacityRole: CapacityUsed},
+	{ID: 9, ScopeDefinitionID: 3, Code: "slots_free", Kind: KindSlots, Controlled: true, CapacityRole: CapacityFree},
+	{ID: 10, ScopeDefinitionID: 3, Code: "slots_used", Kind: KindSlots, Controlled: true, CapacityRole: CapacityUsed},
+	{ID: 11, ScopeDefinitionID: 3, Code: "weight_free", Kind: KindWeight, Controlled: true, CapacityRole: CapacityFree},
+	{ID: 12, ScopeDefinitionID: 3, Code: "weight_used", Kind: KindWeight, Controlled: true, CapacityRole: CapacityUsed},
 }
 
 // EventType names one row of the event_type_definition registry: event.type

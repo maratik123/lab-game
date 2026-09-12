@@ -9,12 +9,17 @@ import (
 )
 
 // appendOnlyPattern extends the ledger's append-only pattern to the event
-// table: no statement may UPDATE or DELETE FROM the
-// append-only tables posting, journal_entry and event. The word boundary
-// after each alternative is what keeps "event" from matching
-// "event_type_definition" — that table is a seeded catalog, not append-only,
-// and is exercised by the decoy loop below.
-var appendOnlyPattern = regexp.MustCompile(`(?i)update\s+(posting|journal_entry|event)\b|delete\s+from\s+(posting|journal_entry|event)\b`)
+// table and to item_movement: no statement may UPDATE or DELETE FROM the
+// append-only tables posting, journal_entry, event or item_movement. The
+// word boundary after each alternative is what keeps "event" from matching
+// "event_type_definition" and "item_movement" from matching
+// "item_movement_archive" — those tables are, respectively, a seeded
+// catalog and a decoy name, not append-only, and both are exercised by the
+// decoy loop below. item itself is deliberately outside the pattern: it is
+// an identity table like owner and scope, carries nothing mutable to
+// rewrite, and a later migration legitimately backfills a definition
+// column onto it.
+var appendOnlyPattern = regexp.MustCompile(`(?i)update\s+(posting|journal_entry|event|item_movement)\b|delete\s+from\s+(posting|journal_entry|event|item_movement)\b`)
 
 // TestAppendOnly_no_update_or_delete_on_ledger_tables is the in-suite twin
 // of the design-time source sweep: every non-test Go source of this
@@ -33,6 +38,8 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 		"delete from journal_entry where id = 1",
 		"UPDATE event SET payload = '{}'",
 		"delete from event where id = 1",
+		"UPDATE item_movement SET from_holder_id = 1",
+		"delete from item_movement where id = 1",
 	} {
 		if !appendOnlyPattern.MatchString(planted) {
 			t.Fatalf("positive control failed: pattern does not match %q", planted)
@@ -45,6 +52,12 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 		// word boundary after "event" must not spill into its name.
 		"update event_type_definition set volume_class = 'low_volume'",
 		"delete from event_type_definition where id = 1",
+		// item_movement_archive merely starts the same way; item itself
+		// stays legitimately writable.
+		"update item_movement_archive set from_holder_id = 1",
+		"delete from item_movement_archive where id = 1",
+		"update item set id = 1",
+		"delete from item where id = 1",
 	} {
 		if appendOnlyPattern.MatchString(decoy) {
 			t.Fatalf("positive control failed: pattern matches the decoy %q", decoy)
@@ -98,8 +111,9 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 		names = append(names, src.name)
 	}
 	if !slices.Contains(names, "post.go") || !slices.Contains(names, "migrations/00001_ledger_core.sql") ||
-		!slices.Contains(names, "event.go") || !slices.Contains(names, "migrations/00003_event_log.sql") {
-		t.Fatalf("append-only scan is vacuous: post.go, event.go, migrations/00001_ledger_core.sql and migrations/00003_event_log.sql must be in the scanned set; collected %d files: %v", len(names), names)
+		!slices.Contains(names, "event.go") || !slices.Contains(names, "migrations/00003_event_log.sql") ||
+		!slices.Contains(names, "migrations/00007_item_machine.sql") {
+		t.Fatalf("append-only scan is vacuous: post.go, event.go, migrations/00001_ledger_core.sql, migrations/00003_event_log.sql and migrations/00007_item_machine.sql must be in the scanned set; collected %d files: %v", len(names), names)
 	}
 
 	// Scan: one failure per forbidden statement, naming file and match.
