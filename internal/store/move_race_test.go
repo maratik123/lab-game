@@ -4,23 +4,32 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/maratik123/lab-game/internal/testdb"
 )
 
 // TestMove_antiConflict races two transactions moving one instance from the
-// same current holder to two different destinations. Both attempts share
-// the exact same (item_id, prev_movement_id, from_holder_id) successor
-// key regardless of destination — that identity, not luck, is what
-// guarantees a collision every round; what varies round to round is which
-// transaction wins and whether the loser's refusal ever surfaces as
-// anything other than the expected block-then-refuse. Run under -race.
+// same current holder to two different destinations. The holder's
+// slots_used starts at exactly one — the instance being raced — so a
+// racer whose own capacity leg reached the balance before the chain
+// decision would drive that balance negative and be refused with the
+// wrong sentinel (ErrOverdraft) instead of the chain conflict this test
+// targets; the chain insert runs ahead of the balance UPDATEs precisely so
+// that never happens. Both attempts share the exact same (item_id,
+// prev_movement_id, from_holder_id) successor key regardless of
+// destination — that identity, not luck, is what guarantees a collision
+// every round; what varies round to round is which transaction wins and
+// which sentinel names the loser's refusal. Run under -race.
 func TestMove_antiConflict(t *testing.T) {
 	t.Parallel()
 
 	const rounds = 15
+	var sawMoveConflict atomic.Bool
 
 	for round := 0; round < rounds; round++ {
 		round := round
@@ -47,24 +56,11 @@ func TestMove_antiConflict(t *testing.T) {
 				_, start = newPlayerWithBackpack(t, ctx, tx)
 				_, destA = newPlayerWithBackpack(t, ctx, tx)
 				_, destB = newPlayerWithBackpack(t, ctx, tx)
-				grantSlots(t, ctx, tx, start, 5)
+				grantSlots(t, ctx, tx, start, 1)
 				grantSlots(t, ctx, tx, destA, 5)
 				grantSlots(t, ctx, tx, destB, 5)
-				// A second, unraced "anchor" instance shares start with the
-				// raced one: with start's slots_used at 1 alone, the
-				// loser's own capacity legs (posted before either
-				// transaction's chain insert is attempted) would decrement
-				// an already-decremented balance to -1 and surface a
-				// spurious ErrOverdraft rather than the chain conflict this
-				// test targets. At 2, both transactions' independent
-				// decrements land at 1 and 0 — never negative — so the
-				// race is decided where it is meant to be: the chain
-				// insert.
 				ids, err := Move(ctx, tx, &ManualCorrection{Actor: "race", Reason: "seed"},
-					[]Movement{
-						{ItemID: NewItem, From: WorldHolder, To: start},
-						{ItemID: NewItem, From: WorldHolder, To: start},
-					})
+					[]Movement{{ItemID: NewItem, From: WorldHolder, To: start}})
 				if err != nil {
 					t.Fatalf("seed Move: %v", err)
 				}
@@ -127,7 +123,11 @@ func TestMove_antiConflict(t *testing.T) {
 					}
 				case errors.Is(err, ErrMoveConflict):
 					losers++
+					sawMoveConflict.Store(true)
 					t.Logf("round %d: goroutine %d lost the chain race: %v", round, i, err)
+				case errors.Is(err, ErrNotCurrentHolder):
+					losers++
+					t.Logf("round %d: goroutine %d lost before its own phase b ran: %v", round, i, err)
 				default:
 					t.Fatalf("round %d: goroutine %d returned an unexpected error: %v", round, i, err)
 				}
@@ -143,6 +143,199 @@ func TestMove_antiConflict(t *testing.T) {
 			if n := countRows(t, ctx, pool, `SELECT * FROM item_chain_break`); n != 0 {
 				t.Fatalf("round %d: item_chain_break = %d rows, want 0", round, n)
 			}
+			if n := countRows(t, ctx, pool, `SELECT * FROM item_capacity_divergence`); n != 0 {
+				t.Fatalf("round %d: item_capacity_divergence = %d rows, want 0", round, n)
+			}
 		})
+	}
+
+	if !sawMoveConflict.Load() {
+		t.Fatalf("across %d rounds, no loser was ever refused with ErrMoveConflict — every round degraded to ErrNotCurrentHolder, never reaching the chain-conflict path this test exists to exercise", rounds)
+	}
+}
+
+// blockPollCeiling bounds how long TestMove_orderedConflict waits for the
+// loser's backend to report itself blocked on the lock a concurrent
+// item_movement insert takes. It is a patience budget sized generously
+// against a shared server under neighbours' load, not an assertion: on the
+// ceiling the test fails with a named cause instead of hanging until the
+// package's own test timeout does.
+const blockPollCeiling = 10 * time.Second
+
+// blockPollInterval is how often TestMove_orderedConflict re-checks
+// pg_stat_activity while waiting for the loser to block.
+const blockPollInterval = 10 * time.Millisecond
+
+// TestMove_orderedConflict is the deterministic discriminator for the
+// promise that a lost chain race is refused at the chain, not at a
+// balance. Unlike TestMove_antiConflict, which lets the scheduler decide
+// who wins, this test controls the order directly: the winner's Move runs
+// to completion but does not commit, a second Move for the same instance
+// is started in a goroutine and is expected to block on the winner's
+// uncommitted successor-key entry, and only once that block is observed
+// does the winner commit — so the loser's refusal is induced on demand
+// rather than by luck.
+func TestMove_orderedConflict(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cfg := testdb.Schema(t)
+
+	setupPool, err := NewPool(ctx, cfg.Copy())
+	if err != nil {
+		t.Fatalf("new setup pool: %v", err)
+	}
+	t.Cleanup(setupPool.Close)
+	if err := Migrate(ctx, setupPool, slog.New(slog.DiscardHandler)); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	// The single-item fixture: start's slots_used is exactly one, the
+	// instance being raced, so a racer whose own capacity leg reached the
+	// balance before the chain decision would drive it negative and be
+	// refused with ErrOverdraft instead of the conflict this test targets.
+	var item ItemID
+	var start, destA, destB HolderID
+	{
+		tx, err := setupPool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin setup: %v", err)
+		}
+		_, start = newPlayerWithBackpack(t, ctx, tx)
+		_, destA = newPlayerWithBackpack(t, ctx, tx)
+		_, destB = newPlayerWithBackpack(t, ctx, tx)
+		grantSlots(t, ctx, tx, start, 1)
+		grantSlots(t, ctx, tx, destA, 5)
+		grantSlots(t, ctx, tx, destB, 5)
+		ids, err := Move(ctx, tx, &ManualCorrection{Actor: "race", Reason: "seed"},
+			[]Movement{{ItemID: NewItem, From: WorldHolder, To: start}})
+		if err != nil {
+			t.Fatalf("seed Move: %v", err)
+		}
+		item = ids[0]
+		if err := tx.Commit(ctx); err != nil {
+			t.Fatalf("commit setup: %v", err)
+		}
+	}
+
+	// Two pools over the one schema, each with its own recorder, so every
+	// statement is attributable to one racer instead of interleaved in a
+	// pool-wide log.
+	recWinner := &queryRecorder{}
+	winnerCfg := cfg.Copy()
+	winnerCfg.MaxConns = 1
+	winnerCfg.ConnConfig.Tracer = recWinner
+	winnerPool, err := NewPool(ctx, winnerCfg)
+	if err != nil {
+		t.Fatalf("new winner pool: %v", err)
+	}
+	t.Cleanup(winnerPool.Close)
+
+	recLoser := &queryRecorder{}
+	loserCfg := cfg.Copy()
+	loserCfg.MaxConns = 1
+	loserCfg.ConnConfig.Tracer = recLoser
+	loserPool, err := NewPool(ctx, loserCfg)
+	if err != nil {
+		t.Fatalf("new loser pool: %v", err)
+	}
+	t.Cleanup(loserPool.Close)
+
+	// Both transactions are rolled back unconditionally on cleanup —
+	// rollback is a no-op past a commit (pgx.ErrTxClosed) — so a failed
+	// assertion below cannot leave either connection checked out of its
+	// one-connection pool and hang that pool's Close.
+	winnerTx, err := winnerPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin winner tx: %v", err)
+	}
+	t.Cleanup(func() { rollback(t, ctx, winnerTx) })
+	if _, err := Move(ctx, winnerTx, &ManualCorrection{Actor: "race", Reason: "winner"},
+		[]Movement{{ItemID: item, From: start, To: destA}}); err != nil {
+		t.Fatalf("winner Move: %v", err)
+	}
+
+	loserTx, err := loserPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin loser tx: %v", err)
+	}
+	t.Cleanup(func() { rollback(t, ctx, loserTx) })
+	var loserPID int32
+	if err := loserTx.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&loserPID); err != nil {
+		t.Fatalf("select loser backend pid: %v", err)
+	}
+	recLoser.Reset()
+
+	type loserResult struct {
+		err error
+	}
+	resultCh := make(chan loserResult, 1)
+	go func() {
+		_, err := Move(ctx, loserTx, &ManualCorrection{Actor: "race", Reason: "loser"},
+			[]Movement{{ItemID: item, From: start, To: destB}})
+		resultCh <- loserResult{err: err}
+	}()
+
+	deadline := time.Now().Add(blockPollCeiling)
+	blocked := false
+	var early *loserResult
+pollLoop:
+	for {
+		select {
+		case r := <-resultCh:
+			early = &r
+			break pollLoop
+		default:
+		}
+		var waitEventType *string
+		if err := setupPool.QueryRow(ctx,
+			`SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1`, loserPID,
+		).Scan(&waitEventType); err != nil {
+			t.Fatalf("poll pg_stat_activity: %v", err)
+		}
+		if waitEventType != nil && *waitEventType == "Lock" {
+			blocked = true
+			break
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(blockPollInterval)
+	}
+	if !blocked {
+		if early != nil {
+			t.Fatalf("the loser never blocked: Move returned %v before a block was observed", early.err)
+		}
+		t.Fatalf("the loser never blocked: pg_stat_activity never reported wait_event_type = Lock for pid %d within %s", loserPID, blockPollCeiling)
+	}
+
+	if err := winnerTx.Commit(ctx); err != nil {
+		t.Fatalf("commit winner: %v", err)
+	}
+
+	loserErr := (<-resultCh).err
+	if !errors.Is(loserErr, ErrMoveConflict) {
+		t.Fatalf("loser error = %v, want ErrMoveConflict", loserErr)
+	}
+	if errors.Is(loserErr, ErrOverdraft) {
+		t.Fatalf("loser error %v must not also be ErrOverdraft — that is the defect this test exists to catch", loserErr)
+	}
+	rollback(t, ctx, loserTx)
+
+	for _, s := range recLoser.Statements() {
+		if strings.Contains(strings.ToUpper(s.SQL), "UPDATE ACCOUNT_BALANCE") {
+			t.Fatalf("the loser issued a balance UPDATE before its refusal: %+v", s)
+		}
+	}
+
+	row := selectItemHolder(t, ctx, setupPool, item)
+	if row == nil || row.HolderID != destA {
+		t.Fatalf("item_holder = %+v, want the winner's destination %d", row, destA)
+	}
+	if n := countRows(t, ctx, setupPool, `SELECT * FROM item_chain_break`); n != 0 {
+		t.Fatalf("item_chain_break = %d rows, want 0", n)
+	}
+	if n := countRows(t, ctx, setupPool, `SELECT * FROM item_capacity_divergence`); n != 0 {
+		t.Fatalf("item_capacity_divergence = %d rows, want 0", n)
 	}
 }

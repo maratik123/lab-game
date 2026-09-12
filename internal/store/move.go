@@ -45,6 +45,16 @@ const (
 // movements[i] moved — the freshly minted id where that movement carried
 // NewItem, the caller's own ItemID echoed back otherwise.
 //
+// A lost race is refused at the chain, not at a balance, so the two losing
+// sentinels keep their separate meanings: ErrOverdraft on a destination
+// holder's slots_free account is a full backpack; ErrOverdraft on a
+// source holder's slots_used account is not a capacity refusal at all but
+// the two machines having already diverged before this move, which
+// item_capacity_divergence reports at rest; ErrNotCurrentHolder is a lost
+// race decided before this move's phase b ran, transaction usable and
+// nothing written; ErrMoveConflict is a lost race decided while this move
+// held the chain insert, transaction aborted.
+//
 // Phases, in order (mirroring post's documented shape):
 //
 //	a. static shape, no SQL: movements non-empty (ErrNoMovements); no
@@ -61,13 +71,18 @@ const (
 //	   per-movement capacity legs. post sums per account before touching a
 //	   balance, so a caller batch that is not itself zero-sum per kind
 //	   fails post's own check as ErrUnbalanced.
-//	d. post(...): one basis document, one journal_entry, the balance
-//	   UPDATEs, then every posting. ErrOverdraft here is the capacity
-//	   refusal.
-//	e. mint: one item row per NewItem movement.
-//	f. movements: the item_movement rows, in ascending instance id. A chain
-//	   refusal that only a concurrent transaction could produce surfaces as
-//	   ErrMoveConflict, transaction aborted.
+//	d. post(...) up to the journal entry, then this move's beforeBalances
+//	   hook — phases e and f below — before post touches any balance.
+//	e. mint (inside the hook): one item row per NewItem movement.
+//	f. movements (inside the hook): the item_movement rows, in ascending
+//	   instance id, so two batches touching the same instances take the
+//	   index entries in one order. A chain refusal that only a concurrent
+//	   transaction could produce surfaces as ErrMoveConflict, transaction
+//	   aborted.
+//	g. post resumes: the balance UPDATEs in capture order, then every
+//	   posting. By this phase every movement in the batch has already
+//	   taken its successor slot, so ErrOverdraft here is a capacity
+//	   refusal rather than a lost race.
 func Move(ctx context.Context, tx pgx.Tx, basis PostingBasis, movements []Movement, postings ...Posting) ([]ItemID, error) {
 	// Phase a.
 	if len(movements) == 0 {
@@ -198,54 +213,58 @@ func Move(ctx context.Context, tx pgx.Tx, basis PostingBasis, movements []Moveme
 		)
 	}
 
-	// Phase d.
-	journalEntryID, err := post(ctx, tx, basis, batch...)
-	if err != nil {
-		return nil, err
-	}
-
-	// Phase e: mint.
+	// Phase d: post up to the journal entry, then this move's
+	// beforeBalances hook — phases e and f — before post touches any
+	// balance.
 	ids := make([]ItemID, len(movements))
-	for i, m := range movements {
-		if m.ItemID != NewItem {
-			ids[i] = m.ItemID
-			continue
+	hook := func(journalEntryID int64) error {
+		// Phase e: mint.
+		for i, m := range movements {
+			if m.ItemID != NewItem {
+				ids[i] = m.ItemID
+				continue
+			}
+			var minted int64
+			if err := tx.QueryRow(ctx, `INSERT INTO item DEFAULT VALUES RETURNING id`).Scan(&minted); err != nil {
+				return fmt.Errorf("move: mint item: %w", err)
+			}
+			ids[i] = ItemID(minted)
 		}
-		var minted int64
-		if err := tx.QueryRow(ctx, `INSERT INTO item DEFAULT VALUES RETURNING id`).Scan(&minted); err != nil {
-			return nil, fmt.Errorf("move: mint item: %w", err)
+
+		// Phase f: movements, in ascending instance id.
+		order := make([]int, len(movements))
+		for i := range order {
+			order[i] = i
 		}
-		ids[i] = ItemID(minted)
+		slices.SortFunc(order, func(a, b int) int { return cmp.Compare(ids[a], ids[b]) })
+		for _, i := range order {
+			m := movements[i]
+			var prev *int64
+			if m.ItemID != NewItem {
+				if v, ok := headMovementByItem[ids[i]]; ok {
+					prev = &v
+				}
+			}
+			var newHead int64
+			err := tx.QueryRow(ctx,
+				`INSERT INTO item_movement (item_id, prev_movement_id, from_holder_id, to_holder_id, journal_entry_id)
+				 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+				ids[i], prev, m.From, m.To, journalEntryID,
+			).Scan(&newHead)
+			if err != nil {
+				var pgErr *pgconn.PgError
+				if errors.As(err, &pgErr) && (pgErr.Code == sqlstateForeignKeyViolation && pgErr.ConstraintName == constraintChainFK ||
+					pgErr.Code == sqlstateUniqueViolation && pgErr.ConstraintName == constraintSuccessorKey) {
+					return ErrMoveConflict
+				}
+				return fmt.Errorf("move: insert item_movement: %w", err)
+			}
+		}
+		return nil
 	}
 
-	// Phase f: movements, in ascending instance id.
-	order := make([]int, len(movements))
-	for i := range order {
-		order[i] = i
-	}
-	slices.SortFunc(order, func(a, b int) int { return cmp.Compare(ids[a], ids[b]) })
-	for _, i := range order {
-		m := movements[i]
-		var prev *int64
-		if m.ItemID != NewItem {
-			if v, ok := headMovementByItem[ids[i]]; ok {
-				prev = &v
-			}
-		}
-		var newHead int64
-		err := tx.QueryRow(ctx,
-			`INSERT INTO item_movement (item_id, prev_movement_id, from_holder_id, to_holder_id, journal_entry_id)
-			 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-			ids[i], prev, m.From, m.To, journalEntryID,
-		).Scan(&newHead)
-		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && (pgErr.Code == sqlstateForeignKeyViolation && pgErr.ConstraintName == constraintChainFK ||
-				pgErr.Code == sqlstateUniqueViolation && pgErr.ConstraintName == constraintSuccessorKey) {
-				return nil, ErrMoveConflict
-			}
-			return nil, fmt.Errorf("move: insert item_movement: %w", err)
-		}
+	if err := post(ctx, tx, basis, hook, batch...); err != nil {
+		return nil, err
 	}
 
 	return ids, nil

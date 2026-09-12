@@ -60,7 +60,9 @@ const (
 //	d. insert the basis document, then the journal_entry
 //	   (ErrAlreadyPosted on a player-operation replay, untouched;
 //	   ErrUnknownEventType on an event basis naming an unregistered type,
-//	   aborted; any other error: aborted).
+//	   aborted; any other error: aborted). Post's own beforeBalances hook
+//	   is nil; Move's runs here, once the journal entry exists and before
+//	   phase e touches a balance — see post's doc comment.
 //	e. one plain UPDATE per controlled account with a non-zero delta, in
 //	   ascending account_id (ErrOverdraft or ErrBalanceRowMissing, or any
 //	   other wrapped database error — all leave the transaction aborted,
@@ -73,30 +75,33 @@ const (
 //	   through the accumulated balance.
 //	f. insert the postings, in the caller's order (aborted on error).
 func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Posting) error {
-	_, err := post(ctx, tx, basis, postings...)
-	return err
+	return post(ctx, tx, basis, nil, postings...)
 }
 
-// post is Post's body, returning the journal_entry id phase d wrote — Move
-// needs it to point every item_movement row at the same document Post
-// itself produced. Post is the thin wrapper that drops it; this is the
-// second (and only other) write path to a balance, both of them funnelled
-// through the one body below.
-func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Posting) (int64, error) {
+// post is Post's body: the second (and only other) write path to a
+// balance. beforeBalances, when non-nil, runs once the basis document and
+// the journal entry exist and before the first balance UPDATE — the seam
+// Move needs so its chain rows (item_movement) take their successor slots
+// ahead of the capacity legs, which is what lets a lost chain race surface
+// as ErrMoveConflict rather than as a spurious ErrOverdraft on a balance
+// that another transaction has not yet committed. beforeBalances's error is
+// returned unwrapped, so errors.Is still finds a sentinel it names (for
+// example ErrMoveConflict). Post passes nil.
+func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, beforeBalances func(journalEntryID int64) error, postings ...Posting) error {
 	// Phase a.
 	if basis == nil {
-		return 0, ErrNoBasis
+		return ErrNoBasis
 	}
 	entrySQL, err := basis.entrySQL()
 	if err != nil {
-		return 0, err
+		return err
 	}
 	if len(postings) == 0 {
-		return 0, ErrEmptyBatch
+		return ErrEmptyBatch
 	}
 	for i, p := range postings {
 		if !validAmount(p.Amount) {
-			return 0, fmt.Errorf("%w: posting %d, account %d, amount %s", ErrInvalidAmount, i, p.AccountID, p.Amount)
+			return fmt.Errorf("%w: posting %d, account %d, amount %s", ErrInvalidAmount, i, p.AccountID, p.Amount)
 		}
 	}
 
@@ -118,7 +123,7 @@ func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 		 FROM account a JOIN account_definition d ON d.id = a.account_definition_id
 		 WHERE a.id = ANY($1)`, ids)
 	if err != nil {
-		return 0, fmt.Errorf("post: select accounts: %w", err)
+		return fmt.Errorf("post: select accounts: %w", err)
 	}
 	for rows.Next() {
 		var id AccountID
@@ -126,16 +131,16 @@ func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 		var info accountInfo
 		if err := rows.Scan(&id, &kindText, &info.controlled); err != nil {
 			rows.Close()
-			return 0, fmt.Errorf("post: scan account: %w", err)
+			return fmt.Errorf("post: scan account: %w", err)
 		}
 		info.kind = Kind(kindText)
 		infoByID[id] = info
 	}
 	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("post: select accounts: %w", err)
+		return fmt.Errorf("post: select accounts: %w", err)
 	}
 	if len(infoByID) < len(ids) {
-		return 0, ErrUnknownAccount
+		return ErrUnknownAccount
 	}
 
 	// Phase c.
@@ -148,7 +153,7 @@ func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 	}
 	for _, sum := range sumByKind {
 		if !sum.IsZero() {
-			return 0, ErrUnbalanced
+			return ErrUnbalanced
 		}
 	}
 
@@ -156,13 +161,18 @@ func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 	docID, err := basis.insert(ctx, tx)
 	if err != nil {
 		if errors.Is(err, ErrAlreadyPosted) {
-			return 0, err
+			return err
 		}
-		return 0, fmt.Errorf("post: insert basis document: %w", err)
+		return fmt.Errorf("post: insert basis document: %w", err)
 	}
 	var entryID int64
 	if err := tx.QueryRow(ctx, entrySQL, docID).Scan(&entryID); err != nil {
-		return 0, fmt.Errorf("post: insert journal_entry: %w", err)
+		return fmt.Errorf("post: insert journal_entry: %w", err)
+	}
+	if beforeBalances != nil {
+		if err := beforeBalances(entryID); err != nil {
+			return err
+		}
 	}
 
 	// Phase e.
@@ -180,12 +190,12 @@ func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == sqlstateCheckViolation && pgErr.ConstraintName == constraintBalanceNonnegative {
-				return 0, fmt.Errorf("%w: account %d: %w", ErrOverdraft, id, err)
+				return fmt.Errorf("%w: account %d: %w", ErrOverdraft, id, err)
 			}
-			return 0, fmt.Errorf("post: update balance for account %d: %w", id, err)
+			return fmt.Errorf("post: update balance for account %d: %w", id, err)
 		}
 		if tag.RowsAffected() != 1 {
-			return 0, fmt.Errorf("%w: account %d", ErrBalanceRowMissing, id)
+			return fmt.Errorf("%w: account %d", ErrBalanceRowMissing, id)
 		}
 	}
 
@@ -195,9 +205,9 @@ func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 			`INSERT INTO posting (journal_entry_id, account_id, amount) VALUES ($1, $2, $3)`,
 			entryID, p.AccountID, p.Amount,
 		); err != nil {
-			return 0, fmt.Errorf("post: insert posting: %w", err)
+			return fmt.Errorf("post: insert posting: %w", err)
 		}
 	}
 
-	return entryID, nil
+	return nil
 }
