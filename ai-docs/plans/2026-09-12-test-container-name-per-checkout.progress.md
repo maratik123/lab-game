@@ -5,16 +5,16 @@ _Updated: 2026-09-12 00:00_
 
 **Branch:** feat/2026-09-12-test-container-name-per-checkout
 **base_commit:** 8e18df9f46e5b1ccec36e9c825a43dbb9b2e8f6f
-**Last build:** not run
+**Last build:** PASS
 **Issue:** #91
 **Spec:** ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md
 **current_step:** Step 8 — Group A, subtask 2 of 2 complete (group A done)
-**last_passed_gate:** golangci-lint run | 2026-09-12T00:00:09Z | 8e18df9f46e5b1ccec36e9c825a43dbb9b2e8f6f
+**last_passed_gate:** golangci-lint run | 2026-09-12T00:13:18Z | a806d3a5318ec2fb4030f378b9b7589bc5552934
 **entry_args:** сделать так, чтобы имя контейнера бд выводилось из имени каталога проекта, например lab-game-test-postgres для ~/lab-game и lab-game2-test-postgres для ~/lab-game2 (для параллелизации разработки)
 
 ## Next action
 
-**Do this immediately:** hand off Group A (subtasks 1–2, `cmd/testpg/run.go` + `cmd/testpg/run_test.go` + `internal/testdb/server.go`) to `code-writer` per the design's `## Handoff plan`.
+**Do this immediately:** hand off Group B (subtask 3, `ai-docs/key-decisions.md` + `ai-docs/go-test-conventions.md`) to `general-purpose` per the design's `## Handoff plan`.
 
 ## Subtasks
 
@@ -31,6 +31,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: the orchestrator's `AskUserQuestion` for that ruling offered "restate / strike / leave" instead of the recipe's "amend / fix the design only / leave" — logged in `ai-docs/learnings.md` 2026-09-12.
 - **Step 8 subtask 1**: `containerNameForDir` implemented as designed — `filepath.Base(dir)` validated against `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`, then `+ "-test-postgres"`. Table test written first, observed red against a placeholder returning `("", nil)` (all non-trivial cases failed by name), then implemented and observed green. All gates (`go build`, `go test ./...`, `go vet`, `golangci-lint fmt -d`, `golangci-lint run`) passed.
 - **Step 8 subtask 2**: added `workDir func() (string, error)` to `seam`, wired to `os.Getwd` in `productionSeam` and to a stub field in `stubSeam` (defaulting to `/stub/lab-game` when unset, so existing cases keep passing unmodified). `runUp` derives the container name before disabling the reaper/provisioning; `runDown` derives it after `sm.locate()`/`sm.probe()`, before its own `os.Setenv` — matching D5's ordering. `--up`'s success report line now names the provisioned container (D8). Deleted `testdb.SharedContainerName` and its doc comment from `internal/testdb/server.go`; `grep -rn SharedContainerName --include='*.go' .` returns nothing. Added the full case list from the design's Test Design subtask-2 section (differing/same-basename `--up` pairs, invalid-directory and workDir-lookup-failure cases for both `--up`/`--down`, the reaper-untouched assertions pinning pre-check position, the stale-locator-cleanup-with-invalid-dir case pinning D5's reachability half, and `runChild` never deriving a name). Confirmed the discriminating `--up` different-directory test fails (red) against a `containerNameForDir` mutant hardcoded to a constant, and passes (green) against the real implementation — checked the mutant **builds** first. Two comment-ref violations (`D5` cited as a decision anchor in two test comments) were caught by `go run ./cmd/commentrefs` and fixed by dropping the anchor, restating in prose. Full gate run: `go build ./...`, `go test ./... -count=1`, `go vet ./...`, `golangci-lint fmt -d`, `golangci-lint run`, `go run ./cmd/commentrefs`, `go run ./cmd/importguard` — all green.
+
+- **Step 8 group boundary**: the orchestrator re-ran the group's gates itself rather than recording the delegate's claim — `go build ./...`, `go test ./cmd/testpg -count=1`, `go vet ./...`, `golangci-lint run`, `make comment-refs`, all green — and read the derivation call sites: `runUp` derives at run.go:267 above the reaper `Setenv` at :282, `runDown` derives at :350 below `sm.locate()` (:330) and `sm.probe()` (:336) and above its `Setenv` (:360), and `runChild` calls it nowhere. The delegate left `Last build`, `last_passed_gate` and `Next action` at their Step-8-creation values; refreshed here.
 
 ## GO notes
 
