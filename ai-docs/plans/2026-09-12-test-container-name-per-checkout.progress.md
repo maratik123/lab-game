@@ -8,13 +8,13 @@ _Updated: 2026-09-12 00:18_
 **Last build:** PASS
 **Issue:** #91
 **Spec:** ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md
-**current_step:** Step 11 — review fixes complete (Round 1)
+**current_step:** Step 10 — self-review APPROVE (Round 2)
 **last_passed_gate:** make test | 2026-09-12T00:42:00Z | dbfad7a
 **entry_args:** сделать так, чтобы имя контейнера бд выводилось из имени каталога проекта, например lab-game-test-postgres для ~/lab-game и lab-game2-test-postgres для ~/lab-game2 (для параллелизации разработки)
 
 ## Next action
 
-**Do this immediately:** Step 10 — re-spawn `self-review` (warm) to re-verify its own round-1 findings.
+**Do this immediately:** Step 12 — finalise INDEX, move the spec and design to `done/`, open the PR.
 
 ## Subtasks
 
@@ -45,6 +45,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 11**: a `git show` of a pre-change source file was redirected to `tmp/pre.go`, which put a package inside the module and turned `go build ./...` and `golangci-lint run` RED; deleted, gates green again, logged in `ai-docs/learnings.md` 2026-09-12.
 
 - **Step 11**: the owner ruled on the D6 ground-3 correction (state file `prior_qa` round 4): amend, with a per-instance exemption from a repeat design-review. `design-writer` corrected the one clause after re-reading `runDown` itself; the design now states the property is about the container, never about the dial, and names what `--down` does not spare. A scan of the whole design for the same over-strong shape returns nothing.
+
+- **Step 10**: APPROVE at round 2 of 3. Round 1 raised two findings, both fixed and re-verified by execution; the four round-2 nits are recorded in the register as `accepted@2`. R2-1 was re-checked by the orchestrator rather than taken on the verdict: all five tests do exit before the reaper write, so the observation holds, but they are correctly serial because the family shares the process environment with the tests that write it, and "same reason as above" reads as the family's reason. Severity not disputed; the row stands as accepted.
 
 ## GO notes
 
@@ -81,6 +83,10 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | R1-4 | round 1 | nit | fixed@dbfad7a — acceptance overridden by the orchestrator. The reviewer's ground was that the file is append-only history; that does not hold for an entry this same PR adds, and the claim itself is refuted by the code — `context-status.md`'s "on `--down` before anything is reached for at all" is true of the *container* but not of `sm.probe`, which dials the located DSN before the derivation; the sentence reproduces the design's own D6 ground-3 wording and the file is append-only history | `sed -n '330,345p' cmd/testpg/run.go` |
 | R1-5 | round 1 | nit | accepted@1 — `run_test.go` at 711 lines crosses the 500 soft band but is one package's cohesive wrapper-test file; the checklist's counter-rule forbids flagging it, and `make file-limits` is green | `wc -l cmd/testpg/run_test.go && make file-limits` |
 | R1-6 | round 1 | nit | accepted@1 — `runUp` now derives above `testdb.Ceiling`, so an invalid directory name outranks a bad `--clients`/`--parallel` pair in error precedence; neither an AC nor the design pins that order and both exits are non-zero and named | `sed -n '261,278p' cmd/testpg/run.go` |
+| R2-1 | round 2 | nit | accepted@2 — five of the eight `// Not parallel, same reason as above.` comments this diff adds head a test the quoted reason is not true of: `run_test.go`:549, 570, 610, 656 and 672 all return above `runUp`/`runDown`'s `os.Setenv` or assert nothing about it. Below the severity floor: no AC, design decision or gate is violated, sequential placement is conservative rather than wrong, and the design's own Test Design carries the same generalisation, so the fix is a design amendment buying no behaviour change | `grep -n -A1 'same reason as above' cmd/testpg/run_test.go` |
+| R2-2 | round 2 | nit | accepted@2 — `containerNameForDir`'s doc comment (`run.go`:127) names a failure condition that cannot occur: `filepath.Base` returns `"."` for an empty path and `"/"` for a root path, never an empty string. The behaviour it describes is right and tested (`TestContainerNameForDir_rootPath_hasNoBaseName`); only the wording is loose | `go doc path/filepath.Base` |
+| R2-3 | round 2 | nit | accepted@2 — `--up`'s undersized-capacity arm (`run.go`:313) says "a server already running under this name" without naming it, while the success arm does (D8). D8 scopes the requirement to the success report line, so this is a suggestion, not a gap | `sed -n '310,320p' cmd/testpg/run.go` |
+| R2-4 | round 2 | nit | accepted@2 — the package-level `regexp.MustCompile` added at `run.go`:121 gets no `panic-index.md` row. Consistent with the tree and with D7: nine production `MustCompile` sites in `internal/commentref/classify.go` carry none, the index's table is empty by design, and the `panic-gate` hook's own pattern matches only `panic(` / `log.Fatal*` / `log.Panic*`, so it does not reach this class either | `grep -rn MustCompile --include=*.go cmd internal` |
 
 ## Files touched
 
@@ -135,3 +141,62 @@ Every D5/D6 ordering half has an assertion that can only pass at the intended po
 **Not defects (recorded in the register, not raised):** R1-3 the `_ = os.Setenv` cleanup pair · R1-4 one over-strong sentence in `context-status.md` · R1-5 `run_test.go`'s 711 lines · R1-6 the `--up` error-precedence shift. Re-entry fields: `current_step`, `last_passed_gate` and `entry_args` are present; `parent_skill` is correctly omitted per the canonical template, since `/task` is the parent flow here.
 
 **Spawn prompt:** within the closed list — invocation line, `Spec:`, `Design:`, `Progress:`, commit range. No `PROMPT-CONTAMINATION`.
+
+## Self-Review (Round 2)
+
+**Verdict:** APPROVE
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+
+No `blocker` or `major` row is open. Four `nit`-level observations were examined and ruled not-a-defect; they are recorded as `accepted@2` register rows (files: `cmd/testpg/run.go`, `cmd/testpg/run_test.go`) and none of them is the difference between verdicts.
+
+### What was checked
+
+**Round-1 findings re-verified by execution, and only over the diff since `dbfad7a`, as the register scopes them:**
+
+- **R1-1 (`major`, the bare-name pointer) — fixed.** `grep -n 'see [A-Za-z_]' cmd/testpg/run_test.go` exits 1 with no match; the comment at `run_test.go`:509-510 now reads "Not parallel: reaches the code that disables the reaper, a process-wide environment write." The ground was re-read rather than remembered: `ai-docs/doc-convention.md` DOC-4 → *What the gate decides, and what review decides* bullet 2 bans "a bare unqualified name used as a pointer", and the surviving `// Not parallel, same reason as above.` form is positional prose carrying no name, so it is not the same class. `make comment-refs` GREEN.
+- **R1-2 (`minor`, the doubled program prefix) — fixed, re-measured rather than read.** A freshly built wrapper run from a directory named `-badname` prints `testpg: project directory "-badname" must start with a letter or digit …` and exits 1; `grep -o 'testpg:' | wc -l` → **1**, and the control `grep -c 'project directory'` → 1 confirms the pattern matches at all.
+- **R1-4 — the corrected `context-status.md` sentence checked against the code, not against round 1's text.** `runDown` calls `sm.locate()` (`run.go`:330) and `sm.probe(ctx, dsn)` (`run.go`:336) above the derivation at `run.go`:349-354, so "on `--down` before any container is reached for, the located server itself having already been dialled by the reachability probe that runs ahead of the derivation" is exact.
+- **R1-3, R1-5, R1-6 stay `accepted@1`.** Neither re-raise condition is met: `run.go` is unchanged since `dbfad7a`, `run_test.go` changed by two comment lines, and no command output shows anything moved under those rows.
+
+**The design amendment at `877aad3` — the only design change in this window — verified claim by claim rather than read as argument:**
+
+- The design is byte-identical from `8e18df9` through `877aad3~1` (`git diff --stat` empty), so every `folded` GO note was already in at `base_commit` and the amendment is exactly the owner's round-4 ruling recorded in the state file's `prior_qa`.
+- Its own cited command was executed against the shipped tree: `awk '/^func runDown/,/^}/' cmd/testpg/run.go` filtered for the four call sites returns `sm.locate()`, then `sm.probe(ctx, dsn)`, then `os.Setenv("TESTCONTAINERS_RYUK_DISABLED", …)`, then `sm.provision(…, ContainerName: containerName)` — the order and the four lines the amended D6 ground 3 claims, with nothing else between them.
+- The `[measured 1e4eb8f:cmd/testpg/run.go …]` tag carries its commit and no line coordinate, and `run.go` is unchanged between `1e4eb8f` and HEAD, so the pin resolves.
+- A sweep of the whole design for the same over-strong shape finds no other clause claiming that nothing is reached for.
+- **Instrument note.** The citation guard's GREEN is *not* evidence about this file: its own SCOPE comment excludes the plans directory, and that was confirmed rather than assumed — planting `#9999` into the amended paragraph left `check-citations.sh` GREEN, and the file was restored from a cp-backup. The amendment was therefore verified by reading and by running its command, not by a gate.
+
+**Mutation checks re-run against the shipped tree.** Each mutant was confirmed to BUILD before its result was read (the first M1 attempt did not compile — an unused `filepath` import — and was discarded rather than counted); `cmd/testpg/run.go` was restored from a cp-backup after each and `git diff --quiet` confirmed clean.
+
+| Mutant | What it breaks | Result |
+|---|---|---|
+| M1 | `containerNameForDir` ignores its argument (`filepath.Base("/mutant")`) | RED — 7 top-level tests, incl. `TestRun_up_differentDirs_differentContainerNames`, `TestRun_up_invalidDir_failsNamingTheDirectory`, `TestRun_down_invalidDir_stopsNothing`, `TestContainerNameForDir` |
+| M2 | `runUp` derives **below** its reaper `os.Setenv` | RED — `TestRun_up_invalidDir_leavesReaperSettingUnchanged`, and only that test |
+| M3 | `runDown` derives **above** `sm.probe` | RED — `TestRun_down_staleLocator_invalidDir_stillExitsZero`, and only that test |
+
+M3 is the guard-clause case: `TestRun_down_staleLocator_invalidDir_stillExitsZero` asserts exit 0, `forget` called and nothing provisioned — a "reports nothing" shape — and the mutation proves its fixture actually reaches the clause it is named for rather than passing vacuously.
+
+**ACs — every verification command in `## AC Status` re-run against the shipped tree:**
+
+- **AC1 — PASS.** `go test ./cmd/testpg -count=1 -run TestContainerNameForDir -v` → all six table rows `--- PASS`, `first_checkout` and `sibling_checkout` carrying the spec's worked examples verbatim, plus the root-path and same-base-name cases. The production wiring is proved separately by the live `-badname` run above, which shows `os.Getwd` → `filepath.Base` reaching the message.
+- **AC2 — PASS (unit half); the container-level half rests on the Step 9 probe, whose teardown was re-verified independently.** `go test ./cmd/testpg -count=1 -run 'TestRun_upDown_useTheSeamWithNoRuntime|TestRun_up_differentDirs_differentContainerNames|TestRun_downWithNoLocator_isANoOp' -v` → all `--- PASS`. `podman ps -a` (instrument confirmed live by `podman images`, which lists four images) shows **no** `*-test-postgres` container, so no probe server leaked.
+- **AC3 — PASS.** `go test ./cmd/testpg -count=1 -run TestRunChild -v` → 12 `--- PASS`, incl. `TestRunChild_invalidWorkDir_stillRunsToCompletion`.
+- **AC4 — PASS.** `go test ./cmd/testpg -count=1 -run 'TestContainerNameForDir_sameBaseName_differentParents_isEqual|TestRun_up_sameBaseName_differentParents_sameContainerName' -v` → both `--- PASS`.
+
+**Gates re-run against the shipped tree:** `go build ./...` GREEN · `go vet ./...` GREEN · `golangci-lint run` GREEN · `go test ./cmd/testpg -count=1` GREEN · `go test -race ./cmd/testpg -count=1` GREEN · `make comment-refs` GREEN · `make file-limits` GREEN · `make import-guard` GREEN. Harness guards over the markdown: `check-ac-shape.sh`, `check-spec-shape.sh`, `check-spec-anchors.sh`, `check-script-shape.sh`, `check-harness-gaps-forge.sh` all GREEN. `git status --porcelain` empty. The whole-suite gate is not re-run here: the only Go change since `make verify` at `e547cce` is `dbfad7a`'s one-line error string, and that commit staged `.go` files, so the pre-commit ratchet measured a green `go test -coverprofile ./...` there and recorded 89.69 → 89.84.
+
+**Safety, style and documentation:** the panicking-call audit over the changed non-test files (`cmd/testpg/run.go`, `internal/testdb/server.go`) returns no hits for `panic(` / `log.Fatal*` / `log.Panic*`; the only panicking class added is a package-level `regexp.MustCompile` on a compile-time-constant pattern, which D7 argued and which nine production sites in `internal/commentref/classify.go` already establish (R2-4). No `_ = err` added outside the accepted test-cleanup pair (R1-3). No `ctx`-discipline change: `runUp`/`runDown` keep `ctx` first, and no context is stored. No `…Unchecked` function added. `run.go` 382 lines and `run_test.go` 711 lines are both inside the hard bands, `make file-limits` GREEN. No exported item was added — the only exported change is the deletion of `testdb.SharedContainerName`, and `git grep SharedContainerName -- '*.go'` returns nothing.
+
+**Domain invariants:** not reached. The diff moves no balance, writes no posting, adds no basis document, declares no mechanic, touches no scheduler task and opens no outbound chat path; the Go change is confined to `cmd/testpg` and one deletion in `internal/testdb`. No balance constant enters Go source — the `-test-postgres` suffix is an identifier fragment, not a tuning value. No secret is added.
+
+**Prose claims re-derived rather than read** (the diff is majority prose): "the wrapper is the only thing in this module that names a container" — `git grep -n ContainerName -- '*.go'` shows the field set at `run.go`:288 and `run.go`:365 only, the rest being the option's own declaration in `internal/testdb` and test assertions; "`tmp/testpg-dsn`" — `cmd/testpg/locator.go` `locatorPath`; "a checkout at `~/lab-game` brings up `lab-game-test-postgres`" — the derivation's own table rows; "it fails before the reaper is touched or anything is provisioned" — M2 and M3, plus the live binary run. Propagation: `git grep -n lab-game-test-postgres` reaches only this task's plan files, the derivation's table test and the two amended pages where the string is a worked example rather than a fixed name; `SharedContainerName` survives only in `context-status.md`'s #67 entry, which the design ruled is append-only history. No script, `Makefile` recipe or workflow parses the `--up` report line, so D8's added clause displaces no consumer.
+
+**Not defects (recorded in the register, not raised):** 4 `nit`-level items — R2-1 the five inaccurate "same reason as above" comments, R2-2 the "base name is empty" wording, R2-3 the unnamed container in the undersized-capacity arm, R2-4 the `MustCompile` panic-index row. Files: `cmd/testpg/run.go`, `cmd/testpg/run_test.go`.
+
+**GO notes round-trip:** all four rows route `folded` at `8e18df9` = `base_commit`, and the design carried them before the implementation diff began (verified above). No design section is stale against the implementation: D6 ground 3 was the one that was, and `877aad3` closed it under the owner's recorded ruling.
+
+**Re-entry fields:** `current_step`, `last_passed_gate` and `entry_args` are present; `parent_skill` is correctly absent — the canonical template at `ai-docs/templates/progress-format.md` says to omit it "when the current skill IS the parent flow", and `/task` is the parent here. `## Decisions log` present. Contents not reviewed, per the calling skill's ownership.
+
+**Spawn prompt:** within the closed list — invocation line, `Spec:`, `Design:`, `Progress:`, commit range `8e18df9..HEAD`. No `PROMPT-CONTAMINATION`.

@@ -530,3 +530,9 @@ wrong-surface text by message twelve.
 **Rule:** The repository's `tmp/` is for gate logs and non-source scratch only. Anything with a source extension a toolchain globs — `.go` above all — goes to the session scratchpad outside the repository, or the module grows a package nobody can see in `git status`. Redirecting a `git show` of a source file is the shape that produces one without ever looking like a write.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — anchored an append-only insert on an existing entry's line and split it in two
+**What happened:** Adding an entry to `ai-docs/harness-gaps.md`, I used `Edit` with the previous entry's `**Proposed edit:**` line as the anchor, prefixing my new entry to it. `Edit` succeeded — the anchor was unique — so nothing complained, but the previous entry was then cut in half with my whole entry sitting between its `Gap:` and its own `Proposed edit:`. I noticed on the structure check (55 headings, 55 proposed-edit lines, and the last entry in the file was not mine), relocated my entry to the end with a script that asserted the moved block's first and last lines, and confirmed the repair by `git diff`: 7 insertions, 0 deletions against HEAD, so the existing log was byte-identical.
+**Rule:** An append-only log is appended to, never Edited into. The write is `>>` at the end of the file, or an `Edit` whose anchor is the file's own last line — never a line belonging to an existing entry, however unique that line is. `Edit`'s uniqueness check proves the anchor was found once; it says nothing about whether the insertion point is the end. After any write to such a file, the check is `git diff` showing zero deletions, plus a look at which entry is actually last.
+**Kind:** correction
+**Escalated?** no
