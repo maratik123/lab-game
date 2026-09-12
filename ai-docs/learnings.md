@@ -597,3 +597,40 @@ of making it. Waiting on a delegate is a legitimate stop and still costs a token
 
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — a progress file's decisions log is appended to, not inserted into
+
+**What happened:** At the subtask-2 boundary of a `/task` Step 8 group I added my decisions-log bullet
+to the run's progress file by anchoring the `Edit` on the FIRST line of the previous group's last
+entry, which placed the new bullet above it. The section's own header says "Append-only, one line per
+non-trivial decision ... Never edit or remove prior entries", and the spawn prompt said "append". No
+prior entry's text changed, so nothing was destroyed, and I moved the bullet to the end before the
+commit — but for the length of two tool calls the log read as though Group B had decided something
+before Group A did.
+
+**Rule:** Append to a chronological log by anchoring the edit on the CURRENT LAST line of the section,
+never on the first line of the entry you happen to have in context. The pull toward the wrong anchor is
+that the previous entry's opening words are the text most recently read, so they are the cheapest
+unique string to match — and an insert-above is invisible in the editor's success message, which
+reports only that the replacement happened. Ordering in an append-only log is part of what the log
+asserts: a reader takes position for sequence.
+
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — testing — an extractor that prints nothing is an instrument failure until proved otherwise
+
+**What happened:** Verifying that a documentation table's four rows matched the CI workflow's real
+job-to-`make`-target mapping, my `awk` extractor printed zero lines for the filter naming the four
+targets. The filter was correct; the extractor's `substr` offset was off by one, so every value it
+emitted began `ake …` and matched nothing. Read as a verdict, the empty output would have said "no job
+runs any of these targets" — a clean answer for every possible input. I read the cardinality first,
+found the instrument broken, fixed the offset and re-ran before recording anything.
+
+**Rule:** For any check shaped as *grep a corpus* / *intersect two sets*, read the cardinality of the
+output — and of both inputs — before reading the verdict. Empty is the shape an instrument failure and
+a genuinely clean tree share, and the same run also has to be shown capable of a non-empty answer
+(here: the same extractor over the pre-change file, where all four targets sit under one job).
+
+**Kind:** validation
+**Escalated?** no
