@@ -174,7 +174,7 @@ func runChild(ctx context.Context, childArgv []string, lookup envLookup, sm seam
 		return exitFailure
 	}
 
-	dsn, stop, err := sm.provision(ctx, testdb.ServerOptions{ConnCeiling: ceiling})
+	dsn, stop, err := sm.provision(ctx, testdb.ServerOptions{ConnCeiling: ceiling, Clients: clients})
 	if err != nil {
 		logf(stderr, "testpg: could not start a server: %v\n", err)
 		return exitFailure
@@ -182,7 +182,7 @@ func runChild(ctx context.Context, childArgv []string, lookup envLookup, sm seam
 	// Echoed on the path that grants it, so the arithmetic a run relied on
 	// is readable afterwards from that run's own log rather than recomputed
 	// from a core count nobody recorded.
-	logf(stderr, "testpg: started a server, ceiling %d (clients=%d, parallel=%d)\n", ceiling, clients, parallel)
+	logf(stderr, "testpg: started a server, ceiling %d, mount %s (clients=%d, parallel=%d)\n", ceiling, testdb.MountOptions(clients), clients, parallel)
 	//nolint:contextcheck // fresh context by design: teardown must survive a cancelled signal context, not be cancelled itself the instant it starts
 	defer func() {
 		if err := stop(context.Background()); err != nil {
@@ -290,6 +290,7 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 	dsn, _, err := sm.provision(ctx, testdb.ServerOptions{
 		ContainerName: containerName,
 		ConnCeiling:   ceiling,
+		Clients:       clients,
 	})
 	if err != nil {
 		logf(stderr, "testpg: could not start the shared server: %v\n", err)
@@ -304,19 +305,30 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 	logf(stdout, "%s\n", dsn)
 
 	// Report the capacity the server HAS, not the one this invocation asked
-	// for: an existing container is reused under its name and keeps the
-	// ceiling it was created with, so a larger client count asked for here
-	// would otherwise be reported as granted while the server stayed the
-	// size it was. Reading it back is one round trip on a connection the
-	// probe opens anyway.
+	// for: an existing container is reused under its name and keeps both the
+	// ceiling and the PGDATA mount it was created with, so a larger client
+	// count asked for here would otherwise be reported as granted while the
+	// server stayed the size it was. Reading capacity back is one round
+	// trip on a connection the probe opens anyway; the mount is not probed
+	// separately, and this check does not always catch a mount too small
+	// for this invocation's client count: the ceiling is floored at a
+	// minimum, so above that floor a bigger client count always computes a
+	// bigger ceiling and this same capacity check catches a short mount
+	// along with it, but at a small enough parallel count several client
+	// counts floor to the identical ceiling while the mount keeps growing,
+	// and there this check passes a server whose mount is short — a known
+	// gap, not one this code measures or closes. The floored region is also
+	// where far fewer schemas exist on the mount at once, which is worth
+	// weighing when judging the risk, but that alone is not a measurement
+	// of it.
 	actual, err := sm.probe(ctx, dsn)
 	switch {
 	case err != nil:
 		logf(stderr, "testpg: shared server up, but its capacity could not be read: %v\n", err)
 	case actual < ceiling:
 		logf(stderr, "testpg: the shared server's capacity is %d, below the %d needed for clients=%d "+
-			"parallel=%d; a server already running under this name keeps the capacity it was created "+
-			"with, so take it down and bring it up again to resize\n", actual, ceiling, clients, parallel)
+			"parallel=%d; a server already running under this name keeps the ceiling and the PGDATA "+
+			"mount it was created with, so take it down and bring it up again to resize either\n", actual, ceiling, clients, parallel)
 		return exitFailure
 	default:
 		logf(stderr, "testpg: shared server %q up, capacity %d admits the %d needed (clients=%d, parallel=%d)\n",

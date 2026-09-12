@@ -2,8 +2,12 @@ package testdb
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"go/ast"
+	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -113,14 +117,87 @@ func TestProbe_matchesOrdinaryQuery(t *testing.T) {
 // while it runs, so the directory peaks above the target rather than at it;
 // PostgreSQL documents the target as a soft limit for exactly that reason.
 //
-// clusterBaselineMB is the cluster's own measured size — the same figure
-// tmpfsOptions was sized on: a full run of every database-backed package
-// against one server leaves 193 MB behind, and the WAL has to fit beside it,
-// not instead of it.
+// clusterPeakMB is one client's PEAK cluster size under sustained load, and
+// the WAL has to fit beside it, not instead of it.
+//
+// It is a peak rather than a residue on purpose: what exhausts the mount is
+// the high-water mark while tests run, not what they leave behind when they
+// stop, and the two differ by more than a safety factor covers — a full run
+// of every database-backed package against one server *leaves* 193 MB, while
+// the same packages under the contention target's own load peak near twice
+// that per client.
+//
+// Re-measure rather than derive, because a doubling on paper is what made
+// this number wrong before. The recipe, which is the durable part of this
+// comment:
+//
+//  1. Start a server this package would start, except with a PGDATA mount
+//     far larger than any value under consideration, so the cap cannot
+//     truncate the measurement.
+//  2. Point the suite at it through LAB_GAME_TEST_DSN, which the wrapper
+//     uses as it stands.
+//  3. Run the contention target against it, so both of its concurrent
+//     whole-module workloads are on the mount at once.
+//  4. Sample the mount's used space every half second FOR THE WHOLE RUN,
+//     and take the maximum; divide by the client count the target passes.
+//
+// Step 4's coverage requirement is load-bearing, not advice: a sampler that
+// spans part of a run reports a floor, not a peak. Measured on one workload,
+// a sampler covering 37 s of a 45 s run read 416 MB where a fully covering
+// one read 697 MB — the under-covering figure would have sized the mount
+// below what the run actually needs, and the mount's own failure mode is a
+// server PANIC, not a slow test.
 const (
 	walCheckpointFactor = 2
-	clusterBaselineMB   = 193
+	clusterPeakMB       = 320
 )
+
+// reClientsFlag matches a literal client count passed to the test-server
+// wrapper. A count spelled as a variable reference is deliberately not
+// matched: this test can only bound counts it can read.
+var reClientsFlag = regexp.MustCompile(`--clients[[:space:]]+([0-9]+)`)
+
+// targetClients returns the largest literal --clients count any target in
+// this repository provisions a server for, so a target that raises the count
+// without raising the mount fails this budget assertion by name instead of
+// failing as disk exhaustion at run time. It fails tb when no literal count
+// is found: an assertion whose input set came back empty reports a clean
+// result for every possible mount size, which is the one answer it must
+// never give silently.
+func targetClients(tb testing.TB) int {
+	tb.Helper()
+
+	build, err := os.ReadFile(repotest.RootPath(tb, "Makefile"))
+	if err != nil {
+		tb.Fatalf("read the build file: %v", err)
+	}
+
+	most, err := mostClientsIn(string(build))
+	if err != nil {
+		tb.Fatalf("read the provisioned client counts: %v", err)
+	}
+	return most
+}
+
+// mostClientsIn returns the largest literal --clients count in content. It
+// returns an error when there is none, rather than zero: zero would make
+// every budget fit and report a clean result the input never established.
+func mostClientsIn(content string) (int, error) {
+	matches := reClientsFlag.FindAllStringSubmatch(content, -1)
+	if len(matches) == 0 {
+		return 0, errors.New("no literal --clients count found: this assertion would bound nothing")
+	}
+
+	most := 0
+	for _, m := range matches {
+		clients, err := strconv.Atoi(m[1])
+		if err != nil {
+			return 0, fmt.Errorf("--clients %q is not a count: %w", m[1], err)
+		}
+		most = max(most, clients)
+	}
+	return most, nil
+}
 
 // mountCapMB returns the megabyte cap declared by a tmpfs mount-option
 // string of the form this package builds — "rw,size=512m". It fails tb
@@ -145,14 +222,133 @@ func mountCapMB(tb testing.TB, options string) int {
 	return 0
 }
 
-// TestStartServer_WALRetentionFitsThePGDATAMount asserts a server this
-// package provisions cannot be filled by its own write-ahead log. PGDATA
-// lives on a fixed-size tmpfs, and max_wal_size is how much WAL the server
-// lets accumulate before a checkpoint recycles it — so a retention target
-// the mount cannot hold means sustained write load exhausts the mount
-// whatever the load is doing. The server then PANICs, goes into recovery
-// and exits, and every connection open at that instant dies mid-statement.
-func TestStartServer_WALRetentionFitsThePGDATAMount(t *testing.T) {
+// TestMountOptions drives MountOptions over the client counts its callers
+// actually pass, asserting the exact mount-option string rather than just
+// its size, so a change to the option string's own shape (not only its
+// number) fails here too.
+func TestMountOptions(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		clients int
+		want    string
+	}{
+		{
+			name:    "zero sizes for one client, the fallback's own zero value",
+			clients: 0,
+			want:    "rw,size=512m",
+		},
+		{
+			name:    "a negative count sizes for one client too",
+			clients: -1,
+			want:    "rw,size=512m",
+		},
+		{
+			name:    "one client reproduces the historical single-client mount byte-for-byte",
+			clients: 1,
+			want:    "rw,size=512m",
+		},
+		{
+			name:    "two clients double the mount",
+			clients: 2,
+			want:    "rw,size=1024m",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := MountOptions(tc.clients); got != tc.want {
+				t.Errorf("MountOptions(%d) = %q, want %q", tc.clients, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestMostClientsIn drives the client-count parse over scratch inputs rather
+// than the real build file, so both directions are exercised directly: the
+// literal shapes it must find, and the shapes that must NOT be read as a
+// count — a variable reference, and a file with no flag at all, where a zero
+// would silently make every mount budget fit.
+func TestMostClientsIn(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		content string
+		want    int
+		wantErr bool
+	}{
+		{
+			name:    "single literal count",
+			content: "test-contention:\n\ttmp/testpg --clients 2 --parallel 16 -- bash -c 'x'\n",
+			want:    2,
+		},
+		{
+			name:    "largest of several literal counts wins",
+			content: "a:\n\ttestpg --clients 2 -- x\nb:\n\ttestpg --clients 7 -- y\nc:\n\ttestpg --clients 1 -- z\n",
+			want:    7,
+		},
+		{
+			name:    "a variable reference is not a literal count",
+			content: "test-db-up:\n\ttmp/testpg --up --clients $(CLIENTS)\n",
+			wantErr: true,
+		},
+		{
+			name:    "a literal count beside a variable one is still found",
+			content: "a:\n\ttestpg --clients $(CLIENTS)\nb:\n\ttestpg --clients 3 -- y\n",
+			want:    3,
+		},
+		{
+			name:    "no flag at all is an error, never zero",
+			content: "test:\n\tgo test ./...\n",
+			wantErr: true,
+		},
+		{
+			name:    "a tab between flag and count is matched",
+			content: "a:\n\ttestpg --clients\t4 -- y\n",
+			want:    4,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := mostClientsIn(tc.content)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("mostClientsIn(%q) = %d, want an error", tc.content, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("mostClientsIn(%q): %v", tc.content, err)
+			}
+			if got != tc.want {
+				t.Errorf("mostClientsIn(%q) = %d, want %d", tc.content, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestStartServer_PGDATAMountHoldsEveryClientCountProvisioned asserts a
+// server this package provisions cannot be filled by the clients it is
+// provisioned for, nor by its own write-ahead log beside them. PGDATA lives
+// on a fixed-size tmpfs, and max_wal_size is how much WAL the server lets
+// accumulate before a checkpoint recycles it — so a budget the mount cannot
+// hold means sustained write load exhausts the mount whatever the load is
+// doing. The server then PANICs, goes into recovery and exits, and every
+// connection open at that instant dies mid-statement.
+//
+// The client count is part of the budget, not a detail outside it: one
+// server admits every client at once, each client populates its own schemas
+// on the one mount, and a count that scales the connection ceiling while
+// leaving the mount alone is how that mount gets overrun. The counts checked
+// are the ones this repository's own targets provision for, read from the
+// build file, so raising a count there without sizing the mount fails here.
+func TestStartServer_PGDATAMountHoldsEveryClientCountProvisioned(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -185,10 +381,16 @@ func TestStartServer_WALRetentionFitsThePGDATAMount(t *testing.T) {
 		t.Fatalf("max_wal_size is reported in %q, this assertion reads megabytes", unit)
 	}
 
-	mountMB := mountCapMB(t, tmpfsOptions)
-	if peak := walCheckpointFactor*walSize + clusterBaselineMB; peak > mountMB {
-		t.Errorf("max_wal_size is %d MB: at up to %d× that between checkpoints, beside the %d MB cluster, a run needs %d MB of a %d MB PGDATA mount",
-			walSize, walCheckpointFactor, clusterBaselineMB, peak, mountMB)
+	// One client is the default every ordinary gate provisions; the largest
+	// literal count in the build file is what the contention target
+	// provisions. Both share this package's mount sizing, so both are budgets
+	// this assertion has to hold.
+	for _, clients := range []int{1, targetClients(t)} {
+		mountMB := mountCapMB(t, MountOptions(clients))
+		if peak := walCheckpointFactor*walSize + clients*clusterPeakMB; peak > mountMB {
+			t.Errorf("a server provisioned for %d client(s) needs %d MB — %d× max_wal_size %d MB between checkpoints, beside %d × %d MB of peak cluster — of a %d MB PGDATA mount",
+				clients, peak, walCheckpointFactor, walSize, clients, clusterPeakMB, mountMB)
+		}
 	}
 }
 

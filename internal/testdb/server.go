@@ -25,22 +25,38 @@ const (
 	tmpfsDir = "/var/lib/postgresql/tmpfs"
 	// tmpfsPGDATA overrides the image's on-disk PGDATA.
 	tmpfsPGDATA = tmpfsDir + "/data"
-	// tmpfsOptions caps the mount. Measured: a full run of every
-	// database-backed package against one server leaves a 193 MB cluster.
-	tmpfsOptions = "rw,size=512m"
+	// perClientMountMB is the mount cap this package grants per concurrent
+	// client: the value this package has granted a single client all along,
+	// kept byte-for-byte so the one-client default is unchanged. It has to
+	// hold one client's peak cluster size under sustained load, plus up to
+	// two checkpoint intervals of write-ahead log beside it.
+	perClientMountMB = 512
 	// walRetentionMB is the server's max_wal_size, in the same const block
-	// as tmpfsOptions because the two numbers are one decision, not two:
+	// as perClientMountMB because the two numbers are one decision, not two:
 	// max_wal_size bounds how much WAL the server lets accumulate before a
 	// checkpoint recycles it, and that WAL lives on the same fixed-size
 	// tmpfs as the cluster itself. A retention target picked without regard
 	// to the mount cap can let sustained write load fill the mount out from
 	// under the cluster, however small the cluster is — measured, the
 	// server then PANICs, goes into recovery and exits, and every
-	// connection open at that instant dies mid-statement. 64 MB leaves the
-	// 512 MB mount enough headroom for the cluster's own measured size at
-	// up to two checkpoint intervals of WAL.
+	// connection open at that instant dies mid-statement. 64 MB leaves a
+	// one-client mount enough headroom for the cluster's own measured size
+	// at up to two checkpoint intervals of WAL, and the mount grows with the
+	// client count while this retention target stays fixed, which only
+	// widens that headroom for every additional client.
 	walRetentionMB = 64
 )
+
+// MountOptions returns the tmpfs mount-option string sized for clients
+// concurrent clients, at perClientMountMB each. A count below one sizes for
+// one client rather than zero, so the zero value of a caller's options
+// still reproduces a usable mount.
+func MountOptions(clients int) string {
+	if clients < 1 {
+		clients = 1
+	}
+	return fmt.Sprintf("rw,size=%dm", clients*perClientMountMB)
+}
 
 const (
 	dbName = "labgame_test"
@@ -84,6 +100,10 @@ type ServerOptions struct {
 	// ConnCeiling overrides the image's default max_connections. Zero keeps
 	// the image default.
 	ConnCeiling int
+	// Clients is the number of concurrent clients the provisioned server's
+	// PGDATA mount must hold at once. Zero sizes the mount for one client,
+	// the same as the fallback container path provisions.
+	Clients int
 }
 
 // Server is a provisioned PostgreSQL server: its connection string, and a
@@ -121,7 +141,7 @@ func StartServer(ctx context.Context, opts ServerOptions) (*Server, error) {
 			postgres.WithUsername(dbUser),
 			postgres.WithPassword(dbPass),
 			postgres.BasicWaitStrategies(),
-			testcontainers.WithTmpfs(map[string]string{tmpfsDir: tmpfsOptions}),
+			testcontainers.WithTmpfs(map[string]string{tmpfsDir: MountOptions(opts.Clients)}),
 			testcontainers.WithEnv(map[string]string{
 				"PGDATA":               tmpfsPGDATA,
 				"POSTGRES_INITDB_ARGS": "--no-sync",
