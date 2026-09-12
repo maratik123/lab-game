@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"sync"
@@ -68,6 +69,24 @@ func newLoop(t *testing.T, srv *tgtest.Server, pool *pgxpool.Pool, router *Route
 		Router:   router,
 		Config:   testIngestConfig(),
 		Observer: observer,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return l
+}
+
+// newLoopWithLogger builds a Loop wired to srv and pool, like newLoop,
+// but also installing logger as its Options.Logger.
+func newLoopWithLogger(t *testing.T, srv *tgtest.Server, pool *pgxpool.Pool, router *Router, observer Observer, logger *slog.Logger) *Loop {
+	t.Helper()
+	l, err := New(Options{
+		Client:   newTestClient(t, srv),
+		Pool:     pool,
+		Router:   router,
+		Config:   testIngestConfig(),
+		Observer: observer,
+		Logger:   logger,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

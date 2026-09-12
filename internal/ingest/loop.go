@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -55,6 +56,12 @@ type Options struct {
 	// Observer optionally receives this loop's observations. A nil
 	// Observer is checked, not called.
 	Observer Observer
+	// Logger receives the log record a recovered handler panic emits at
+	// its recovery point, since a panic on an earlier attempt that a
+	// later attempt supersedes leaves no give-up row of its own for that
+	// stack to ride. A nil Logger is replaced with a discard handler,
+	// not refused — the same treatment a nil Observer already gets.
+	Logger *slog.Logger
 }
 
 // Loop is the update-ingestion front door: long-poll, dispatch, retry,
@@ -66,6 +73,7 @@ type Loop struct {
 	router   *Router
 	cfg      config.Ingest
 	observer Observer
+	logger   *slog.Logger
 
 	// allowedUpdates is transmitted on every getUpdates call, computed
 	// once from Router.Kinds() at New time (Router is immutable). Never
@@ -136,12 +144,18 @@ func New(opts Options) (*Loop, error) {
 		allowed = append(allowed, string(telego.ShippingQueryUpdates))
 	}
 
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+
 	return &Loop{
 		client:         opts.Client,
 		pool:           opts.Pool,
 		router:         opts.Router,
 		cfg:            opts.Config,
 		observer:       opts.Observer,
+		logger:         logger,
 		allowedUpdates: allowed,
 		stopCh:         make(chan struct{}),
 	}, nil
