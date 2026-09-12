@@ -8,8 +8,8 @@ _Updated: 2026-09-12 14:42_
 **Last build:** not run
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 8 — Group A handoff, subtasks 1/2/3/4 of 6 complete
-**last_passed_gate:** go build ./... + go test ./... (whole module) + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | 67cab15
+**current_step:** Step 8 — Group A COMPLETE (subtasks 1-5 of 6); Group B (subtask 6) not yet started
+**last_passed_gate:** go build ./... + go test ./... (whole module) + go test -race ./internal/store/... + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | a0a3cdf
 **entry_args:** 25
 
 ## Next action
@@ -22,8 +22,8 @@ _Updated: 2026-09-12 14:42_
 - [x] 2. The schema's own refusals, by SQLSTATE and constraint name
 - [x] 3. The reconciliation views' tests, each anomaly class planted and seen red (done after subtask 4, see the order-deviation decision below)
 - [x] 4. `Move`: extract `post`, add `Movement` / `Move` / the sentinels
-- [ ] 5. The `rapid` property test and the `-race` concurrency test  ← CURRENT
-- [ ] 6. Propagation sweep over every live surface the diff falsifies
+- [x] 5. The `rapid` property test and the `-race` concurrency test
+- [ ] 6. Propagation sweep over every live surface the diff falsifies (Group B — orchestrator's group, not Group A)
 
 ## Decisions log
 
@@ -37,6 +37,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8, subtask 1**: `make comment-refs` flagged decision-anchor/AC-id/issue/section references the design's own prose habit had carried into source comments (`D1`–`D6`, `AC10`, `#32`, `§11`); all were rewritten to state the fact directly per `AGENTS.md` § DOC-4, with no loss of the underlying claim. The same class recurred in subtask 4's `move.go` (a `D2` reference and a cross-file `event.go` pointer) and was fixed the same way — `make comment-refs` is now run before every subtask's commit, not just subtask 1's.
 - **Step 8, order deviation**: subtask 4 (`Move`) was implemented before subtask 3 (the reconciliation-view tests), reversing the progress file's original numeric listing. The design's Handoff plan dependency table (`2→1, 3→1, 4→1, 5→4`) only requires subtask 3 on subtask 1, and subtask 3's own Test Design section describes its fixture as instances "actually moved through `Move`" — which only exists after subtask 4. Both orders satisfy the stated dependencies; this one lets subtask 3 mint its fixtures through the real API instead of raw SQL.
 - **Step 8, subtask 3**: the `count_mismatch` scenario went red against the shipped `item_capacity_divergence` view, not just against the design's sketch: driving the view from `item_holder` alone (the design's D6 sketch) misses a controlled `slots_used` balance that has drifted away from zero at a holder currently holding nothing, because such a holder never appears in `item_holder` at all. Fixed by rewriting the view as a `FULL JOIN` between the per-holder item count and every `slots`/`used` account, in the same subtask-3 commit as the test that caught it (`internal/store/migrations/00007_item_machine.sql`, `internal/store/item_views_test.go`, commit 67cab15) — verified by re-running the full `internal/store` suite green afterward, including the subtask-1 empty-database view assertions.
+- **Step 8, subtask 5**: the race test's first shape (the shared holder starting at exactly one instance) made the loser fail with a spurious `ErrOverdraft` on every one of 15 rounds, not `ErrMoveConflict` — `Move`'s phase d (post the capacity legs) runs before phase f (the chain insert), so both transactions independently decrement the shared holder's `slots_used` leg regardless of who ultimately wins the chain race, and starting from 1 the second decrement always goes negative. Fixed by seeding a second, unraced instance at the shared holder so both decrements land at 1 and 0 — never negative — letting the race resolve where the design says it should, at the chain insert. Confirmed by the same 15-round `-race` run going green with every round's loser now `ErrMoveConflict` (`internal/store/move_race_test.go`, commit a0a3cdf). This is a property of `Move`'s own phase order, not of this test alone: any caller racing two moves off a holder whose relevant capacity leg starts at exactly the number of concurrent movers will see the same `ErrOverdraft` masking, worth carrying into `#26`'s posting-signature framework or a future revision of `Move`.
 
 ## GO notes
 
@@ -85,3 +86,4 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - Subtask 2: `internal/store/schema_test.go` (`TestSchema_itemMachineConstraints`) — commit 0625a73.
 - Subtask 4: `internal/store/move.go` (new), `internal/store/move_test.go` (new), `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/append_only_test.go` — commit 28c7c50.
 - Subtask 3: `internal/store/item_views_test.go` (new), `internal/store/migrations/00007_item_machine.sql` (view fix) — commit 67cab15.
+- Subtask 5: `internal/store/move_property_test.go` (new), `internal/store/move_race_test.go` (new), `internal/store/item_views_test.go` (Queryer generalisation) — commit a0a3cdf.
