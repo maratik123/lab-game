@@ -769,7 +769,7 @@ func TestRun_down_invalidDir_leavesReaperSettingUnchanged(t *testing.T) {
 }
 
 // Not parallel: asserts on the process-wide reaper environment variable.
-// Pins the ordering finding-R1-1 fixes: the reaper must be disabled BEFORE
+// Pins the ordering: the reaper must be disabled BEFORE
 // the existence question is put on the unreachable-but-present path,
 // because answering that question already builds the container-runtime
 // client the reaper setting is read by.
