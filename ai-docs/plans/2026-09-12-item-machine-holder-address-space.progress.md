@@ -8,13 +8,13 @@ _Updated: 2026-09-12 14:42_
 **Last build:** not run
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 8 — Design Amendment closed (design-review round 3 GO, notes folded); Group B (subtask 7) handoff next, Group C (subtask 6) after it
-**last_passed_gate:** go build ./... + go test ./... (whole module) + go test -race ./internal/store/... + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | a0a3cdf
+**current_step:** Step 8 — Group B (subtask 7) complete; Group C (subtask 6) next
+**last_passed_gate:** go build ./... + go test ./... (whole module) + go test -race ./internal/store/... + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | 4d47d56
 **entry_args:** 25
 
 ## Next action
 
-**Do this immediately:** spawn the Group B handoff (`code-writer`, subtask 7) per the design's `## Handoff plan` — the `post` `beforeBalances` hook that moves the chain insert ahead of the balance `UPDATE`s, the deterministic ordered-conflict test on the single-item fixture, and the symmetric race test's restored fixture with its cross-round assertion.
+**Do this immediately:** spawn the Group C handoff (`general-purpose`, no pinned model, subtask 6) per the design's `## Handoff plan` — the propagation sweep over every live surface the diff falsifies, derived from the final diff now that Group B's rework has landed.
 
 ## Subtasks
 
@@ -23,8 +23,8 @@ _Updated: 2026-09-12 14:42_
 - [x] 3. The reconciliation views' tests, each anomaly class planted and seen red — Group A (done after subtask 4, see the order-deviation decision below)
 - [x] 4. `Move`: extract `post`, add `Movement` / `Move` / the sentinels — Group A
 - [x] 5. The `rapid` property test and the `-race` concurrency test — Group A
-- [ ] 7. The `beforeBalances` hook: the chain insert moves ahead of the balance `UPDATE`s, and the ordered-conflict test on the single-item fixture — Group B  ← CURRENT
-- [ ] 6. Propagation sweep over every live surface the diff falsifies — Group C, terminal
+- [x] 7. The `beforeBalances` hook: the chain insert moves ahead of the balance `UPDATE`s, and the ordered-conflict test on the single-item fixture — Group B
+- [ ] 6. Propagation sweep over every live surface the diff falsifies — Group C, terminal  ← CURRENT
 
 ## Decisions log
 
@@ -46,6 +46,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8, Design Amendment**: `design-writer` rejected the owner's illustrated mechanism (lock the head movement in phase b) on a probe — a row lock protects a row, but head-ness is the *absence* of a successor, so the blocked `SELECT … FOR UPDATE` returned the stale head and the mechanism needs a paired re-read. Chosen instead: `post` gains a `beforeBalances` hook running after the journal entry exists and before the first balance `UPDATE`, so nothing inside `post` reorders and D4's standing claim about its phase order holds. Decomposition grows subtask 7; groups become A (returned) → B (subtask 7) → C (subtask 6).
 
 - **Step 8, Design Amendment closed**: design-review round 3 returned GO; three notes and three recommendations folded without a further round. The load-bearing one was a false claim in the design's own mitigation — that a per-round `t.Logf` makes a degraded race test visible — refuted by the gates themselves running `go test` with no `-v`. `design-writer` then swept the class rather than the cited line and found the same shape one heading away in subtask 5's bullet.
+
+- **Step 8, subtask 7**: verified test-first, per the design's own instruction — before applying the `beforeBalances` fix, the orchestrator reverted `post.go`/`move.go` to the pre-amendment tree (`git show HEAD:...`) while keeping the new/restored tests, and ran `TestMove_orderedConflict` and `TestMove_antiConflict` against it: both went RED with exactly the predicted defect (`ErrOverdraft` on the shared holder's `slots_used` account instead of `ErrMoveConflict`). The fix was then restored and both tests went GREEN, plus the whole-module `go test ./...`, `go test -race ./internal/store/...`, `golangci-lint fmt -d`, `golangci-lint run`, `go vet ./...`, and `make comment-refs`.
+- **Step 8, subtask 7**: the first draft of `TestMove_orderedConflict` hung indefinitely on its failure path — during the red-check above, `t.Fatalf` on the sentinel assertion called `runtime.Goexit` before the function reached its own explicit `rollback(t, ctx, loserTx)` call, leaving `loserTx`'s one-connection pool with its sole connection checked out forever, so the `t.Cleanup(loserPool.Close)` registered earlier blocked the whole package run. Fixed by registering `t.Cleanup(func() { rollback(t, ctx, winnerTx) })` and the loser's equivalent immediately after each `Begin`, so a transaction is released on every exit path regardless of where a later assertion fails — confirmed by re-running the red-check to completion instead of timing out.
 
 ## GO notes
 
@@ -101,3 +104,4 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - Subtask 4: `internal/store/move.go` (new), `internal/store/move_test.go` (new), `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/append_only_test.go` — commit 28c7c50.
 - Subtask 3: `internal/store/item_views_test.go` (new), `internal/store/migrations/00007_item_machine.sql` (view fix) — commit 67cab15.
 - Subtask 5: `internal/store/move_property_test.go` (new), `internal/store/move_race_test.go` (new), `internal/store/item_views_test.go` (Queryer generalisation) — commit a0a3cdf.
+- Subtask 7: `internal/store/post.go` (`post` gains the `beforeBalances` hook, drops its `int64` return), `internal/store/move.go` (`Move`'s mint-and-movements phases run inside the hook; doc comment states the post-reorder sentinel readings), `internal/store/move_race_test.go` (`TestMove_antiConflict` restored to the single-item fixture with a cross-round `ErrMoveConflict` assertion; new `TestMove_orderedConflict`) — commit 4d47d56.
