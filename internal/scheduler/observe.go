@@ -24,8 +24,15 @@ const (
 	FailureDeadline
 	// FailureRolledBack means the outcome the handler reported did not
 	// survive: either its savepoint release failed (a swallowed database
-	// error), or the task's own COMMIT failed.
+	// error), or the task's own COMMIT failed. Never set for a handler
+	// that panicked — see FailurePanic, which outranks this
+	// classification.
 	FailureRolledBack
+	// FailurePanic means the Handler's Execute call panicked. The
+	// panic is recovered at the handler boundary; this classification
+	// outranks FailureRolledBack even when the recovery's own savepoint
+	// rollback also failed.
+	FailurePanic
 )
 
 // Observation is reported to an Observer exactly once per executed task
@@ -61,7 +68,8 @@ type LoopObservation struct {
 	BatchSize int
 	// Err is a transient discovery failure, if any. Run does not stop on
 	// it; without this field the error would be silently dropped, since
-	// this package has no logger.
+	// Options.Logger records only a recovered handler panic, never a
+	// discovery failure.
 	Err error
 }
 
