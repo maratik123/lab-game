@@ -42,75 +42,102 @@ neither package takes today; both gain one as an `Options` field, following the 
 `*slog.Logger` parameter convention [measured 69073e9:internal/store/migrate.go:71 · `sed -n '71p'` →
 `func Migrate(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, opts ...MigrateOption) (err error)`].
 
-**2. A breached deadline reclaims its row by terminating its own backend — with the *waiting* form of
-the call.** The owner's decision of 2026-09-11, carried in the issue body: *"After a deadline breach
-the scheduler terminates the task's own database backend from another pooled connection
-(`pg_terminate_backend`)"*. **Which of that function's two argument shapes to bind is the design's
-call, and round 3 reverses round 2's answer.** There is one implementation, not two:
-`pg_terminate_backend(pid integer, timeout bigint DEFAULT 0)`, and the one-argument call is that
-function taking the default [measured postgres:18.6 · `select p.oid::regprocedure,
-pg_get_function_arguments(p.oid) from pg_proc p where proname='pg_terminate_backend'` → one row:
-`pg_terminate_backend(integer,bigint)` / `pid integer, timeout bigint DEFAULT 0`]. The two shapes
-differ in what they promise: with `timeout` zero the function *"returns `true` whether the process
-actually terminates or not, indicating only that the sending of the signal was successful"*, while
-with `timeout` greater than zero it *"waits until the process is actually terminated or until the
-given time has passed"* — `true` on termination, and on timeout *"a warning is emitted and `false` is
-returned"* (<https://www.postgresql.org/docs/18/functions-admin.html>). AC7's property is the
-backend's **death**, not the signal's delivery, so **the design binds the waiting form**.
+**2. A breached deadline reclaims its row by terminating its own backend — with the *signalling*
+(one-argument) form of the call.** The owner's decision of 2026-09-11, carried in the issue body:
+*"After a deadline breach the scheduler terminates the task's own database backend from another
+pooled connection (`pg_terminate_backend`)"*. **Which of that function's two argument shapes to bind
+is the design's call, and round 4 reverses round 3's answer on a measurement round 3 never took.**
+There is one implementation, not two: `pg_terminate_backend(pid integer, timeout bigint DEFAULT 0)`,
+and the one-argument call is that function taking the default [measured postgres:18.6 ·
+`select p.oid::regprocedure, pg_get_function_arguments(p.oid) from pg_proc p where
+proname='pg_terminate_backend'` → one row: `pg_terminate_backend(integer,bigint)` /
+`pid integer, timeout bigint DEFAULT 0`]. The two shapes differ in what they promise: with `timeout`
+zero the function *"returns `true` whether the process actually terminates or not, indicating only
+that the sending of the signal was successful"*, while with `timeout` greater than zero it *"waits
+until the process is actually terminated or until the given time has passed"* — `true` on
+termination, and on timeout *"a warning is emitted and `false` is returned"*
+(<https://www.postgresql.org/docs/18/functions-admin.html>).
 
-Every premise was re-measured for round 3 against `postgres:18` through this module's own pgx
-version, in the **production ordering** — terminate, then the claim probe, with nothing in between,
-on a claimer connection established *before* the terminate. The ordering is load-bearing twice over:
-reading the victim's own error first would synchronise on its death, and a claimer that connects
-afterwards buys the probe about a millisecond of slack — either one hides the effect below.
+Round 3 bound the waiting form and justified it against *"a measured worst case of about ten
+milliseconds"*. **No such measurement existed** — round 3's only ten-millisecond figure was the
+one-argument form's *post-return lock residue*, which is a different quantity from the waiting call's
+own duration. Round 4 measured the duration that was missing, and it inverts the comparison round 3
+was making: the residue the reversal removed is about ten milliseconds, and the block it added is
+about a hundred. Every premise below was measured against `docker.io/library/postgres:18` through
+this module's own pgx version; each claimability premise additionally holds the **production
+ordering** — terminate, then the claim probe, on a claimer connection established *before* the
+terminate, since a claimer that connects afterwards buys the probe about a millisecond of slack and
+hides exactly the effect being measured.
 
-- **The one-argument form does not leave the row claimable at the instant it returns; the waiting
-  form does.** [measured postgres:18.6 (`select version()` → `PostgreSQL 18.6 (Debian
-  18.6-1.pgdg13+2)`)/pgx v5.10.0 · holder parked in `pg_sleep(30)` under `FOR NO KEY UPDATE`,
-  terminate from a pooled connection, one immediate `FOR NO KEY UPDATE SKIP LOCKED` probe on the
-  pre-established claimer → one-argument form: `mode=one iters=200 first-probe-misses=2
-  max-wait-after-miss=9.590664ms` and, repeated, `first-probe-misses=3
-  max-wait-after-miss=9.419204ms`; two-argument form with `timeout = 5000`: `mode=two iters=200
-  first-probe-misses=0` on each of two runs]. Round 2's design read AC7 off the one-argument form.
-  That was wrong, and this is the correction.
-- **The waiting form holds for the ordinary role and for both holder states.** A **non-superuser**
-  role terminates a backend of its own — a role is a member of itself, which is the documented grant
-  — and the claim succeeds on the first probe whether the victim is mid-statement or **idle in
-  transaction**, the state a handler blocked on a Go channel leaves it in
-  [measured postgres:18.6/pgx v5.10.0 · probe as role `plain` with `rolsuper = f`,
-  `select pg_terminate_backend($1, $2)` bound with two Go `int64`s and **no cast in the SQL** →
-  `mode=plain busy-holder=true iters=100 first-probe-misses=0` and `mode=idle busy-holder=false
-  iters=100 first-probe-misses=0`; the holder's in-flight statement →
-  `FATAL: terminating connection due to administrator command (SQLSTATE 57P01)`].
-- **A `false` return is not a Go error, and the boolean is the only thing that reports a failed
-  terminate.** Both non-success shapes of the waiting form come back with `err == nil`: a pid that is
-  already gone, and a wait that ran out [measured postgres:18.6/pgx v5.10.0 · probe →
-  `gone-pid two-arg: returned=false err=<nil>`; and, forcing the timeout branch with `timeout = 1`,
-  `1ms-timeout two-arg: returned=false goErr=<nil>` with the server's `WARNING: backend with PID …
-  did not terminate within 1 millisecond` arriving on pgx's notice channel]. So the code branches on
-  the boolean, not on the error alone — D5. An already-gone pid remains harmless, as it was under the
-  one-argument form; only its return value differs.
-- **When the waiting form returns, the victim is already out of `pg_stat_activity`.**
-  [measured postgres:18.6/pgx v5.10.0 · probe → `mode=statgone iters=200
-  still-in-pg_stat_activity-on-first-read=0`]. § Test Design still polls that assertion rather than
-  reading once, because what this design owns is the call's return contract, not the server's
-  bookkeeping latency under someone else's load.
+- **The waiting form cannot confirm a death in under about a hundred milliseconds, and that is a
+  structural floor, not a worst case.** [measured postgres:18.6 (`select version()` → `PostgreSQL
+  18.6 (Debian 18.6-1.pgdg13+2)`)/pgx v5.10.0 · holder parked in `pg_sleep(30)` under `FOR NO KEY
+  UPDATE`, `select pg_terminate_backend($1, $2)` from a pooled connection, the bound swept →
+  `timeout=1 returned=false elapsed=1.307ms`, `timeout=10 returned=false elapsed=10.222ms`,
+  `timeout=30 returned=false elapsed=30.23ms`, `timeout=50 returned=false elapsed=50.182ms`,
+  `timeout=99 returned=false elapsed=99.349ms`, `timeout=100 returned=false elapsed=100.328ms`,
+  `timeout=150 returned=true elapsed=100.267ms`, `timeout=250 returned=true elapsed=100.295ms`,
+  `timeout=1000 returned=true elapsed=100.318ms`]. The sweep exposes the mechanism: the server checks
+  the victim at the **top** of each wait step and the step is a hundred milliseconds, so the first
+  check that can observe a death lands one whole step in. Every bound at or below the step returns
+  `false` on a backend that is already dead, and every bound above it returns `true` at the same
+  ~100 ms however quickly the backend actually died. There is no bound that buys a confirmed death
+  sooner, which is why this is a floor and not a figure a faster server improves on.
+- **The wait accelerates nothing — the row becomes claimable at the same instant under both forms.**
+  This is the measurement that decides the question. [measured postgres:18.6/pgx v5.10.0 · holder
+  parked in `pg_sleep(30)` under `FOR NO KEY UPDATE`, a pre-established claimer polling the row from
+  the instant the terminate is issued, control asserting the row unclaimable beforehand →
+  one-argument form: `terminate call returned at min=71.27µs med=89.01µs max=320.829µs`,
+  `row claimable at min=8.103449ms med=8.999587ms max=54.191599ms`; two-argument form with
+  `timeout = 5000`: `terminate call returned at min=100.23166ms med=100.26886ms max=100.43804ms`,
+  `row claimable at min=9.048297ms med=16.354268ms max=74.731807ms`]. Both forms send the same
+  signal and the victim dies on the same schedule. What the waiting form changes is not when the row
+  frees but **when `executeOne` learns of it** — it converts a window in which the row is not yet
+  claimable into a longer window in which the row is claimable and this worker is still blocked.
+  `RunOnce` runs each claimed id sequentially, so that block is paid on the worker's own cycle
+  [measured 08b2ca9:internal/scheduler/worker.go:131-136 · `sed -n '131,136p'` → the `for _, id :=
+  range ids` loop calling `w.executeOne` and returning on its first error].
+- **The residue the signalling form leaves is invisible to the worker AC7 is written about.** AC7's
+  subject is *another worker*, and another worker rediscovers the row on its own poll cadence, whose
+  default is a second [measured 08b2ca9:internal/config/scheduler.go:79 · `sed -n '79p'` →
+  `PollInterval:     time.Second,`]. The residue measured above is an order of magnitude below that
+  cadence at its slowest sample and two at its median, so no other worker can observe it. The waiting
+  form spends a hundred milliseconds of this worker's cycle to close a window nothing looks through.
+- **The signalling form tells its two non-success shapes apart for free; the waiting form conflates
+  them.** A backend that is already gone returns `false` with no Go error, while a permission failure
+  is a Go error carrying its own SQLSTATE — so the branch that matters to an operator is separable
+  without machinery [measured postgres:18.6/pgx v5.10.0 · probe → `gone pid, one-arg
+  returned=false goErr=<nil>`; `cross-role, one-arg returned=false goErr=ERROR: permission denied to
+  terminate process (SQLSTATE 42501)`]. Under the waiting form both *already gone* and *did not die
+  within the bound* arrive as the same bare `false`, so the very distinction finding 2 asks the
+  design to name is the one that form destroys.
+- **The ordinary role terminates a backend of its own.** A **non-superuser** role is a member of
+  itself, which is the documented grant, and the production case succeeds
+  [measured postgres:18.6/pgx v5.10.0 · probe as role `plain` with
+  `select rolsuper from pg_roles where rolname='plain'` → `role plain rolsuper=false`, and
+  `same-role, one-arg returned=true goErr=<nil>`].
+- **A handler blocked in the database is released promptly, and with a class the test can name.**
+  [measured postgres:18.6/pgx v5.10.0 · holder mid-`pg_sleep(30)`, one-argument terminate bound with
+  a Go `int64` and **no cast in the SQL** → `one-arg returned=true call=153µs | holder Exec returned
+  339µs after terminate; SQLSTATE=57P01 msg="terminating connection due to administrator command"`,
+  and the same on each repeat].
 - The backend PID is a plain field read on the connection
   [measured pgx/v5@v5.10.0:pgconn/pgconn.go · `go doc github.com/jackc/pgx/v5/pgconn.PgConn.PID` →
-  `func (pgConn *PgConn) PID() uint32` / `PID returns the backend PID.`], and the value read on the
-  **idle pooled connection** equals the value read on the hijacked connection mid-statement
-  [measured postgres:18.6/pgx v5.10.0 · probe → `pid-read-on-idle-pooled-conn: 85`,
-  `pid-read-on-hijacked-conn-mid-statement: 85 equal: true`]. The design reads it on the idle
-  connection anyway, which is the state pgx's own documentation asks for
+  `func (pgConn *PgConn) PID() uint32` / `PID returns the backend PID.`], and the value read while
+  the connection is idle is the pid the terminate then lands on
+  [measured postgres:18.6/pgx v5.10.0 · probe reading the pid before launching the concurrent
+  statement → `pid(idle-read)=369 one-arg returned=true`, and so on for each repeat]. The design
+  reads it while the connection is idle, which is the state pgx's own documentation asks for
   [measured pgx/v5@v5.10.0 · `go doc github.com/jackc/pgx/v5.Conn.PgConn` → *"It is strongly
   recommended that the connection be idle (no in-progress queries) before the underlying
-  \*pgconn.PgConn is used"*].
+  \*pgconn.PgConn is used"*] — D5 fixes the point in the cycle at which that holds.
 
-This makes AC7 and AC8 unconditional where the delivered layers left them conditional on the
-`Handler` contract: the terminate returns only once the backend is gone, so the row is claimable when
-`executeOne` returns, and a handler blocked in the database gets `57P01` and returns, which releases
-its goroutine and its connection. The one path that degrades is a terminate that reports `false`, and
-it degrades to today's behaviour rather than to nothing (§ Risks).
+This makes AC7 and AC8 hold where the delivered layers left them conditional on the `Handler`
+contract: the signal is sent before `executeOne` returns and the row frees within milliseconds of it
+— far inside another worker's own poll cadence — and a handler blocked in the
+database gets `57P01` and returns, which releases its goroutine and its connection. The paths that
+degrade are a terminate the server refuses and a pid that was already gone, and each degrades to
+today's behaviour rather than to nothing (D5, § Risks).
 
 **Rejected alternatives.**
 
@@ -121,8 +148,8 @@ it degrades to today's behaviour rather than to nothing (§ Risks).
 | A new metric family for panics | Refused by the spec (AC4) and by the telemetry obligation in the issue body. |
 | A lease/heartbeat protocol to reclaim the row | Argued and rejected in the delivered scheduler design; the terminate is the layer that design named as the alternative and the owner has now chosen. |
 | Issue the terminate inside the existing watchdog goroutine | Makes AC7 an asynchronous promise instead of a property that holds when `executeOne` returns, and puts the one statement whose failure an operator must see on the module's one deliberately detached launch, where no error has anywhere to go. |
-| The one-argument `pg_terminate_backend($1)`, keeping AC7's single-read claim probe | Measured red: the signal's delivery is not the backend's death, so the row stays locked for up to tens of milliseconds after the call returns and a single-read probe misses a few times in two hundred (§ Approach). A test red at that rate is a flake, and under `make test-contention` a worse one. |
-| The one-argument form, with AC7's claim probe **polling** within a bound (the review's option (b)) | It would work *as a test*, and the design says so rather than arguing otherwise: with the AC7 fixture's `statement_timeout` neutralised the backend stays **active** inside its sleep, and `idle_in_transaction_session_timeout` bounds only the Go-side gaps *between* statements, *"not any single query"* [measured 36ef3e1:internal/scheduler/execute.go:13-34 · `sed -n '13,34p'` → the constant's doc naming the distinction and the two pre-existing release paths, and `setTimeoutsSQL` binding `$1` to both timeouts], so neither pre-existing layer reaches that backend and a bounded poll goes red against the pre-change tree. Rejected because it repairs the **test** and leaves the **product** where it was: AC7 asks that the row be claimable without waiting for the handler, and under the one-argument form there is a window of tens of milliseconds after `executeOne` returns in which it is not (§ Approach). It also moves the assertion's discriminating power out of the mechanism and into the fixture — it holds only while the neutralisation stays in place and the poll ceiling stays under the sleep. The waiting form makes the property true instead, for the price of one extra bound (D5). |
+| The **waiting** two-argument `pg_terminate_backend($1, $2)` — round 3's choice | Rejected on the measurement round 3 omitted. It buys **no product property**: the row becomes claimable at the same instant under either form, because both send the same signal and the victim dies on the same schedule (§ Approach). What it adds is a wait whose floor is about a hundred milliseconds — structural, not a worst case, since the server's first check of the victim lands one whole wait step in and no bound buys a confirmed death sooner (§ Approach's cadence sweep) — paid on `executeOne`, which `RunOnce` calls once per claimed id in sequence. Its only purchase is a synchronisation point for one test assertion, plus a `false` on a backend that outlived the bound; and the design's response to that `false` was *log it and fall through to the unchanged pre-existing layers*, which is machinery bought for a distinction that changes no behaviour — the same trade D5 refuses for the notice hook. It is also **worse** where finding 2 cares: it collapses *already gone* and *did not die in time* into one bare `false`, destroying the shape split the signalling form gets for free (§ Approach). |
+| The one-argument form with AC7's claim probe as a **single read** — round 2's shape | Measured red: the signal's delivery is not the backend's death, so the row stays locked for a few milliseconds after the call returns and a single-read probe misses a small fraction of the time (§ Approach's claimability measurement, where the one-argument call returns in microseconds and the row frees milliseconds later). A test red at that rate is a flake, and under `make test-contention` a worse one. The fix is the probe's shape, not the product's: § Test Design bounds the poll and puts the discrimination in the **pair** — the claim succeeded *and* the fixture is still inside `Execute` — which is what AC7's *without waiting for its handler to return* actually says. That pair is what a single read never supplied on its own. |
 | Duplicate the recover-and-capture code in both packages | Two handler boundaries today and an open trajectory (the general rule is written for *any* goroutine running a supplied handler, and the outbound-notification sender is a named future one), against this workspace's ≥3-site / ≥2-with-trajectory lift rule. See D1. |
 | A size cap on the recorded stack | Unnecessary: the traceback the runtime renders for a recovered panic is frame-capped by the runtime itself, so the rendered stack stops growing once that cap is reached however deep the recursion goes [measured go1.26.5 linux/amd64 (`go version` → `go1.26.5-X:nodwarf5 linux/amd64`) · a deferred `recover` calling `debug.Stack()` at rising recursion depth → the rendered byte length plateaus instead of growing with depth, and the deepest probe renders no longer than the mid one]. Introducing a cap would add a tunable nobody needs. |
 
@@ -210,96 +237,132 @@ The common case is unaffected: a panic with no open rows leaves the transaction 
 [measured postgres:18.6/pgx v5.10.0 · probe → `rollback-to-savepoint err=<nil>`,
 `settlement-update err=<nil>`, `commit err=<nil>`, and the handler's own write rolled back].
 
-**D5 — The terminate is synchronous in the breach branch, waits for the backend's death, and runs on
-a context that survives cancellation.** It runs after the pending settlement is enqueued and before
-the watchdog is launched. Three properties are fixed here rather than left to the implementor:
+**D5 — The terminate is synchronous in the breach branch, signals rather than waits, and runs on a
+context that survives cancellation.** It runs after the pending settlement is enqueued and before the
+watchdog is launched. Four things are fixed here rather than left to the implementor:
 
-- **The waiting form, so AC7 is a property and not a race.** The statement is
-  `SELECT pg_terminate_backend($1, $2)` with `$2` a positive millisecond bound, which returns only
-  once the backend is actually gone (§ Approach). The one-argument form reports the signal's delivery
-  and not the death; round 2's design read AC7 off it and was wrong.
-- **Two bounds, ordered — the SQL wait bound strictly the smaller.** Both are named constants. The
-  branch that must fire on a backend that will not die is the **server's own**, which returns `false`
-  on a connection that stays usable — not a Go-side context cancellation, which would abort the query
-  mid-flight and cost the pooled connection. Placeholders, and they are bounds rather than tuning
-  knobs: `2s` for the SQL wait and `5s` for the derived context, against a measured worst case of
-  about ten milliseconds (§ Approach). Neither is a configuration key, for the same reason the
-  watchdog's close bound is not — each bounds a local cleanup, not a balance value
-  [measured 69073e9:internal/scheduler/execute.go:36-42 · `sed -n '36,42p'` →
-  `detachedCloseTimeout`'s stated reason]. The wait is paid only on the breach path, which has
-  already spent a whole `TaskTimeout` by the time it is reached.
-- **`err == nil` is not success.** The call reports both of its non-success shapes — an already-gone
-  pid, and an expired wait — as a `false` return with no Go error (§ Approach), so the code branches
-  on the boolean. The two are **not** told apart, and need not be: the response to each is the same —
-  log it and fall through to the pre-existing layers (the transaction-local
-  `idle_in_transaction_session_timeout`, and the watchdog's close), which are unchanged. Reading the
-  server's `WARNING` through pgx's per-connection notice hook would distinguish them and is rejected:
-  machinery bought for a distinction that changes no behaviour.
+- **The signalling form.** The statement is `SELECT pg_terminate_backend($1)`. It returns in
+  microseconds and the row frees milliseconds later, well inside another worker's own poll cadence
+  (§ Approach). The waiting form's confirmation costs a hundred-millisecond floor and accelerates
+  nothing; round 3 bound it on a cost figure that was never measured, and round 4 measured it.
+- **Where the pid is read: before the handler goroutine is launched, while the connection is provably
+  idle.** pgx asks for an idle connection (§ Approach), and `conn` is idle only up to that launch —
+  at the breach point the handler may be mid-statement, which is exactly the state the documentation
+  warns against, so reading it there would contradict the state this design says it reads in. The
+  read therefore happens in `executeOne` between the deadline context's creation and the `go func()`
+  that launches the handler, and the value is carried in a local that the breach branch closes over.
+  A connection's backend pid cannot change while the connection is open, so the value read there is
+  still the victim's at the breach.
+- **One bound, and it is the Go-side context's.** The statement carries no server-side wait, so the
+  only bound is the derived context's timeout — a named constant, placeholder `5s`. It is a bound
+  rather than a tuning knob, and not a configuration key, for the same reason the watchdog's close
+  bound is not: each bounds a local cleanup, not a balance value
+  [measured 08b2ca9:internal/scheduler/execute.go:36-42 · `sed -n '36,42p'` →
+  `detachedCloseTimeout`'s stated reason]. Round 3's second bound — the SQL wait — disappears with
+  the argument it belonged to, and with it the trap that sweep exposed: any server-side bound at or
+  below the server's wait step returns `false` on a backend that is already dead (§ Approach), so a
+  future tuning of that constant downward would have silently turned every terminate into a
+  reported failure.
+- **The two non-success shapes are told apart, and they are emitted at different levels** — because
+  one of them is a fault and the other is expected traffic:
+  - A **Go error** is a fault. Permission denied arrives this way, carrying its own SQLSTATE
+    (§ Approach), as does a pool that cannot hand out a connection or one that dies under the
+    statement. If the cause is the role's grants it is not transient: no later breach will reclaim
+    either, and an operator must see that. **Error level.**
+  - **`false` with `err == nil`** means the pid was not a live backend when the signal was attempted,
+    and that is **expected traffic at the deadline instant**, not a fault. `setTimeoutsSQL` binds
+    `idle_in_transaction_session_timeout` to the same `TaskTimeout` that `deadlineCtx` counts down
+    [measured 08b2ca9:internal/scheduler/execute.go:84-85 · `sed -n '84,85p'` →
+    `timeout := fmt.Sprintf("%dms", w.cfg.TaskTimeout.Milliseconds())` bound into `setTimeoutsSQL`;
+    measured 08b2ca9:internal/scheduler/execute.go:132 · `sed -n '132p'` →
+    `deadlineCtx, cancel := context.WithTimeout(ctx, w.cfg.TaskTimeout)`], so for any handler that
+    blocks *outside* the database past its deadline the two clocks race on the same value and the
+    server's own layer routinely terminates the backend first — under `make test-contention`,
+    routinely more often. Logging that as a fault would contradict the posture this package already
+    holds, that a stale task firing late is normal operation rather than an error path
+    (`docs/DESIGN.md` §3.5). **Debug level.**
+
+  On both shapes the code falls through to the pre-existing layers — the transaction-local
+  `idle_in_transaction_session_timeout` and the watchdog's close — which are unchanged. Reading the
+  server's `WARNING` through pgx's per-connection notice hook to subdivide the `false` further is
+  rejected: machinery bought for a distinction that changes no behaviour.
 
 Its context is derived with `context.WithoutCancel` plus that named timeout rather than a fresh root:
 the terminate must still happen when the deadline context — and possibly the worker's own — is
 already done, and `context.Background` is a lint-gated pattern needing a stated reason and a named
-owner [measured 69073e9:.golangci.yml:46-51 · `sed -n '46,51p'` → `forbidigo` forbids
+owner [measured 08b2ca9:.golangci.yml:46-51 · `sed -n '46,51p'` → `forbidigo` forbids
 `^context\.Background$` and `^context\.TODO$`]. The statement runs on a **pooled** connection, never
 the hijacked one, and the task transaction's own `statement_timeout` cannot reach it there: that one
-is set transaction-locally [measured 69073e9:internal/scheduler/execute.go:34 · `sed -n '34p'` →
+is set transaction-locally [measured 08b2ca9:internal/scheduler/execute.go:34 · `sed -n '34p'` →
 `set_config('statement_timeout', $1, true)`, whose third argument is the is_local flag].
 
 **D5a — The terminate reverses a shipped test's central assertion, and the reversal is the design's
 call, not the implementor's.** `TestDeadline_ctxIgnoringHandler_negativeCase` asserts today that the
 row **stays locked** while its ctx-ignoring handler runs
-[measured 100928c:internal/scheduler/deadline_test.go:759 · `grep -n "want it to stay locked"` →
+[measured 08b2ca9:internal/scheduler/deadline_test.go:759 · `grep -n "want it to stay locked"` →
 `t.Fatalf("row became claimable while the ctx-ignoring handler was still running, want it to stay locked")`].
 Its fixture keeps the transaction's backend alive by looping over a short `pg_sleep` on a context of
-its own [measured 100928c:internal/scheduler/deadline_test.go:57-65 · `sed -n '40,90p'` →
+its own [measured 08b2ca9:internal/scheduler/deadline_test.go:57-64 · `sed -n '36,110p'` →
 `ctxIgnoringHandler.Execute`'s `for` loop over
-`tx.Exec(context.Background(), "SELECT pg_sleep(0.02)")`] — and the breach branch now terminates that
-backend, which takes the row's lock with it whether the handler is mid-statement or between
-statements, **before `RunOnce` returns**. That fixture alternates between exactly those two states,
-and the waiting form was measured against both: `first-probe-misses=0` for a busy holder and for one
-idle in transaction (§ Approach). *First probe* is therefore what D5's choice of form buys — under
-the one-argument form the inverted assertion would itself have been a flake. That assertion inverts
-to *claimable on the first
-probe*, and the test's own doc comment, which today promises the row "becomes claimable once it
-returns and the watchdog closes the hijacked connection"
-[measured 100928c:internal/scheduler/deadline_test.go:709 ·
+`tx.Exec(context.Background(), "SELECT pg_sleep(0.02)")`, discarding both return values] — and the
+breach branch now terminates that backend, which takes the row's lock with it whether the handler is
+mid-statement or between statements. That assertion inverts to *claimable*, and it inverts as a
+**bounded poll through the package's existing lock-free helper**, not as a single read: the
+signalling form returns in microseconds while the row frees milliseconds later (§ Approach), so a
+single read here would flake at exactly the rate that helper exists to absorb
+[measured 08b2ca9:internal/scheduler/deadline_test.go:76-101 · `awk 'NR>=76 && NR<=102'` →
+`waitLockFree` polling a `FOR NO KEY UPDATE SKIP LOCKED` probe, `time.Sleep(10 * time.Millisecond)`
+between attempts, failing only on its own budget; and
+measured 08b2ca9:internal/scheduler/deadline_test.go:68-75 · `awk 'NR>=66 && NR<=76'` → its doc
+comment calling that budget *"an instrument, a patience budget for the poll — never the deadline
+defence itself"*]. The test's doc comment, which today promises the
+row "becomes claimable once it returns and the watchdog closes the hijacked connection"
+[measured 08b2ca9:internal/scheduler/deadline_test.go:709 ·
 `grep -n "locked while the handler keeps running"`], is rewritten to what it now asserts. The test
 keeps its place as the weaker, already-shipped witness for AC7; the new reclaim test is the
 instrumented one (§ Test Design). Its name says `negativeCase` of a defence that no longer has this
 residue, so the name moves with the assertion.
 
+**One property of that fixture the implementor must not disturb.** Its loop discards the error each
+`tx.Exec` returns and keeps spinning until `release` closes, so once the backend is terminated every
+`Exec` returns instantly and the loop turns from `pg_sleep(0.02)`-paced into a hot spin for as long
+as the test takes to get from the claim assertion to `close(h.release)`. At today's distance that is
+harmless, and it stays harmless only while the two stay adjacent: no slow work — no extra query, no
+sleep, no further poll — belongs between them.
+
 **D5b — The lock half of the ownership rule's named exception narrows; the goroutine half survives.**
 Rule 4's exception covers *a scheduler handler blocked outside the database after its deadline*, and
 its explanatory clause today reads that no mechanism reclaims that goroutine
-[measured 100928c:ai-docs/code-style.md:84 · `grep -n "The one named exception is a scheduler handler"` →
+[measured 08b2ca9:ai-docs/code-style.md:84 · `grep -n "The one named exception is a scheduler handler"` →
 ownership rule 4, verbatim]. After this
 change the clause is true of a handler blocked **outside** the database only: one blocked **in** it
 gets `57P01` and returns, so both its goroutine and its connection are reclaimed
 — `[derived → AC8]`. The row's lock leaves the exception entirely, in **both** cases, and that half
-is measured rather than reasoned: a backend that is **idle in transaction** — the state a handler
-blocked on a Go channel leaves it in — holding `FOR NO KEY UPDATE` is terminated just as a busy one
-is, and the row is claimable immediately afterwards
-[measured postgres:18.6 (`select version()` → `PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2)`) · holder
-session left idle in transaction holding the row → `holder state: idle in transaction`,
-`claim-before-terminate: blocked-or-skipped`, `terminate returned: t`,
-`claim-after-terminate: got:1`, `backend still in pg_stat_activity: 0`, and the holder's own session
-→ `FATAL: terminating connection due to administrator command`], and re-measured in round 3 against
-the **waiting** form the design now binds, in the production ordering
-[measured postgres:18.6/pgx v5.10.0 · `mode=idle busy-holder=false iters=100
-first-probe-misses=0`]. So the row half of the exception
-disappears for every handler; only the goroutine half, and only outside the database, survives.
+is measured rather than reasoned against the **signalling** form the design now binds: a backend that
+is **idle in transaction** — the state a handler blocked on a Go channel leaves it in — holding
+`FOR NO KEY UPDATE` is terminated just as a busy one is, and the row is claimable on the probe that
+follows [measured postgres:18.6 (`select version()` → `PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2)`)/pgx
+v5.10.0 · one-argument terminate against a holder left idle in transaction holding the row, one
+immediate `FOR NO KEY UPDATE SKIP LOCKED` probe on a pre-established claimer →
+`mode=one holder=idle-in-transaction min=83.14µs med=99.92µs max=110.119µs first-probe-misses=0`,
+where the three durations are the terminate call's own and `first-probe-misses` is the claim].
+For that same out-of-database case the row's lock leaves the exception even when the terminate
+reports `false`: the only way the pid is already gone is that the server's own
+`idle_in_transaction_session_timeout` reached it first, which released the lock by itself (D5). So
+the row half of the exception disappears for every handler; only the goroutine half, and only outside
+the database, survives.
 Subtask 10 carries that narrowing; the same falsification is what subtasks 5 and 9 carry in the code
 comments and the goroutine-ownership allow list.
 
-**D6 — Both parameters bind as Go `int64`s and the SQL carries no cast.** Postgres resolves
-`pg_terminate_backend($1, $2)` with two `int64`s bound and nothing cast in the statement — `$1`
-against the `integer` parameter, `$2` against the `bigint` one — which is how every § Approach probe
-of the waiting form bound it. The wait bound reaches `$2` as its `time.Duration`'s millisecond count,
-already an `int64`. For `$1` the narrowing conversion the alternative would need trips the security
-linter while the widening one is clean [measured 69073e9:.golangci.yml:31 · `sed -n '31p'` →
-`    - gosec`; and, under this repo's own config, `golangci-lint run` over a scratch package holding
-both conversions → `G115: integer overflow conversion uint32 -> int32 (gosec)` on the `int32` one and
-no finding on the `int64` one].
+**D6 — The pid binds as a Go `int64` and the SQL carries no cast.** Postgres resolves
+`pg_terminate_backend($1)` with a single `int64` bound against the `integer` parameter and nothing
+cast in the statement, which is how every § Approach probe of the signalling form bound it. The
+widening conversion from pgx's `uint32` pid is the one to make: the narrowing conversion the
+alternative would need trips the security linter while the widening one is clean
+[measured 08b2ca9:.golangci.yml:31 · `sed -n '31p'` → `    - gosec`; and, under this repo's own
+config, `golangci-lint run` over a scratch package holding both conversions →
+`G115: integer overflow conversion uint32 -> int32 (gosec)` on the `int32` one and no finding on the
+`int64` one]. Round 3's second parameter is gone with the waiting form (D5).
 
 **D7 — A nil `Logger` is accepted and replaced with a discard handler; it is not a refused option.**
 Both packages already treat a nil `Observer` that way [measured 69073e9:internal/scheduler/worker.go:47-49
@@ -374,11 +437,11 @@ and any further site the sweep finds is in scope.
 | 2 | `scheduler.Options` gains `Logger *slog.Logger`; `Worker` carries it; `New` substitutes a discard handler for nil (D7). Correct the doc comment the addition falsifies: `RunOnce`'s *"since this package has no logger"* clause (D11) | `internal/scheduler/worker.go`, `internal/scheduler/worker_test.go` | — |
 | 3 | `FailureKind` gains the panic member with its doc comment; `FailureRolledBack`'s doc gains the clause that excludes a panic from it (D2, D3). Correct `LoopObservation.Err`'s *"since this package has no logger"* clause, falsified by subtask 2 (D11) | `internal/scheduler/observe.go`, `internal/scheduler/observe_test.go` | — |
 | 4 | Handler-boundary recovery and its settlement: recover around `Handler.Execute` only; thread the logger into `runHandlerWithSavepoint` as a parameter so the emission site can reach it; carry the recovered panic on the handler result; classify it first in the settlement switch; route an unusable transaction into the pending-settlement set with the panic failure kind and the rendered panic as its reason; emit the log record at the boundary (D1, D3, D4, D8) | `internal/scheduler/execute.go`, `internal/scheduler/settle.go`, `internal/scheduler/panic_test.go` | 1, 2, 3 |
-| 5 | Deadline reclaim: read the backend PID on the idle pooled connection; terminate the breached backend from the pool after the breach with the **waiting** two-argument form under the ordered bounds D5 fixes; log a terminate the **boolean** reports unsuccessful; **reverse `TestDeadline_ctxIgnoringHandler_negativeCase`'s row-stays-locked assertion to claimable-on-the-first-probe** and rewrite that test's doc comment and name (D5a); correct every doc comment whose claim the terminate falsifies — the timeouts constant's *"one of two things"* lock-release sentence, `Handler`'s *"its row stays locked until the handler returns"* clause, the watchdog launch's `//nolint` reason claiming the close is *what finally releases the row's lock*, and `waitLockFree`'s doc comment enumerating the two pre-existing release mechanisms (D5, D5a, D6) | `internal/scheduler/execute.go`, `internal/scheduler/task.go`, `internal/scheduler/deadline_test.go`, `internal/scheduler/reclaim_test.go` | 2 |
+| 5 | Deadline reclaim: read the backend PID **before the handler goroutine is launched**, while the pooled connection is still idle, and carry it on the breach path (D5); terminate the breached backend from the pool after the breach with the **one-argument** form under the single derived-context bound D5 fixes; report the two non-success shapes apart and at the levels D5 fixes — a Go error at error level, a `false` return at debug level; **reverse `TestDeadline_ctxIgnoringHandler_negativeCase`'s row-stays-locked assertion to claimable within the existing lock-free helper's budget** and rewrite that test's doc comment and name, leaving no slow work between the claim assertion and `close(h.release)` (D5a); correct every doc comment whose claim the terminate falsifies — the timeouts constant's *"one of two things"* lock-release sentence, `Handler`'s *"its row stays locked until the handler returns"* clause, the watchdog launch's `//nolint` reason claiming the close is *what finally releases the row's lock*, and `waitLockFree`'s doc comment enumerating the two pre-existing release mechanisms (D5, D5a, D6) | `internal/scheduler/execute.go`, `internal/scheduler/task.go`, `internal/scheduler/deadline_test.go`, `internal/scheduler/reclaim_test.go` | 2 |
 | 6 | Update ingestion: `Options` gains `Logger`; the recovery helper returns the shared recovered-panic value instead of a bare `panicked` flag; its rendering carries the stack into the give-up row's `last_error`, and a log record carries it as an attribute. The reported outcome is unchanged. Correct `LoopObservation.Err`'s *"since this package has no logger"* clause, falsified by the same addition (D1, D7, D8, D11) | `internal/ingest/loop.go`, `internal/ingest/attempt.go`, `internal/ingest/observe.go`, `internal/ingest/retry_test.go`, `internal/ingest/loop_test.go` | 1 |
 | 7 | Health: the failure-label mapper gains the panic case; the label unit test, the observer's failure-label test and the closed-set label guard's driver and expectation all take the new value | `internal/health/labels.go`, `internal/health/labels_test.go`, `internal/health/scheduler_test.go`, `internal/health/guards_test.go` | 3 |
 | 8 | Composition root: thread the process logger into both constructors | `cmd/bot/assemble.go`, `cmd/bot/assemble_test.go` | 2, 6 |
-| 9 | Goroutine-ownership allow list: the handler launch's panic answer stops saying the recovery is follow-up work, and the watchdog launch's stop answer records that a handler blocked in the database is now bounded by the terminate | `internal/gateguard/guard_test.go` | 4, 5 |
+| 9 | Goroutine-ownership allow list — three answers narrow, not one: the handler launch's `panicTo` stops saying the recovery is follow-up work; the **same row's `stops`**, which today bounds the launch by the deadline context *"when the handler itself respects it"*, narrows by the same change that narrows its `panicTo`, since a handler blocked in the database is now bounded whether it respects its ctx or not; and the watchdog launch's `stops` records that its unbounded receive on the orphaned handler is likewise bounded for that case | `internal/gateguard/guard_test.go` | 4, 5 |
 | 10 | Documentation propagation (AC5): the scheduler failure-value enumeration; ownership rule 4's explanatory clause, which narrows to a handler blocked *outside* the database — the row's lock leaves the exception entirely (D5b); the detached-launch paragraph that currently points at this issue as unfinished work; the `internal/` layout enumeration, which gains the shared recovered-panic primitive subtask 1 adds | `ai-docs/alert-contract.md`, `ai-docs/code-style.md`, `ai-docs/process-lifecycle.md`, `ai-docs/context.md` | 1, 3, 5 |
 
 ## Handoff plan
@@ -420,37 +483,56 @@ Group A.
   the recovery point on the handler's own goroutine (D8), so the stack is never lost, and § Test
   Design gives the path its own witness rather than leaving it argued —
   `[derived → the post-breach panic scenario under AC6 in § Test Design]`.
-- **The terminate can report `false`, and then AC7's guarantee falls back to the pre-existing
-  layers.** A saturated pool, a closing pool on shutdown, a backend already gone, or a backend that
-  outlives the wait bound all end with no confirmed death. Mitigation: the outcome is read off the
-  **boolean**, not the error — both non-success shapes return `err == nil`, so a code path that
-  checked only the error would never log anything (D5) — and the pre-existing layers, the
-  transaction-local `idle_in_transaction_session_timeout` and the watchdog's close of the hijacked
-  connection, are left in place unchanged, so the behaviour degrades to today's rather than to
-  nothing. Terminating an already-dead pid stays harmless [measured postgres:18.6/pgx v5.10.0 ·
-  probe → `gone-pid two-arg: returned=false err=<nil>`].
-- **The waiting terminate blocks `executeOne` on the breach path.** The call returns only once the
-  backend is gone, so the breach branch pays that wait before returning. Measured worst case in the
-  production ordering is about ten milliseconds (§ Approach), on a branch that has already spent a
-  whole `TaskTimeout`. Mitigation: the SQL wait bound caps it, and D5 orders that bound strictly
-  below the derived context's timeout so a wait that will not finish is ended by the server — which
-  leaves the pooled connection usable — rather than by a Go-side cancellation, which would abort the
-  query mid-flight and cost the connection.
+- **The terminate can fail, and AC7 then falls back to the pre-existing layers — but its two failure
+  shapes are not the same event, and one of them is routine.** A saturated pool, a closing pool on
+  shutdown, or a role without the grant arrive as a **Go error**; a backend the server's own
+  `idle_in_transaction_session_timeout` already terminated arrives as **`false` with `err == nil`**,
+  which at the deadline instant is expected traffic rather than a fault, because that timeout and
+  `deadlineCtx` count down the same `TaskTimeout` (D5). Mitigation: D5 splits them by shape and by
+  level rather than reading one and ignoring the other — a code path that checked only the error
+  would stay silent on the already-gone pid, and one that checked only the boolean would report a
+  permission failure as routine. The pre-existing layers, the transaction-local
+  `idle_in_transaction_session_timeout` and the watchdog's close of the hijacked connection, are left
+  in place unchanged, so the behaviour degrades to today's rather than to nothing. Terminating an
+  already-dead pid stays harmless [measured postgres:18.6/pgx v5.10.0 · probe →
+  `gone pid, one-arg returned=false goErr=<nil>`].
+- **The signalling terminate leaves a residue: the row frees a few milliseconds after `executeOne`
+  returns, tens at the slowest sample.** The call reports the signal's delivery, not the death, so
+  there is a short window in which the breach branch has returned and the row is still locked
+  [measured postgres:18.6/pgx v5.10.0 · holder parked in `pg_sleep(30)` under `FOR NO KEY UPDATE`, a
+  pre-established claimer polling from the instant the terminate is issued → one-argument form:
+  `terminate call returned at min=71.27µs med=89.01µs max=320.829µs`, `row claimable at
+  min=8.103449ms med=8.999587ms max=54.191599ms`]. Mitigation, and the reason this is a recorded
+  consequence rather than a
+  defect: nothing observes that window — another worker rediscovers the row on its own poll cadence,
+  which defaults to a second (§ Approach) — and the one assertion it could have flaked is the test's,
+  which § Test Design bounds rather than reading once. **Waiting for a confirmed death does not
+  shorten the residue at all**: the row frees at the same instant under either form and only
+  `executeOne`'s return moves, later, by a hundred-millisecond floor (§ Approach). Recorded in those
+  terms so a later reader does not re-derive round 3's reversal from the residue alone.
+- **The pid the breach branch terminates was read earlier in the same `executeOne` call, so a stale
+  pid is conceivable.** `executeOne` holds the connection open across the whole transaction, so its
+  backend is alive and its pid unrecyclable for as long as the connection stands; the pid can only go
+  stale after something else terminated that backend, which is the `false` shape above. The design
+  adds no mitigation beyond that, and this hazard is unchanged by the choice of argument shape — it
+  is the shape any pid-addressed terminate has, and `pg_terminate_backend` is the mechanism the
+  owner's decision names. Recorded so it is a known consequence rather than an unexamined one.
 - **The terminate turns a shipped, green test red by design, and a subtask that only adds files would
   leave it red.** `TestDeadline_ctxIgnoringHandler_negativeCase` asserts the pre-change outcome
-  directly [measured 100928c:internal/scheduler/deadline_test.go:759 ·
+  directly [measured 08b2ca9:internal/scheduler/deadline_test.go:759 ·
   `grep -n "want it to stay locked"`], so its inversion is part of subtask 5's contract rather than
   an unexpected failure to diagnose mid-implementation. Mitigation: D5a fixes the new assertion, and
   subtask 5's file list names `deadline_test.go` so the edit is in the group's scope from the start.
   The other `waitLockFree` callers are expected to keep passing: the helper polls until the row can
   be locked and fails only on its own timeout, so an earlier release satisfies it
-  [measured 100928c:internal/scheduler/deadline_test.go:76-101 · `sed -n '68,101p'` → `waitLockFree`
-  loops on a `FOR NO KEY UPDATE SKIP LOCKED` probe until its patience budget expires] — asserted by
-  running the package rather than assumed, `[derived → the package suite re-run at subtask 5]`. And
+  [measured 08b2ca9:internal/scheduler/deadline_test.go:76-101 · `awk 'NR>=76 && NR<=102'` →
+  `waitLockFree` loops on a `FOR NO KEY UPDATE SKIP LOCKED` probe, sleeping `10 * time.Millisecond`
+  between attempts, until its patience budget expires] — asserted by running the package rather than
+  assumed, `[derived → the package suite re-run at subtask 5]`. And
   `TestDeadline_drainDoesNotBlockOnLockedRow` holds its
   lock in a transaction of the test's own, not through a breach, so no terminate reaches it
-  [measured 100928c:internal/scheduler/deadline_test.go:559-596 · `sed -n '540,630p'` → the test
-  begins its own `holder` transaction and takes `FOR NO KEY UPDATE` on the row itself].
+  [measured 08b2ca9:internal/scheduler/deadline_test.go:559-593 · `awk 'NR>=555 && NR<=600'` → the
+  test begins its own `holder` transaction and takes `FOR NO KEY UPDATE` on the row itself].
 - **An instantly claimable row can be re-claimed by another worker before this worker's drain counts
   the attempt.** The drain's guard already handles it: a row whose `run_at` moved on matches nothing
   and the id is dropped rather than counted against work it did not do
@@ -570,52 +652,65 @@ Every claim below is about a test that does not exist yet.
     handler has demonstrably **not** returned when the claim is probed.
   - AC8 variant: after its sleep errors, the handler records the error and returns.
 - Scenarios:
-  - AC7 — immediately after `RunOnce` returns, a `FOR NO KEY UPDATE SKIP LOCKED` probe on the
-    breached row succeeds on its **first** attempt, with no polling loop. The assertion is a
-    **pair**, not a single read: the same check reads the fixture's own still-inside-`Execute`
-    marker, so the claim's success is recorded alongside proof that the handler had not returned.
-    Without that half the test asserts *claimable*, which the pre-change tree also reaches once the
-    handler returns; AC7's clause is *claimable **without waiting for** the handler to return*, and
-    only the pair says it — `[derived → AC7]`.
+  - AC7 — after `RunOnce` returns, a `FOR NO KEY UPDATE SKIP LOCKED` probe on the breached row
+    succeeds within a bound far below the fixture's own sleep. The assertion is a **pair**, and the
+    pair is where the discrimination lives — not in the probe's shape: alongside the successful claim
+    the test reads the fixture's own still-inside-`Execute` marker, so the claim's success is
+    recorded together with proof that the handler had not returned. Without that half the test
+    asserts *claimable*, which the pre-change tree also reaches once the handler returns; AC7's
+    clause is *claimable **without waiting for** the handler to return*, and only the pair says it —
+    `[derived → AC7]`.
   - AC8 — the AC8 fixture's `Execute` returns within a bound; the error it recorded is the
-    terminate's own class rather than a context cancellation; and the backend it recorded is gone
-    from `pg_stat_activity`, which is the connection-released assertion in a form the test can make
+    terminate's own class, asserted on the SQLSTATE the server sends rather than on message text and
+    distinguished from a context cancellation, which is the error the pre-change tree would produce
+    here (§ Approach measures that class as `57P01`); and the backend it recorded is gone from
+    `pg_stat_activity`, which is the connection-released assertion in a form the test can make
     exactly — `[derived → AC8]`.
   - The observation still carries the deadline failure kind, unchanged — `[derived → AC7]`.
-- **Polling, and where it is banned.** The AC7 claim probe must succeed on its **first** attempt with
-  no polling loop — and after round 3 that is a property the mechanism genuinely has rather than a
-  race the test would lose: the waiting form of the terminate returns only once the backend is gone
-  (§ Approach, D5), measured `first-probe-misses=0` across four hundred iterations in the production
-  ordering. The ban is **not** there because a bounded poll would fail to discriminate — against this
-  fixture it would, since neither pre-existing layer reaches a backend that is actively sleeping
-  (§ Approach's rejected-alternatives row for option (b)). It is there because AC7's words are
-  *without waiting for its handler to return*, and the single read is the assertion that says exactly
-  that; a poll would put the discrimination in the fixture's neutralisation and ceiling instead of in
-  the mechanism — `[derived → AC7]`.
-- **The claimer's connection is established before `RunOnce` is called**, never opened after the
-  breach. Connecting costs about a millisecond, and a millisecond is enough slack to hide a failure
-  of exactly the kind round 3 caught; a probe that connects afterwards is a green instrument rather
-  than a passing subject, and that sensitivity is what would make this test pass locally and fail
-  under `make test-contention` — `[derived → AC7]`.
-- The `pg_stat_activity` assertion is the opposite and deliberately so. It came back clean on the
-  first read in every round-3 iteration (§ Approach), but what this design owns is the call's return
-  contract, not the server's bookkeeping latency under someone else's load, so that assertion
-  **polls within a generous bound**: a patience budget in the shape the package's existing lock-free
-  helper already uses, never a fixed sleep and never a single immediate read — `[derived → AC8]`.
-- Fixtures/helpers: the existing lock-free poll helper stays for the tests that legitimately wait —
-  D4's claimability assertion in the panic suite is one of them, and it is **not** the same shape as
-  AC7's: that one rides `pgxpool`'s destroy-on-release of a busy connection, which puddle performs on
-  its own goroutine, so it is an eventual property and polls. The AC7 assertion deliberately does
-  **not** use the helper. Each test releases its fixture on cleanup so the package's leak check ends
-  clean.
+- **Where the bound comes from, and why a bounded probe still discriminates.** The probe is bounded
+  rather than read once because the signalling form returns the instant the signal is sent while the
+  row frees milliseconds later (§ Approach); a single read flakes at that seam, which is what round 2
+  shipped and round 3 caught. The bound costs **no** discriminating power, and that is measured
+  rather than assumed: against this fixture neither pre-existing layer can free the row inside it.
+  `statement_timeout` is what the fixture neutralises, and
+  `idle_in_transaction_session_timeout` bounds only the Go-side gaps *between* statements, *"not any
+  single query"*, so it never reaches a backend actively inside its sleep
+  [measured 08b2ca9:internal/scheduler/execute.go:13-34 · `sed -n '13,34p'` → the constant's doc
+  naming that distinction and the two pre-existing release paths, and `setTimeoutsSQL` binding `$1`
+  to both timeouts]; and the watchdog's close fires only once the orphaned handler returns, which the
+  AC7 fixture prevents by parking on a test-controlled channel. So against the pre-change tree the
+  bounded probe exhausts its budget and goes red, which is the direction that makes it a test of the
+  mechanism. That last step is a **claim about the instrument, and the instrument is not believed
+  until it has been seen red**: the implementor runs the new AC7 and AC8 tests against the tree
+  *before* the terminate lands and confirms each fails on its own assertion — the AC7 probe on its
+  budget, the AC8 fixture on a context cancellation rather than `57P01` — rather than inferring the
+  red direction from the comment above — `[derived → AC7, AC8]`.
+- **The budget is an instrument, and the package already has one shaped for it.** The existing
+  lock-free poll helper takes its patience as a parameter precisely so a caller can give it slack
+  without turning it into the assertion, and its own doc comment says so
+  [measured 08b2ca9:internal/scheduler/deadline_test.go:68-75 · `awk 'NR>=66 && NR<=76'` →
+  *"timeout is an instrument, a patience budget for the poll — never the deadline defence itself,
+  which every caller here already asserts separately"*]. AC7's probe uses that helper rather than a
+  bespoke shape, so this design introduces no new test machinery for the claim at all; what it adds
+  is the **marker half** of the pair, which the helper does not and should not know about. The budget
+  stays far below the fixture's sleep, so a budget that expires is the mechanism failing and never
+  the fixture ending on its own — `[derived → AC7]`.
+- The `pg_stat_activity` assertion polls on the same footing, and now necessarily rather than
+  prudently: under the signalling form the backend's death is asynchronous to the call by
+  construction, so a single immediate read would be asserting a race. It **polls within a generous
+  bound** — a patience budget in the shape that helper already uses, never a fixed sleep and never a
+  single immediate read — `[derived → AC8]`.
+- Fixtures/helpers: D4's claimability assertion in the panic suite uses the same helper but is **not**
+  the same property — that one rides `pgxpool`'s destroy-on-release of a busy connection, which
+  puddle performs on its own goroutine, so it is eventual for a different reason and needs no marker
+  half. Each test releases its fixture on cleanup so the package's leak check ends clean.
 - **The shipped negative case moves with the mechanism** (D5a): `TestDeadline_ctxIgnoringHandler_negativeCase`'s
-  row-stays-locked assertion is rewritten to claimable-on-the-first-probe, and its doc comment and
-  name follow. For AC7 it is a sound witness — the row's lock dies with the backend in both of the
-  states that fixture alternates between, each measured at `first-probe-misses=0` under the waiting
-  form (§ Approach) — but it witnesses **nothing**
+  row-stays-locked assertion is rewritten to claimable-within-the-helper's-budget, and its doc
+  comment and name follow. For AC7 it is a sound witness — the row's lock dies with the backend in
+  both of the states that fixture alternates between, mid-statement and idle in transaction, each
+  measured against the signalling form (§ Approach, D5b) — but it witnesses **nothing**
   about AC8: its loop discards the error each `tx.Exec` returns and keeps spinning until the test
-  closes its release channel (D5a's measurement of the fixture), so it never demonstrates a handler
-  *returning* on the terminate.
+  closes its release channel (D5a), so it never demonstrates a handler *returning* on the terminate.
   That is what the instrumented fixture above is for, and why it stays the primary one —
   `[derived → AC7]`.
 
