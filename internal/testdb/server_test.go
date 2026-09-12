@@ -124,8 +124,8 @@ func TestProbe_matchesOrdinaryQuery(t *testing.T) {
 // the high-water mark while tests run, not what they leave behind when they
 // stop, and the two differ by more than a safety factor covers — a full run
 // of every database-backed package against one server *leaves* 193 MB, while
-// the same packages under the contention target's own load peak near twice
-// that per client.
+// the same packages under the contention target's own load peak at about
+// 1.7× that per client.
 //
 // Re-measure rather than derive, because a doubling on paper is what made
 // this number wrong before. The recipe, which is the durable part of this

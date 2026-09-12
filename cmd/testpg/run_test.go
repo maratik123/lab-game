@@ -192,6 +192,19 @@ func TestRunChild_noDSNNoLocator_seamCalled_stopRunsOnPass(t *testing.T) {
 	if !strings.Contains(stderr.String(), "ceiling "+strconv.Itoa(want)) {
 		t.Errorf("stderr = %q, want the granted ceiling %d echoed", stderr.String(), want)
 	}
+	// The same log line also carries the mount option string this run's
+	// client count derives, and the client/parallel counts themselves —
+	// each has been dropped from the format string before and left the
+	// build and every other assertion green.
+	if wantMount := testdb.MountOptions(1); !strings.Contains(stderr.String(), wantMount) {
+		t.Errorf("stderr = %q, want the mount option string %q echoed", stderr.String(), wantMount)
+	}
+	if !strings.Contains(stderr.String(), "clients=1") {
+		t.Errorf("stderr = %q, want clients=1 echoed", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "parallel=1") {
+		t.Errorf("stderr = %q, want parallel=1 echoed", stderr.String())
+	}
 }
 
 func TestRunChild_noDSNNoLocator_stopRunsOnFailingChild(t *testing.T) {
@@ -356,6 +369,9 @@ func TestRunChild_ceilingMatchesTheFormula(t *testing.T) {
 	if stub.provisionOpts.ConnCeiling != want {
 		t.Errorf("provision was called with ConnCeiling=%d, want %d", stub.provisionOpts.ConnCeiling, want)
 	}
+	if stub.provisionOpts.Clients != clients {
+		t.Errorf("provision was called with Clients=%d, want %d", stub.provisionOpts.Clients, clients)
+	}
 }
 
 // Not parallel, and neither is the undersized-reuse case below: both reach the
@@ -416,6 +432,9 @@ func TestRun_upOnAnUndersizedExistingServer_failsNamingTheCapacity(t *testing.T)
 	}
 	if !strings.Contains(stderr.String(), "capacity is 8") {
 		t.Errorf("stderr = %q, want the server's own capacity named", stderr.String())
+	}
+	if stub.provisionOpts.Clients != 2 {
+		t.Errorf("--up provisioned with Clients=%d, want 2", stub.provisionOpts.Clients)
 	}
 }
 
