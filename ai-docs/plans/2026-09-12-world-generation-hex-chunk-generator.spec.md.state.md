@@ -63,7 +63,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 3
 agent_id: ac11c6eef428a2106
 prior_qa:
   - round: 1
@@ -81,4 +81,9 @@ prior_qa:
         What makes 'cheap enough to call on every step without caching being mandatory' met?
     answer: |
         Report only
+  - round: 2
+    question: |
+        Your weighted per-chunk draw is recorded as decided, and determinism survives it — the chunk seed settles the draw, and the weights and each algorithm's parameters are inputs like the chunk size already is. What remains is cost. Which algorithms must the draw be able to choose from when this task is done? (Your example split Kruskal and Prim, so the named set is five.)
+    answer: |
+        All five
 ```
