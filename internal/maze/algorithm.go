@@ -16,6 +16,26 @@ const (
 	AlgorithmWilson
 )
 
+// String renders a using the spec's own lower_snake_case names — the
+// same spelling a biome file's weight-set keys use — for logging and
+// test failure messages.
+func (a Algorithm) String() string {
+	switch a {
+	case AlgorithmBacktracker:
+		return "backtracker"
+	case AlgorithmKruskal:
+		return "kruskal"
+	case AlgorithmPrim:
+		return "prim"
+	case AlgorithmGrowingTree:
+		return "growing_tree"
+	case AlgorithmWilson:
+		return "wilson_walk"
+	default:
+		return "unknown"
+	}
+}
+
 // numAlgorithms is the width of the enum-indexed weight array — the
 // count of Algorithm's own values, kept as a plain constant rather than
 // a further Algorithm value so no switch over Algorithm ever has to
