@@ -12,12 +12,25 @@ two machines still agree.
 
 ### A note on evidence
 
-Three tag shapes appear below. `[measured 155bbc8:<path>:<lines> · <cmd> → <output>]` cites this
-tree at that commit. `[measured probe · …]` cites a throwaway run against something outside the
-tree — a `docker.io/library/postgres:18` container, `golangci-lint` over a scratch package, or a
-module-cache read of a dependency's source — and carries **no** repository coordinate, because the
-fact is Postgres's, the linter's or goose's, not this repository's. `[derived → …]` names the
-acceptance criterion or test that will establish a claim about something this task creates.
+`[measured <commit>:<path>:<lines> · <cmd> → <output>]` cites this tree at the commit the read was
+taken at — `155bbc8` for round 1, `4098f7b` for anything read in round 2, the round-1 design commit
+having moved HEAD without touching any cited file. `[derived → …]` names the acceptance criterion,
+subtask or test that will establish a claim about something **this task creates**.
+
+**Round 2 corrects a tag error.** Round 1 used a third form, `[measured probe · …]`, for behaviour
+that this task's own schema will have — `item_movement`'s constraints, the `capacity_role` index,
+the reconciliation walk. That was wrong on `design-writer.md` § Quality checklist → Claims' own
+terms: a probe of a scratch table proves a fact about the scratch table, and the design named two
+places where the scratch shape differed from the shipped one. Every such claim now carries
+`[derived → …]`, with the probe kept beside it as the **supporting sentence** it always was: it is
+why the design believes the shape will work, not evidence that it does.
+
+`[measured probe · …]` survives only where the subject is **outside this tree and has no repository
+coordinate** — Postgres's own refusal to use a new enum member in the adding transaction, goose's
+one-transaction-per-migration default, `go build`'s per-package error truncation, and
+`exhaustive`'s treatment of a widened enum. `design-writer.md` enumerates three forms and this is a
+fourth; it is used narrowly, flagged here rather than hidden, and raised in § Open questions for
+the orchestrator to settle.
 
 ### D1 — A holder is a `scope` row, and that is what "one address space" already means
 
@@ -104,6 +117,24 @@ drawn against and the origin every instance's chain starts at
 `[measured 155bbc8:internal/store/migrations/00001_ledger_core.sql:89-94 · cat -n … → the seeded world-scope account definitions carry controlled = false and no account_balance row is seeded]`.
 That is a rule about *World*, not about *holder kinds*, so no code branches on kind.
 
+**`used` is derived-only; `free` is the rail a mechanic may write.** The occupancy account is
+written by nothing but the legs `Move` derives from movements — that is what makes
+`item_capacity_divergence` a comparison of two independently maintained numbers rather than of one
+number with itself. The budget account is the opposite: granting capacity **is** a posting to
+`free`, so a mechanic writes it directly. Both rules are enforced the way §11 says the machines are
+checked — by the reconciliation at rest, and by #26's posting-signature contract test at write
+time — rather than by a refusal inside `Post`. **Rejected: refusing a caller-supplied `used` leg
+in `Post`.** It would thread a "except the legs `Move` itself derived" exemption through the
+ledger's core primitive, for a rule the reconciliation already catches, and `Post` would have to
+learn about the item machine to enforce it.
+
+**A caller's own legs and the derived legs are summed per account before any balance moves**, which
+is what makes the grant-and-fill document expressible: a death grants the fresh corpse the capacity
+it needs (`corpse.slots_free +N` against World) *and* moves the instances in (`corpse.slots_free
+-1` each) under one document, netting to zero on that account, so `CHECK (balance >= 0)` never sees
+the intermediate. That is `Post`'s existing behaviour, not new machinery
+`[measured 155bbc8:internal/store/post.go:131-138 · cat -n internal/store/post.go → phase c, "deltaByID[p.AccountID] = deltaByID[p.AccountID].Add(p.Amount)", the per-account sum taken before phase e's UPDATE]`.
+
 ### D3 — Chain continuity is a database invariant, not a code convention
 
 `item_movement` carries `prev_movement_id`, and the declarative objects below make §11's invariant
@@ -124,23 +155,35 @@ CREATE UNIQUE INDEX item_movement_successor_key
     ON item_movement (item_id, prev_movement_id, from_holder_id) NULLS NOT DISTINCT;
 ```
 
-Every one of these was executed against the image the suite itself provisions before being written
-down here:
+Each refusal below is a property of a table this task creates, so each is `[derived → …]`. The
+supporting sentence in each is a throwaway `psql` run against `docker.io/library/postgres:18`
+(server_version 18.6) over the block above with a stand-in holder table in place of `scope` — it is
+why the design believes the shape holds, and it is **not** evidence about the shipped schema, which
+is why subtask 2 asserts every one of these against the migrated schema by SQLSTATE and constraint
+name.
 
-- the DDL is accepted, and a self-referential composite FK under the default `MATCH SIMPLE` leaves
-  a genesis row (`prev_movement_id IS NULL`) unconstrained by the chain
-  `[measured probe · psql on docker.io/library/postgres:18 (server_version 18.6), the block above with a stand-in holder table in place of scope → "CREATE TABLE", "CREATE INDEX", then a genesis insert "INSERT 0 1"]`;
-- a `from` that is not the predecessor's `to` is refused
-  `[measured probe · psql on docker.io/library/postgres:18 → "ERROR: insert or update on table \"item_movement\" violates foreign key constraint \"item_movement_chain_fk\" … Key (prev_movement_id, item_id, from_holder_id)=(15, 1, 2) is not present in table \"item_movement\""]`;
+- a self-referential composite FK under the default `MATCH SIMPLE` leaves a genesis row
+  (`prev_movement_id IS NULL`) unconstrained by the chain, so the genesis `CHECK` is what binds it
+  `[derived → subtask 2's genesis scenarios]` — the probe accepted the DDL and then a genesis
+  insert;
+- a `from` that is not the predecessor's `to` is refused by `item_movement_chain_fk` with `23503`
+  `[derived → AC2, subtask 2's "a successor whose from is not the predecessor's to"]` — the probe
+  answered `insert or update on table "item_movement" violates foreign key constraint
+  "item_movement_chain_fk"`;
 - a predecessor belonging to a different instance is refused by the same constraint
-  `[measured probe · psql on docker.io/library/postgres:18 → "ERROR: … item_movement_chain_fk … Key (prev_movement_id, item_id, from_holder_id)=(3, 3, 3) is not present"]`;
-- a **fork** — a second successor of one movement — is refused
-  `[measured probe · psql on docker.io/library/postgres:18 → "ERROR: duplicate key value violates unique constraint \"item_movement_successor_key\" … Key (item_id, prev_movement_id, from_holder_id)=(1, 18, 2) already exists"]`;
-- a **second genesis** for one instance is refused, which is the case `NULLS NOT DISTINCT` exists
-  for
-  `[measured probe · psql on docker.io/library/postgres:18 → "ERROR: duplicate key value violates unique constraint \"item_movement_successor_key\" … Key (item_id, prev_movement_id, from_holder_id)=(4, null, 1) already exists"]`;
-- a genesis whose `from` is not the World scope is refused
-  `[measured probe · psql on docker.io/library/postgres:18 → "ERROR: new row for relation \"item_movement\" violates check constraint \"item_movement_genesis_from_world\""]`.
+  `[derived → subtask 2's "a successor naming a predecessor of a different instance"]`;
+- a **fork** — a second successor of one movement — is refused by `item_movement_successor_key`
+  with `23505` `[derived → AC2, AC8, subtask 2's fork scenario]` — the probe answered `duplicate
+  key value violates unique constraint "item_movement_successor_key"`;
+- a **second genesis** for one instance is refused by the same index, which is the case
+  `NULLS NOT DISTINCT` exists for `[derived → subtask 2's second-genesis scenario]`;
+- a genesis whose `from` is not the World scope is refused by
+  `item_movement_genesis_from_world` with `23514` `[derived → subtask 2's genesis scenarios]`.
+
+Two of the properties above need no probe at all, and hold analytically: `prev_movement_id` must
+reference a row that already exists and identity ids ascend, so a **cycle is unrepresentable**
+without an explicit id, which `GENERATED ALWAYS` refuses; and given the chain FK plus the genesis
+`CHECK`, the movements of one instance can only form a single path.
 
 **Why the `from_holder_id` column rides in the unique index.** Given the chain FK, a
 non-genesis movement's `from` is *determined* by its predecessor's `to`; given the genesis
@@ -148,7 +191,10 @@ non-genesis movement's `from` is *determined* by its predecessor's `to`; given t
 `(item_id, prev_movement_id, from_holder_id)` is equivalent to uniqueness on
 `(item_id, prev_movement_id)` — and the wider form additionally **covers the composite FK** for
 this repository's FK-coverage gate, which a two-column index cannot. One index does both jobs
-`[measured probe · psql on docker.io/library/postgres:18, running the gate's own coverage query against the probe schema → with the three-column unique index in place every foreign key of the probe's item_movement reports covered = t; with a two-column form, item_movement_chain_fk reports f]`
+`[derived → AC2, AC8, and `TestFKCoverage` passing on the migrated schema in subtask 1]` — running
+the gate's own covering query over the probe schema reported every foreign key covered with the
+three-column form and `item_movement_chain_fk` uncovered with the two-column one, and the rule it
+applies is in the tree
 `[measured 155bbc8:internal/store/fkcover_test.go:80-102 · cat -n internal/store/fkcover_test.go → the covering rule: an index whose leading columns, as a set, equal the FK's referencing columns, with an absent or "IS NOT NULL" partial predicate]`.
 
 **Why a composite FK at all, when KD-17 says «No composite FKs».** KD-17's reason is stated with
@@ -157,8 +203,8 @@ owner judged the declarative guard illusory»
 `[measured 155bbc8:ai-docs/key-decisions.md:47 · grep -n 'No composite FKs' ai-docs/key-decisions.md → "No composite FKs and no move-control: such moves are not planned by design, and the owner judged the declarative guard illusory."]`.
 Neither half transfers. The guarded event here is not unplanned — a `from` that disagrees with the
 chain is the exact failure §11 names as *the* invariant of this machine — and the guard is not
-illusory: it refuses the row, as the probe output above shows. The decision is recorded here rather
-than silently taken.
+illusory: it refuses the row rather than merely describing it. The decision is recorded here rather
+than silently taken, and subtask 2 is where the refusal stops being a design claim.
 
 **Why the movement points at `journal_entry`, not at its own exclusive arc.** §11 says the movement
 carries «документ-основание (тот же exclusive arc)». `journal_entry` **is** that arc: it is 1:1
@@ -172,12 +218,42 @@ becomes structurally true rather than checked; a new basis type stays one `CHECK
 the property §11 calls «grep-абельный реестр»; and a movement in mid-air is as unrepresentable as
 a posting in mid-air.
 
-### D4 — `Move` composes `Post`; it does not bypass it
+**The append-only guard covers `item_movement`, and deliberately not `item`.** Scope 1 calls the
+movement record append-only, and KD-17 fixes how that is enforced here — «append-only is enforced
+in code only — the owner declined a database trigger»
+`[measured 155bbc8:ai-docs/key-decisions.md:47 · grep -n 'append-only is enforced' ai-docs/key-decisions.md → "append-only is enforced in code only — the owner declined a database trigger"]`.
+The code in question is the in-suite source scan, whose pattern names the append-only tables one by
+one and today stops at `event`
+`[measured 4098f7b:internal/store/append_only_test.go:17 · sed -n '17p' internal/store/append_only_test.go → "var appendOnlyPattern = regexp.MustCompile(`(?i)update\\s+(posting|journal_entry|event)\\b|delete\\s+from\\s+(posting|journal_entry|event)\\b`)"]`,
+so `item_movement` is outside it and nothing else in the tree would notice an `UPDATE` of a
+movement. Subtask 1 adds it, with a positive control per statement shape and a decoy proving the
+word boundary does not spill into a name that merely starts the same way — the discipline the
+`event` / `event_type_definition` pair already established there. `item` stays **out**: it is an
+identity table like `owner` and `scope`, neither of which is guarded, its rows carry nothing
+mutable to rewrite (AC10), and #32 will legitimately add a definition column to it by forward
+migration — which the scan, reading migrations as well as Go sources, would otherwise refuse. The
+scan's non-vacuity guard names the files it must have seen, so it gains this migration in subtask 1
+and `move.go` in subtask 4
+`[measured 4098f7b:internal/store/append_only_test.go:100-103 · sed -n '100,103p' internal/store/append_only_test.go → the slices.Contains guard over post.go, event.go and the migrations it names, failing with "append-only scan is vacuous"]`.
+
+### D4 — `Move` writes **both machines** under one document, and composes `Post` to do it
+
+**Round 2 changed this section's API.** Round 1 gave `Move` no way to carry the mechanic's *own*
+postings, so a craft or a death would have had to call `Post` and `Move` separately — two basis
+documents and two journal entries, or, with a `*PlayerOperation` basis, an `ErrAlreadyPosted` on
+the second call, because the document insert deduplicates on `(source, operation_id)`
+`[measured 4098f7b:internal/store/basis.go:43-61 · sed -n '43,61p' internal/store/basis.go → "INSERT INTO player_operation (source, operation_id) VALUES ($1, $2) ON CONFLICT (source, operation_id) DO NOTHING RETURNING id" and "if errors.Is(err, pgx.ErrNoRows) { return 0, ErrAlreadyPosted }"]`.
+That is a direct contradiction of the property §11 exists to state — «Один документ → проводки в
+обеих машинах → обе сигнатуры в контрактном тесте», with «смерть = документ → движения
+рюкзак→труп + количественные проводки» and «`craft_succeeded`: списания ресурсов + зачисление
+предмета» as its worked examples. `Move` now takes the mechanic's legs alongside the movements and
+writes one document.
 
 `AGENTS.md`'s ledger AXIOM says every balance change is «a set of postings written by
 `store.Post`»
 `[measured 155bbc8:AGENTS.md:179 · sed -n '179p' AGENTS.md → "Every change to stamina, resources, money, or items is a set of postings written by store.Post under exactly one basis document"]`.
-`Move` honours that literally: the balance-moving half of a move **is** a `Post` call. Since the
+`Move` honours that literally: every posting a move writes — derived or caller-supplied — goes
+through the same body `Post` itself uses, with no second write path to a balance. Since the
 movement rows need the `journal_entry` id that `Post` currently discards, `Post`'s body moves into
 an unexported `post` returning it, and `Post` becomes the thin wrapper that drops it — no exported
 signature changes, no call site moves, and the phase order, capture-order discipline and every
@@ -202,8 +278,21 @@ type Movement struct {
     To     HolderID
 }
 
-func Move(ctx context.Context, tx pgx.Tx, basis PostingBasis, movements ...Movement) ([]ItemID, error)
+// Move writes one document's whole effect on both machines: the instance
+// movements, the capacity postings derived from them, and the caller's own
+// postings — all under basis, in the caller's transaction.
+func Move(
+    ctx context.Context, tx pgx.Tx, basis PostingBasis,
+    movements []Movement, postings ...Posting,
+) ([]ItemID, error)
 ```
+
+`Post` keeps its signature and its meaning: it is the entry point for a document that moves **no**
+instance. `Move` is the entry point for one that does, and the mechanic's own legs ride the
+variadic tail — a craft's resource debits, a death's stamina-to-World leg, a corpse's capacity
+grant. The `movements` slice is mandatory and positional because it is the thing that makes this
+`Move` rather than `Post`; the postings are the optional tail so the common
+move-with-nothing-else call stays short.
 
 `Move`'s phases, mirroring `Post`'s documented shape so a reader of one can read the other:
 
@@ -213,23 +302,33 @@ func Move(ctx context.Context, tx pgx.Tx, basis PostingBasis, movements ...Movem
   holder), and the `free`/`used` account of every touched holder in the `slots` kind. Refuses an
   unknown instance, a `From` that is not the current holder (AC2), and a holder with no capacity
   account. Transaction usable, nothing written.
-- **c. build the batch** — the postings of D2's table, per movement.
-- **d. `post(...)`** — basis document, journal entry, balance `UPDATE`s in capture order, postings.
-  `ErrOverdraft` here is AC4's refusal.
+- **c. build the batch** — the caller's postings, then the postings of D2's table per movement.
+  `post` sums per account before touching a balance, so the two sets compose (D2's grant-and-fill
+  paragraph), and a caller batch that is not itself zero-sum per kind fails `post`'s existing
+  check as `ErrUnbalanced`.
+- **d. `post(...)`** — one basis document, one journal entry, the balance `UPDATE`s in capture
+  order, then every posting. `ErrOverdraft` here is AC4's refusal.
 - **e. mint** — one `item` row per `NewItem` movement.
 - **f. movements** — the `item_movement` rows, in ascending instance id, so two batches touching
   the same instances take the index entries in one order. A chain refusal that only a concurrent
   transaction could produce (`23503` on `item_movement_chain_fk`, or `23505` on
   `item_movement_successor_key`) surfaces as `ErrMoveConflict` with the transaction aborted.
 
+**One document, both machines, structurally.** `post` is called exactly once, so exactly one basis
+document and one `journal_entry` exist; `item_movement.journal_entry_id` points at that entry
+(D3); and both posting sets hang off it. A mechanic can therefore write §11's worked examples as
+one call each, and #26's framework has one document to check both signatures against
+`[derived → AC3, and the one-document test of § Test Design subtask 4]`.
+
 **Why the caller supplies `From` rather than `Move` deriving it.** Deriving would make AC2
 inexpressible and would silently convert "loot the corpse" into "move the item from wherever it
 now is" — a mechanic must be able to lose the race, not win it by accident.
 
-**Why minting lives inside `Move`.** A craft creates the instance and places it under one document;
-splitting that would put an `item` row in the tree with no genesis movement, which is precisely the
-anomaly `item_chain_break` reports. `NewItem` keeps "an instance always has a chain that starts at
-World" true by construction `[derived → AC1, and the chain-break view's no-movement class]`.
+**Why minting lives inside `Move`.** A craft creates the instance, places it, and pays for it under
+one document, and with the signature above that is one call. Splitting the mint out would put an
+`item` row in the tree with no genesis movement, which is precisely the anomaly `item_chain_break`
+reports. `NewItem` keeps "an instance always has a chain that starts at World" true by construction
+`[derived → AC1, and the chain-break view's no-movement class]`.
 
 **No panic path is added.** Every refusal is a returned error; the project's zero-production-panic
 invariant and its empty index stand
@@ -260,12 +359,30 @@ now is what avoids a second `ALTER TYPE` later
 
 **How `Move` finds the accounts without branching on holder kind.** `account_definition` gains a
 nullable `capacity_role` column (`free` / `used`, `NULL` for the money and experience rows), plus
-`UNIQUE (scope_definition_id, kind, capacity_role) WHERE capacity_role IS NOT NULL`. Resolution is
-then one uniform query on `(scope_id, kind, capacity_role)` for every holder that exists or ever
-will `[measured probe · psql on docker.io/library/postgres:18 → the partial unique index refuses a second (scope_definition_id, kind, capacity_role) row with "duplicate key value violates unique constraint" while two capacity_role-NULL rows coexist]`.
-Resolving by parsing the `code` string instead would put a per-holder-kind mapping in Go, which is
-the branch AC7 forbids. A holder kind seeded without its `slots` pair is refused at its first move
-with a sentinel, not silently mis-accounted.
+`UNIQUE (scope_definition_id, kind, capacity_role) WHERE capacity_role IS NOT NULL` so the
+resolution is single-valued for every holder kind that exists or ever will
+`[derived → AC7, and subtask 2's duplicate-`(scope_definition, kind, capacity_role)` scenario]` — a
+probe confirmed the partial index refuses a duplicate triple while leaving the `NULL`-role rows
+free to coexist, which is the shape the existing money and experience rows need. Resolution is then
+one uniform query on `(scope_id, kind, capacity_role)`. Resolving by parsing the `code` string
+instead would put a per-holder-kind mapping in Go, which is the branch AC7 forbids. A holder kind
+seeded without its `slots` pair is refused at its first move with a sentinel, not silently
+mis-accounted.
+
+**The column is mirrored in Go, and both mirror tests move with it.** `AccountDefinition` gains a
+`CapacityRole` field, because a catalog column the mirror does not carry is a column nothing keeps
+honest — and the mirror comparison is element-for-element on a comparable struct, so the field is a
+plain `CapacityRole` string with `""` standing for SQL `NULL`, read as `COALESCE(capacity_role::text, '')`,
+never a pointer. Two consequences round 1 got wrong by asserting the mirror tests needed no edit:
+`TestCatalog_mirrors_database`'s `account_definition` query and `Scan` must gain the column, or the
+new column is unmirrored
+`[measured 4098f7b:internal/store/enums_test.go:74-75 · sed -n '74,75p' internal/store/enums_test.go → "SELECT id, scope_definition_id, code, kind, controlled FROM account_definition ORDER BY id"]`;
+and `TestEnums_mirror_database` iterates a hard-coded table of enums, so a new enum is simply not
+compared unless it is added to it
+`[measured 4098f7b:internal/store/enums_test.go:16-24 · sed -n '16,24p' internal/store/enums_test.go → the table listing owner_kind, ledger_kind, operation_source and event_volume_class]`.
+The Go member slice the enum mirror compares holds `free` and `used` only; the `""` sentinel is a
+Go-side stand-in for `NULL` and has no database member, so including it would break the very
+comparison it is meant to survive.
 
 ### D6 — The reconciliation queries ship as views, because that is how this repository answers "answerable by a query"
 
@@ -287,9 +404,11 @@ Three views land, each named for what it answers:
   instances has no `slots_used` account at all. World is absent from both branches because it has
   no materialised balance, which is the same reason its money balance is not reconciled either.
 
-Sketch of the reconciliations, in the shape probed
-`[measured probe · psql on docker.io/library/postgres:18 → the recursive walk below, created and queried against a planted chain: it reports the instance with no movement, and, with the chain constraints dropped inside a rolled-back transaction, an orphaned segment as reached 1 / recorded 2 / heads 2 and a fork as reached 3 / recorded 3 / heads 2]`
-`[derived → the view definitions of subtask 1 and the tests of subtask 3]`:
+Sketch of the reconciliations `[derived → AC5, the view definitions of subtask 1 and the tests of
+subtask 3]` — the walk below was run against a planted chain on a throwaway container and reported
+the instance with no movement, and, with the chain constraints dropped, an orphaned segment and a
+fork; that is why the shape is written this way, and subtask 3 is what will show it on the shipped
+views:
 
 ```sql
 CREATE VIEW item_holder AS
@@ -334,25 +453,47 @@ sees the members committed
 - `00007_item_machine.sql` — the `capacity_role` enum; the `account_definition` column and its
   partial unique index; the `backpack` `scope_definition` row with `owner_kind = 'player'`; the
   `free`/`used` account definitions for the world and backpack scope definitions, `controlled`
-  false on the world's and true on the backpack's; the seeded world capacity `account` rows and the
-  `setval` that positions the identity sequence past them; `item`; `item_movement` with D3's
-  constraints and the indexes the FK-coverage gate requires
-  (`item_movement_successor_key`, and one each on `journal_entry_id`, `from_holder_id`,
-  `to_holder_id`); and D6's views.
+  false on the world's and true on the backpack's; the world scope's capacity `account` rows; the
+  backfill below; `item`; `item_movement` with D3's constraints and the indexes the FK-coverage
+  gate requires (`item_movement_successor_key`, and one each on `journal_entry_id`,
+  `from_holder_id`, `to_holder_id`); and D6's views.
 
-**What happens to rows written before it.** Nothing: every object it touches is either new or
-gains a nullable column. `account_definition.capacity_role` is `NULL` on the existing money and
-experience rows, with no backfill, so both shapes read identically during the deploy window
+**The world capacity accounts take identity-assigned ids, with no `setval`.** The ledger-core
+migration seeds `account` ids explicitly because `WorldMoney` and `WorldExperience` are Go
+constants; the capacity accounts need no constant, because `Move` resolves every holder's capacity
+accounts — World's included — by `(scope_id, kind, capacity_role)` (D5). Writing explicit ids here
+would additionally assume that no `account` row past the seeded pair exists, which is a premise
+about the *state* of a database rather than about this migration.
+
+**What happens to rows written before it, and the premise behind that answer.** Two shapes could
+have pre-existed. The first is harmless with no premise at all:
+`account_definition.capacity_role` is added nullable and left `NULL` on the money and experience
+rows, so both shapes read identically through the deploy window
 `[measured 155bbc8:internal/store/migrations/00001_ledger_core.sql:89-91 · cat -n … → the seeded account_definition rows, which this migration does not rewrite]`.
+The second is the one round 1 asserted away. **Seeding a `scope_definition` creates scopes only for
+owners created after it** — `CreateOwner` runs at owner-creation time and is not a backfill
+`[measured 155bbc8:internal/store/owner.go:58-68,86-97,166-172 · cat -n internal/store/owner.go → "creates … every scope whose scope_definition.owner_kind matches, every account of those scopes, and a zero-balance account_balance row for each controlled account"]`
+— so a pre-existing player would end up with no backpack scope, no capacity accounts and no balance
+rows, and its first move would be refused. That state is unreachable today because **no production
+path creates an owner at all**
+`[measured 4098f7b · rg -n --type go 'CreateOwner\(' --glob '!*_test.go' → only "internal/store/owner.go:68:func CreateOwner(…)", its own declaration]`,
+but "no owner exists" is a fact about today's deployment, not a property of the migration, and it
+stops holding the day a handler calls `CreateOwner`.
+
+**So `00007` backfills, and every later scope-definition migration owes the same three
+statements**: `INSERT … SELECT` the new scope for every existing owner of the matching kind, then
+its accounts, then an `account_balance` row per controlled account — each `ON CONFLICT DO NOTHING`
+against the singleton constraints, so re-running is a no-op and so the statements are correct
+whether the owner set is empty or not. On every database this migration meets today the backfill
+writes nothing, which is also why no test exercises its non-empty branch (§ Risks).
+
 **Rollback:** none, by KD-3 — a wrong object is corrected by the next forward migration. A `DROP`
 of the item tables would be data loss of exactly the kind the carve-out in `AGENTS.md` §
 *API Stability* forbids.
 
-**No change to `CreateOwner`.** It already creates every scope whose `scope_definition.owner_kind`
-matches, every account of those scopes, and a zero-balance row for each controlled account
-`[measured 155bbc8:internal/store/owner.go:58-68,86-97,166-172 · cat -n internal/store/owner.go → "creates … every scope whose scope_definition.owner_kind matches, every account of those scopes, and a zero-balance account_balance row for each controlled account"]`,
-so seeding the backpack `scope_definition` is the whole of AC9's "the backpack scope … exists for a
-player". The player's account set grows accordingly, which existing assertions pin (§ Risks).
+**No change to `CreateOwner`.** Seeding the backpack `scope_definition` is the whole of AC9's "the
+backpack scope … exists for a player" for every owner created from here on; the backfill covers the
+rest. The player's account set grows accordingly, which existing assertions pin (§ Risks).
 
 ### D8 — This task is not a mechanic, and it ships no tuning value
 
@@ -410,10 +551,10 @@ The `AGENTS.md` and `.claude/**` edits are legal in this group: Learning-Log Bou
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | The forward migration (D7) and the Go mirrors that must move with it, in one commit because neither is green alone. `00006` carries the capacity `ledger_kind` members and nothing else; `00007` carries the `capacity_role` enum, the `account_definition` column and its partial unique index, the `backpack` scope definition, the capacity account definitions for the world and backpack scope definitions, the seeded world capacity accounts and their `setval`, `item`, `item_movement` with D3's constraints and covering indexes, and D6's views. Alongside: the enum and catalog mirrors, the `ItemID` / `NewItem` / `HolderID` / `WorldHolder` identity declarations, and the existing assertions the schema change moves — the table set, enum members, seed counts, identity sequences, goose row count and index list in `migrate_test.go`, the view-name set and column contract in `views_test.go`, the player's account set in `owner_test.go`, and the totality `exhaustive` forces on `post_test.go`'s `Kind` switches (§ Risks). Serves Scope 1, AC1, AC5, AC6, AC7, AC9, AC10. | `internal/store/migrations/00006_capacity_kinds.sql`, `internal/store/migrations/00007_item_machine.sql`, `internal/store/enums.go`, `internal/store/catalog.go`, `internal/store/ids.go`, `internal/store/migrate_test.go`, `internal/store/views_test.go`, `internal/store/owner_test.go`, `internal/store/post_test.go` | — |
+| 1 | The forward migration (D7) and the Go mirrors that must move with it, in one commit because neither is green alone. `00006` carries the capacity `ledger_kind` members and nothing else; `00007` carries the `capacity_role` enum, the `account_definition` column and its partial unique index, the `backpack` scope definition, the capacity account definitions for the world and backpack scope definitions, the world capacity accounts, the backfill, `item`, `item_movement` with D3's constraints and covering indexes, and D6's views. Alongside: the enum and catalog mirrors including `capacity_role` (D5), the `ItemID` / `NewItem` / `HolderID` / `WorldHolder` identity declarations, the append-only guard extended to `item_movement` with its controls and decoy (D3), and the existing assertions the schema change moves — the table set, enum members, seed counts, identity sequences, goose row count and index list in `migrate_test.go`, the enum table and the `account_definition` query in `enums_test.go`, the view-name set and column contract in `views_test.go`, the player's account set in `owner_test.go`, and the totality `exhaustive` forces on `post_test.go`'s `Kind` switches (§ Risks). Serves Scope 1, AC1, AC5, AC6, AC7, AC9, AC10. | `internal/store/migrations/00006_capacity_kinds.sql`, `internal/store/migrations/00007_item_machine.sql`, `internal/store/enums.go`, `internal/store/catalog.go`, `internal/store/ids.go`, `internal/store/migrate_test.go`, `internal/store/enums_test.go`, `internal/store/views_test.go`, `internal/store/owner_test.go`, `internal/store/post_test.go`, `internal/store/append_only_test.go` | — |
 | 2 | The schema's own refusals, asserted by SQLSTATE and constraint name in the existing `schema_test.go` idiom: same-holder move, genesis not from World, a `from` disagreeing with the predecessor, a predecessor of another instance, a fork, a second genesis, a duplicate `(scope_definition, kind, capacity_role)`, and an explicit id into `item`'s `GENERATED ALWAYS` identity. Additive; green on top of subtask 1. Serves AC1, AC2, AC8, AC10. | `internal/store/schema_test.go` | 1 |
 | 3 | The reconciliation views' tests: both views empty on a healthy tree, `item_holder` naming the right holder after a hand-built chain, and each anomaly class of `item_chain_break` and `item_capacity_divergence` planted and seen reported — the plant made inside a transaction that drops the chain constraints and is rolled back, so the instrument is shown going red before its green is believed. Serves AC5. | `internal/store/item_views_test.go` | 1 |
-| 4 | `Move` (D4): extract `Post`'s body into the unexported `post` returning the journal-entry id, add `Movement`, `Move`, the sentinels, and the package comment's second write path. Tests first: the happy path and the postings it writes, each sentinel with the transaction state its doc comment claims, the capacity `CHECK` path returning `ErrOverdraft`, the same-document/same-transaction property (an induced failure at the movement insert leaves no postings), a mint, and the planted-holder-kind case that shows a holder the MVP does not use needs no code. Serves Scope 2, Scope 5, AC2, AC3, AC4, AC6, AC7. | `internal/store/move.go`, `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/move_test.go` | 1 |
+| 4 | `Move` (D4): extract `Post`'s body into the unexported `post` returning the journal-entry id, add `Movement`, `Move` — taking the movements **and** the mechanic's own postings, so one document reaches both machines — the sentinels, and the package comment's second write path; add `move.go` to the append-only scan's non-vacuity list (D3). Tests first: the happy path and the postings it writes, a §11-shaped document carrying movements and the caller's own legs together under one journal entry, each sentinel with the transaction state its doc comment claims, the capacity `CHECK` path returning `ErrOverdraft`, the grant-and-fill document whose net keeps the `CHECK` satisfied, the neither-or-both property, a mint, and the planted-holder-kind case that shows a holder the MVP does not use needs no code. Serves Scope 2, Scope 5, AC2, AC3, AC4, AC6, AC7. | `internal/store/move.go`, `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/move_test.go`, `internal/store/append_only_test.go` | 1 |
 | 5 | The tests that need a shape of their own: a `rapid` property test driving random move sequences against a Go model of holder-per-instance and per-holder occupancy, asserting `item_holder`, both reconciliation views and both capacity balances after every accepted move and no write after every rejected one; and a `-race` concurrency test in which two transactions move one instance at once, asserting exactly one commit, `ErrMoveConflict` for the loser, and a continuous chain afterwards. Serves AC2, AC8. | `internal/store/move_property_test.go`, `internal/store/move_race_test.go` | 4 |
 | 6 | Sweep every live surface for a claim this diff falsifies and fix each (D9). The class is every live site naming the item machine's tables or describing its holder address space, re-derived by a case-insensitive sweep at implementation time — not the illustrative list in D9. Serves Scope 6. | `AGENTS.md`, `ai-docs/domain-invariants.md`, `ai-docs/context.md`, `.claude/skills/task/reference.md`, `docs/DESIGN.md`, plus whatever the sweep finds | 1–5 |
 
@@ -451,7 +592,7 @@ total is within the default maximum of 4 design-defined groups, so no user appro
   `[measured 155bbc8:internal/store/post_test.go:43,58 · sed -n '43p;58p' internal/store/post_test.go → "switch a.Kind {" and "switch kind {", each followed only by the KindMoney and KindExperience cases]`.
   Mitigation: subtask 1 gives each the case or the default it needs, in the same commit as the
   mirrors. Reproduced outside the tree before being asserted here
-  `[measured probe · golangci-lint run --enable-only=exhaustive over a scratch package with a four-member Kind and a two-case switch → "missing cases in switch of type exhprobe.Kind: exhprobe.KindSlots, exhprobe.KindWeight (exhaustive)" in both the non-test and the _test.go file]`.
+  `[measured probe · golangci-lint run --enable-only=exhaustive over a scratch package whose Kind gained slots and weight while a switch kept only the money and experience cases → "missing cases in switch of type exhprobe.Kind: exhprobe.KindSlots, exhprobe.KindWeight (exhaustive)", reported in the non-test file and in the _test.go file alike]`.
 - **Several existing assertions pin the pre-change schema exactly and will fail as a set.** The
   table list, the enum member sets, the seed counts, the identity-sequence positions and the goose
   row count
@@ -482,10 +623,26 @@ total is within the default maximum of 4 design-defined groups, so no user appro
   project's standing TDD rule anyway.
 - **`go build ./...` truncates its per-package error list**, so a first green build after the
   migration is not proof that the enumerated fixes were all of them
-  `[measured probe · go build ./... over a scratch package with fifteen undefined-symbol errors → ten "undefined:" lines followed by "./a.go:12:25: too many errors"]`.
+  `[measured probe · go build ./... over a scratch package whose undefined-symbol errors exceed the cap → a run of "undefined:" lines followed by "too many errors"]`.
   Mitigation: subtask 1 re-runs
   the full gate set after the enumerated assertions clear, and any newly revealed out-of-contract
   class is surfaced to the orchestrator rather than absorbed.
+- **The backfill's non-empty branch is not exercised by any test, and cannot easily be.** Every
+  test database is migrated to head by `newStore` before a test can create an owner, so the
+  backfill (D7) always runs against an empty owner set; reaching the other branch would need a
+  partial-migration entry point this package does not expose
+  `[measured 155bbc8:internal/store/migrate.go:71-106 · cat -n internal/store/migrate.go → Migrate runs provider.Up, with no target-version option]`.
+  Mitigation, and why the residue is accepted: the statements are `INSERT … SELECT … ON CONFLICT
+  DO NOTHING`, so their empty-set behaviour — a no-op — **is** covered, by the seed-count and
+  sequence assertions of subtask 1; and the branch is unreachable in production until a handler
+  calls `CreateOwner`, at which point that task owns proving it. Adding a partial-migration seam
+  just for this is scope the spec does not grant.
+- **A mechanic can still write a capacity `used` leg by hand through `Move`'s posting tail or
+  through `Post`.** D2 makes `used` derived-only by convention, not by refusal. Mitigation: the
+  divergence view reports it at rest (subtask 3), and #26's signature framework is the write-time
+  check §11 asks for; the rejected alternative — a refusal inside `Post` — is argued in D2. Until
+  #26 lands, a wrong `used` leg is caught by review and by the next reconciliation run, not at the
+  moment it is written.
 - **The composite chain FK is written against KD-17's «No composite FKs» line.** Mitigation: D3
   states the decision, quotes KD-17's own reason, and shows why neither half of that reason
   transfers. If the owner reads KD-17 as an unconditional ban, the fallback is the same design with
@@ -507,16 +664,28 @@ The package's `TestMain` already satisfies the goroutine-leak rule and does not 
 `pgregory.net/rapid` is already a direct requirement, so the property test adds no dependency
 `[measured 155bbc8:go.mod · go list -m pgregory.net/rapid → "pgregory.net/rapid v1.3.0"]`.
 
-**Subtask 1 — schema shape.** Extends the existing shape assertions rather than adding new tests:
-the base-table set gains the item machine's tables, the enum map gains `ledger_kind`'s new members
-and the `capacity_role` enum, the seed counts and identity sequences move with the seeded world
-capacity accounts, the goose row count moves with the added files, the index list gains
-`item_movement`'s, the `CHECK`-definition map gains the genesis and holders-differ constraints, and
-the view-name set gains D6's views with their column contract pinned. `TestEnums_mirror_database`
-and `TestCatalog_mirrors_database` need no edit — they compare the Go mirrors against the database
-and will fail on either side moving alone, which is the property being relied on
-`[measured 155bbc8:internal/store/enums_test.go:10-45,47-121 · cat -n internal/store/enums_test.go → the enum_range comparison and the element-for-element catalog comparison]`
+**Subtask 1 — schema shape and the append-only guard.** Mostly extensions of existing assertions
+rather than new tests: the base-table set gains the item machine's tables, the enum map gains
+`ledger_kind`'s new members and the `capacity_role` enum, the seed counts and identity sequences
+move with the world capacity accounts, the goose row count moves with the added files, the index
+list gains `item_movement`'s, the `CHECK`-definition map gains the genesis and holders-differ
+constraints, and the view-name set gains D6's views with their column contract pinned.
+
+**The two mirror tests move too** — round 1 claimed they did not, and that was wrong (D5).
+`TestEnums_mirror_database` iterates a hard-coded table, so `capacity_role` is added to it or the
+new enum is compared against nothing; `TestCatalog_mirrors_database`'s `account_definition` query
+and `Scan` gain the column, or `AccountDefinition.CapacityRole` is unmirrored. Both then keep the
+property being relied on: either side moving alone fails
+`[measured 4098f7b:internal/store/enums_test.go:10-45,47-121 · cat -n internal/store/enums_test.go → the enum_range comparison and the element-for-element catalog comparison]`
 `[derived → AC9, AC10]`.
+
+**The append-only guard** (D3) gains `item_movement` in its pattern, a positive control for each
+statement shape it must catch, and a decoy for each shape it must not: a name that merely starts
+the same way (`item_movement_archive`), and `item` itself, which stays legitimately writable. The
+non-vacuity guard gains `migrations/00007_item_machine.sql`. What a green run then proves is
+narrow and worth stating: **no source in this package and no embedded migration issues an `UPDATE`
+or `DELETE` against `item_movement`** — not that the database would refuse one, which by KD-17's
+decision it would not `[derived → Scope 1's "append-only record", and this test's own controls]`.
 
 **Subtask 2 — `internal/store/schema_test.go`.** Entry point: raw `INSERT`s inside a transaction
 rolled back by the file's existing `rollback` helper, asserted with its existing `sqlstate` helper
@@ -539,9 +708,10 @@ the existing `createPlayer` helper
 - *The instrument goes red.* Inside a transaction that drops `item_movement_chain_fk` and
   `item_movement_successor_key` and is then rolled back, plant each anomaly separately and assert
   the class is reported: an instance with no movement; an orphaned segment (a successor whose
-  predecessor belongs to another instance); a fork; a genesis whose `from` is not World. Each
-  planted shape was executed against the image before being specified
-  `[measured probe · psql on docker.io/library/postgres:18 → with the chain constraints dropped inside a rolled-back transaction, the view reports the no-movement instance, the orphan as reached 1 / recorded 2 / heads 2, and the fork as reached 3 / recorded 3 / heads 2]`.
+  predecessor belongs to another instance); a fork; a genesis whose `from` is not World
+  `[derived → AC5, and this test]`. Each planted shape was rehearsed on a throwaway container
+  first, which is how the view's walk was arrived at; what makes the view trustworthy is this test
+  showing it red, not that rehearsal.
 - *Capacity divergence.* Plant a divergence by posting a `slots_used` leg through `Post` with no
   matching movement, and assert the holder appears with both numbers and the `count_mismatch`
   reason; plant a holder holding instances whose scope definition has no `slots_used` account and
@@ -562,10 +732,24 @@ Fixtures: a helper that creates a player, grants its backpack a slot budget thro
   the one the basis document produced, and that the postings are exactly D2's table for each
   movement — read back from `posting`, compared as a set of `(account, amount)` pairs, so an extra
   or missing leg fails.
+- *AC3 and §11's one-document property — the test the round-1 API could not have passed.* A
+  craft-shaped call: one `Move` carrying a `NewItem` movement into a backpack **and** the
+  mechanic's own resource legs. Assert that exactly one basis document and exactly one
+  `journal_entry` row were written, that the movement's `journal_entry_id` and every posting's
+  `journal_entry_id` are that same id, and that the posting set is the caller's legs **union**
+  D2's derived legs with nothing else. The discriminating control is the pair that would have been
+  needed before: a `*PlayerOperation`-based `Post` followed by a `Move` under an equal basis value
+  returns `ErrAlreadyPosted`, and the same pair under a `*ManualCorrection` basis writes two
+  documents — so the test fails if the API ever regresses to requiring two calls.
+- *Grant and fill under one document.* A holder at zero free capacity receives a grant leg and the
+  movements that consume it in the same call. Assert it succeeds, that the holder's `free` balance
+  is the net, and — as the control that the ordering is genuinely irrelevant — that the same call
+  with the postings supplied in the opposite order succeeds identically.
 - *Every sentinel, with the transaction state its doc comment claims.* Empty movements; `From ==
   To`; one instance named twice; a `NewItem` whose `From` is not `WorldHolder`; an unknown
   instance; a `From` that is not the current holder; a holder with no capacity account; a nil and a
-  typed-nil basis. For each pre-write sentinel, `newStoreWithRecorder` plus `rec.Reset()`
+  typed-nil basis; and a caller posting set that is not zero-sum per kind, which must surface
+  `Post`'s own `ErrUnbalanced` rather than a new sentinel. For each pre-write sentinel, `newStoreWithRecorder` plus `rec.Reset()`
   immediately before the call asserts no `INSERT`/`UPDATE`/`DELETE` was issued and the transaction
   is still usable — the recorder discipline the `Post` property test already uses
   `[measured 155bbc8:internal/store/post_property_test.go:151-168 · sed -n '151,168p' internal/store/post_property_test.go → rec.Reset() before the rejected Post and the assertion that only the phase-b SELECT was recorded]`.
@@ -609,9 +793,13 @@ Fixtures: a helper that creates a player, grants its backpack a slot budget thro
   `[measured 155bbc8:internal/store/post_race_test.go:68-80 · sed -n '68,80p' internal/store/post_race_test.go → testdb.Schema with cfg.MaxConns set to the worker count]`.
   The behaviour being asserted was executed before being specified: the loser blocks on the
   uncommitted index entry and is then refused
-  `[measured probe · psql on docker.io/library/postgres:18, two sessions inserting the same successor while the first holds its transaction open → the second waited 3756 ms and then "ERROR: duplicate key value violates unique constraint \"item_movement_successor_key\" … Key (item_id, prev_movement_id)=(1, 13) already exists"; the index carried its two-column form at that point in the probe session, and the refusals under the shipped three-column form are the ones cited in D3]`.
-  A repeat count large enough that an all-green run is not one Bernoulli trial, with the failing
-  goroutine's identity reported rather than only the count.
+  `[derived → AC8, and this test]` — a probe in which one session held its transaction open while
+  a second inserted the same successor showed the second waiting on the uncommitted index entry and
+  then being refused with `duplicate key value violates unique constraint
+  "item_movement_successor_key"`, which is why the design expects a block-then-refuse rather than a
+  lost update; this test is what establishes it on the shipped index. Repeat the race enough times
+  that an all-green run is not one Bernoulli trial, and report which goroutine lost rather than
+  only that one did.
 
 **Subtask 6.** No test. Its gate is `make comment-refs`, the markdown link check, and the
 re-derived sweep coming back empty on a pattern shown to match a constructed positive first.
@@ -642,6 +830,14 @@ re-derived sweep coming back empty on a pattern shown to match a constructed pos
   the reconciliation would have to compare against a summed per-definition cost instead. Not
   blocking, and named now because the cheapest moment to say "slots are per instance, weight is per
   item" is before #32 assumes otherwise.
+- **Is `[measured probe · …]` a legal tag form?** `design-writer.md` § Quality checklist → Claims
+  allows three, and a fact about Postgres, goose, `go build` or `golangci-lint` fits none: it is
+  not `[derived]` (nothing here creates it) and it cannot carry a `<commit>:<path>:<lines>` pin
+  (it is not in this tree). Round 2 narrowed the form to exactly that class and re-tagged every
+  claim about this task's own artefacts as `[derived → …]` (§ A note on evidence). The residue is
+  either a gap in the three-form rule or a licence to stop citing external behaviour at all;
+  settling it is the orchestrator's, and the same question binds every design in this repository,
+  not only this one.
 - **The player's storage scope and its chat binding.** Carried forward from the spec unchanged: it
   waits on #30 closing §16.7, and this task creates the backpack scope alone, so neither answer is
   foreclosed. No design decision here depends on it.
