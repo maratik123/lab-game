@@ -8,13 +8,13 @@ _Updated: 2026-09-12 17:47_
 **Last build:** PASS
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 11 — review fixes complete (Round 2)
+**current_step:** Step 10 — self-review APPROVE (Round 3)
 **last_passed_gate:** make verify | 2026-09-12T18:37:38Z | 7be8f0254fbf30bd23cd4cbec9f14620a904b605
 **entry_args:** 25
 
 ## Next action
 
-**Do this immediately:** Step 10 — re-spawn `self-review` cold for round 3 (the cap) over the same commit range.
+**Do this immediately:** Step 12 — finalise INDEX.md, `git mv` spec and design to `done/`, append the inbox rows and the task-run telemetry record, commit, push, retire the state files, then `gh pr create` and fill the PR locator.
 
 ## Subtasks
 
@@ -86,6 +86,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 11, round 1**: finding 1's *conclusion* was right and its *stated evidence* was wrong. It reported that the recorded pattern "matches a constructed `owner_kind` control line, so the instrument works and the corpus genuinely has none". Running that control shows it does not match: `\|` is a literal pipe in `rg`, so the recorded command was a dead instrument. The corrected command reproduces with its control, and AC7 holds more strongly than first recorded — `move.go` contains no `owner_kind`, no `scope_definition` and no `holder…kind` at all.
 - **Step 11, round 2**: one finding, confirmed and fixed at 7be8f02. `post`'s doc comment had called it "the second (and only other) write path to a balance" — the opposite of the property the hook was chosen for, and the phrase belongs to `Move`, which is a second **entry point** composing the one body. The wrong subject was swept out of every Go source with a control, not just off the cited line.
 - **Step 11, round 2**: two of the seven `accepted@2` wave-throughs were re-verified rather than taken on the reviewer's word — the recorder's non-vacuity, and `item_movement_chain_key`'s absence from the asserted index list (transitively pinned: Postgres refuses the chain FK without it, and that FK is asserted by name through SQLSTATE in two schema tests and dropped by name in a third). Both hold.
+- **Step 10, round 3**: APPROVE after three rounds — 1 major fixed in round 1's batch of four, 1 major in round 2, none in round 3. Seventeen register rows raised across the three rounds and **no** row re-opened, so the re-litigation tripwire never fired. Round 3 added two mutation checks neither earlier round ran: the NULL-blind predicate and the `LEFT JOIN` each turned exactly the expected subtests red.
+- **Step 10, round 3**: R3-1 was below the reviewer's severity floor and fixed regardless — `ai-docs/context-status.md` claimed a new holder kind costs two catalog rows when the shipped minimum is three, because a move refuses a holder missing either half of its capacity pair. Rewritten to name the rows rather than count them, which is what the no-counts rule asks for and what keeps the sentence true after the next change.
 
 ## Key discoveries (don't re-investigate)
 
@@ -103,7 +105,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | AC3 | Movements and their capacity postings carry the same basis document in the same transaction; neither is durable without the other | `TestMove_oneDocumentBothMachines`; `TestMove_orderedConflict` — after the loser's rollback its basis document, journal entry, postings and movement are each asserted absent, and the winner's each asserted present through the same queries so the absence is not a blind query. Added in this fix round after round 1 found the assertion missing and this row claiming it | PASS |
 | AC4 | A move past a holder's capacity is refused by the ledger's `CHECK (balance >= 0)`, not by a check beside it | `TestMove_capacityOverdraft`; `rg -n 'UPDATE account_balance' --type go --glob '!*_test.go'` → the single site, inside `post` | PASS |
 | AC5 | Chain continuity, and instance count against capacity balance, are each answerable by a query over the shipped data | `grep -n '^CREATE VIEW' internal/store/migrations/00007_item_machine.sql` → `item_holder`, `item_chain_break`, `item_capacity_divergence`; `TestItemViews_chainBreakDetectsAnomalies/{fork,second_genesis,orphaned_segment,off_world_genesis,instance_with_no_movement}`; `TestItemViews_capacityDivergence/{count_mismatch,no_slots_used_account_vs_uncontrolled_absent,world_absent_as_genesis_source}`; `TestItemViews_healthyIsEmptyAndNotVacuous` | PASS |
-| AC6 | Backpack, chest, corpse, construction and World are each expressible as an address in the one shared space, and a move between any two is the same operation | `TestMove_holderKindTheMVPDoesNotUse` — a `planted_corpse` scope definition plus its capacity pair is two catalog rows, after which `CreateOwner` and `Move` work unchanged; `TestMove_grantAndFillUnderOneDocument` | PASS |
+| AC6 | Backpack, chest, corpse, construction and World are each expressible as an address in the one shared space, and a move between any two is the same operation | `TestMove_holderKindTheMVPDoesNotUse` — a `planted_corpse` scope definition plus both halves of its capacity pair are catalog rows and nothing else, after which `CreateOwner` and `Move` work unchanged; `TestMove_grantAndFillUnderOneDocument` | PASS |
 | AC7 | Nothing in the machine branches on a holder's kind, and a holder kind the MVP does not use costs no restructuring | `rg -n -e owner_kind -e scope_definition -e 'holder.*kind' internal/store/move.go` → exit 1, empty, the same pattern matching a constructed `owner_kind` control line; `rg -n -e WorldHolder internal/store/move.go` → two hits, a doc comment and the mint precondition `m.From != WorldHolder`, which tests one **address**, not a holder kind; `TestMove_holderKindTheMVPDoesNotUse` | PASS |
 | AC8 | Of two simultaneous moves of one instance at most one is accepted, and the chain is continuous afterwards | `TestMove_orderedConflict` — deterministic: the loser blocks on the successor index, returns `ErrMoveConflict`, is asserted **not** `ErrOverdraft`, and issued no balance `UPDATE`; `TestMove_antiConflict` — 15 rounds, exactly one commit per round, with a cross-round assertion that at least one loser was `ErrMoveConflict`; `go test -race -count=1 ./internal/store/` → ok 13.185s, a fresh draw rather than a replayed profile | PASS |
 | AC9 | Both capacity kinds exist with the account definitions carrying them, which one a holder enforces is configuration rather than schema, and the backpack scope exists for a player | `grep -n 'ADD VALUE' internal/store/migrations/00006_capacity_kinds.sql` → `slots`, `weight`; `capacity_role` enum, column and partial unique index, and `INSERT INTO scope_definition (id, code, owner_kind) VALUES (3, 'backpack', 'player')` in `00007`; resolution is by `(scope_id, kind, capacity_role)`, no Go constant; `TestSchema_itemMachineConstraints/duplicate_capacity_role_refused` | PASS |
@@ -130,6 +132,11 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | R2-6 | round 2 | minor | accepted@2 — `assertNoWrite` passes vacuously on an empty recorder. Not a blind instrument: the same `newStoreWithRecorder` recorder is proven live in this package by the pre-existing `post_property_test.go` assertion `len(stmts) != 1`, which fails unless the tracer recorded exactly the phase-b SELECT | `sed -n '164,168p' internal/store/post_property_test.go` |
 | R2-7 | round 2 | minor | accepted@2 — `TestItemViews_capacityDivergence/world_absent_as_genesis_source` asserts zero rows in a fixture where the whole view is empty, so alone it would pass against a view that reports nothing. The design's own pairing requirement is discharged one subtest earlier: `no_slots_used_account_vs_uncontrolled_absent` plants an uncontrolled holder (0 rows) beside a controlled no-`used` holder (reported) in one transaction | `sed -n '353,441p' internal/store/item_views_test.go` |
 | R2-8 | round 2 | nit | accepted@2 — `item_movement_chain_key` is absent from `migrate_test.go`'s asserted index list while the four other new indexes are present. It cannot be missing: `item_movement_chain_fk` names its columns as the referenced unique key, so the FK the schema test asserts by name cannot exist without it | `grep -n 'item_movement_chain_key' internal/store/migrations/00007_item_machine.sql` |
+| R3-1 | round 3 | minor | fixed — below the reviewer's floor, corrected anyway because it is a false statement in a document that ships. `ai-docs/context-status.md:388` says a new holder kind "costs two catalog rows and no code", and this file's AC6 row repeats the count. The shipped minimum is **three**: one `scope_definition` row plus **both** halves of the capacity pair, because `Move` returns `ErrNoCapacityAccount` unless a holder has a `slots` free **and** used account. Design D1 says it correctly ("a seeded `scope_definition` row plus its capacity `account_definition` rows"). The load-bearing half of the claim — catalog rows, no code — is true and is what AC7 asserts, so the fix names the things instead of re-counting them: "a scope definition and its capacity account pair — both halves, since a move refuses a holder missing either" | `awk '/TestMove_holderKindTheMVPDoesNotUse/,/^}/' internal/store/move_test.go` shows 1 `INSERT INTO scope_definition` and 2 `account_definition` rows; `sed -n '/for _, holder := range holderIDs/,/^\t}/p' internal/store/move.go` shows the refusal firing unless both `haveFree` and `haveUsed` are set |
+| R3-2 | round 3 | nit | accepted@3 — below severity floor. `TestMove_grantAndFillUnderOneDocument`'s second call is labelled the control "that the ordering is genuinely irrelevant", but it reorders only the caller's own two postings. `Move` phase c always appends the derived legs **after** the caller's, and `post` phase e applies one summed delta per account in ascending account id, so no permutation of the caller's tail can make the negative intermediate observable — the control cannot fail. The test's primary assertion (net-zero `free` balance after grant-and-fill under one document) does discriminate a phase-c reordering, and the test is what the design's § Test Design subtask 4 specifies verbatim, so this is a remark about a specified control, not a design deviation | `sed -n '299,334p' internal/store/move_test.go` beside `sed -n '/Phase c./,/^	}/p' internal/store/move.go` |
+| R3-3 | round 3 | nit | accepted@3 — below severity floor. `.claude/agents/design-writer.md:23` and `ai-docs/code-style.md:126` both say "`store.Post`'s body owns the capture order both of them take". After this diff's extraction `Post`'s body is the single line `return post(ctx, tx, basis, nil, postings...)`; the capture order lives in `post`'s body. The lesson both files teach — one body, reached by two entry points, owns the order — is the correct one, and `post` is unexported so an instruction file has no better handle than `store.Post`. Distinct from R2-1, which was an inversion of the invariant rather than a loose possessive | `sed -n '75,78p' internal/store/post.go` beside `sed -n '176,196p' internal/store/post.go` |
+| R3-4 | round 3 | nit | accepted@3 — below severity floor. `internal/store/move_race_test.go:36` opens its fifteen rounds with `t.Run("", ...)`, so the subtests report as `#00`…`#14` rather than with behaviour-describing names as the test conventions ask. The round number is carried in every failure message and in the cross-round assertion, so a failure is still attributable | `grep -n 't.Run("", func' internal/store/move_race_test.go` |
+| R3-5 | round 3 | nit | accepted@3 — below severity floor. `internal/store/move_race_test.go:35` carries `round := round`, a per-iteration copy that has been unnecessary since the Go 1.22 loop-variable change; `go.mod` declares `go 1.26.0`. `copyloopvar` is not in the enabled linter set, so nothing gates it | `grep -n 'round := round' internal/store/move_race_test.go` and `grep -n '^go ' go.mod` |
 
 ## Files touched
 
@@ -201,3 +208,100 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 **Re-entry fields present** (`current_step`, `last_passed_gate`, `parent_skill` via `entry_args`, `## Decisions log`) — presence checked, content not reviewed, per this agent's instruction 2.
 
 **Recorded, not raised:** seven items examined and ruled not-a-defect — entered as `accepted@2` rows R2-2 … R2-8 in `## Review register`.
+
+## Self-Review (Round 3)
+
+**Verdict:** APPROVE
+
+No `blocker` or `major` row is open. Five items were examined and ruled below the severity
+floor; each is entered as an `accepted@3` row in `## Review register` rather than as a table
+row, per this agent's severity rules.
+
+**Below the floor (5 items, 5 files):** `ai-docs/context-status.md` (and the same phrase in this
+file's AC6 row) · `internal/store/move_test.go` · `.claude/agents/design-writer.md` and
+`ai-docs/code-style.md` (one shared phrase) · `internal/store/move_race_test.go` (two items).
+
+### What was checked
+
+**Gates re-run against the shipped tree (HEAD = e645767):** `go vet ./...` exit 0 · `golangci-lint run`
+0 issues · `golangci-lint fmt -d` clean · `make comment-refs` green · `make file-limits` green ·
+`go run ./cmd/testpg -- go test -race -count=1 ./internal/store/` → `ok 6.479s`, a fresh uncached
+draw rather than a replayed profile. `go.mod` / `go.sum` unchanged by this range, so no module
+hygiene delta to check.
+
+**AC-verification commands re-run (§ 2), all ten against the shipped tree.** AC1 `awk` over
+`CREATE TABLE item_movement` → PASS (`item_id`, `from_holder_id`, `to_holder_id`,
+`journal_entry_id NOT NULL`, plus the chain key, chain FK, genesis `CHECK` and holders-differ
+`CHECK`) · AC2 / AC3 / AC5 / AC6 / AC8 named tests and subtests all resolve by name against the
+sources (`TestSchema_itemMachineConstraints`'s eight, `TestItemViews_chainBreakDetectsAnomalies`'s
+five, `TestItemViews_capacityDivergence`'s three, `TestMove_sentinels`' ten) · AC4
+`rg -n 'UPDATE account_balance' --type go --glob '!*_test.go'` → the single site, `post.go:191`,
+inside `post` · AC5 `grep -n '^CREATE VIEW'` → three views at 136 / 151 / 189 · **AC7 → PASS**:
+`rg -n -e owner_kind -e scope_definition -e 'holder.*kind' internal/store/move.go` exits 1 empty
+while the same pattern matches a constructed `owner_kind` control line (exit 0), and
+`rg -n -e WorldHolder internal/store/move.go` → exactly the two hits the row records (`move.go:63`
+doc comment, `move.go:97` `m.From != WorldHolder`) · AC9 `grep -n 'ADD VALUE'` → `slots`, `weight`,
+and the literal backpack `scope_definition` insert at `00007:21` · AC10 `awk` over
+`CREATE TABLE item` → one identity column.
+
+**Mutation checks on the two artefacts the design names as load-bearing (§ 3, Pattern 2).** Neither
+had been mutated in an earlier round; both discriminate.
+- `item_chain_break`'s NULL guard: replacing `WHERE COALESCE(reached.n, 0) <> COALESCE(recorded.n, 0)`
+  with the NULL-blind `WHERE reached.n <> recorded.n` turned
+  `TestItemViews_chainBreakDetectsAnomalies/off_world_genesis` **and** `/orphaned_segment` RED —
+  exactly the classes the design says the `COALESCE`-from-`item` join exists to keep visible.
+- `item_capacity_divergence`'s `FULL JOIN`: replacing it with `LEFT JOIN` turned
+  `TestItemViews_capacityDivergence/count_mismatch` RED — the drifted-balance-at-an-empty-holder
+  case the round-4 amendment was written for. The other two subtests stayed green, which is the
+  correct discrimination.
+- The migration was restored from a `cp` backup after each mutation and `git diff --name-only`
+  came back empty.
+
+**Register scoping (§ 7a).** Every `fixed@` row re-verified over the diff since its own sha, each
+with its own control: R1-1 (AC7 pattern, exit 1 with a matching control), R1-3
+(`grep -n "see .*'s doc comment" internal/store/post.go` → exit 1, control matched), R1-4
+(`funnel through` at `store.go:6`), R2-1 (`second (and only other) write path` → exit 1 in
+`post.go`, and `rg -n -i 'second .{0,10}write path' internal/ cmd/` → exit 1 across all Go source,
+control matched). None re-opened. No `accepted@` row re-raised.
+
+**Safety (§ 4).** Panic grep over the seven changed non-test Go files
+(`catalog.go`, `enums.go`, `errors.go`, `ids.go`, `move.go`, `post.go`, `store.go`) → exit 1 with a
+positive control matching, so no `panic-index.md` row is owed. No production `go` statement added
+(`grep -nE '^\s*go\s'` over the same set → exit 1), so no launch-allow-list row is owed. No
+`//nolint` added anywhere in the range. Every `move.go` error wrapped with `%w` plus operation
+context; `errors.As` for the pgx error, never `==`; `ctx` first everywhere and never stored;
+`rows.Err()` after every iteration; the hook's error returned unwrapped so `errors.Is` finds
+`ErrMoveConflict` through `post`.
+
+**Domain invariants (§ 4a), re-derived.** Only `post`'s body writes `account_balance`; only
+`move.go` inserts `item_movement` outside test fixtures. Forward-only migration: a nullable column
+added, two enum members appended, nothing renamed or renumbered, no `-- +goose Down`. No tuning
+value in Go — `Move`'s per-instance amount is `decimal.NewFromInt(1)`, which AC5's
+one-instance-one-slot identity fixes rather than tunes, and every budget in the diff is a test
+fixture. No mechanic ships, so no event-dictionary or posting-signature obligation. No secret in
+any added line.
+
+**Ledger arithmetic and the reorder.** The four derived legs per movement net zero per holder and
+per kind; `post` sums per account before phase e, so grant-and-fill never exposes an intermediate.
+The reorder introduces no new cycle: at the chain insert `Move` holds no balance lock at all, and
+both levels are taken in ascending order (instance id, then account id).
+
+**Schema-refusal tests (§ 3).** Each of the eight `TestSchema_itemMachineConstraints` subtests
+asserts SQLSTATE **and** constraint name through the file's existing `sqlstate` helper, so a
+refusal arriving from a different object fails the subtest rather than satisfying it; the fixture
+of each reaches the named object and no earlier one.
+
+**Progress-file re-entry fields (§ instruction 2), presence only.** `**Branch:**`, `**base_commit:**`,
+`**Last build:**`, `**current_step:**`, `**last_passed_gate:**` and `## Decisions log` are all
+present. `**entry_args:**` is present, which the canonical template requires for a `/task` file.
+`**parent_skill:**` is absent and correctly so — the template makes it conditional ("required when
+a nested skill is currently writing into the parent's progress file; omit otherwise"), and this
+file is `/task`'s own. Round 2's note read `parent_skill` as satisfied "via `entry_args`"; the
+template is what actually settles it, and the omission is conformant either way.
+
+**Round-table / register agreement.** Rounds 1 and 2 mark every table row `✅ Fixed` and every
+corresponding register row reads `fixed@<sha>`, so the staged-commit register check has nothing to
+refuse.
+
+**Recorded, not raised:** five items examined and ruled below the severity floor — entered as
+`accepted@3` rows R3-1 … R3-5 in `## Review register`.

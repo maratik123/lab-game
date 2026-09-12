@@ -385,5 +385,5 @@ Entry shape:
   - Every balance still moves through `post`'s body, which is the single site of the balance update; `Move` reaches it rather than writing beside it.
   - An instance has exactly one holder at every moment, and every movement's source is its predecessor's destination — both refused by the database, not by a caller's discipline.
   - A lost race for an instance reports the conflict sentinel; an overdraft naming a destination's free account is a full holder, and one naming a source's used account is pre-existing divergence that the reconciliation view quantifies.
-  - Nothing in the machine branches on a holder's kind. A holder kind the current scope does not use costs two catalog rows and no code.
+  - Nothing in the machine branches on a holder's kind. A holder kind the current scope does not use costs a scope definition and its capacity account pair — both halves, since a move refuses a holder missing either — and no code.
   - The append-only source scan covers `item_movement`. `item` is deliberately outside it, because it is an identity table whose definition column a later issue will legitimately backfill.
