@@ -16,10 +16,12 @@ type itemHolderRow struct {
 	MovementID int64
 }
 
-func selectItemHolder(t *testing.T, ctx context.Context, tx pgx.Tx, itemID ItemID) *itemHolderRow {
+// selectItemHolder reads item_id's item_holder row via q — a pgx.Tx or a
+// *pgxpool.Pool, both of which satisfy Queryer.
+func selectItemHolder(t *testing.T, ctx context.Context, q Queryer, itemID ItemID) *itemHolderRow {
 	t.Helper()
 	var r itemHolderRow
-	err := tx.QueryRow(ctx,
+	err := q.QueryRow(ctx,
 		`SELECT item_id, holder_id, movement_id FROM item_holder WHERE item_id = $1`, itemID,
 	).Scan(&r.ItemID, &r.HolderID, &r.MovementID)
 	if err != nil {
@@ -31,10 +33,12 @@ func selectItemHolder(t *testing.T, ctx context.Context, tx pgx.Tx, itemID ItemI
 	return &r
 }
 
-func countRows(t *testing.T, ctx context.Context, tx pgx.Tx, query string, args ...any) int {
+// countRows reports the row count of query, run via q — a pgx.Tx or a
+// *pgxpool.Pool, both of which satisfy Queryer.
+func countRows(t *testing.T, ctx context.Context, q Queryer, query string, args ...any) int {
 	t.Helper()
 	var n int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM (`+query+`) s`, args...).Scan(&n); err != nil {
+	if err := q.QueryRow(ctx, `SELECT count(*) FROM (`+query+`) s`, args...).Scan(&n); err != nil {
 		t.Fatalf("count query %q: %v", query, err)
 	}
 	return n
