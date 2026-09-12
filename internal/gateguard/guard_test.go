@@ -537,6 +537,19 @@ func isZeroInt(m map[string]any, key string) bool {
 	}
 }
 
+// isFalseBool reports whether m[key] is present and decodes to the
+// boolean false. Unlike isZeroInt's numeric zero, an absent key here is
+// unsafe rather than safe: the linter's own default for this key is
+// true, so the predicate demands the key be present and false, not
+// merely not-true.
+func isFalseBool(m map[string]any, key string) bool {
+	if m == nil {
+		return false
+	}
+	v, ok := m[key].(bool)
+	return ok && !v
+}
+
 // internalNonTestFiles returns every compiled non-test Go source file
 // under root's internal package tree, root-relative and
 // "/"-separated — the same rendering golangci-lint uses once the
@@ -634,6 +647,9 @@ func checkLintConfig(t testing.TB, root, path string) []string {
 	if !isZeroInt(issues, "max-same-issues") {
 		problems = append(problems, "issues.max-same-issues is not pinned to 0")
 	}
+	if !isFalseBool(issues, "uniq-by-line") {
+		problems = append(problems, "issues.uniq-by-line is not pinned to false")
+	}
 
 	sort.Strings(problems)
 	return problems
@@ -662,6 +678,8 @@ type configOpts struct {
 	maxIssues       int
 	omitMaxSame     bool
 	maxSame         int
+	omitUniqByLine  bool
+	uniqByLine      bool
 	extraExclusion  string
 }
 
@@ -714,6 +732,9 @@ func renderConfig(o configOpts) string {
 	}
 	if !o.omitMaxSame {
 		fmt.Fprintf(&b, "  max-same-issues: %d\n", o.maxSame)
+	}
+	if !o.omitUniqByLine {
+		fmt.Fprintf(&b, "  uniq-by-line: %t\n", o.uniqByLine)
 	}
 	return b.String()
 }
@@ -831,6 +852,32 @@ func TestLintConfigGuard_RelativePathModeFails(t *testing.T) {
 
 			if problems := checkLintConfig(t, root, path); len(problems) == 0 {
 				t.Fatalf("want a problem for run.relative-path-mode %s, got none", name)
+			}
+		})
+	}
+}
+
+// TestLintConfigGuard_UniqByLineFails drives the uniq-by-line assertion
+// as its own case rather than folding it into the caps' table (above):
+// the predicate is present-and-boolean-false, not zero-valued, so the
+// absent case is the one that matters — the key defaults to true, and a
+// guard that only rejected an explicit true would pass the very
+// configuration this assertion exists to prevent.
+func TestLintConfigGuard_UniqByLineFails(t *testing.T) {
+	t.Parallel()
+	for name, mutate := range map[string]func(*configOpts){
+		"true":   func(o *configOpts) { o.uniqByLine = true },
+		"absent": func(o *configOpts) { o.omitUniqByLine = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root, _ := srcguard.WriteScratchFile(t, "internal/pkg/f.go", "package pkg\n")
+			opts := defaultConfigOpts()
+			mutate(&opts)
+			path := writeScratchConfig(t, root, opts)
+
+			if problems := checkLintConfig(t, root, path); len(problems) == 0 {
+				t.Fatalf("want a problem for issues.uniq-by-line %s, got none", name)
 			}
 		})
 	}

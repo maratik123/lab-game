@@ -8,13 +8,13 @@ _Updated: 2026-09-12 08:44_
 **Last build:** PASS
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
-**current_step:** Step 9 — amendment GO (design-review round 2); implementing the follow-on, then the per-AC sweep
-**last_passed_gate:** golangci-lint run | 2026-09-12T08:44Z | 239c9f1
+**current_step:** Step 9 — amendment follow-on (subtask 1a/8a) implemented; Step 9's per-AC sweep next
+**last_passed_gate:** golangci-lint run (0 issues.) | 2026-09-12T09:05Z | fd5b27c
 **entry_args:** 80
 
 ## Next action
 
-**Do this immediately:** implement the amendment follow-on (subtask 1a/8a below), then re-run the gates and the Step 9 per-AC sweep.
+**Do this immediately:** run the Step 9 per-AC sweep now that subtask 1a/8a is implemented and gated.
 
 ## Subtasks
 
@@ -27,7 +27,7 @@ _Updated: 2026-09-12 08:44_
 - [x] 7. `cmd/bot`: own HTTP client threaded to the Telegram client and canary legs, plus the closer releasing idle connections (D12)
 - [x] 8. `internal/gateguard`: the launch allow list + checker (D8, D9), the lint-configuration guard (D10), discriminating twins (D11)
 - [x] 9. `ai-docs/code-style.md`: the ownership rules and the reviewer's checklist; § Linter posture brought in line
-- [ ] 1a/8a. **Amendment follow-on (design rounds 3–4):** `.golangci.yml` gains `issues.uniq-by-line: false` beside the two caps (subtask 1's amended half); `internal/gateguard`'s lint-configuration guard asserts the key is present and boolean `false` (subtask 8's amended half), with the § Test Design scenario that drives the ABSENT-key case; subtask 5's dedup control  ← CURRENT
+- [x] 1a/8a. **Amendment follow-on (design rounds 3–4):** `.golangci.yml` gains `issues.uniq-by-line: false` beside the two caps (subtask 1's amended half); `internal/gateguard`'s lint-configuration guard asserts the key is present and boolean `false` (subtask 8's amended half), with the § Test Design scenario that drives the ABSENT-key case; subtask 5's dedup control
 - [x] 10. Sweep every live surface for a claim this diff falsifies and fix each
 
 ## Decisions log
@@ -49,6 +49,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8 (subtask 10)**: `ai-docs/context-status.md` was in the design's drafted file list for this subtask and got **no** change. Its entries are the per-task implementation log written by `/task` Step 9.5, and neither the composition-root entry nor the goroutine-leak entry carries a claim this diff falsifies (both read line by line, including the closer-list and leak-detection bullets). This task's own entry is Step 9.5's to write, not subtask 10's.
 - **Step 8 (subtask 10)**: three surfaces were read and deliberately left unchanged, each with its reason. `.claude/skills/project-review/SKILL.md` is the Review group's third member, so subtask 9's edit obliged a check — it carries no per-topic finding checklist, delegating to `review-findings.md` and `self-review.md`, so the obligation is discharged by the check with no edit. `.claude/agents/design-writer.md` and `design-review.md` illustrate binding lint constraints with `exhaustive` / `revive` / `rowserrcheck` and already instruct the reader to open `.golangci.yml`; no propagation row binds them to a lint-config change and nothing there is falsified. `ai-docs/go-test-conventions.md`'s "only `internal/health` and `internal/ingest` moved onto it" is a statement about the scope of the task that introduced `internal/srcguard`, not about today's importer set (which was already seven files before this branch), so it is history, not drift.
 - **Step 8 (subtask 10)**: gates re-run at 239c9f1 with a markdown-only working tree — the CI relative-link check, the six `ai-docs/scripts/check-*.sh` harness guards, `make comment-refs`, and `make lint` (`0 issues.`). No `.go`, `.yml`, `.sh`, `.sql`, `go.mod` or `go.sum` file is touched by subtask 10 (`git status --short` lists four `.md` paths), so the Go and harness-shellcheck gates read the same inputs they read at 239c9f1.
+- **Step 9 (subtask 1a/8a)**: `.golangci.yml` gained `issues.uniq-by-line: false` beside the two caps; `internal/gateguard/guard_test.go` gained `isFalseBool` (present-and-boolean-`false`, distinct from `isZeroInt`'s numeric zero because the key's own default is `true`), the `checkLintConfig` assertion using it, the `configOpts.uniqByLine`/`omitUniqByLine` fields and their rendering, and `TestLintConfigGuard_UniqByLineFails` driving both the explicit-`true` and the absent-key case as its own scenario, per the design's Test Design table for subtask 8. `golangci-lint config verify` accepted the amended file (exit 0); `go build ./...`, `go test ./...` (all packages `ok`, `internal/gateguard` included), `go vet ./...` and `golangci-lint run` (`0 issues.`) all re-ran green at fd5b27c plus the working-tree edit.
+- **Step 9 (subtask 1a/8a)**: subtask 5's dedup control (design § Test Design, "The line-dedup switch gets a control of its own") re-run against the shipped configuration rather than only the design's earlier investigation copy: a scratch module outside the tree with a `defer` inside a `for` loop, `.golangci.yml` copied in verbatim with `--enable-only=gocritic,errcheck` — `uniq-by-line: false` (as shipped) reports both `main.go:8:16: errcheck` and `main.go:8:3: deferInLoop (gocritic)`; the same file with `uniq-by-line: true` (the linter's own default) reports only `errcheck` on that line and drops `deferInLoop`. Run in the session scratchpad, never in the working tree.
 
 ## GO notes
 
