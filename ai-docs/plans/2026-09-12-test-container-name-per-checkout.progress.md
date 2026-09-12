@@ -8,13 +8,13 @@ _Updated: 2026-09-12 00:18_
 **Last build:** PASS
 **Issue:** #91
 **Spec:** ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md
-**current_step:** Step 9.5 — docs updated
-**last_passed_gate:** make verify | 2026-09-12T00:24:25Z | e547cce795790673b2a3fba1757ae644dac61690
+**current_step:** Step 11 — review fixes complete (Round 1)
+**last_passed_gate:** make test | 2026-09-12T00:42:00Z | dbfad7a
 **entry_args:** сделать так, чтобы имя контейнера бд выводилось из имени каталога проекта, например lab-game-test-postgres для ~/lab-game и lab-game2-test-postgres для ~/lab-game2 (для параллелизации разработки)
 
 ## Next action
 
-**Do this immediately:** Step 10 — spawn `self-review` over the branch diff.
+**Do this immediately:** Step 10 — re-spawn `self-review` (warm) to re-verify its own round-1 findings.
 
 ## Subtasks
 
@@ -40,6 +40,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 9**: the design's verify-time probe ran end to end on podman 5.8.2 — two probe servers under derived names, a same-base-name twin joining the first, a child run picking its own checkout's server, `--down` in one leaving the other running and reachable, and teardown leaving no probe container (control confirmed the teardown grep matches). The unrelated `pgshared` container on this host was neither touched nor counted.
 
 - **Step 9.5**: appended this task's entry to `ai-docs/context-status.md` with the literal PR placeholder, and extended the `internal/testdb` clause of `ai-docs/context.md` with the per-checkout naming and its consequence. No open question in `context.md` is resolved by this change. Removed-name sweep for `SharedContainerName` over every doc touched: the only surviving mention outside the deletion clause is the #67 entry of `context-status.md`, which is append-only history describing what landed in that PR — left standing, with the deletion recorded in this task's own entry. `README.md` and `docs/**` name no container and no wrapper target, so neither is contradicted.
+
+- **Step 11**: both open findings fixed and each re-verified by execution, not by reading — the built wrapper run from a directory named `-badname` now prints one `testpg:` prefix, and the pointer comment is gone (control confirmed both greps match). `R1-4` was accepted by the reviewer and fixed anyway: `runDown` dials the located server through `sm.probe` before the derivation, so "on `--down` before anything is reached for at all" was false, and the append-only ground does not cover an entry added in this PR. The same over-strong clause survives in the design's D6 ground 3, whose correction is a Design Amendment trigger with the round cap already spent — surfaced to the owner rather than edited.
+- **Step 11**: a `git show` of a pre-change source file was redirected to `tmp/pre.go`, which put a package inside the module and turned `go build ./...` and `golangci-lint run` RED; deleted, gates green again, logged in `ai-docs/learnings.md` 2026-09-12.
 
 ## GO notes
 
@@ -70,6 +73,12 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
+| R1-1 | round 1 | major | fixed@dbfad7a | `sed -n '509,510p' cmd/testpg/run_test.go` — the comment must carry no bare-name pointer |
+| R1-2 | round 1 | minor | fixed@dbfad7a | `cd <dir named '-x'> && <built testpg> --up --parallel 1 2>&1` — the message must carry one `testpg:` prefix, not two |
+| R1-3 | round 1 | nit | accepted@1 — established module-wide practice, 48 `_ = <call>` discard sites including production (`internal/scheduler/execute.go`, `internal/ingest/settle.go`, `internal/tgtest/tgtest.go`), most without the why-comment `code-style.md`:28 asks for; a new test-cleanup pair is consistent with the tree, not a regression | `git grep -cE '^[[:space:]]*_ = [a-zA-Z_][A-Za-z0-9_.]*\(' -- '*.go'` |
+| R1-4 | round 1 | nit | fixed@dbfad7a — acceptance overridden by the orchestrator. The reviewer's ground was that the file is append-only history; that does not hold for an entry this same PR adds, and the claim itself is refuted by the code — `context-status.md`'s "on `--down` before anything is reached for at all" is true of the *container* but not of `sm.probe`, which dials the located DSN before the derivation; the sentence reproduces the design's own D6 ground-3 wording and the file is append-only history | `sed -n '330,345p' cmd/testpg/run.go` |
+| R1-5 | round 1 | nit | accepted@1 — `run_test.go` at 711 lines crosses the 500 soft band but is one package's cohesive wrapper-test file; the checklist's counter-rule forbids flagging it, and `make file-limits` is green | `wc -l cmd/testpg/run_test.go && make file-limits` |
+| R1-6 | round 1 | nit | accepted@1 — `runUp` now derives above `testdb.Ceiling`, so an invalid directory name outranks a bad `--clients`/`--parallel` pair in error precedence; neither an AC nor the design pins that order and both exits are non-zero and named | `sed -n '261,278p' cmd/testpg/run.go` |
 
 ## Files touched
 
@@ -78,3 +87,49 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `internal/testdb/server.go` — deleted `SharedContainerName` (subtask 2)
 - `ai-docs/key-decisions.md` — KD-20's parenthetical and its `Amended by #91` clause (subtask 3)
 - `ai-docs/go-test-conventions.md` — the shared-server bullet: the derivation, the parallel-checkout consequence and the stale-locator remedy (subtask 3)
+
+## Self-Review (Round 1)
+
+**Verdict:** REJECT
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | cmd/testpg/run_test.go:510 | major | `ai-docs/doc-convention.md` § DOC-4 → *What the gate decides, and what review decides*, bullet 2 bans "a bare unqualified name used as a pointer — 'see such-and-such'", refused in review because no lexical rule can catch it. The diff introduces one: `// environment write (see the comment on TestRun_upDown_useTheSeamWithNoRuntime).` The exemption above it keeps only "a same-package symbol that **is the contract** (DOC-3) — a returned sentinel error, the guarantor of a precondition"; a sibling test function whose comment carries a rationale is not that, and it rots exactly as DOC-4 states — rename that test and the comment lies. The pre-change file carried no such pointer (`git show 8e18df9:cmd/testpg/run_test.go` → no `see ` pointer), and the same diff uses the conforming form eight times (`// Not parallel, same reason as above.`), so a conforming spelling was available and used everywhere else. `make comment-refs` is green, as expected — this is the half it delegates. | ✅ Fixed |
+| 2 | cmd/testpg/run.go:118 | minor | `containerNameForDir` builds its error already prefixed (`fmt.Errorf("testpg: project directory %q …")`) while both call sites re-prefix it (`logf(stderr, "testpg: %v\n", err)` at run.go:270 and run.go:353), so the shipped binary doubles the program name. Measured against the built wrapper from a directory named `-badname`: `testpg: testpg: project directory "-badname" must start with a letter or digit and contain only letters, digits, underscores, dots or dashes to name a test-server container`, exit 1. The same doubling appears in the test output of `TestRun_down_staleLocator_invalidDir_stillExitsZero` under mutant M4. D6 is still satisfied (the message names the directory and states the rule), so this is presentation, not behaviour; the fix is to drop `testpg: ` from the `fmt.Errorf`, matching `code-style.md` § Errors — the prefix names the operation, and the call sites already supply the program name. | ✅ Fixed |
+
+### What was checked
+
+**ACs — every verification command in `## AC Status` re-run against the shipped tree:**
+
+- **AC1 — PASS.** `go test ./cmd/testpg -count=1 -run TestContainerNameForDir` → `ok`. The table carries both worked examples verbatim (`first checkout` → `lab-game-test-postgres`, `sibling checkout` → `lab-game2-test-postgres`).
+- **AC2 — PASS (unit half), probe record accepted.** `--down` provisions under the derived name (`run_test.go:382`); the differing-directory inequality case pins distinct names. The container-level half rests on the Step 9 probe; its teardown claim was re-verified independently rather than read — `podman ps -a` shows only the unrelated `pgshared`, no probe container survived.
+- **AC3 — PASS.** `go test ./cmd/testpg -count=1 -run TestRunChild` → `ok`. Mutation M6 (adding a derivation to `runChild`) turns `TestRunChild_invalidWorkDir_stillRunsToCompletion` red — the case is discriminating, not decorative.
+- **AC4 — PASS.** `go test ./cmd/testpg -count=1 -run 'TestContainerNameForDir_sameBaseName_differentParents_isEqual|TestRun_up_sameBaseName_differentParents_sameContainerName' -v` → both `--- PASS`.
+
+**Mutation checks — every ordering and derivation claim pinned, each mutant confirmed to BUILD first:**
+
+| Mutant | What it breaks | Result |
+|---|---|---|
+| M1 | `containerNameForDir` ignores its argument | RED — 7 tests incl. `TestRun_up_differentDirs_differentContainerNames` |
+| M2 | `runUp` derives **below** its reaper `os.Setenv` | RED — `TestRun_up_invalidDir_leavesReaperSettingUnchanged`, and only that test |
+| M3 | `runDown` derives **above** `sm.probe` | RED — `TestRun_down_staleLocator_invalidDir_stillExitsZero` |
+| M4 | `runDown` derives **above** `sm.locate` | RED — `TestRun_downWithNoLocator_isANoOp` + the stale-locator case |
+| M5 | `runDown` derives **below** its reaper `os.Setenv` | RED — `TestRun_down_invalidDir_leavesReaperSettingUnchanged` |
+| M6 | `runChild` also derives a name | RED — `TestRunChild_invalidWorkDir_stillRunsToCompletion` |
+| M7 | `--up` report line drops the container name | RED — `TestRun_upDown_useTheSeamWithNoRuntime` |
+
+Every D5/D6 ordering half has an assertion that can only pass at the intended position. `cmd/testpg/run.go` was restored from a cp-backup after each mutant and `git diff` confirmed clean.
+
+**Production seam exercised directly** (the one wiring the stub tests cannot reach): the built wrapper run from a directory named `-badname` exits 1 naming the directory, touching no container; run with `--down` from a locator-free directory it exits 0 with "nothing to remove". `podman ps -a` unchanged, `git status` clean outside `tmp/`.
+
+**Gates re-run against the shipped tree:** `go build ./...` GREEN · `go vet ./...` GREEN · `golangci-lint run` GREEN (0 issues) · `go test ./cmd/testpg -count=1` GREEN · `go test -race ./cmd/testpg -count=1` GREEN · `make comment-refs` GREEN · `make file-limits` GREEN · `make import-guard` GREEN. Coverage ratchet rose 89.69 → 89.84.
+
+**Design conformance:** D1 (base name + fixed suffix, parent contributes nothing) · D3 (`testdb.SharedContainerName` deleted; `git grep ContainerName -- '*.go'` shows `cmd/testpg/run.go` as the module's only container-naming site, confirming KD-20's new claim) · D4 (`workDir` returns dir+error, wired to `os.Getwd` in `productionSeam`, stubbed in `stubSeam`) · D5, D6, D7 (package-level `regexp.MustCompile`, matching the `internal/commentref/classify.go` precedent; `ai-docs/panic-index.md` carries no row for that class and stays empty) · D8 (report line) · D9 (no new file). No architectural decision taken outside the design.
+
+**GO notes round-trip:** all four rows route `folded` at 8e18df9, which is `base_commit` — the design was updated before the implementation diff started, and the design is unchanged in this diff (`git diff --stat` lists only the progress file under `ai-docs/plans/`). G1's folding is realised as `TestRun_down_staleLocator_invalidDir_stillExitsZero`; G2's remedy shipped in the test-conventions bullet; G3 and G4 owed no code. No stale design section found.
+
+**Prose claims re-derived rather than read** (`key-decisions.md` KD-20, `go-test-conventions.md`, `context-status.md`, `context.md`): "the wrapper is the only thing in this module that names a container" — confirmed by `git grep ContainerName -- '*.go'`; "`tmp/testpg-dsn`" — confirmed at `cmd/testpg/locator.go:12`; "every caller invokes the wrapper from the repository root" — confirmed against the `Makefile` targets; "fails before the reaper setting is written and before anything is provisioned" — confirmed by M2/M5 and by the live binary run. Propagation sweep: `git grep -l lab-game-test-postgres` now reaches only this task's own plan files, the derivation's table test, and the two amended pages where the string is a *worked example* of the derivation, not a fixed name; `SharedContainerName` survives only in `ai-docs/context-status.md`'s #67 entry, which the design ruled is append-only history. `README.md` and `docs/**` name no container or wrapper target, so neither is contradicted.
+
+**Not defects (recorded in the register, not raised):** R1-3 the `_ = os.Setenv` cleanup pair · R1-4 one over-strong sentence in `context-status.md` · R1-5 `run_test.go`'s 711 lines · R1-6 the `--up` error-precedence shift. Re-entry fields: `current_step`, `last_passed_gate` and `entry_args` are present; `parent_skill` is correctly omitted per the canonical template, since `/task` is the parent flow here.
+
+**Spawn prompt:** within the closed list — invocation line, `Spec:`, `Design:`, `Progress:`, commit range. No `PROMPT-CONTAMINATION`.
