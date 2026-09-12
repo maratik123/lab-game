@@ -1,5 +1,5 @@
 # Progress: Item machine — `item`, `item_movement`, and the shared holder address space — ACTIVE
-_Updated: 2026-09-12 14:42_
+_Updated: 2026-09-12 17:47_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,13 +8,13 @@ _Updated: 2026-09-12 14:42_
 **Last build:** not run
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 8 — Group B (subtask 7) complete; Group C (subtask 6) next
-**last_passed_gate:** go build ./... + go test ./... (whole module) + go test -race ./internal/store/... + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | 4d47d56
+**current_step:** Step 8 — Group C (subtask 6) complete; every group returned, Step 9 next
+**last_passed_gate:** make comment-refs + the CI markdown relative-link check + the six ai-docs/scripts harness guards + the re-derived propagation sweep (empty on a pattern shown matching a constructed positive first), all green | 2026-09-12T17:47:07Z | 08a61d2
 **entry_args:** 25
 
 ## Next action
 
-**Do this immediately:** spawn the Group C handoff (`general-purpose`, no pinned model, subtask 6) per the design's `## Handoff plan` — the propagation sweep over every live surface the diff falsifies, derived from the final diff now that Group B's rework has landed.
+**Do this immediately:** Step 8 is complete — every design-defined group has returned. Run Step 9 (Verify): the full gate list plus the per-AC coverage table, then Step 9.5. Note for Step 9.5: subtask 6 deliberately left `ai-docs/context.md`'s § Architecture layout paragraph and its § Status «Code:» bullet alone, because both are Step 9.5's own named surface ("bump the affected block's summary bullet"); both still enumerate `internal/store` without the item machine or `store.Move`, and Step 9.5 owes them that addition along with the `context-status.md` entry.
 
 ## Subtasks
 
@@ -24,7 +24,7 @@ _Updated: 2026-09-12 14:42_
 - [x] 4. `Move`: extract `post`, add `Movement` / `Move` / the sentinels — Group A
 - [x] 5. The `rapid` property test and the `-race` concurrency test — Group A
 - [x] 7. The `beforeBalances` hook: the chain insert moves ahead of the balance `UPDATE`s, and the ordered-conflict test on the single-item fixture — Group B
-- [ ] 6. Propagation sweep over every live surface the diff falsifies — Group C, terminal  ← CURRENT
+- [x] 6. Propagation sweep over every live surface the diff falsifies — Group C, terminal
 
 ## Decisions log
 
@@ -49,6 +49,12 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 - **Step 8, subtask 7**: verified test-first, per the design's own instruction — before applying the `beforeBalances` fix, the orchestrator reverted `post.go`/`move.go` to the pre-amendment tree (`git show HEAD:...`) while keeping the new/restored tests, and ran `TestMove_orderedConflict` and `TestMove_antiConflict` against it: both went RED with exactly the predicted defect (`ErrOverdraft` on the shared holder's `slots_used` account instead of `ErrMoveConflict`). The fix was then restored and both tests went GREEN, plus the whole-module `go test ./...`, `go test -race ./internal/store/...`, `golangci-lint fmt -d`, `golangci-lint run`, `go vet ./...`, and `make comment-refs`.
 - **Step 8, subtask 7**: the first draft of `TestMove_orderedConflict` hung indefinitely on its failure path — during the red-check above, `t.Fatalf` on the sentinel assertion called `runtime.Goexit` before the function reached its own explicit `rollback(t, ctx, loserTx)` call, leaving `loserTx`'s one-connection pool with its sole connection checked out forever, so the `t.Cleanup(loserPool.Close)` registered earlier blocked the whole package run. Fixed by registering `t.Cleanup(func() { rollback(t, ctx, winnerTx) })` and the loser's equivalent immediately after each `Begin`, so a transaction is released on every exit path regardless of where a later assertion fails — confirmed by re-running the red-check to completion instead of timing out.
+
+- **Step 8, subtask 6**: the sweep was re-derived rather than taken from D9's illustrative table, and it found two sites D9 did not list. `ai-docs/key-decisions.md` KD-17 still carried the blanket «No composite FKs and no move-control», which `item_movement_chain_fk` falsifies — the owner's round-3 ruling that the clause is **scoped** lived only in the design and the decisions log, so KD-17 now carries it as an in-place amendment in the KD-7/KD-8 house style, together with `account_definition`'s new `capacity_role` column. `ai-docs/code-style.md` § Database access said balance `UPDATE`s go through `store.Post`, which the second write path falsifies. Both were reached by the `AGENTS.md` § *Propagation Rule* step-1 grep after the AXIOM edit, not by the design's list.
+- **Step 8, subtask 6**: the propagation-groups table's domain-invariant row (`ai-docs/propagation-groups.md`) is what settled the reviewer files: correcting a domain-invariant rule's statement obliges `.claude/agents/self-review.md` § 4a, `.claude/agents/review-findings.md` § 1a and `.claude/agents/design-writer.md` § Rules, so all three ledger-bypass/constraint rows now name `store.Move` and `item_movement`. `.claude/skills/project-review/SKILL.md`, the Review group's third member, carries no ledger row and needed none — checked, not assumed.
+- **Step 8, subtask 6**: `ai-docs/context.md`'s § Architecture layout paragraph and § Status «Code:» bullet were left untouched on purpose. Both enumerate `internal/store` without the item machine, but they are the surface `/task` Step 9.5 owns by name ("bump the affected block's summary bullet"); editing them here would have duplicated that step rather than discharged the falsification class, so the omission is recorded in `## Next action` for Step 9.5 to pick up.
+- **Step 8, subtask 6**: `docs/DESIGN.md` was touched at exactly one line — §11's item-machine bullet, table names only (`items`→`item`, `item_movements`→`item_movement`), per the owner's round-3 authorisation. §11's three other `store.Post` mentions (lines 314, 320, 325) describe `Post`'s own design, which this diff does not change, and were deliberately left alone.
+- **Step 8, subtask 6**: the corrected Step-9 domain sweep pattern was validated before being written down — `INSERT INTO (posting|item_movement)\b|store\.(Post|Move)\(` was run against a constructed fixture and shown to match `posting`, `item_movement`, `store.Post(` and `store.Move(` while skipping the `item_movement_archive` decoy, the nonexistent `postings`, and `store.Posting{}`. The old pattern named two tables that do not exist and missed `store.Move` entirely.
 
 ## GO notes
 
@@ -104,4 +110,5 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - Subtask 4: `internal/store/move.go` (new), `internal/store/move_test.go` (new), `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/append_only_test.go` — commit 28c7c50.
 - Subtask 3: `internal/store/item_views_test.go` (new), `internal/store/migrations/00007_item_machine.sql` (view fix) — commit 67cab15.
 - Subtask 5: `internal/store/move_property_test.go` (new), `internal/store/move_race_test.go` (new), `internal/store/item_views_test.go` (Queryer generalisation) — commit a0a3cdf.
+- Subtask 6: `AGENTS.md` (the API-stability carve-out's table name; the ledger AXIOM's table name and second write path), `ai-docs/domain-invariants.md` (§ 1's rule and action table; § 2's table names, the chain's database guards, the `scope` address, the `free`/`used` pair and the two reconciliation views), `ai-docs/key-decisions.md` (KD-17 amended: «No composite FKs» scoped, `capacity_role` recorded), `ai-docs/code-style.md` (§ Database access), `ai-docs/context.md` (the ledger-posting invariant bullet), `.claude/agents/self-review.md` + `.claude/agents/review-findings.md` + `.claude/agents/design-writer.md` (the domain-invariant sync group), `.claude/skills/task/reference.md` (the Step-9 domain sweep pattern), `docs/DESIGN.md` (§11 item-machine bullet, table names only) — commit 08a61d2.
 - Subtask 7: `internal/store/post.go` (`post` gains the `beforeBalances` hook, drops its `int64` return), `internal/store/move.go` (`Move`'s mint-and-movements phases run inside the hook; doc comment states the post-reorder sentinel readings), `internal/store/move_race_test.go` (`TestMove_antiConflict` restored to the single-item fixture with a cross-round `ErrMoveConflict` assertion; new `TestMove_orderedConflict`) — commit 4d47d56.
