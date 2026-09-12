@@ -140,8 +140,12 @@ Transport which were previously connected from previous requests but are now sit
   `cmd/importguard/run.go` and `cmd/testpg/run.go` joined the report]. Pinning the mode makes the
   anchor mean the module root wherever the gate is invoked from.
 
-- **D3 — The issue-truncation caps are lifted, because AC10 is a claim about *every* site.** The
-  defaults hid most of the fresh-context sites behind the same-issue cap: the first run of the
+- **D3 — Every default that stops the gate reporting a site it would otherwise report is switched
+  off, because AC10 is a claim about *every* site.** Two independent mechanisms do that, and closing
+  one leaves the other open: the issue-truncation caps, and the cross-linter line dedup.
+
+  **The caps.** The defaults hid most of the fresh-context sites behind the same-issue cap: the
+  first run of the
   candidate configuration reported the `internal/health` sites and nothing else of that class, and
   lifting the caps revealed the scheduler, `internal/testdb` and `internal/tgtest` sites
   [measured e66beb5 · the candidate configuration run twice, once with the defaults and once with
@@ -163,6 +167,47 @@ Transport which were previously connected from previous requests but are now sit
   *"Set max-issues-per-linter and max-same-issues to 0. Verified independently: today's tree is 0
   issues under the CURRENT config with the caps lifted, so nothing goes red. Under the defaults the
   gate was truncating and hiding real sites."*
+
+  **The line dedup, found at Step 9's per-AC sweep and closed by the same argument.**
+  `issues.uniq-by-line` defaults to `true`, and it keeps one finding per source line across *all*
+  linters, so a site is reported only when no other linter has claimed its line first
+  [measured 3e72070 · `golangci-lint run --help` → `--uniq-by-line  Make issues output unique by
+  line (default true)`]. The shape that collides is the canonical one for AC8's own checker: a
+  `defer f.Close()` inside a loop draws `errcheck` on the same line, and under this repository's
+  configuration the `gocritic` finding is the one dropped — the checker is enabled and correct, and
+  only the dedup hides it [measured 3e72070:.golangci.yml · a scratch module outside the tree whose
+  loop body opens a file and defers its close, built first, run under this repository's
+  configuration → the report carries `errcheck`'s finding at that line and names no `gocritic`
+  finding; the same module under `--enable-only=gocritic` → `deferInLoop: Possible resource leak,
+  'defer' is called in the 'for' loop`; the same module under the configuration plus
+  `issues: {uniq-by-line: false}` → both findings]. The suppression is also *transient*, which is
+  what makes it a reporting hazard rather than a stable omission: silence the competing finding and
+  the hidden one surfaces [measured 3e72070 · the same scratch module with a `//nolint:errcheck` on
+  the colliding line, under the unmodified configuration → the `deferInLoop` finding reported].
+
+  So which sites the gate reports depends on what some *other* linter happens to find on the same
+  line, and subtask 5's method — annotate the sites the gate's own re-run reports — is therefore
+  reading a set that is not the whole one. That is AC10's "every site it would otherwise report"
+  failing through a second door, and the argument that lifted the caps closes it unchanged.
+  `golangci-lint config verify` accepts the key, and the verifier is discriminating rather than
+  merely permissive — it rejects a misspelling of it [measured 3e72070 · `golangci-lint config
+  verify` on this repository's configuration plus `issues: {uniq-by-line: false}` → exit 0, no
+  output; on the same file with the key spelled `uniq-by-lines` → exit 3, ``jsonschema: "issues" …
+  additional properties 'uniq-by-lines' not allowed``]. The change costs nothing on today's tree
+  [measured 3e72070 · `golangci-lint run` over `./...` under this repository's configuration, and
+  again with `issues: {uniq-by-line: false}` → `0 issues.` and exit 0 both times].
+
+  Unlike the caps, this key's safe value is a **boolean `false`, and its absence is the unsafe
+  state.** A cap is pinned to the integer `0` meaning "no limit", and the guard's existing predicate
+  for that already treats an absent key as a finding
+  [measured 3e72070:internal/gateguard/guard_test.go · `grep -n -A12 'func isZeroInt'
+  internal/gateguard/guard_test.go` → a nil map and a key of any non-numeric type both return
+  `false`]. An absent `uniq-by-line`, by contrast, silently means `true`. D10's assertion is written
+  for that asymmetry.
+
+  Put to the owner on 2026-09-12 as a scope deviation, and answered in their words: *"Add +
+  re-review. Add `uniq-by-line: false` beside the two caps. design-writer amends D3; design-review
+  re-runs (round 2 of 3). The unconditional-re-review default — slowest, most checked."*
 
 - **D4 — `time.After` is forbidden outright in gated files, not only inside a loop, and that is a
   deliberate widening.** No linter of the installed golangci-lint can express "inside a loop" for it:
@@ -337,9 +382,18 @@ Transport which were previously connected from previous requests but are now sit
   - **The enabled set still holds what this task enabled** — `containedctx`, `fatcontext`,
     `forbidigo` and `gocritic` in `linters.enable`; `deferInLoop` in `gocritic`'s `enabled-checks`;
     `nilness` in `govet`'s `enable`; and a `forbid` entry for each of the four identifiers D1 names.
-  - **The two settings D2 and D3 pin are still pinned** — `run.relative-path-mode` is `gomod`,
-    without which the `^cmd/` anchor stops meaning the module root, and both issue-truncation caps
-    are `0`, without which AC10's "every site" stops being checkable.
+  - **The settings D2 and D3 pin are still pinned** — `run.relative-path-mode` is `gomod`, without
+    which the `^cmd/` anchor stops meaning the module root; both issue-truncation caps are `0`; and
+    `issues.uniq-by-line` is **present and boolean `false`**, without which a site is reported only
+    when no other linter claims its line first. Without all three, AC10's "every site" stops being
+    checkable. The `uniq-by-line` assertion cannot reuse the predicate the caps share, which accepts
+    a numeric zero only
+    [measured 3e72070:internal/gateguard/guard_test.go · `grep -n -A12 'func isZeroInt'
+    internal/gateguard/guard_test.go` → an `int`/`int64`/`float64` compared against zero, every
+    other type returning `false`]: `uniq-by-line`'s safe value is a boolean and its *absence* is the
+    unsafe state, because the key defaults to `true` (D3). The guard must therefore demand the key
+    be present and `false`, not merely not-`true`
+    [derived → the pinned-settings scenarios in § Test Design, subtask 8].
 
   A guard over the file's *content* does not prove golangci-lint *accepts* that content — those are
   different questions, and the silently-ignored-settings-key row in § Risks is why the difference is
@@ -420,7 +474,7 @@ Transport which were previously connected from previous requests but are now sit
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | Enable `containedctx` and `fatcontext`; pin `run.relative-path-mode: gomod` (D2); lift the issue-truncation caps in a top-level `issues:` section (D3). Both linters are silent on today's tree, so the gate stays green with no source change [measured e66beb5 · `golangci-lint run --enable-only=containedctx ./...` → `0 issues.`; the same for `fatcontext`]. `golangci-lint config verify` runs before the green run is believed (§ Risks, the silently-ignored-settings-key row). Serves AC6, AC7. | `.golangci.yml` | — |
+| 1 | Enable `containedctx` and `fatcontext`; pin `run.relative-path-mode: gomod` (D2); in a top-level `issues:` section, lift the issue-truncation caps **and** switch the cross-linter line dedup off with `uniq-by-line: false` — every default that suppresses a site the gate would otherwise report, closed together (D3). Both linters are silent on today's tree, so the gate stays green with no source change [measured e66beb5 · `golangci-lint run --enable-only=containedctx ./...` → `0 issues.`; the same for `fatcontext`]. `golangci-lint config verify` runs before the green run is believed (§ Risks, the silently-ignored-settings-key row). Serves AC6, AC7. | `.golangci.yml` | — |
 | 2 | Enable `gocritic`'s `deferInLoop` and `govet`'s `nilness`. `deferInLoop` reports nothing on today's tree and `nilness` reports the deliberate typed-nil-in-interface assertion in `internal/store` and nothing else [measured e66beb5 · the candidate configuration on the tree with the truncation caps lifted → `internal/store/basis_test.go:73:11: nilness: impossible condition: non-nil == nil (govet)`, and no `gocritic` line]; that assertion's existing directive gains `govet` beside `staticcheck` and states the added linter's reason. Serves AC8, AC9, AC10. | `.golangci.yml`, `internal/store/basis_test.go` | 1 |
 | 3 | Replace the ingest retry loop's unstoppable timer with a wait-or-cancel helper holding a stopped timer (D5). Test first. Serves AC3, AC10. | `internal/ingest/attempt.go`, `internal/ingest/retry_test.go` | — |
 | 4 | Bound the scheduler's detached connection close with its own named-constant timeout (D7). Serves AC5. | `internal/scheduler/execute.go` | — |
@@ -458,15 +512,26 @@ total is within the default maximum of 4 design-defined groups, so no user appro
 
 ## Risks
 
-- **A truncating gate turns "every site" into "the first few of a kind", and it already did here.**
-  The first candidate run reported only part of the fresh-context class and looked complete
+- **A gate that suppresses findings by default turns "every site" into "the ones nothing else hid",
+  and two separate defaults did that here.** *Truncation* was the first: the first candidate run
+  reported only part of the fresh-context class and looked complete
   [measured e66beb5 · the candidate configuration run with golangci-lint's defaults → the
   `internal/health` sites and nothing of the scheduler or the test-helper packages; the same run
   with `--max-same-issues 0 --max-issues-per-linter 0` → those sites plus
   `internal/scheduler/execute.go`, `internal/testdb/testdb.go` at `Main`, at `Schema` and at
   `Schema`'s cleanup dropper, and `internal/tgtest/tgtest.go`].
-  *Mitigation:* subtask 1 lifts the caps before any site work begins (D3), and subtask 5 re-runs the
-  gate after its last annotation rather than trusting the list this design names.
+  *Cross-linter line dedup* was the second, and it survived the cap lift because it is a different
+  mechanism: `issues.uniq-by-line` defaults to `true` and drops a site's finding whenever another
+  linter has already claimed that line — for AC8's checker the colliding shape is the canonical one
+  [measured 3e72070 · a scratch module whose loop body defers a file close, run under this
+  repository's configuration → `errcheck`'s finding at that line and no `gocritic` finding; under
+  `--enable-only=gocritic` → the `deferInLoop` finding (D3)].
+  *Mitigation:* subtask 1 switches off both — the caps and the dedup — before any site work begins
+  (D3); subtask 5 re-runs the gate after its last annotation rather than trusting the list this
+  design names; and D10's guard asserts each of those keys from the parsed configuration, so a later
+  edit that restores any default has a repository-resident regression to break. That the class kept
+  a second member after the first was closed is itself the lesson: the mitigation is written against
+  *"a default that suppresses a report"*, not against the two keys that have been found.
 
 - **The `^cmd/` carve-out is a path proxy for "main package", and a `main` package outside `cmd/`
   would slip past AC4's gate.** No such package exists today
@@ -557,6 +622,12 @@ total is within the default maximum of 4 design-defined groups, so no user appro
   in both subtasks. A green `golangci-lint run` is evidence about the *tree* only once the
   configuration is known to have loaded as written; an unrecognised settings key is accepted in
   silence (§ Risks, the silently-ignored-settings-key row) [derived → AC10].
+- The line-dedup switch gets a control of its own, because a key that changes *which* findings
+  survive cannot be checked against a green tree: a constructed package whose `defer` inside a loop
+  shares its line with another linter's finding must be seen reported for `deferInLoop` under the
+  configuration as shipped, and seen *not* reported when `uniq-by-line` is put back to its default.
+  The repository's own tree discriminates nothing here — it is `0 issues.` either way (D3)
+  [derived → AC8, AC10].
 - The `//nolint:forbidigo` escape must be seen both to suppress the finding and to be refused when it
   carries no specific linter or no explanation, which `nolintlint`'s existing settings already require
   [derived → AC5].
@@ -661,7 +732,13 @@ total is within the default maximum of 4 design-defined groups, so no user appro
     so no single omission is the only one exercised [derived → D10's enabled-set assertion];
   - a scratch configuration whose `run.relative-path-mode` is absent or not `gomod`, and one whose
     issue-truncation caps are absent or non-zero, each fail [derived → D10's pinned-settings
-    assertion].
+    assertion];
+  - a scratch configuration whose `issues.uniq-by-line` is `true` fails, **and so does one where the
+    key is absent entirely** — the absent case is the one that matters, since the key defaults to
+    `true`, and a guard that only rejected an explicit `true` would pass the very configuration the
+    amendment exists to prevent (D3, D10). Driven as its own case rather than folded into the caps'
+    table, because the predicate is a different one: present-and-boolean-`false`, not zero-valued
+    [derived → D10's pinned-settings assertion].
 - Fixtures: `internal/srcguard`'s scratch-file writer for every constructed tree, so no case ever
   touches the working tree; `internal/repotest` for the repository root and the lint configuration's
   path.
@@ -693,3 +770,10 @@ so nothing below asks what has been answered:
 None of these four became a spec row: the spec states what counts as solved and these settle how, so
 they live here and in the Key decisions they bind, per `design-writer`'s § Rules → *The spec states
 what*.
+
+A fifth ruling binds this design without appearing in that table, because the design did not raise
+it: the orchestrator's Step 9 per-AC sweep found the cross-linter line dedup, put the fix to the
+owner as a scope deviation, and the owner ruled *"Add + re-review"* on 2026-09-12. It is recorded in
+their words at D3, alongside the cap lift it extends, and it likewise became no spec row. Listed
+here so a reader auditing which owner rulings this design rests on finds every one of them from this
+section.
