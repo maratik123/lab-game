@@ -748,3 +748,32 @@ lookup.
 
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-12 — testing — when the deliverable IS a detector, its green run proves the corpus was cleaned, not that it detects
+
+**What happened:** Closed a gate-gap bug by adding a tenth reference class to the comment-reference
+gate. Every gate went green, `make comment-refs` included — but that green was guaranteed by the
+same change that reworded the two offending comments, so it was evidence about the corpus and not
+about the detector. Three probes were run before the result was recorded. The original defect was
+re-introduced into the file it came from, and the gate went RED printing the documented
+`<file>:<line>: <class>: <text>` line for it. The new matcher was neutered to a pattern that cannot
+match, and both new positive table rows went RED on their assertion line. The grammar was broadened
+to the form the neighbouring guard script itself accepts, and the new negative row went RED,
+reporting a date fragment and a numeric range as findings. Each mutant was confirmed to BUILD as a
+separate step, so a non-zero exit could not have been the compiler. The third probe also settled an
+open design question with a measurement rather than a preference: over every gated comment in the
+tree, the broad grammar yields 39 false positives against 3 real hits, while the chosen narrow one
+yields 3 and 0.
+
+**Rule:** A fix whose product is a detector is not verified by a green run — re-introduce the exact
+defect the report named and watch the detector fail on it, then mutate the detector itself and watch
+each new assertion fail, confirming every mutant compiles first. Restore such probes with a
+cp-backup, never `git checkout --` / `git restore`, when the working tree holds the uncommitted fix.
+And where the open question is how WIDE a pattern should be, run every candidate against the whole
+real corpus and choose from the table: the width argument is otherwise decided by taste, and the
+cheap-looking direction is the wrong one whenever the detector has no exemption mechanism, because
+then each false positive costs a rewrite of legitimate prose.
+
+**at:** 196287f (the 39-vs-3 measurement, taken on the clean tree before any edit)
+**Kind:** validation
+**Escalated?** no

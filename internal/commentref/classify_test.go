@@ -46,6 +46,8 @@ func TestClassify_OnePerClass(t *testing.T) {
 		{"repo_path_positive", "see internal/scheduler/schedule.go for the loop", ClassRepoPath},
 		{"url_positive", "see https://api.telegram.org for the API", ClassURL},
 		{"module_symbol_positive", "returns the error store.Post reports", ClassModuleSymbol},
+		{"review_register_id_r_positive", "covers R1-5's first gap", ClassReviewRegisterID},
+		{"review_register_id_sr_positive", "renumbered to SR1-1 in round 2", ClassReviewRegisterID},
 	}
 
 	for _, tc := range tests {
@@ -76,6 +78,7 @@ func TestClassify_OneNegativePerClass(t *testing.T) {
 		{"no_repo_path_for_an_ordinary_word", "the schedule runs hourly"},
 		{"no_url_for_plain_prose", "call the API before returning"},
 		{"no_module_symbol_for_bare_name", "returns a Session for the caller"},
+		{"no_review_register_id_for_a_date_or_a_range", "measured on 2026-09-08 across rounds 1-5"},
 	}
 
 	for _, tc := range tests {
