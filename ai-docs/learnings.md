@@ -856,3 +856,18 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** Before spawning an agent whose prompt is machine-checked, read that agent file's spawn-prompt contract and copy its line forms — a prose enumeration of what the prompt must *contain* is not a statement of the shape it must *take*, and a field name carried over from a sibling agent's contract is an assumption, not a form. The general form of this is already written down for design work (`design-writer.md`: read the callee's own instruction file whenever one harness component invokes another); it binds the orchestrator at a spawn exactly as it binds a designer at a specification.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — a delegate's spawn-prompt shape is read from its own contract, never inferred from a sibling's
+**What happened:** Spawned `design-review` using the field names that the `spec-writer` round prompt uses (`spec_path:` / `design_path:` / `round:`). The `PreToolUse` spawn-contract hook refused the call and named every offending line. `/task` Step 7 enumerates the five permitted items but not their lexical form; the form lives in the callee's own § Spawn prompt contract, which was not opened before the spawn.
+**Rule:** Before spawning any agent whose prompt is a closed list, open that agent's own spawn-prompt contract and copy the permitted line shapes from there. An enumeration of *what* a prompt may carry, read in the caller's file, says nothing about *how* each item is spelled — and a sibling agent's prompt is evidence about that sibling alone.
+**Escalated?** no
+
+### 2026-09-12 — tooling — a pipeline's exit status answers for its last stage, including when the pipe is only cosmetic
+**What happened:** Verified that a struck requirement survived nowhere in the spec with `grep -niE '<pattern>' <spec> | sed 's/^/hit: /'`, then reported the captured status as the grep's. It was `sed`'s, and `sed` succeeds on empty input, so a clean result was recorded before the grep's own exit code had been read at all. Re-running without the pipe reached the same conclusion by a route that could actually have contradicted it.
+**Rule:** Never place a pipe after a command whose exit code is the answer — not even a formatting one. Redirect to a file under `tmp/`, read the status, then read the file. The hook that blocks this shape matches test-gate pipes; a `grep | sed` used to prettify output is the same defect wearing a harmless-looking second stage.
+**Escalated?** no
+
+### 2026-09-12 — process — an acceptance row invoked as binding is a citation, and its anchor is what makes it one
+**What happened:** Reasoned from an acceptance criterion requiring the maze algorithms be provably distinguishable — describing it to the owner as a requirement and spending a measurement that supported it — without resolving the anchor that was supposed to source it. The owner asked where the row came from; resolving the anchor showed it quoted their own earlier *question about a fact*, which the drafting delegate had read as a remit. The measurement had made an unsourced requirement look better founded than the task ever made it.
+**Rule:** Before reasoning from a spec or acceptance row, and above all before spending work that strengthens it, resolve its anchor and check that the quoted source is a decision rather than a question. An anchor proves provenance, never remit; a quotation of the owner asking something is not the owner requiring it.
+**Escalated?** no
