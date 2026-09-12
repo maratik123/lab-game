@@ -52,8 +52,12 @@ func (p Params) validate() error {
 	if err := validateShare("growing-tree bias", p.GrowingTreeBias); err != nil {
 		return err
 	}
-	if nonBorderCellCount(p.Dims) == 0 && p.IslandShare.IsPositive() {
+	capacity := nonBorderCellCount(p.Dims)
+	if capacity == 0 && p.IslandShare.IsPositive() {
 		return fmt.Errorf("maze: island share %s is positive but dims %+v have no non-border cell to draw islands from", p.IslandShare, p.Dims)
+	}
+	if target := islandTarget(p); target > capacity {
+		return fmt.Errorf("maze: island share %s rounds to %d islands, more than dims %+v can hold (%d non-border cells)", p.IslandShare, target, p.Dims, capacity)
 	}
 	return nil
 }
