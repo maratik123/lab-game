@@ -156,8 +156,8 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 			recurrence: decl.Recurrence, reason: "deadline exceeded",
 		})
 		go func() { //nolint:gosec,contextcheck // G118/contextcheck: context.Background() is deliberate here — ctx (and deadlineCtx) may already be done by the time this fires, and closing the connection must still happen, since that is what finally releases the row's lock for a handler that ignores its own ctx
-			<-resultCh // wait for the orphaned handler goroutine to return
-			closeCtx, cancel := context.WithTimeout(context.Background(), detachedCloseTimeout)
+			<-resultCh                                                                          // wait for the orphaned handler goroutine to return
+			closeCtx, cancel := context.WithTimeout(context.Background(), detachedCloseTimeout) //nolint:forbidigo // this is the watchdog's detached close: no shutdown path joins this goroutine, so it owns its own bounded root
 			defer cancel()
 			_ = pconn.Close(closeCtx)
 		}()

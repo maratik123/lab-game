@@ -44,7 +44,7 @@ var (
 // runtime is reachable, it prints the error and returns 1 without running
 // any test.
 func Main(m *testing.M) int {
-	ctx := context.Background()
+	ctx := context.Background() //nolint:forbidigo // this is a test binary's entry point: it has no caller context above it
 
 	if dsn := os.Getenv(DSNEnv); dsn != "" {
 		baseDSN = dsn
@@ -96,7 +96,7 @@ func Schema(tb testing.TB) *pgxpool.Config {
 	// Schema's signature is fixed by design — Schema(tb) *pgxpool.Config,
 	// no context parameter — so it necessarily starts its own background
 	// context for the short-lived admin connection that creates the schema.
-	ctx := context.Background()
+	ctx := context.Background() //nolint:forbidigo // this is Schema's own root: its signature is fixed by design with no context parameter, and it owns this admin connection until the function returns
 	admin, err := pgxpool.NewWithConfig(ctx, cfg.Copy())
 	if err != nil {
 		tb.Fatalf("testdb: connect to create schema: %v", err)
@@ -108,7 +108,7 @@ func Schema(tb testing.TB) *pgxpool.Config {
 	}
 
 	tb.Cleanup(func() {
-		dctx := context.Background()
+		dctx := context.Background() //nolint:forbidigo // this is Schema's cleanup dropper: registered with tb.Cleanup, it owns this connection for the length of its own callback
 		dropper, err := pgxpool.NewWithConfig(dctx, cfg.Copy())
 		if err != nil {
 			tb.Errorf("testdb: connect to drop schema %s: %v", name, err)

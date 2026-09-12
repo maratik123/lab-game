@@ -151,7 +151,7 @@ func (s *Server) Start() error {
 		return errors.New("health: server already started")
 	}
 
-	ln, err := new(net.ListenConfig).Listen(context.Background(), "tcp", s.httpSrv.Addr)
+	ln, err := new(net.ListenConfig).Listen(context.Background(), "tcp", s.httpSrv.Addr) //nolint:forbidigo // this is the listener bind: owned by Start itself, complete before Start returns
 	if err != nil {
 		return fmt.Errorf("health: listen: %w", err)
 	}

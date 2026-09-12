@@ -73,7 +73,7 @@ func NewProcess(reg prometheus.Registerer, opts ProcessOptions) (*Process, error
 		Name: familyReady,
 		Help: "1 when Ready reports no error, 0 otherwise.",
 	}, func() float64 {
-		ctx, cancel := context.WithTimeout(context.Background(), readyGaugeTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), readyGaugeTimeout) //nolint:forbidigo // this is the readiness gauge's per-scrape context: owned by this closure, and its own timeout already bounds it
 		defer cancel()
 		if opts.Ready(ctx) != nil {
 			return 0
