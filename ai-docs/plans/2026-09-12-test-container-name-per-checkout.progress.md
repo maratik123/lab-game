@@ -8,13 +8,13 @@ _Updated: 2026-09-12 00:18_
 **Last build:** PASS
 **Issue:** #91
 **Spec:** ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** make verify | 2026-09-12T00:24:25Z | e547cce795790673b2a3fba1757ae644dac61690
 **entry_args:** сделать так, чтобы имя контейнера бд выводилось из имени каталога проекта, например lab-game-test-postgres для ~/lab-game и lab-game2-test-postgres для ~/lab-game2 (для параллелизации разработки)
 
 ## Next action
 
-**Do this immediately:** Step 9.5 — append this task's entry to `ai-docs/context-status.md` and bump the affected summary bullet in `ai-docs/context.md`.
+**Do this immediately:** Step 10 — spawn `self-review` over the branch diff.
 
 ## Subtasks
 
@@ -38,6 +38,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 - **Step 9**: `make verify` green in full at e547cce (fmt · build · vet · lint · file-limits · test · test-race · tidy · actionlint · shellcheck · comment-refs · import-guard) — 0 FAIL over the log, control confirmed the FAIL pattern matches. Deps unmoved (no `go.mod`/`go.sum` in the branch diff), no workflow or shell script touched, no `panic(`/`log.Fatal` added (control confirmed). Domain-invariant sweep not applicable: the change touches no balance, ledger, basis document, scheduler task, event or outbound message — the Go diff is `cmd/testpg` and `internal/testdb` only. Panic index unchanged: the only addition is a package-level `regexp.MustCompile`, which the index carries no row for by established practice in `internal/commentref`.
 - **Step 9**: the design's verify-time probe ran end to end on podman 5.8.2 — two probe servers under derived names, a same-base-name twin joining the first, a child run picking its own checkout's server, `--down` in one leaving the other running and reachable, and teardown leaving no probe container (control confirmed the teardown grep matches). The unrelated `pgshared` container on this host was neither touched nor counted.
+
+- **Step 9.5**: appended this task's entry to `ai-docs/context-status.md` with the literal PR placeholder, and extended the `internal/testdb` clause of `ai-docs/context.md` with the per-checkout naming and its consequence. No open question in `context.md` is resolved by this change. Removed-name sweep for `SharedContainerName` over every doc touched: the only surviving mention outside the deletion clause is the #67 entry of `context-status.md`, which is append-only history describing what landed in that PR — left standing, with the deletion recorded in this task's own entry. `README.md` and `docs/**` name no container and no wrapper target, so neither is contradicted.
 
 ## GO notes
 
