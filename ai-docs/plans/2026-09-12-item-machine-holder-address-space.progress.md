@@ -8,13 +8,13 @@ _Updated: 2026-09-12 17:47_
 **Last build:** PASS
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** make verify + make cover-ratchet | 2026-09-12T17:55:39Z | 8dea86f2b32808150c6c60f2fa628698ddd1a5a2
 **entry_args:** 25
 
 ## Next action
 
-**Do this immediately:** Step 9.5 — append this task's entry to `ai-docs/context-status.md` with the literal `#TBD-at-Step-12` locator, bump the affected `ai-docs/context.md` summary bullets (the §Architecture layout paragraph and the §Status "Code:" bullet Group C deliberately left), then Step 10 self-review.
+**Do this immediately:** Step 10 — spawn `self-review` with the closed-list prompt over the commit range `4d7d9b9..HEAD`.
 
 ## Subtasks
 
@@ -59,6 +59,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 9**: ALL PASS. `make verify` exit 0 with all twelve sub-gates executed, `make cover-ratchet` 90.34% against 90.47% within the 0.60 pp tolerance, no new panic site, the domain sweep's two hits both legitimate (`post`'s own balance `UPDATE`, a property test's fixture constant). The `internal/store` result in `make verify` came back `(cached)` on both the plain and the race route, so the race behaviour the whole amendment exists for was re-run uncached (`go test -race -count=1 ./internal/store/` → ok 13.185s) rather than recorded from a replayed profile.
 - **Step 9**: the propagation sweep was re-derived by the orchestrator rather than accepted from Group C's report — control first, on four encodings, then the live surfaces, which came back empty. Three `Post`-is-the-only hits were read individually: two already say `store.Post` and `store.Move`, one is a ledger-core history entry still true in its own scope, and one was my own pattern matching an HTTP `POST`.
 - **Step 9**: no panic-index change and no event-dictionary or posting-signature addition — this task ships the machine, and the framework that checks a document's declared posting and movement sets is the separate issue the spec places out of scope.
+
+- **Step 9.5**: `ai-docs/context-status.md` gained this task's entry with the literal `#TBD-at-Step-12` locator (verified as the file's only occurrence of the token); `ai-docs/context.md`'s Architecture layout paragraph and Status `Code:` bullet now name the item machine — the two surfaces Group C deliberately left to this step rather than duplicating it. No repo-root user-facing doc to update: the repository has no `README.md`, and `AGENTS.md` was already carried by the propagation sweep. No `docs/DESIGN.md` §16 open question is resolved by this task — the storage-scope binding it touches stays open and waits on its own issue.
+- **Step 9.5**: the removal sweep is vacuous **by construction**, not clean by result — the diff removes no function, exported or otherwise, so there is no removed name for a doc to still assert. Established with the grep's own exit status read unpiped, after a piped one had reported `head`'s.
 
 ## GO notes
 
