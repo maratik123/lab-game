@@ -603,3 +603,15 @@ executed it, and the cheapest refutation is two lines of shell.
 **at:** b50f0eeea382f25efcb558b13006b30c3a501280
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-12 — process — spawned design-review with lowercase `key: value` lines instead of the contract's line shapes
+**What happened:** At `/task` Step 7 I built the design-review spawn prompt as `spec: …` / `design: …` / `round: 1`. The content was exactly the five permitted things and nothing else, but the spawn-prompt contract fixes the line SHAPES — `Spec:` / `Design:` / `Round:` — and the `PreToolUse` hook refused the spawn, naming all three lines as outside the closed list. Re-spawning with the capitalised shapes went through. A near-identical entry dated the same day already sits in this log from the sibling checkout, recording the `spec_path:` spelling of the same mistake; I had not read it, and reading it would have cost less than the refused spawn.
+**Rule:** A gate subagent's spawn prompt is a fixed set of line shapes, not a set of facts to render in whatever style the previous prompt used. Copy the permitted lines from the agent's own spawn-prompt contract literally before spawning, and never carry a sibling flow's field style across — the `spec-writer` prompt's `issue_ref:` / `round:` style is not the reviewer's.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — tooling — read `$?` from the tail of a pipeline and nearly recorded an instrument error as a clean sweep
+**What happened:** Verifying AC13 at `/task` Step 9, I swept for falsified claims with `grep -rniE '…' README.md docs/*.md | head -10` and printed `$?`, which reported `0`. That was `head`'s status. Re-running the same sweep without the pipe returned grep's real status, **exit 2** — an error, not "no matches": this repository has no `README.md` at all, so the AC clause naming it has no target. Under the piped form I would have recorded "README and docs carry no falsified claim, verified" on an exit code produced by a program that had read nothing. The piped-gate hook does not reach this shape; it matches Go gates and `make`, not `grep`.
+**Rule:** The no-piping rule is about the load-bearing exit code, not about the Go toolchain: it binds any command whose status decides what I record, `grep` and `comm` included. And grep's exit 2 is an instrument failure, never a clean result — a sweep that names a path must establish the path exists before its silence counts as evidence.
+**Kind:** correction
+**Escalated?** no
