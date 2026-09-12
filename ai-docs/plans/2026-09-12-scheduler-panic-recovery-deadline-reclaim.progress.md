@@ -5,18 +5,18 @@ _Updated: 2026-09-12 18:05_
 
 **Branch:** feat/2026-09-12-scheduler-panic-recovery-deadline-reclaim
 **base_commit:** c7c4018
-**Last build:** not run
+**Last build:** PASS
 
 **Issue:** #81
 **Spec:** ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md
 
 **current_step:** Step 8 — Group A subtask 9 of 9 complete — Group A DONE, ready for handoff to Group B
-**last_passed_gate:** go build ./... + go test ./internal/gateguard/... + golangci-lint run ./internal/gateguard/... + go vet ./... + go run ./cmd/commentrefs | subtask 9
+**last_passed_gate:** golangci-lint run | 2026-09-12T16:11Z | e69270b
 **entry_args:** 81
 
 ## Next action
 
-**Do this immediately:** hand off into Group A per the design's `## Handoff plan` — spawn `code-writer` for subtasks 1–9 (`internal/panicguard`, `internal/scheduler`, `internal/ingest`, `internal/health`, `cmd/bot`, `internal/gateguard`), gating and committing per subtask.
+**Do this immediately:** hand off into Group B per the design's `## Handoff plan` — spawn `general-purpose` (no inline `model=`) for subtask 10, the documentation propagation across `ai-docs/alert-contract.md`, `ai-docs/code-style.md`, `ai-docs/process-lifecycle.md` and `ai-docs/context.md`. Group A (subtasks 1–9) is complete and its gates are green at `e69270b`.
 
 ## Subtasks
 
@@ -110,3 +110,4 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `internal/health/labels_test.go`, `internal/health/scheduler_test.go`, `internal/health/guards_test.go` (panic value driven/expected)
 - `cmd/bot/assemble.go` (Logger threaded into scheduler.New and ingest.New)
 - `internal/gateguard/guard_test.go` (`(*Worker).executeOne` launch table rows updated: panicTo/stops narrowed for both the handler launch and the watchdog launch)
+- **Step 8, Group A boundary (orchestrator)**: re-ran `go build ./...`, `go vet ./...`, `golangci-lint run` and `golangci-lint fmt -d` at `e69270b` — all green; the group's own gate claim is confirmed against the tree rather than taken from its return summary. Header fields `Last build`, `last_passed_gate` and `Next action` were left stale by the group and are corrected here.
