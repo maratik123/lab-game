@@ -54,19 +54,33 @@ Each property below has a mechanism behind it rather than a promise.
    the toolchain. The same run measured that `gosec` raises no weak-randomness finding for a
    seeded `math/rand/v2` source, so no suppression is needed for the stream itself
    `[measured 46ee531:.golangci.yml:31 · the golangci-lint run above over a file calling rand.NewChaCha8 and (*ChaCha8).Uint64 → the only finding was G115; no G404]`.
-3. **The stream is a specified generator, and the reduction from it is ours.**
-   `math/rand/v2.NewChaCha8(key [32]byte)` supplies the `uint64` stream. ChaCha8Rand has a
-   published C2SP specification with test vectors, written so other implementations "share
+3. **The stream is a specified generator whose stability is gated upstream, and the reduction from
+   it is ours.** `math/rand/v2.NewChaCha8(key [32]byte)` supplies the `uint64` stream. ChaCha8Rand
+   has a published C2SP specification with test vectors, written so other implementations "share
    repeatability with the Go implementation for a given seed"
-   (<https://go.dev/blog/chacha8rand>, <https://c2sp.org/chacha8rand>) — but **neither page
-   promises stability across Go releases**, and the `math/rand/v2` documentation makes no
-   stability statement in either direction
-   `[measured go1.26.5 · go doc math/rand/v2 → package synopsis carries no compatibility or reproducibility clause]`.
-   So the stream primitive is chosen for being specified, and **the golden in § Test Design is what
-   actually gates it.** Every reduction from the stream — bounded draw, shuffle, weighted pick — is
-   implemented and documented in this package, never taken from `rand.Rand`, so a change to the
-   standard library's mapping from source to value cannot move a single face. That also removes a
-   panic surface: the standard library's bounded draw panics on a non-positive bound
+   (<https://go.dev/blog/chacha8rand>, <https://c2sp.org/chacha8rand>). **The Go project does not
+   merely specify it — it states the stability requirement and gates it inside the very package
+   this design imports**, with a pinned seed, a pinned output prefix and a pinned digest over a
+   fixed length of output
+   `[measured go1.26.5 · grep -n -i golden, with context, over $GOROOT/src/math/rand/v2/chacha8_test.go and $GOROOT/src/internal/chacha8rand/rand_test.go → "Golden output test to make sure algorithm never changes, so that its use in math/rand/v2 stays stable." in both, and in the internal copy "See https://c2sp.org/chacha8rand."]`,
+   and that gate is live rather than a dormant file
+   `[measured go1.26.5 · go test -run 'TestChaCha8(Golden|Seed)?' -v math/rand/v2 → "--- PASS: TestChaCha8", "ok math/rand/v2"]`.
+   So the stream is chosen for being **specified and upstream-gated** — the commitment exists and
+   someone else's regression test holds it — and this task's own golden covers what that gate does
+   *not*: our preimage encoding, our reductions and our construction. The division of labour is the
+   point. A local golden is a detector; the stream's own stability is a mechanism, and AC2's
+   toolchain half needs the mechanism, which is why establishing that it exists mattered enough to
+   read the standard library's test files rather than only its doc comments.
+   *Rejected alternative:* a SHA-256 counter-mode stream, frozen by FIPS 180-4 and reusing the
+   digest already in the chain. It is defensible and its cost is not the deciding factor, since
+   nothing in this task gates cost. It loses because it is a construction **we** would have to get
+   right — counter width, domain separation, endianness — with no upstream vectors for the
+   assembled result, where ChaCha8Rand is a named generator with both a specification and someone
+   else's regression gate on it.
+   Every reduction from the stream — bounded draw, shuffle, weighted pick — is still implemented and
+   documented in this package, never taken from `rand.Rand`, because the upstream gate covers the
+   *source* and says nothing about the mapping from source to value. That also removes a panic
+   surface: the standard library's bounded draw panics on a non-positive bound
    `[measured go1.26.5 · go doc math/rand/v2.Rand.IntN → "IntN returns … in the half-open interval [0,n). It panics if n <= 0."]`,
    which the project's zero-production-panic posture refuses
    `[measured 46ee531:ai-docs/panic-index.md · cat → the table's only row is "| — | — | — |"]`.
@@ -108,8 +122,13 @@ Everything below is a pure function of `(world seed, chunk coordinate, Params)`.
 1. **Island set.** Target count is `round(islandShare × cellsInChunk)`. Candidates are the chunk's
    non-border cells in index order, shuffled by the island stream. Each candidate is taken
    tentatively and accepted only if the chunk's remaining non-island cells are still connected
-   **on the lattice** (a flood fill from the chunk's first border cell); otherwise it is skipped.
-   The walk stops at the target or when candidates run out.
+   **over the chunk-induced subgraph — interior adjacency only, neighbours outside the chunk
+   ignored** (a flood fill from the chunk's first border cell); otherwise it is skipped. The
+   restriction to the induced subgraph is what makes the guard load-bearing: over the *global*
+   lattice a neighbouring chunk always reconnects the set, so a guard written that way would accept
+   every candidate and pass for any construction at all — the same graph the spanning structure is
+   built on is the only graph the guard can be about. The walk stops at the target or when
+   candidates run out.
    *Why a guard rather than an argument:* removing cells from a triangular lattice can enclose a
    pocket, and a pocket unreachable from the rest breaks the intra-chunk connectivity criterion.
    The guard makes connectivity a property the construction *checks while building*, not one the
@@ -123,8 +142,11 @@ Everything below is a pure function of `(world seed, chunk coordinate, Params)`.
    *Cost, accepted:* the flood fill runs once per candidate. The local removability test from
    digital topology would make it constant-time per candidate; it is not taken, because nothing
    gates the cost here and a topological argument is a worse thing to rest on than a flood fill.
-2. **Algorithm draw.** A weighted pick over the algorithm enum's **canonical order** — never over a
-   map's iteration order — from the algorithm stream. Zero weight is unreachable by construction.
+2. **Algorithm draw.** A weighted pick over the algorithm enum's **canonical order** from the
+   algorithm stream. The weight set is **an array indexed by the `Algorithm` enum, not a map**, so
+   there is no iteration order to depend on and no unknown key to validate — an unknown algorithm
+   *name* in a biome file is #28's decoder's error, on the side of the boundary that knows names.
+   Zero weight is unreachable by construction.
 3. **Spanning structure** over the non-island cells, by the drawn algorithm, over interior faces
    only, from the structure stream.
 4. **Extra passages.** `round(extraPassageShare × (nonIslandCells − 1))` — a share *of the spanning
@@ -147,12 +169,9 @@ Everything below is a pure function of `(world seed, chunk coordinate, Params)`.
    neighbour with `q` past the chunk's last column *and* `r` before its first row, which only the
    corner cell at (last column, first row) achieves and only through the `(+1,−1)` direction;
    the `(−1,+1)` border is its mirror. Those two borders therefore carry exactly one portal always,
-   while the four remaining borders have a candidate for most of their edge cells in two directions
-   each. Verified by enumerating every face leaving a chunk at the reference dimensions
-   `[measured probe of this design's own tiling rule, no tracked file involved · a scratch
-   enumeration over cols=rows=16 of all six directions from every chunk cell, grouped by
-   destination chunk → "border to chunk (1, -1) candidates: 1 [(15, 0, 1)]", "border to chunk
-   (-1, 1) candidates: 1 [(0, 15, 4)]", and 31 for each of (1,0), (-1,0), (0,1), (0,-1)]`.
+   while each of the four remaining borders draws candidates from a whole edge of the rhombus in two
+   directions — `[derived → AC8 and the portal scenarios in § Test Design, where the diagonal
+   borders are their own case]`.
 
 For a coordinate no prefab claims — the claimed case is § The prefab boundary below — a cell's six
 faces then read: for each direction, the canonical face; if both its cells are in this chunk, the
@@ -269,9 +288,10 @@ public surface and the traversal bodies are not. Neither exit touches a caller.
 
 ```
 hexgrid: Coord{Q,R int32} · Direction (six members) · Direction.Opposite · Coord.Neighbor
-         Face{Cell Coord; Dir Direction}  (Dir is always the earlier of the two opposite
-                                           directions, so the face from either side normalises
-                                           to one identical value)
+         Face{Cell Coord; Dir Direction} · FaceOf(Coord, Direction) Face  ← the canonicalisation:
+                                           Dir is always the earlier of the two opposite
+                                           directions, so FaceOf from either side of a pair
+                                           normalises to one identical value
          Chunk{Q,R int32} · Dims{Cols,Rows int32} · Dims.ChunkOf · Dims.Origin · Dims.Contains
          ChunkDistance(a,b Chunk) int64 · Dims.Distance(a,b Coord) int64
 
@@ -290,13 +310,21 @@ Decisions inside that sketch:
   the difference of two extreme chunk coordinates does not fit the narrower type. Coordinate
   arithmetic at the domain's extremes wraps, which Go defines, so there is no panic path there.
 - **A constructor that validates and a method that cannot fail.** `New` rejects a bad input naming
-  it (non-positive dimension; a weight set with no positive weight; an unknown algorithm key; a
-  share or bias outside its range; an island share above what the given dimensions can hold, which
-  is derived from the dimensions and not a literal). `Cell` then returns a value with no error and
-  no panic. A share above one is rejected as a units mistake rather than clamped.
+  it (non-positive dimension; a weight set with no positive weight; a share or bias outside its
+  range; an island share above what the given dimensions can hold, which is derived from the
+  dimensions and not a literal). There is deliberately **no unknown-key rule**: the weight set is an
+  array indexed by the enum, so an unknown key is unrepresentable rather than rejected. `Cell` then
+  returns a value with no error and no panic. A share above one is rejected as a units mistake
+  rather than clamped.
 - **`Generator` is immutable after `New` and holds no memo.** The caching question is deferred by
   the spec, and a memo would silently convert the order-independence criterion into a
   cache-correctness question. It is therefore safe for concurrent use, asserted under `-race`.
+  **The consequence is the input to that deferred decision, so it is stated plainly rather than
+  left to be inferred: one `Cell` call builds its coordinate's whole chunk** — island selection
+  with a flood fill per candidate, the drawn algorithm over the non-island set, the extra-passage
+  pass — and then reads six faces out of it. That whole-chunk cost, not a per-face cost, is what
+  the AC17 benchmark reports, and reading the per-cell number as a per-face number would understate
+  it by the chunk's cell count.
 - **The prefab hook is a one-method consumer-declared interface returning a bare `bool`.** #28 owns
   prefab identity, so no identifier type is fixed here. A claimed coordinate yields a `Cell` marked
   as a prefab's, with its interior faces deferred, its **border faces carried from the portal rule**
@@ -341,7 +369,7 @@ Decisions inside that sketch:
 |---|------|-------|------------|
 | 1 | `internal/hexgrid`: the axial coordinate, the six directions and `Opposite`, the canonical `Face`, `Chunk`, `Dims`, the **floor-division** `ChunkOf` with `Origin`/`Contains`, `ChunkDistance` and `Dims.Distance` — with its table tests, its leak-check `TestMain`, and its own structural guard (no clock, no unseeded randomness, no floating-point type, no map ranging), each half paired with a scratch-package red case | `internal/hexgrid/doc.go`, `internal/hexgrid/coord.go`, `internal/hexgrid/face.go`, `internal/hexgrid/chunk.go`, `internal/hexgrid/main_test.go`, `internal/hexgrid/coord_test.go`, `internal/hexgrid/chunk_test.go`, `internal/hexgrid/guards_test.go` | — |
 | 2 | `internal/maze` derivation core: the per-width fixed-width preimage helpers with their G115 suppressions, the domain tag, the world key, the cell key and cell seed, the chunk key, the border key, the unexported one-method stream interface the ChaCha8 constructor is the only producer of, and the pinned reductions (total bounded draw, shuffle, weighted pick) — with unit tests over a fake stream and a golden over the derived keys | `internal/maze/doc.go`, `internal/maze/seed.go`, `internal/maze/draw.go`, `internal/maze/main_test.go`, `internal/maze/seed_test.go`, `internal/maze/draw_test.go`, `internal/maze/testdata/derive.golden` | 1 |
-| 3 | `Params` with its validation (including the decimal shares and the bias, and the rounding the design pins for each), the `Algorithm` enum with its canonical order, the `FaceState` enum with the deferred state as its zero value, and the weighted per-chunk algorithm draw | `internal/maze/params.go`, `internal/maze/algorithm.go`, `internal/maze/params_test.go`, `internal/maze/algorithm_test.go` | 2 |
+| 3 | `Params` with its validation (including the decimal shares and the bias, and the rounding the design pins for each), the `Algorithm` enum with its canonical order, **the weight set as an array indexed by that enum rather than a map** — so no iteration order and no unknown key exist to police — the `FaceState` enum with the deferred state as its zero value, and the weighted per-chunk algorithm draw | `internal/maze/params.go`, `internal/maze/algorithm.go`, `internal/maze/params_test.go`, `internal/maze/algorithm_test.go` | 2 |
 | 4 | The chunk cell graph (index mapping, six-neighbour adjacency, border-cell predicate, interior-face indexing) and island selection with its lattice-connectivity guard | `internal/maze/chunkgraph.go`, `internal/maze/island.go`, `internal/maze/chunkgraph_test.go`, `internal/maze/island_test.go` | 3 |
 | 5 | The algorithm implementations over the non-island induced subgraph: backtracker, Kruskal, frontier Prim, growing tree with its bias threshold, Wilson's walk | `internal/maze/algorithms.go` (split by algorithm if it passes the soft size limit), `internal/maze/algorithms_test.go` | 4 |
 | 6 | The extra-passage pass and border-portal selection, including the canonical-lesser-chunk candidate enumeration | `internal/maze/cycles.go`, `internal/maze/portal.go`, `internal/maze/cycles_test.go`, `internal/maze/portal_test.go` | 5 |
@@ -382,15 +410,27 @@ Two groups, within the default maximum of four; no user gate needed.
   raise. Mitigation: the total form returns zero and consumes nothing for a bound of one or zero,
   with the precondition and that answer stated in its doc comment, and a unit test pinning both the
   value and the untouched stream — `[derived → the draw-helper test in § Test Design]`.
-- **Map iteration order reaching a drawn value.** The weight set is naturally a map keyed by
-  algorithm, and ranging it would make the draw order-dependent. Mitigation: the draw walks the
-  enum's canonical order and only reads the map; a structural guard forbids ranging over a map in
-  either package's non-test files, with no carve-out — `[derived → AC14 and the guards subtask]`.
-- **The ChaCha8 stream is specified but not promised stable across Go releases.** Nothing in the
-  toolchain's documentation commits to it
-  `[measured go1.26.5 · go doc math/rand/v2 → no compatibility clause]`, so the design does not
-  rest on the promise: the committed golden fails the suite on any toolchain, architecture or
-  library change that moves a face — `[derived → AC2]`.
+- **Map iteration order reaching a drawn value.** Any map on the generation path is a latent
+  order dependency; the weight set is the obvious candidate, since a keyed mapping is its natural
+  configuration shape. Mitigation in two layers, and the first removes the need to police the
+  second: the weight set is **an array indexed by the enum**, so the type has no iteration order and
+  no unrepresentable-key validation to write; and a structural guard forbids ranging over a map
+  anywhere in either package's non-test files, with no carve-out — which stays a whole-package
+  invariant now that no legitimate caller wants one — `[derived → AC14 and the guards subtask]`.
+- **AC2's two axes are discharged by different things, and conflating them overstates the
+  instrument.** *Toolchain:* the stream's stability is gated upstream in `math/rand/v2`'s own test
+  suite (§ Determinism item 3), and this task's golden re-runs on every route that runs the suite at
+  whatever Go version `go.mod` names — CI pins Go by `go-version-file: go.mod`, so a toolchain bump
+  re-runs the golden rather than bypassing it
+  `[measured 61ca7ea:.github/workflows/ci.yml:93,109,133,145,157,173,189,222,316 · grep -n "go-version" .github/workflows/ci.yml → "go-version-file: go.mod" in every Go job]`.
+  *Architecture:* **no run anywhere exercises a second one** — every job is `runs-on: ubuntu-latest`
+  `[measured 61ca7ea:.github/workflows/ci.yml:22,88,104,128,140,152,168,184,201,299,311 · grep -n "runs-on" .github/workflows/ci.yml → "runs-on: ubuntu-latest" for every job]`,
+  and an arm runner is not available on this repository's plan. A different *machine* is not a
+  different *architecture*, so that axis rests on a **mechanism argument, stated as one**:
+  fixed-width big-endian preimages, no floating-point type anywhere, SHA-256, integer-only
+  arithmetic, reductions owned here, no map ranging — plus ChaCha8Rand's own
+  cross-implementation vectors. Mitigation: the mechanism list is guarded structurally, not trusted
+  — `[derived → AC2 and the guards subtask]`.
 - **Wilson's walk has no worst-case bound.** A loop-erased walk's length is not bounded by the
   chunk's size, so the slowest chunk in a world is a Wilson chunk. Nothing gates the cost in this
   task; the benchmark reports it per algorithm so the deferred caching decision has the spread and
@@ -399,19 +439,16 @@ Two groups, within the default maximum of four; no user gate needed.
   (`answer 1.1`: `weights:{… wilson_walk: 0}`) — `[derived → AC17's per-algorithm benchmark]`.
 - **Degenerate chunk dimensions behave differently from each other, and conflating them prescribes
   a wrong expected outcome.** "Every cell is a border cell" does **not** imply "no interior face
-  exists" — two border cells of one chunk share an interior face. Measured: a single-cell chunk has
-  no interior face at all, while a single-row chunk at the reference column count has an interior
-  face between each adjacent pair along the row
-  `[measured probe of this design's own tiling rule, no tracked file involved · a scratch
-  enumeration counting, for cols=16 rows=1, the directed face slots whose destination cell is in
-  the same chunk → "directed interior face slots = 30 -> undirected interior faces = 15"; for
-  cols=rows=1 → "directed interior face slots = 0"]`. So the expectations
-  are per case: **1×1** — no interior face, no island, no spanning edge, no extra passage, all six
-  faces decided by the portal rule. **Single row or single column** — interior faces one fewer than
-  the cells, the spanning structure is the forced path that opens *all* of them, no island (every
-  cell is a border cell), and therefore no closed interior face survives, so extra passages cap at
-  none. **Reference dimensions** — the criteria as stated. Mitigation: a case per shape, with the
-  right expectation in each — `[derived → AC5, AC7, AC10, AC11]`.
+  exists" — two border cells of one chunk share an interior face. A single-cell chunk genuinely has
+  none, but a single-row chunk's interior adjacency is a **path** along the row: each adjacent pair
+  shares an interior face, because both of its cells lie in the chunk. So the expectations are per
+  case: **1×1** — no interior face, no island, no spanning edge, no extra passage, all six faces
+  decided by the portal rule. **Single row or single column** — an interior face between each
+  adjacent pair, one fewer than the cells; the spanning structure is the forced path that opens
+  *all* of them; no island, every cell being a border cell; and therefore no closed interior face
+  survives, so extra passages cap at none. **Reference dimensions** — the criteria as stated.
+  Mitigation: a case per shape, with the right expectation in each —
+  `[derived → AC5, AC7, AC10, AC11]`.
 - **The island share can be unreachable even at healthy dimensions.** The connectivity guard skips
   a candidate whose removal would enclose a pocket, so the achieved count can fall below the
   target. Mitigation: the achieved share is what the tolerance is asserted against, and the
@@ -482,8 +519,10 @@ reproducible from the same key; the weighted pick never returns a zero-weight in
 reproducible.
 
 **Islands — AC7's precondition, AC11.** Entry point the island selector. Scenarios: at the
-reference dimensions and the share below, the chunk's non-island cells remain connected on the
-lattice for a sweep of chunk coordinates and world seeds; no island is a border cell; a share of
+reference dimensions and the share below, the chunk's non-island cells remain connected **over the
+chunk-induced subgraph — interior adjacency only, which is the non-vacuous reading and the one the
+flood fill must implement** — for a sweep of chunk coordinates and world seeds; no island is a
+border cell; a share of
 zero yields no island; the degenerate shapes yield no island (every cell is a border cell in each
 of them); the set is unchanged by the algorithm weights.
 **The share criterion's instrument is pinned here, not chosen after the first measurement:**
@@ -553,9 +592,12 @@ the draw is caught even where two algorithms happen to build the same structure.
 means:** the domain tag, the preimage encoding, the digest, the stream, a reduction, the island
 rule, an algorithm's traversal order, the cycle pass or the portal rule changed — every world
 already generated under that seed is now a different world, and the change is a season rotation
-rather than a refactor. The golden also carries AC1's separate-process clause and AC2 outright: it
-was minted by a different process and CI re-checks it on a different machine, which a re-exec test
-inside this pure-computation package would add nothing to.
+rather than a refactor. **What the golden does and does not carry:** it discharges AC1's
+separate-process clause (it was minted by one process and is checked by another, which a re-exec
+test inside this pure-computation package would add nothing to) and AC2's **toolchain** axis (it
+re-runs at whatever Go `go.mod` names). It does **not** discharge AC2's architecture axis, because
+no runner here is a second architecture — that axis is the mechanism argument in § Risks, and saying
+the golden covers it would be claiming an instrument that does not exist.
 Alongside it: a repeat evaluation in one process yields identical values; evaluating the coordinate
 table in an order shuffled by a test-local fixed seed yields the same values as evaluating it in
 sorted order; and a `-race` case driving one `Generator` from several goroutines yields the same
@@ -583,9 +625,10 @@ has no black-box observable beyond that suppression and is stated here as review
 early return in `Cell`, not claimed as mechanically covered.
 
 **Params — AC5, AC15.** Entry point `New`. Scenarios: each rejection names its input (non-positive
-dimension, an all-zero weight set, an unknown algorithm key, a share or bias out of range, an
-island share above what the dimensions can hold); a valid input yields a generator; the chunk
-dimensions are honoured, proven by the mapping test above.
+dimension, an all-zero weight set, a share or bias out of range, an island share above what the
+dimensions can hold); a valid input yields a generator; the chunk dimensions are honoured, proven
+by the mapping test above. No unknown-key case exists to write, the weight set being an array
+indexed by the enum.
 
 **Benchmarks — AC17.** `internal/maze/bench_test.go`: one benchmark over a single cell, and one per
 algorithm under a single-weight input. No threshold is asserted and no gate runs them — a benchmark
