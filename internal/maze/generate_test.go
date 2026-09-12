@@ -1,6 +1,7 @@
 package maze
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -45,6 +46,48 @@ func TestCell_RepeatEvaluationIsIdentical(t *testing.T) {
 	b := gen.Cell(c)
 	if a != b {
 		t.Fatalf("Cell(%v) not repeatable: %+v != %+v", c, a, b)
+	}
+}
+
+// TestCell_ShuffledEvaluationOrderMatchesSortedOrder evaluates a
+// coordinate table twice — once in sorted order, once in an order
+// shuffled by a test-local fixed key — and asserts every coordinate
+// yields the identical Cell either way: generation is a pure function
+// of the coordinate alone, never of evaluation order. The repeat
+// evaluation and the -race multi-goroutine tests above and below cover
+// the other two order-independence shapes; this one is the third the
+// design's own Determinism section names.
+func TestCell_ShuffledEvaluationOrderMatchesSortedOrder(t *testing.T) {
+	t.Parallel()
+	gen, err := New(20260912, refParams(), nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	var coords []hexgrid.Coord // built in sorted (Q,R) order
+	for q := int32(-5); q <= 5; q++ {
+		for r := int32(-5); r <= 5; r++ {
+			coords = append(coords, hexgrid.Coord{Q: q, R: r})
+		}
+	}
+
+	sortedResults := make(map[hexgrid.Coord]Cell, len(coords))
+	for _, c := range coords {
+		sortedResults[c] = gen.Cell(c)
+	}
+
+	shuffled := append([]hexgrid.Coord(nil), coords...)
+	shuffle(newStream([32]byte{0xab, 0xcd, 0xef}), shuffled)
+	if fmt.Sprint(shuffled) == fmt.Sprint(coords) {
+		t.Fatal("test setup: the shuffle produced the same order as sorted, so this run would not discriminate")
+	}
+
+	for _, c := range shuffled {
+		got := gen.Cell(c)
+		want := sortedResults[c]
+		if got != want {
+			t.Fatalf("shuffled-order evaluation of %v = %+v, want %+v (the sorted-order value)", c, got, want)
+		}
 	}
 }
 
