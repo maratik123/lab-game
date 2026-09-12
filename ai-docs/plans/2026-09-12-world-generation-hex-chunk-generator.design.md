@@ -5,10 +5,6 @@
 
 ## Approach
 
-*Citation convention in this document: a claim about a file of this tree is pinned to the commit;
-a claim about the toolchain or an external source carries its version or its URL in the pin slot
-instead, since neither lives at a commit here.*
-
 ### Shape of the deliverable
 
 New packages, no call site, no configuration key, no migration, no telemetry.
@@ -139,19 +135,77 @@ Everything below is a pure function of `(world seed, chunk coordinate, Params)`.
    because the lattice's face count grows faster than the tree's edge count; it would make the
    design's reference share mean something other than what the design says.
 5. **Border portals**, per border, from that border's stream: a count of one or two, then that many
-   distinct faces from the border's candidate list, capped by the candidate count (which is one for
-   a degenerate single-cell chunk). The candidate list is always enumerated **from the
-   lexicographically lesser of the two chunk coordinates**, over its border cells × directions,
-   keeping the faces whose destination chunk is the other one — so both sides build the same
-   ordered list. Enumeration is by destination chunk and not by direction, because more than one
-   direction crosses the same border.
+   distinct faces from the border's candidate list, capped by the candidate count. The candidate
+   list is always enumerated **from the lexicographically lesser of the two chunk coordinates**,
+   over its border cells × directions, keeping the faces whose destination chunk is the other one —
+   so both sides build the same ordered list. Enumeration is by destination chunk and not by
+   direction, because more than one direction crosses the same border.
    The extra-passage pass never touches a border face, which is what keeps a border at no more than
    two passages.
+   **The cap is not a degenerate-case afterthought: two of a chunk's six borders always have a
+   single candidate face, at every dimension.** Reaching the chunk at delta `(+1,−1)` needs a
+   neighbour with `q` past the chunk's last column *and* `r` before its first row, which only the
+   corner cell at (last column, first row) achieves and only through the `(+1,−1)` direction;
+   the `(−1,+1)` border is its mirror. Those two borders therefore carry exactly one portal always,
+   while the four remaining borders have a candidate for most of their edge cells in two directions
+   each. Verified by enumerating every face leaving a chunk at the reference dimensions
+   `[measured probe of this design's own tiling rule, no tracked file involved · a scratch
+   enumeration over cols=rows=16 of all six directions from every chunk cell, grouped by
+   destination chunk → "border to chunk (1, -1) candidates: 1 [(15, 0, 1)]", "border to chunk
+   (-1, 1) candidates: 1 [(0, 15, 4)]", and 31 for each of (1,0), (-1,0), (0,1), (0,-1)]`.
 
-A cell's six faces then read: for each direction, the canonical face; if both its cells are in this
-chunk, the interior face's state; otherwise the border's portal membership. An island's faces are
-all walls, and no neighbour of an island ever carves into it, so agreement from both sides needs no
-special case `[derived → AC3]`.
+For a coordinate no prefab claims — the claimed case is § The prefab boundary below — a cell's six
+faces then read: for each direction, the canonical face; if both its cells are in this chunk, the
+interior face's state; otherwise the border's portal membership. An island's faces are all walls,
+and no neighbour of an island ever carves into it, so agreement from both sides needs no special
+case `[derived → AC3]`.
+
+**Numeric types and rounding, because they fix world identity too.** The shares and the bias are
+`decimal.Decimal` — arbitrary-precision, so exact and architecture-independent — and **no
+floating-point type appears in either package**, which a guard holds structurally. `round(x)` in the
+island-count and extra-passage expressions above means `floor(x + ½)`: multiply exactly, add one
+half, take the floor, then convert to `int`. The bias becomes `floor(bias × 2^32)` as a `uint64`,
+compared **strictly less than** against the stream's top thirty-two bits, so a bias of zero never
+selects the newest entry and a bias of one always does, with no overflow branch. Naming the rounding
+is not pedantry: an exact-half case resolves one way under half-away-from-zero and the other under
+half-to-even, and either choice is a different world under the golden `[derived → AC1, AC2]`.
+
+### The prefab boundary: what a claimed coordinate carries
+
+`docs/DESIGN.md` §2.2.3 fixes two things about a prefab, and a naive reading of the first breaks the
+second: the generation function checks prefab membership **before** it generates fabric, *and* a
+prefab's border portals follow the **general** rules, so a prefab is stitched into the world
+connectedly for free. A claimed coordinate that carried nothing at all would honour the first and
+destroy the second — and would break face agreement outright, because the cell across a chunk border
+reads that border's portal from the two chunk keys and knows nothing of any claim. So the split
+follows §2.2.3's own line:
+
+| A claimed coordinate's… | Who decides it |
+|---|---|
+| interior faces (both cells in one chunk) | the prefab layer — the generator reports the deferred state and builds no chunk fabric for the coordinate |
+| border faces (the two cells lie in different chunks) | **the portal rule, unchanged** — the very value the unclaimed cell across that border reads |
+| cell seed | nobody here: a claimed coordinate receives none |
+
+`FaceState` therefore carries a third member, **`FaceDeferred`, as its zero value**. A claimed
+cell's interior face is then honest rather than silently a wall: a wall is a claim about the world
+that the prefab's authored interior may contradict, and it would be indistinguishable from a real
+one. The prefab marker on the result is the discriminator, so a claimed coordinate's zero cell seed
+needs no sentinel.
+
+**Granularity is the hook's contract, not the generator's check.** §2.2.3 places a prefab over a
+chunk or a group of chunks. The generator does not verify that, because verifying would mean asking
+the hook about every cell of a chunk on every call; the interface's doc comment states the
+precondition and names the prefab layer that implements it as the guarantor, per the workspace's
+unchecked-precondition rule. **Within that contract, face agreement is total** — an interior face of
+a claimed chunk has claimed cells on both sides and both report the deferred state; a border face of
+a claimed chunk is the portal rule on both sides — which is why the agreement sweep is run with a
+whole-chunk claim registered and not only against a nil hook. Break the contract by claiming part of
+a chunk and the unclaimed cells of that chunk read interior faces carved as though the claimed cell
+were fabric: that is the disagreement the contract exists to exclude, and it is stated here rather
+than absorbed `[derived → AC3, AC13]`.
+
+**#28 needs no accessor added here.** The portals a prefab must stitch to are exactly the border
+faces `Cell` already returns for the claimed coordinates on its chunk's border ring.
 
 ### The algorithm set, and what each weight buys
 
@@ -201,6 +255,16 @@ to expose a stream this package can pin to satisfy stability across toolchains �
 documents. That is the "API cannot express the requirement" argument, made against named packages
 rather than against the idea of a dependency.
 
+**The escape hatch, which an argued wheel owes** (the scheduler decision's model names River for
+exactly this reason). Two exits, in order of cost. If an algorithm proves wrong in play — too
+regular, too costly, too many dead ends — it is **weighted to zero in the biome file**: a
+configuration change, no code, already the mechanism the owner's own example weight set used, and
+the reason the weighted draw is worth more than a fixed choice. If the hand-rolled set proves wrong
+as a *whole*, the lift target is the graph-library route already evaluated above: `gonum`'s graph
+interfaces can host the Kruskal and Prim bodies the day it exposes a seedable spanning-tree variant,
+behind the same `Algorithm` enum and the same `Params`, because the enum and the weights are the
+public surface and the traversal bodies are not. Neither exit touches a caller.
+
 ### API sketch
 
 ```
@@ -211,10 +275,12 @@ hexgrid: Coord{Q,R int32} · Direction (six members) · Direction.Opposite · Co
          Chunk{Q,R int32} · Dims{Cols,Rows int32} · Dims.ChunkOf · Dims.Origin · Dims.Contains
          ChunkDistance(a,b Chunk) int64 · Dims.Distance(a,b Coord) int64
 
-maze:    Seed int64 · FaceState (Wall|Passage) · Algorithm (the five) · Params · Cell
+maze:    Seed int64 · Algorithm (the five) · Params · Cell{Prefab bool; Faces; Seed uint64}
+         FaceState (FaceDeferred as the zero value | Wall | Passage)
          PrefabClaimer interface{ Claims(hexgrid.Coord) bool }
          New(Seed, Params, PrefabClaimer) (*Generator, error)
          (*Generator).Cell(hexgrid.Coord) Cell
+         unexported: stream interface{ Uint64() uint64 }  — see § Standing constraints
 ```
 
 Decisions inside that sketch:
@@ -232,9 +298,10 @@ Decisions inside that sketch:
   the spec, and a memo would silently convert the order-independence criterion into a
   cache-correctness question. It is therefore safe for concurrent use, asserted under `-race`.
 - **The prefab hook is a one-method consumer-declared interface returning a bare `bool`.** #28 owns
-  prefab identity, so no identifier type is fixed here; a claimed coordinate yields a `Cell` marked
-  as a prefab's with no faces and no cell seed produced. A nil hook means every coordinate receives
-  fabric.
+  prefab identity, so no identifier type is fixed here. A claimed coordinate yields a `Cell` marked
+  as a prefab's, with its interior faces deferred, its **border faces carried from the portal rule**
+  and no cell seed — the split § The prefab boundary sets out. A nil hook means every coordinate
+  receives fabric, and nothing anywhere is deferred.
 - **The cell seed is derived from the world seed and the coordinate alone** — not from the chunk
   key, not from the dimensions. So the same world seed under different chunk dimensions yields the
   same cell seed and different faces, which is the sharp form of the criterion
@@ -257,6 +324,12 @@ Decisions inside that sketch:
   id, an issue number outside `TODO(#…)`, or a URL — so the specification URLs above live in
   this document and in the pull-request body, and the doc comments state the property
   self-containedly `[derived → make comment-refs over the staged set]`.
+- **The stream is held behind an unexported one-method interface (`Uint64() uint64`), not as a
+  `*rand.ChaCha8` field.** This is what makes the guard below satisfiable: the guard permits exactly
+  one identifier from `math/rand/v2` — the constructor — and a struct field typed with the concrete
+  type would name a second one, at which point the implementor's cheapest exit is to loosen the
+  guard rather than to fix the design. Declaring the interface in the consuming package is also what
+  the naming rules ask for, and it makes a fake stream available to the reduction tests.
 - This task moves no balance, writes no posting, declares no event and touches no persisted enum, so
   the ledger and telemetry obligations and the forward-migration rule are not engaged. Verified
   against the invariants page rather than assumed
@@ -266,16 +339,16 @@ Decisions inside that sketch:
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | `internal/hexgrid`: the axial coordinate, the six directions and `Opposite`, the canonical `Face`, `Chunk`, `Dims`, the **floor-division** `ChunkOf` with `Origin`/`Contains`, `ChunkDistance` and `Dims.Distance` — with its table tests, its leak-check `TestMain`, and its own structural guard (no clock, no unseeded randomness, no map ranging) | `internal/hexgrid/doc.go`, `internal/hexgrid/coord.go`, `internal/hexgrid/face.go`, `internal/hexgrid/chunk.go`, `internal/hexgrid/main_test.go`, `internal/hexgrid/coord_test.go`, `internal/hexgrid/chunk_test.go`, `internal/hexgrid/guards_test.go` | — |
-| 2 | `internal/maze` derivation core: the per-width fixed-width preimage helpers with their G115 suppressions, the domain tag, the world key, the cell key and cell seed, the chunk key, the border key, and the pinned reductions (total bounded draw, shuffle, weighted pick) — with unit tests and a golden over the derived keys | `internal/maze/doc.go`, `internal/maze/seed.go`, `internal/maze/draw.go`, `internal/maze/main_test.go`, `internal/maze/seed_test.go`, `internal/maze/draw_test.go`, `internal/maze/testdata/derive.golden` | 1 |
-| 3 | `Params` with its validation, the `Algorithm` enum with its canonical order, and the weighted per-chunk algorithm draw | `internal/maze/params.go`, `internal/maze/algorithm.go`, `internal/maze/params_test.go`, `internal/maze/algorithm_test.go` | 2 |
+| 1 | `internal/hexgrid`: the axial coordinate, the six directions and `Opposite`, the canonical `Face`, `Chunk`, `Dims`, the **floor-division** `ChunkOf` with `Origin`/`Contains`, `ChunkDistance` and `Dims.Distance` — with its table tests, its leak-check `TestMain`, and its own structural guard (no clock, no unseeded randomness, no floating-point type, no map ranging), each half paired with a scratch-package red case | `internal/hexgrid/doc.go`, `internal/hexgrid/coord.go`, `internal/hexgrid/face.go`, `internal/hexgrid/chunk.go`, `internal/hexgrid/main_test.go`, `internal/hexgrid/coord_test.go`, `internal/hexgrid/chunk_test.go`, `internal/hexgrid/guards_test.go` | — |
+| 2 | `internal/maze` derivation core: the per-width fixed-width preimage helpers with their G115 suppressions, the domain tag, the world key, the cell key and cell seed, the chunk key, the border key, the unexported one-method stream interface the ChaCha8 constructor is the only producer of, and the pinned reductions (total bounded draw, shuffle, weighted pick) — with unit tests over a fake stream and a golden over the derived keys | `internal/maze/doc.go`, `internal/maze/seed.go`, `internal/maze/draw.go`, `internal/maze/main_test.go`, `internal/maze/seed_test.go`, `internal/maze/draw_test.go`, `internal/maze/testdata/derive.golden` | 1 |
+| 3 | `Params` with its validation (including the decimal shares and the bias, and the rounding the design pins for each), the `Algorithm` enum with its canonical order, the `FaceState` enum with the deferred state as its zero value, and the weighted per-chunk algorithm draw | `internal/maze/params.go`, `internal/maze/algorithm.go`, `internal/maze/params_test.go`, `internal/maze/algorithm_test.go` | 2 |
 | 4 | The chunk cell graph (index mapping, six-neighbour adjacency, border-cell predicate, interior-face indexing) and island selection with its lattice-connectivity guard | `internal/maze/chunkgraph.go`, `internal/maze/island.go`, `internal/maze/chunkgraph_test.go`, `internal/maze/island_test.go` | 3 |
 | 5 | The algorithm implementations over the non-island induced subgraph: backtracker, Kruskal, frontier Prim, growing tree with its bias threshold, Wilson's walk | `internal/maze/algorithms.go` (split by algorithm if it passes the soft size limit), `internal/maze/algorithms_test.go` | 4 |
 | 6 | The extra-passage pass and border-portal selection, including the canonical-lesser-chunk candidate enumeration | `internal/maze/cycles.go`, `internal/maze/portal.go`, `internal/maze/cycles_test.go`, `internal/maze/portal_test.go` | 5 |
-| 7 | `Generator`, `New`, `Cell`, the `PrefabClaimer` hook, and the chunks-consulted function `Cell` itself uses | `internal/maze/generate.go`, `internal/maze/generate_test.go` | 6 |
-| 8 | The property suite, the cell golden with its mint flag, and the package's structural guards (determinism imports, the single permitted `math/rand/v2` reference, no map ranging, the connectivity helper confined to island selection) | `internal/maze/property_test.go`, `internal/maze/golden_test.go`, `internal/maze/guards_test.go`, `internal/maze/testdata/cells.golden` | 7 |
+| 7 | `Generator`, `New`, `Cell`, the chunks-consulted function `Cell` itself uses, and the `PrefabClaimer` hook with the prefab boundary § Approach sets out — the claim checked before any chunk build, interior faces deferred, **border faces still carried from the portal rule**, no cell seed, and the whole-chunk granularity stated as the interface's precondition with its guarantor named | `internal/maze/generate.go`, `internal/maze/prefab.go`, `internal/maze/generate_test.go`, `internal/maze/prefab_test.go` | 6 |
+| 8 | The property suite (the agreement sweep run both with a nil hook and with a whole-chunk claim), the cell golden with its mint flag, and the package's structural guards (determinism imports, no floating-point type, the single permitted `math/rand/v2` reference, no map ranging, the connectivity helper confined to island selection, the key derivations confined to the fabric and portal builders) | `internal/maze/property_test.go`, `internal/maze/golden_test.go`, `internal/maze/guards_test.go`, `internal/maze/testdata/cells.golden` | 7 |
 | 9 | The benchmarks: one cell, and one per algorithm under a single-weight input | `internal/maze/bench_test.go` | 7 |
-| 10 | Close the open question in the design corpus and record the engineering decisions: strike the intra-chunk maze-algorithm choice from the open-question list (`docs/DESIGN.md` §16.2, item 2) and record the decided set where the generation section states the spanning structure (§2.2.2) — both edits **in Russian**, since `docs/**` is Russian by the workspace's own rule and is not to be translated; add the key decisions (the derivation chain and its domain tag, the topology/generator package split, the island-and-border rule, and what each share input is a share *of*); then sweep every live document, case-insensitively, for the same open-question claim | `docs/DESIGN.md`, `ai-docs/key-decisions.md`, plus whatever the sweep finds | — |
+| 10 | Close the open question in the design corpus and record the engineering decisions: strike the intra-chunk maze-algorithm choice from the open-question list (`docs/DESIGN.md` §16.2, item 2) and record — in §2.2.2, **confined to recording the owner's interview decision and nothing more**: the per-chunk weighted draw over the decided algorithm set, with the weights biome-level — both edits **in Russian**, since `docs/**` is Russian by the workspace's own rule and is not to be translated. Anything beyond recording that decision would be redesigning the corpus and is out of scope. Then add the key decisions (the derivation chain and its domain tag, the topology/generator package split, the island-and-border rule, and what each share input is a share *of*); then sweep every live document, case-insensitively, for the same open-question claim | `docs/DESIGN.md`, `ai-docs/key-decisions.md`, plus whatever the sweep finds | — |
 
 ## Handoff plan
 
@@ -324,22 +397,37 @@ Two groups, within the default maximum of four; no user gate needed.
   not an average, and the operator's escape hatch already exists — a zero weight makes it
   unreachable, which is what the owner's own example weight set already did
   (`answer 1.1`: `weights:{… wilson_walk: 0}`) — `[derived → AC17's per-algorithm benchmark]`.
-- **A degenerate chunk dimension has no interior.** With a single-cell (or single-row) chunk every
-  cell is a border cell, so no island can be drawn and no interior face exists to carry the
-  spanning structure or an extra passage. The construction degrades to "no islands, no interior
-  passages, portals only" rather than failing, and the island-share criterion is asserted at the
-  reference dimensions. Mitigation: explicit degenerate-dimension cases — `[derived → AC5, AC10, AC11]`.
+- **Degenerate chunk dimensions behave differently from each other, and conflating them prescribes
+  a wrong expected outcome.** "Every cell is a border cell" does **not** imply "no interior face
+  exists" — two border cells of one chunk share an interior face. Measured: a single-cell chunk has
+  no interior face at all, while a single-row chunk at the reference column count has an interior
+  face between each adjacent pair along the row
+  `[measured probe of this design's own tiling rule, no tracked file involved · a scratch
+  enumeration counting, for cols=16 rows=1, the directed face slots whose destination cell is in
+  the same chunk → "directed interior face slots = 30 -> undirected interior faces = 15"; for
+  cols=rows=1 → "directed interior face slots = 0"]`. So the expectations
+  are per case: **1×1** — no interior face, no island, no spanning edge, no extra passage, all six
+  faces decided by the portal rule. **Single row or single column** — interior faces one fewer than
+  the cells, the spanning structure is the forced path that opens *all* of them, no island (every
+  cell is a border cell), and therefore no closed interior face survives, so extra passages cap at
+  none. **Reference dimensions** — the criteria as stated. Mitigation: a case per shape, with the
+  right expectation in each — `[derived → AC5, AC7, AC10, AC11]`.
 - **The island share can be unreachable even at healthy dimensions.** The connectivity guard skips
   a candidate whose removal would enclose a pocket, so the achieved count can fall below the
   target. Mitigation: the achieved share is what the tolerance is asserted against, and the
   failure message reports the achieved value rather than only the verdict —
   `[derived → AC11]`.
-- **A partial-chunk prefab claim leaves the fabric carved as though the claimed cell were fabric.**
-  The hook gates the per-coordinate result; it does not remove the coordinate from its chunk's
-  spanning structure. `docs/DESIGN.md` §2.2.3 places a prefab over a chunk or a group of chunks, so
-  no fabric cell of a claimed chunk is ever asked for; a future partial claim would need the fabric
-  builder to learn the claim set, which is #28's boundary and is stated rather than absorbed —
-  `[derived → AC13]`.
+- **A partial-chunk prefab claim breaks face agreement on that chunk's interior faces.** The hook
+  gates the per-coordinate result; it does not remove the coordinate from its chunk's spanning
+  structure, so an unclaimed cell of a partly-claimed chunk reads an interior face carved as though
+  its claimed neighbour were fabric while the claimed neighbour reports the face deferred. The
+  whole-chunk granularity `docs/DESIGN.md` §2.2.3 fixes is therefore a **stated precondition of the
+  hook**, carried in the interface's doc comment with its guarantor named, not a check the generator
+  performs. Border faces are *not* affected in either direction, because the portal rule never
+  consults a claim; that asymmetry is the whole reason the interior half and the border half need
+  separate statements, and arguing only the interior half leaves the border half silently wrong.
+  Mitigation: the agreement sweep runs with a whole-chunk claim registered, so the
+  contract-honouring case is proven rather than assumed — `[derived → AC3, AC13]`.
 - **The coverage ratchet refuses a commit that adds substantially uncovered code.** The recorded
   high-water mark is already high
   `[measured 46ee531:ai-docs/coverage-ratchet.txt:1 · cat → 90.48]`, and a new package landing
@@ -353,11 +441,6 @@ Two groups, within the default maximum of four; no user gate needed.
   `[measured 46ee531:Makefile:55-57 · sed -n '55,57p' Makefile → the file-limits target's awk step, comparing each file against the non-test and test line limits]`.
 
 ## Test Design
-
-Every claim below **about a test** is a claim about a test that does not exist yet, so it carries a
-`[derived → …]` tag or sits under an AC heading that names what it establishes. The `[measured …]`
-tags in this section are about the conventions, tools and dependencies the tests will *use*, all of
-which already exist.
 
 **Placement and shape.** `internal/hexgrid/*_test.go` and `internal/maze/*_test.go` beside the
 code; no Postgres anywhere in this task, so both packages' `TestMain` is the single
@@ -399,11 +482,16 @@ reproducible from the same key; the weighted pick never returns a zero-weight in
 reproducible.
 
 **Islands — AC7's precondition, AC11.** Entry point the island selector. Scenarios: at the
-reference dimensions and a stated share, the chunk's non-island cells remain connected on the
-lattice for a large sweep of chunk coordinates and world seeds; no island is a border cell; the
-achieved share over a multi-chunk region is within a stated tolerance of the input, with the
-achieved value in the failure message; a share of zero yields no island; a degenerate single-cell
-dimension yields no island; the set is unchanged by the algorithm weights.
+reference dimensions and the share below, the chunk's non-island cells remain connected on the
+lattice for a sweep of chunk coordinates and world seeds; no island is a border cell; a share of
+zero yields no island; the degenerate shapes yield no island (every cell is a border cell in each
+of them); the set is unchanged by the algorithm weights.
+**The share criterion's instrument is pinned here, not chosen after the first measurement:**
+dimensions 16×16, island share `0.05`, the region the block of chunks spanning chunk coordinates
+`(-2,-2)` through `(1,1)` inclusive — so both signs of both axes are in it — and an **absolute
+tolerance of ±0.01** on the achieved share. The per-chunk target rounds to slightly above the
+input, so the tolerance's slack is for guard rejections and nothing else; the failure message
+reports the achieved share and the rejection count rather than only the verdict.
 
 **Algorithms — AC7, AC19.** Entry point each algorithm, plus the draw. Scenarios: for each of the
 five in turn, under a weight set giving weight to that one alone, the drawn algorithm is that one
@@ -425,19 +513,29 @@ through an unused edge); no border face is opened by this pass.
 
 **Portals — AC3, AC8.** Scenarios: every border of a chunk sweep carries at least one and at most
 two passages; the portal set computed from the lesser chunk equals the set computed from the
-greater; both endpoint cells of every portal are non-island; over the sweep both counts occur, so
-the count draw is not degenerate; a degenerate single-cell chunk pair, whose border has one
-candidate, gets exactly that one.
+greater; both endpoint cells of every portal are non-island. The two counts are asserted on the
+borders that can show them: **over the four many-candidate borders both one and two occur** across
+the sweep, so the count draw is not degenerate, while **the two single-candidate diagonal borders
+carry exactly one portal on every chunk of the sweep at the reference dimensions** — a designed
+case with its own assertion, not a degenerate-only footnote, since the cap binds there at every
+dimension. A single-cell chunk pair is asserted separately.
 
 **Face agreement — AC3.** Entry point `Cell`. Over a multi-chunk region, exhaustively: for every
 cell and every direction, the state read from one side equals the state read from the other side's
-opposite direction. Plus rapid over world seeds and coordinates, including coordinates far from the
-origin and negative in both axes.
+opposite direction. Run **twice** — once with a nil hook, and once with a hook claiming one whole
+chunk **inside** the region, so the claimed chunk's own interior faces, its border faces against
+unclaimed neighbours, and the unclaimed neighbours' view of those same faces are all in the sweep.
+The second run is the load-bearing one: a nil-hook sweep cannot see the defect class where a claimed
+cell reports nothing for a border face its unclaimed neighbour reads as a passage, so a sweep run
+only with a nil hook is an instrument that is blind to the whole prefab boundary. Plus rapid over
+world seeds and coordinates, including coordinates far from the origin and negative in both axes.
 
-**Connectivity — AC7, AC9.** Entry point `Cell`. Over a multi-chunk region and a sweep of world
-seeds, flood-fill the region's non-island cells **through the passages** and assert a single
-component; separately, per chunk, assert every non-island cell of that chunk reachable from every
-other. AC7's "no repair stage" clause is discharged structurally rather than behaviourally: a guard
+**Connectivity — AC7, AC9.** Entry point `Cell`, **with a nil hook** — a prefab's interior structure
+is authored by #28, so a region containing a claimed chunk has no fabric path across it for this
+task to assert; the scoping is stated here rather than left to be discovered when the sweep is
+written. Over a multi-chunk region and a sweep of world seeds, flood-fill the region's non-island
+cells **through the passages** and assert a single component; separately, per chunk, assert every
+non-island cell of that chunk reachable from every other. AC7's "no repair stage" clause is discharged structurally rather than behaviourally: a guard
 asserts the lattice-connectivity helper is called from the island selector and from nowhere else in
 the package's non-test files, so no connectivity check exists downstream of the structure build for
 a repair to hide in.
@@ -445,7 +543,9 @@ a repair to hide in.
 **Determinism — AC1, AC2.** `testdata/cells.golden`, minted by a `-update` flag on its own test.
 Pinned in its header: the domain tag, the world seed `20260912`, chunk dimensions 16×16, an island
 share of `0.05`, an extra-passage share of `0.15`, a growing-tree bias of `0.5`, and a weight set
-giving every one of the five equal weight. Covered coordinates: every cell of the origin chunk;
+giving every one of the five equal weight, and **a nil prefab hook** — the prefab path derives
+nothing of its own, so the golden stays about the derivation chain, and the constant prefab column
+pins that a nil hook defers nothing anywhere. Covered coordinates: every cell of the origin chunk;
 every cell of the chunk diagonally below-left of it (negative in both axes); and the border ring of
 the chunk below the origin. Compared fields, per line: the six face states **in direction order**,
 the cell seed, the prefab marker, and — per chunk — the algorithm the draw returned, so a change in
@@ -463,19 +563,24 @@ values as the single-goroutine run, which is also what would catch a memo added 
 
 **Locality — AC12.** Entry point the chunks-consulted function `Cell` uses. Scenarios: for a
 coordinate beside the origin and one far from it, the returned set has the same size; every member
-is the cell's own chunk or the chunk of one of its face-neighbours; the set is the same for two
-coordinates at the same position within their respective chunks. Plus the structural guard: the
-chunk-key and border-key derivations are called only from the chunk-fabric builder and the portal
-builder.
+is the cell's own chunk or the chunk of one of its face-neighbours; and for two coordinates at the
+same position **within** their respective chunks, the sets agree **after subtracting each
+coordinate's own chunk** — the set of *relative* chunk offsets is the invariant, since the absolute
+chunk coordinates necessarily differ. Plus the structural guard: the chunk-key and border-key
+derivations are called only from the chunk-fabric builder and the portal builder.
 
-**Prefab hook — AC13.** Entry point `Cell` with a recording fake. Scenarios: with no hook, every
-coordinate of a table is unclaimed and carries fabric; with a hook claiming one coordinate, that
-coordinate's result is marked as a prefab's and carries the zero face states and zero cell seed,
-while the same generator with no hook returns non-zero fabric for it — which is what shows the
-claim suppresses fabric rather than merely labelling it; the fake records having been asked about
-every coordinate, claimed or not. The "before" half of the ordering has no black-box observable
-beyond that suppression and is stated here as review-judged against the early return in `Cell`,
-not claimed as mechanically covered.
+**Prefab hook — AC13.** Entry point `Cell` with a recording fake that claims **one whole chunk**,
+honouring the hook's granularity contract. Scenarios: with no hook, no coordinate of a table is
+marked as a prefab's, every coordinate carries fabric, and no face anywhere is deferred. With the
+whole-chunk hook: a claimed coordinate in the claimed chunk's **interior** is marked as a prefab's,
+defers all six faces and carries a zero cell seed; a claimed coordinate on the claimed chunk's
+**border ring** is marked as a prefab's, defers its interior faces, and carries border-face states
+**equal to what the unclaimed cell across each of those borders reads** — the portals #28 stitches
+to; the same generator with no hook returns non-deferred fabric for the same interior coordinate,
+which is what shows the claim suppresses fabric rather than merely labelling it; and the fake
+records having been asked about every coordinate, claimed or not. The "before" half of the ordering
+has no black-box observable beyond that suppression and is stated here as review-judged against the
+early return in `Cell`, not claimed as mechanically covered.
 
 **Params — AC5, AC15.** Entry point `New`. Scenarios: each rejection names its input (non-positive
 dimension, an all-zero weight set, an unknown algorithm key, a share or bias out of range, an
@@ -497,11 +602,13 @@ document for the intra-chunk maze-algorithm claim, with `docs/DESIGN.md` §16.2 
 the bound of the class. History surfaces (the learnings log, retired plans) are left untouched.
 
 **Guards — AC2, AC12.** In both packages' non-test files: no `time` import and no clock call; no
-`math/rand` (v1), `hash/maphash` or `crypto/rand` import; exactly one identifier referenced from
-`math/rand/v2` — the ChaCha8 constructor — so any other selector on it fails the guard; no ranging
-over a map; and, in `internal/maze`, the call-site confinements above — the connectivity helper
-reached only from island selection, and the chunk-key and border-key derivations reached only from
-the chunk-fabric builder and the portal builder. Each paired with its scratch-package red case.
+`math/rand` (v1), `hash/maphash` or `crypto/rand` import; **no floating-point type**, so the
+rounding decisions above cannot be quietly re-expressed in binary floating point; exactly one
+identifier referenced from `math/rand/v2` — the ChaCha8 constructor, which the unexported stream
+interface is what keeps satisfiable — so any other selector on it fails the guard; no ranging over
+a map; and, in `internal/maze`, the call-site confinements above — the connectivity helper reached
+only from island selection, and the chunk-key and border-key derivations reached only from the
+chunk-fabric builder and the portal builder. Each paired with its scratch-package red case.
 
 ## Open questions
 
