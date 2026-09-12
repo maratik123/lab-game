@@ -19,6 +19,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | [2026-09-11 — goroutine-leak detection: every test binary ends with a goleak check](done/2026-09-11-goroutine-leak-detection-goleak.spec.md) | ✅ implemented | #74 | #24 · #67 |
 | [2026-09-12 — canary limiter refusal label: an expired deadline reports `timeout`](done/2026-09-12-canary-limiter-refusal-label.spec.md) | ✅ implemented | #89 | #19 · #23 |
 | [2026-09-12 — test database container named per checkout](done/2026-09-12-test-container-name-per-checkout.spec.md) | ✅ implemented | #91 | #67 |
+| [2026-09-12 — goroutine-leak prevention: ownership rules and the gates that hold them](done/2026-09-12-goroutine-ownership-rules-gates.spec.md) | ✅ implemented | #80 | #74 · #24 |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 
