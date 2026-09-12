@@ -8,7 +8,7 @@ _Updated: 2026-09-12 08:44_
 **Last build:** PASS
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
-**current_step:** Step 11 — review fixes complete (Round 1)
+**current_step:** Step 10 — self-review APPROVE (Round 2)
 **last_passed_gate:** golangci-lint run | 2026-09-12T09:57Z | ff622c5
 **entry_args:** 80
 
@@ -57,6 +57,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 11**: no `⚠️ Objected` row and no Amendment trigger — all three findings were prose or a string literal, and D3/D10 already carried `uniq-by-line`, so the design was correct and only the live surfaces lagged.
 - **Step 11**: the register's ids were renamed `SR1`/`SR2`/`SR3` → `SR1-1`/`SR1-2`/`SR1-3`. `check-review-register.sh` joins a round-N finding-n row to the id `R<N>-<n>`, so the original ids did not link; probed on a copy first, and the gate reported "marked Fixed and has no register row" rather than skipping — it fails safe, and the rename is what makes it bind.
 - **Step 11**: SR1-3's verifying command was re-derived — the original grepped the very string the fix removed, so it could only ever have passed.
+- **Step 10**: APPROVE at round 2 of 3. Round 1 raised three findings (1 major, 2 minor) plus six examined-and-accepted rows; round 2 raised none and accepted two nits. Re-litigation share for round 2 is 0 of 0 — no row re-opened and none cited an earlier round, so the tripwire did not fire.
 
 ## GO notes
 
@@ -149,6 +150,32 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 **Minor/nit examined and NOT raised — 6 items, entered in the register as `accepted@1`:** `internal/ingest/retry_test.go`, `ai-docs/code-style.md`, `ai-docs/go-test-conventions.md`, `internal/scheduler/execute.go`, `cmd/bot/serve_test.go`, `internal/gateguard/guard_test.go`.
 
+## Self-Review (Round 2)
+
+**Verdict:** APPROVE
+
+No `blocker` or `major` row is open. Round 1's three findings are all `fixed@ff622c5`; each verifying command was re-run against the shipped tree and passes, and each fix was checked on substance, not only on its grep.
+
+### Round 1's findings, re-verified
+
+- **SR1-1 (`major`, AC13) — fixed, verified.** `rg -ni --glob '*.md' --glob '!ai-docs/plans/**' 'two settings|either pinned|two pinned|both pinned' .` → exit 1, no hit. `rg -n 'uniq-by-line|line dedup' ai-docs/code-style.md ai-docs/key-decisions.md ai-docs/context.md` → hits all three. Each replacement claim was re-derived rather than read: code-style.md's "`issues.uniq-by-line: false` stops it keeping only one finding per source line across linters — which otherwise hides, say, a `deferInLoop` behind an `errcheck` finding that claimed the line first" is exactly what round 1's dedup control measured; "the key's own default is `true`, so its **absence** is the unsafe state" is confirmed straight from the tool — `golangci-lint run --help` → `--uniq-by-line  Make issues output unique by line (default true)`; context.md's "every setting pinned with it — the relative-path mode, both truncation caps and the line dedup" enumerates exactly the four assertions `checkLintConfig` makes; KD-16's "fails when the enabled set, the exclusion scoping or any pinned setting drifts" matches the three real-config mutations round 1 drove red. The three surfaces now agree with `.golangci.yml`, with the guard, and with `ai-docs/context-status.md`.
+- **SR1-2 (`minor`) — fixed, verified.** `grep -cE '^\| G[0-9]+ \| 2 \|' <progress>` → **4**. G9 and G10 match one-for-one the two folds in `git show 473f16b -- <design>` (D3's and Decomposition row 2's re-pin onto a dedup-off run; the dedup control moved from subtask 1 to subtask 5); G11 records the routing; G12 discharges the round trip. Round-numbering is internally consistent — the table's `round` column counts design-**review** rounds while the resolution cites design-**writer** revisions, the same convention G8 already used.
+- **SR1-3 (`minor`) — fixed, verified.** `grep -n 'unbounded receive' internal/gateguard/guard_test.go` → hits line 126. The `stops` answer now states the order truthfully: the unbounded receive on the orphaned handler's result channel first, then the bounded close. The orchestrator re-derived this row's verifying command after finding the original one mis-specified; the replacement is discriminating in the right direction (it cannot hit on the pre-fix text), so the substitution is sound.
+
+### What was checked this round
+
+**Gates re-run against the new HEAD (`bd662b0`)**, because `ff622c5` changed a `.go` file as well as three markdown pages: `go vet ./...` → exit 0; `golangci-lint run` → `0 issues.`; `golangci-lint config verify` → exit 0; `make comment-refs` → green; `make file-limits` → green; `go test ./internal/gateguard/ -count=1` → `ok`. The CI relative-markdown-link check was run locally with the workflow's own Python body over every `*.md` → no broken link.
+
+**The guard re-proven discriminating after its own file was edited** — a green guard whose source just changed is a claim about the guard. Injecting one real `go func(){}()` into `internal/health/canary.go` still drives `TestLaunchGuard_RealTreePasses` RED with `internal/health (*Canary).Start: makes 2 launch(es), allow-list row answers 1`. Reverted; `git diff --stat` clean.
+
+**Register/table consistency** — `ai-docs/scripts/check-review-register.sh` over the progress file → exit 0; round 1's three rows all read `✅ Fixed` against `fixed@ff622c5` register rows. No `⚠️ Objected` item exists, so § 7 objection-quality review has nothing to evaluate.
+
+**`accepted@1` rows (SR4–SR9) re-read and not re-raised** — nothing in `ff622c5` or `bd662b0` changes the ground any of them rests on, and a re-raise without a command showing what changed would be malformed.
+
+**Scope of the new commits** — `ff622c5` touches `ai-docs/code-style.md`, `ai-docs/context.md`, `ai-docs/key-decisions.md` and `internal/gateguard/guard_test.go` (4 lines changed, 1 per file); `bd662b0` touches the progress file only. No production code changed since round 1, so round 1's AC1–AC15 re-verification, its three production mutations and its `-race` evidence all still describe the shipped tree. `last_passed_gate`'s `make verify` at `80b5f22` remains the recorded race run; the only Go delta since is a string literal inside a test table, which the gateguard suite re-ran green.
+
+**Minor/nit examined and NOT raised this round — 2 items**, both in the register as `accepted@2`: `internal/gateguard/guard_test.go` (one distant apposition) and this progress file's SR1-3 register row (one backwards clause in a superseded rationale). Neither changes a verdict and neither is a licence to withhold one.
+
 ## Review register
 
 | id | raised | severity | status | verifying command |
@@ -162,3 +189,5 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | SR7 | 1 | minor | accepted@1 — follows the `pingTimeout` precedent exactly (same 5s, same shape, same "named constant, not a configuration key" justification); a socket-close bound is a structural constant, not a game-balance timer. Argued at design D7 and approved by the owner in their own words | `sed -n '22,30p' cmd/bot/assemble.go` (the precedent) vs `internal/scheduler/execute.go:36` — `detachedCloseTimeout = 5 * time.Second` against § 4a's "timers" trigger |
 | SR8 | 1 | minor | accepted@1 — the property IS covered, split across two tests rather than asserted in the one the design specced: `TestAssemble_HappyPath`'s `wantOrder` pins "http client" immediately before "canary" in the closer list, and the drain walks that list backwards | Design § Test Design subtask 7 says the release "record is ordered after the canary's own closer"; `cmd/bot/serve_test.go:531` asserts the count only. Verify: `grep -n 'wantOrder' cmd/bot/assemble_test.go` |
 | SR9 | 1 | nit | accepted@1 — not an AC requirement (AC1/AC2 are about launches, not rows) and no safety hole: a stale row cannot let an ungated launch through | `checkLaunches` (`internal/gateguard/guard_test.go:266`) iterates `byKey`, so a table row whose function makes ZERO launches is never visited and a stale row survives silently. Verify by adding a bogus row to `launchTable` and running `TestLaunchGuard_RealTreePasses` |
+| SR2-1 | 2 | nit | accepted@2 — below severity floor; the correct reading is available and the row's other fields land a reader on true facts either way | `internal/gateguard/guard_test.go:126` — in the watchdog row's `stops` answer, the apposition "the one launch the ownership rules name as their exception" sits two clauses away from its referent. It correctly renames **the orphaned handler** (`ai-docs/code-style.md` § Concurrency rule 4 names "a scheduler handler blocked outside the database after its deadline"), but a reader may attach it to the watchdog, which rule 4 does not name. Verify: read rule 4 and confirm its subject is the handler launch, not the watchdog launch |
+| SR2-2 | 2 | nit | accepted@2 — the corrective action was right and the command it produced is sound; only the one-clause rationale beside it is backwards, and nobody runs the superseded command | This file's SR1-3 register row says the original verifying command "grepped the string the fix removed, so it could only ever pass". It is the other way round: `grep -n 'the bounded connection close returns'` under a "must hit" reading could only ever **fail** once the fix removed that string. Verify: `git show ff622c5 -- internal/gateguard/guard_test.go` → the old string is deleted, so a "must hit" grep for it fails post-fix |
