@@ -560,6 +560,49 @@ satisfying summary of work that genuinely did succeed, so the overclaim rides in
 **Kind:** correction
 **Escalated?** no
 
+### 2026-09-12 — process — re-authored the Spec Amendment recipe's option set instead of offering it
+**What happened:** Routing `design-review`'s `SPEC-REMIT` on AC4 to the owner during Step 7 of the per-checkout container-name task, I built the `AskUserQuestion` from the reviewer's suggestion ("restate the row as the outcome it protects, or strike it") rather than from the recipe. The owner saw "Перефолмулировать / Вычеркнуть / Оставить". The Spec Amendment recipe fixes the set at exactly three: (1) amend the spec, (2) fix the design only, (3) leave it. I had split (1) into two of its instances and dropped (2) entirely. The owner picked a strike, which is a form of (1), so the route taken was legal — but (2) was never on the table, and the recipe says the owner picks among those three, not among the ones the orchestrator finds applicable.
+**Rule:** When a recipe fixes an option set, the options are copied from the recipe, not composed from the finding that triggered it. A reviewer's suggested resolutions belong in the question's prose, where they inform the choice; they never replace the routes. Judging an option inapplicable and omitting it is the orchestrator deciding the thing the owner was asked to decide.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — tooling — extracted a Go file into the repository's `tmp/` and broke `go build ./...`
+**What happened:** Verifying a self-review finding, I ran `git show <sha>:cmd/testpg/run_test.go > tmp/pre.go` to compare the pre-change file. `tmp/` is gitignored but it is still inside the module, so the extraction became a package: the next `go build ./...` and `golangci-lint run` both went RED with `undefined: seam`, `undefined: runChild` in `tmp/pre.go`. I deleted the file and both gates went green. Nothing was committed, and `git status` never showed the file, because the ignore rule hides it.
+**Rule:** The repository's `tmp/` is for gate logs and non-source scratch only. Anything with a source extension a toolchain globs — `.go` above all — goes to the session scratchpad outside the repository, or the module grows a package nobody can see in `git status`. Redirecting a `git show` of a source file is the shape that produces one without ever looking like a write.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — process — anchored an append-only insert on an existing entry's line and split it in two
+**What happened:** Adding an entry to `ai-docs/harness-gaps.md`, I used `Edit` with the previous entry's `**Proposed edit:**` line as the anchor, prefixing my new entry to it. `Edit` succeeded — the anchor was unique — so nothing complained, but the previous entry was then cut in half with my whole entry sitting between its `Gap:` and its own `Proposed edit:`. I noticed on the structure check (55 headings, 55 proposed-edit lines, and the last entry in the file was not mine), relocated my entry to the end with a script that asserted the moved block's first and last lines, and confirmed the repair by `git diff`: 7 insertions, 0 deletions against HEAD, so the existing log was byte-identical.
+**Rule:** An append-only log is appended to, never Edited into. The write is `>>` at the end of the file, or an `Edit` whose anchor is the file's own last line — never a line belonging to an existing entry, however unique that line is. `Edit`'s uniqueness check proves the anchor was found once; it says nothing about whether the insertion point is the end. After any write to such a file, the check is `git diff` showing zero deletions, plus a look at which entry is actually last.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — process — a "keep both sides" conflict resolver silently dropped lines git had factored out as common context
+**What happened:** Merging a 19-commit `origin/main` into the feature branch produced six conflicts, all of them "both sides appended at the end" in append-only files. I resolved them with a script that rebuilt each hunk as `theirs.rstrip() + ours.rstrip()`. Two files came out short: `ai-docs/learnings.md` lost the `**Escalated?** no` line closing main's last entry plus a blank separator, and `ai-docs/context-status.md` lost a blank separator. The cause is that git factors lines common to both sides OUT of the conflict hunk and emits them once after `>>>>>>>`; rebuilding the hunk from its two halves and rstripping them discards whatever the two entries happened to share at their seam. I caught it by reconciling line counts — `merged == main + ours - base` per file — not by reading the diff, which looked plausible.
+**Rule:** After resolving a conflict in an append-only file, reconcile the arithmetic before believing the result: `merged == main + ours - mergebase` in lines, plus a structural count (entries, headings, JSON lines) and a check that separators survived. A hunk is not the whole change — git moves shared context out of it — so a resolver that reconstructs from the two halves alone is lossy by construction, and the loss lands exactly at the seam where nobody is reading.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — tooling — a gate's documented exit code is a claim until the caller's own status has been read
+
+**What happened:** Fixing the `test-contention` classifier's vocabulary would have delivered a correct
+`INSTRUMENT FAILURE` message and still exited 1, because the target invoked its wrapper through
+`go run`, which does not propagate a non-zero child status: it prints `exit status N` to stderr and
+exits 1 itself. The gate's "prints INSTRUMENT FAILURE and exits 2 / exit 1 is the race gate's own
+verdict" contract had been carried on two live surfaces since the gate was written and had never once
+been observable from the command the developer actually runs. The wrapper's own doc comment already
+said a go-run invocation of it "later flattens it" — nobody had joined that sentence to the contract,
+because nobody had run the outermost command and read its status.
+**Rule:** A documented exit code is a claim about the WHOLE invocation chain, not about the program
+that returns it. Before writing one or believing one, run the outermost command the caller actually
+runs and read `$?` — `go run` collapses every non-zero child status to 1, so any exit code a gate
+distinguishes has to come from a built binary. This applies hardest to a sentence already in the
+tree: a contract carried on a live surface for months is only as true as the last time somebody
+executed it, and the cheapest refutation is two lines of shell.
+**at:** b50f0eeea382f25efcb558b13006b30c3a501280
+**Kind:** validation
+**Escalated?** no
 ### 2026-09-12 — process — read a gate subagent's spawn-prompt contract before spawning, not after the hook refuses
 
 **What happened:** At `/task` Step 7 I spawned `design-review` carrying exactly the five permitted
