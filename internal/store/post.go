@@ -73,20 +73,30 @@ const (
 //	   through the accumulated balance.
 //	f. insert the postings, in the caller's order (aborted on error).
 func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Posting) error {
+	_, err := post(ctx, tx, basis, postings...)
+	return err
+}
+
+// post is Post's body, returning the journal_entry id phase d wrote — Move
+// needs it to point every item_movement row at the same document Post
+// itself produced. Post is the thin wrapper that drops it; this is the
+// second (and only other) write path to a balance, both of them funnelled
+// through the one body below.
+func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Posting) (int64, error) {
 	// Phase a.
 	if basis == nil {
-		return ErrNoBasis
+		return 0, ErrNoBasis
 	}
 	entrySQL, err := basis.entrySQL()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if len(postings) == 0 {
-		return ErrEmptyBatch
+		return 0, ErrEmptyBatch
 	}
 	for i, p := range postings {
 		if !validAmount(p.Amount) {
-			return fmt.Errorf("%w: posting %d, account %d, amount %s", ErrInvalidAmount, i, p.AccountID, p.Amount)
+			return 0, fmt.Errorf("%w: posting %d, account %d, amount %s", ErrInvalidAmount, i, p.AccountID, p.Amount)
 		}
 	}
 
@@ -108,7 +118,7 @@ func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 		 FROM account a JOIN account_definition d ON d.id = a.account_definition_id
 		 WHERE a.id = ANY($1)`, ids)
 	if err != nil {
-		return fmt.Errorf("post: select accounts: %w", err)
+		return 0, fmt.Errorf("post: select accounts: %w", err)
 	}
 	for rows.Next() {
 		var id AccountID
@@ -116,16 +126,16 @@ func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 		var info accountInfo
 		if err := rows.Scan(&id, &kindText, &info.controlled); err != nil {
 			rows.Close()
-			return fmt.Errorf("post: scan account: %w", err)
+			return 0, fmt.Errorf("post: scan account: %w", err)
 		}
 		info.kind = Kind(kindText)
 		infoByID[id] = info
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("post: select accounts: %w", err)
+		return 0, fmt.Errorf("post: select accounts: %w", err)
 	}
 	if len(infoByID) < len(ids) {
-		return ErrUnknownAccount
+		return 0, ErrUnknownAccount
 	}
 
 	// Phase c.
@@ -138,7 +148,7 @@ func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 	}
 	for _, sum := range sumByKind {
 		if !sum.IsZero() {
-			return ErrUnbalanced
+			return 0, ErrUnbalanced
 		}
 	}
 
@@ -146,13 +156,13 @@ func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 	docID, err := basis.insert(ctx, tx)
 	if err != nil {
 		if errors.Is(err, ErrAlreadyPosted) {
-			return err
+			return 0, err
 		}
-		return fmt.Errorf("post: insert basis document: %w", err)
+		return 0, fmt.Errorf("post: insert basis document: %w", err)
 	}
 	var entryID int64
 	if err := tx.QueryRow(ctx, entrySQL, docID).Scan(&entryID); err != nil {
-		return fmt.Errorf("post: insert journal_entry: %w", err)
+		return 0, fmt.Errorf("post: insert journal_entry: %w", err)
 	}
 
 	// Phase e.
@@ -170,12 +180,12 @@ func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == sqlstateCheckViolation && pgErr.ConstraintName == constraintBalanceNonnegative {
-				return fmt.Errorf("%w: account %d: %w", ErrOverdraft, id, err)
+				return 0, fmt.Errorf("%w: account %d: %w", ErrOverdraft, id, err)
 			}
-			return fmt.Errorf("post: update balance for account %d: %w", id, err)
+			return 0, fmt.Errorf("post: update balance for account %d: %w", id, err)
 		}
 		if tag.RowsAffected() != 1 {
-			return fmt.Errorf("%w: account %d", ErrBalanceRowMissing, id)
+			return 0, fmt.Errorf("%w: account %d", ErrBalanceRowMissing, id)
 		}
 	}
 
@@ -185,9 +195,9 @@ func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 			`INSERT INTO posting (journal_entry_id, account_id, amount) VALUES ($1, $2, $3)`,
 			entryID, p.AccountID, p.Amount,
 		); err != nil {
-			return fmt.Errorf("post: insert posting: %w", err)
+			return 0, fmt.Errorf("post: insert posting: %w", err)
 		}
 	}
 
-	return nil
+	return entryID, nil
 }

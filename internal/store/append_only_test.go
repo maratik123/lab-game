@@ -112,8 +112,8 @@ func TestAppendOnly_no_update_or_delete_on_ledger_tables(t *testing.T) {
 	}
 	if !slices.Contains(names, "post.go") || !slices.Contains(names, "migrations/00001_ledger_core.sql") ||
 		!slices.Contains(names, "event.go") || !slices.Contains(names, "migrations/00003_event_log.sql") ||
-		!slices.Contains(names, "migrations/00007_item_machine.sql") {
-		t.Fatalf("append-only scan is vacuous: post.go, event.go, migrations/00001_ledger_core.sql, migrations/00003_event_log.sql and migrations/00007_item_machine.sql must be in the scanned set; collected %d files: %v", len(names), names)
+		!slices.Contains(names, "migrations/00007_item_machine.sql") || !slices.Contains(names, "move.go") {
+		t.Fatalf("append-only scan is vacuous: post.go, event.go, move.go, migrations/00001_ledger_core.sql, migrations/00003_event_log.sql and migrations/00007_item_machine.sql must be in the scanned set; collected %d files: %v", len(names), names)
 	}
 
 	// Scan: one failure per forbidden statement, naming file and match.
