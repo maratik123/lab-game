@@ -32,11 +32,15 @@ type stubSeam struct {
 	// containerPresent stands for a container that still exists on the
 	// runtime whether or not it is running, and containerExistsErr for a
 	// runtime that could not be asked. containerExistsCalled records that
-	// the question was put at all.
-	containerPresent      bool
-	containerExistsErr    error
-	containerExistsCalled bool
-	containerExistsName   string
+	// the question was put at all, and containerExistsRyukEnv snapshots the
+	// reaper environment variable at the moment the question is put, so a
+	// test can pin that the variable was disabled before this call rather
+	// than merely by the time run returns.
+	containerPresent       bool
+	containerExistsErr     error
+	containerExistsCalled  bool
+	containerExistsName    string
+	containerExistsRyukEnv string
 
 	locateDSN string
 	locateOK  bool
@@ -74,6 +78,7 @@ func (s *stubSeam) seam() seam {
 		containerExists: func(_ context.Context, name string) (bool, error) {
 			s.containerExistsCalled = true
 			s.containerExistsName = name
+			s.containerExistsRyukEnv = os.Getenv("TESTCONTAINERS_RYUK_DISABLED")
 			return s.containerPresent, s.containerExistsErr
 		},
 		locate:  func() (string, bool) { return s.locateDSN, s.locateOK },
@@ -760,6 +765,43 @@ func TestRun_down_invalidDir_leavesReaperSettingUnchanged(t *testing.T) {
 
 	if _, ok := os.LookupEnv("TESTCONTAINERS_RYUK_DISABLED"); ok {
 		t.Errorf("TESTCONTAINERS_RYUK_DISABLED was set although the pre-check should fail before it")
+	}
+}
+
+// Not parallel: asserts on the process-wide reaper environment variable.
+// Pins the ordering finding-R1-1 fixes: the reaper must be disabled BEFORE
+// the existence question is put on the unreachable-but-present path,
+// because answering that question already builds the container-runtime
+// client the reaper setting is read by.
+func TestRun_down_unreachablePresent_disablesReaperBeforeExistsCheck(t *testing.T) {
+	orig, hadOrig := os.LookupEnv("TESTCONTAINERS_RYUK_DISABLED")
+	t.Cleanup(func() {
+		if hadOrig {
+			_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", orig)
+		} else {
+			_ = os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED")
+		}
+	})
+	if err := os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED"); err != nil {
+		t.Fatalf("Unsetenv: %v", err)
+	}
+
+	stub := &stubSeam{
+		locateDSN:        "postgres://stale/db",
+		locateOK:         true,
+		probeErr:         errUnreachable,
+		containerPresent: true,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--down) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !stub.containerExistsCalled {
+		t.Fatalf("containerExists was never called")
+	}
+	if stub.containerExistsRyukEnv != "true" {
+		t.Errorf("TESTCONTAINERS_RYUK_DISABLED at containerExists time = %q, want %q", stub.containerExistsRyukEnv, "true")
 	}
 }
 

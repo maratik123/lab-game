@@ -13,14 +13,11 @@ import (
 // present on the container runtime, in any state. A stopped container counts
 // as present: it still holds the anonymous volume the image's VOLUME
 // directive created, so a caller reclaiming the server's resources has to be
-// able to tell "not running" apart from "not there". An empty name matches
-// nothing and is reported as absent rather than as an error, so a caller that
-// could not derive a name needs no special case.
+// able to tell "not running" apart from "not there". The name is matched
+// anchored at both ends, so an empty name (a caller that could not derive
+// one) or a name that is merely a substring of another checkout's container
+// name is reported as absent rather than mistaken for that other checkout.
 func ContainerExists(ctx context.Context, name string) (bool, error) {
-	if name == "" {
-		return false, nil
-	}
-
 	cli, err := testcontainers.NewDockerClientWithOpts(ctx)
 	if err != nil {
 		return false, fmt.Errorf("container runtime client: %w", err)

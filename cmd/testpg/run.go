@@ -369,6 +369,12 @@ func runDown(ctx context.Context, sm seam, stdout, stderr io.Writer) int {
 // the locator, since not knowing is not the same as knowing it is gone; and
 // a confirmed-present container is removed along with its anonymous volume
 // through the same path the reachable case uses.
+//
+// The reaper is disabled here, before the existence question is put, because
+// that question already builds the same container-runtime client the reaper
+// setting is read by: waiting until a container is confirmed present is too
+// late, this path exists for post-reboot/post-crash recovery, and the client
+// built to answer "does it exist" must not need the reaper image pullable.
 func runDownUnreachable(ctx context.Context, sm seam, probeErr error, stdout, stderr io.Writer) int {
 	dir, err := sm.workDir()
 	if err != nil {
@@ -377,6 +383,10 @@ func runDownUnreachable(ctx context.Context, sm seam, probeErr error, stdout, st
 	name, err := containerNameForDir(dir)
 	if err != nil {
 		return forgetStaleLocator(sm, probeErr, stderr)
+	}
+
+	if !disableReaper(stderr) {
+		return exitFailure
 	}
 
 	exists, err := sm.containerExists(ctx, name)
@@ -405,6 +415,19 @@ func forgetStaleLocator(sm seam, probeErr error, stderr io.Writer) int {
 	return 0
 }
 
+// disableReaper sets the environment variable that keeps testcontainers-go
+// from creating a reaper container, reporting and returning false if the
+// write itself fails. It exists so every call site that must disable the
+// reaper before its first container-runtime client is built shares one
+// Setenv-and-report instead of duplicating it.
+func disableReaper(stderr io.Writer) bool {
+	if err := os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true"); err != nil {
+		logf(stderr, "testpg: disabling the reaper: %v\n", err)
+		return false
+	}
+	return true
+}
+
 // removeNamedContainer reattaches to the container named name, stops it
 // (which also removes the anonymous volume its image's VOLUME directive
 // created), and forgets the locator. It disables the reaper first for the
@@ -412,10 +435,11 @@ func forgetStaleLocator(sm seam, probeErr error, stderr io.Writer) int {
 // existing container in order to remove it, so a reaper started here would
 // supervise nothing and outlive the thing it was started for. Shared by
 // --down's reachable path and its unreachable-but-present path, which
-// differ only in how they learn the container still needs removing.
+// differ only in how they learn the container still needs removing; on the
+// unreachable-but-present path the reaper is already disabled by the time
+// this runs, and setting it again is a harmless no-op.
 func removeNamedContainer(ctx context.Context, sm seam, name string, stdout, stderr io.Writer) int {
-	if err := os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true"); err != nil {
-		logf(stderr, "testpg: disabling the reaper: %v\n", err)
+	if !disableReaper(stderr) {
 		return exitFailure
 	}
 

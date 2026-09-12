@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
 // TestContainerExists_emptyName_isAbsentNotAnError asserts a caller that
 // could not derive a name gets a plain "absent" rather than an error it
-// would have to special-case, and that no runtime lookup is attempted for
-// a name that can match nothing.
+// would have to special-case: the anchored filter for an empty name matches
+// nothing, which is exactly the outcome a name-less caller needs.
 func TestContainerExists_emptyName_isAbsentNotAnError(t *testing.T) {
 	t.Parallel()
 
@@ -25,8 +26,6 @@ func TestContainerExists_emptyName_isAbsentNotAnError(t *testing.T) {
 
 // TestContainerExists_unknownName_reportsAbsent asserts the lookup reaches
 // the container runtime and comes back clean for a name nothing carries.
-// The name is anchored at both ends, so this also covers the case that
-// matters for a checkout whose name is a prefix of another's.
 func TestContainerExists_unknownName_reportsAbsent(t *testing.T) {
 	t.Parallel()
 
@@ -46,7 +45,10 @@ func TestContainerExists_unknownName_reportsAbsent(t *testing.T) {
 // it removes a container precisely when this function says one is there,
 // so a lookup that always answered false would make the teardown a no-op
 // and a lookup that always answered true would have it create a container
-// in order to delete it.
+// in order to delete it. While the container is up, it also asserts that a
+// strict substring of the container's own name is reported absent: two
+// checkouts whose base names nest (one is a prefix of the other) must never
+// have one's --down reattach to and remove the other's server.
 func TestContainerExists_followsAServersLifetime(t *testing.T) {
 	t.Parallel()
 
@@ -54,6 +56,7 @@ func TestContainerExists_followsAServersLifetime(t *testing.T) {
 	// Named per test process, so two binaries running at once on one host
 	// never address each other's container.
 	name := fmt.Sprintf("lab-game-exists-probe-%d", os.Getpid())
+	substringOfName := strings.TrimPrefix(name, "lab-")
 
 	server, err := StartServer(ctx, ServerOptions{ContainerName: name})
 	if err != nil {
@@ -75,6 +78,14 @@ func TestContainerExists_followsAServersLifetime(t *testing.T) {
 	}
 	if !exists {
 		t.Fatalf("ContainerExists(%q) = false while its container is running", name)
+	}
+
+	exists, err = ContainerExists(ctx, substringOfName)
+	if err != nil {
+		t.Fatalf("ContainerExists(%q) while %q runs: %v", substringOfName, name, err)
+	}
+	if exists {
+		t.Errorf("ContainerExists(%q) = true while only %q is running; the match must be anchored", substringOfName, name)
 	}
 
 	if err := server.Stop(ctx); err != nil {
