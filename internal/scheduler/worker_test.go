@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"math"
 	"sync"
 	"testing"
@@ -102,6 +103,41 @@ func TestNew_RetryFactorRefusal(t *testing.T) {
 				t.Errorf("Field = %q, want %q", optErr.Field, tc.wantField)
 			}
 		})
+	}
+}
+
+// TestNew_LoggerNilAcceptedAndSubstituted covers Options.Logger: a nil
+// Logger is accepted, not refused, and New substitutes a discard handler
+// rather than leaving the field nil; a non-nil Logger passes through as
+// given.
+func TestNew_LoggerNilAcceptedAndSubstituted(t *testing.T) {
+	t.Parallel()
+
+	pool, err := pgxpool.New(context.Background(), "postgres://user:pass@127.0.0.1:1/db")
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	reg, err := NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+
+	w, err := New(Options{Pool: pool, Registry: reg, Config: testConfig()})
+	if err != nil {
+		t.Fatalf("New with nil Logger: %v", err)
+	}
+	if w.logger == nil {
+		t.Fatal("logger = nil, want a discard handler substituted for the nil Options.Logger")
+	}
+
+	given := slog.New(slog.DiscardHandler)
+	w, err = New(Options{Pool: pool, Registry: reg, Config: testConfig(), Logger: given})
+	if err != nil {
+		t.Fatalf("New with a given Logger: %v", err)
+	}
+	if w.logger != given {
+		t.Fatalf("logger = %v, want the given Logger passed through unchanged", w.logger)
 	}
 }
 

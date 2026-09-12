@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -47,6 +48,11 @@ type Options struct {
 	// Observer optionally receives this worker's observations. A nil
 	// Observer is checked, not called.
 	Observer Observer
+	// Logger receives the log record a recovered handler panic emits at
+	// its boundary, since not every attempt leaves a settled row to
+	// carry that stack. A nil Logger is replaced with a discard handler,
+	// not refused — the same treatment a nil Observer already gets.
+	Logger *slog.Logger
 }
 
 // Worker drains due scheduled_task rows: discover, execute, settle.
@@ -55,6 +61,7 @@ type Worker struct {
 	registry *Registry
 	cfg      config.Scheduler
 	observer Observer
+	logger   *slog.Logger
 
 	// pendingMu guards pending, the set of tasks whose transaction died
 	// before it could settle them — a deadline breach or a failed COMMIT.
@@ -99,11 +106,16 @@ func New(opts Options) (*Worker, error) {
 	if !backoff.ValidFactor(opts.Config.RetryFactor) {
 		return nil, &OptionError{Field: "RetryFactor", Reason: "must be finite and strictly greater than 1"}
 	}
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
 	return &Worker{
 		pool:     opts.Pool,
 		registry: opts.Registry,
 		cfg:      opts.Config,
 		observer: opts.Observer,
+		logger:   logger,
 		stopCh:   make(chan struct{}),
 	}, nil
 }
@@ -112,8 +124,9 @@ func New(opts Options) (*Worker, error) {
 // discovery statement, then each discovered id in its own transaction.
 // It reports exactly one LoopObservation per call, whether it succeeds or
 // fails — a discovery failure is reported through LoopObservation.Err
-// as well as returned, since this package has no logger and
-// Run must not stop on a transient one.
+// as well as returned, since Logger records only a recovered handler
+// panic, never a discovery failure, and Run must not stop on a
+// transient one.
 func (w *Worker) RunOnce(ctx context.Context) error {
 	start := time.Now()
 

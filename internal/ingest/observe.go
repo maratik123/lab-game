@@ -111,8 +111,9 @@ type LoopObservation struct {
 	// returned.
 	BatchSize int
 	// Err is the cycle's poll error, if any. Run does not stop on it;
-	// without this field the error would be silently
-	// dropped, since this package has no logger.
+	// without this field the error would be silently dropped, since
+	// Options.Logger records only a recovered handler panic, never a
+	// poll failure.
 	Err error
 }
 
