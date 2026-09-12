@@ -850,3 +850,9 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** Writing the rule down does not install it. When a command's exit status is going to be read, the pipe is decided before the command is typed — `cmd > tmp/x.log 2>&1; echo $?` is the default shape for any status-bearing invocation, and truncation with `cut`/`head` is applied to the SAVED file, never to the live pipeline.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — spawned `design-review` with invented field names instead of the closed line list
+**What happened:** At `/task` Step 7 I built the spawn prompt from the SKILL body's prose — "the invocation line, the spec path, the design path, the progress-file path, and the round number" — and wrote it as `spec_path:` / `design_path:` / `round:`, the field names the `spec-writer` round prompt uses. The contract is a closed list of line SHAPES (`Spec:`, `Design:`, `Progress:`, `Round: <N>`), and it lives in the agent file, not in the SKILL body. A `PreToolUse` hook refused the spawn and printed the permitted forms; nothing reached the reviewer, so the cost was one blocked call rather than a `PROMPT-CONTAMINATION` finding and a wasted round.
+**Rule:** A prose enumeration of what a gate prompt carries is a count of its items, never their syntax. Before spawning a gate subagent, read the § *Spawn prompt contract* in that agent's own file and copy the line forms from there — the SKILL body says how many things and which, the agent file says how they are spelled. Carrying a sibling delegate's field names across is the specific way this goes wrong: the two prompts look alike and only one of them is shape-gated.
+**Kind:** correction
+**Escalated?** no
