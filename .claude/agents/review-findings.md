@@ -95,7 +95,7 @@ For every exported item, flag each of:
 - **A sentinel error a function can return that its doc does not name.**
 - **An `…Unchecked` variant** whose doc does not state the precondition **and** the caller that guarantees it.
 - **A type meant for concurrent use** whose doc does not say so (the default reading is "not safe").
-- **Any outward reference in a comment** — a markdown path, a design-section number, an acceptance-criterion id or decision anchor, an issue number outside `TODO(#…)`, a repository path, a URL, or a package-qualified symbol of this module named outside the comment's own package. `make comment-refs` decides those; you decide the two halves it cannot — a comment that narrates the implementation step by step, and one that points elsewhere by a bare unqualified name.
+- **Any outward reference in a comment** — a markdown path, a design-section number, an acceptance-criterion id or decision anchor, a review-register finding id, an issue number outside `TODO(#…)`, a repository path, a URL, or a package-qualified symbol of this module named outside the comment's own package. `make comment-refs` decides those; you decide the two halves it cannot — a comment that narrates the implementation step by step, and one that points elsewhere by a bare unqualified name.
 - **A `TODO` without an issue reference**, commented-out code, or a comment that restates the code.
 - **A stale comment** — behaviour changed, the comment above it did not.
 
