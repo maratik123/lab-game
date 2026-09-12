@@ -8,9 +8,9 @@ _Updated: 2026-09-12 19:20_
 **Last build:** PASS
 
 **Issue:** #81
-**Spec:** ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md
+**Spec:** ai-docs/plans/done/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md
 
-**current_step:** Step 11 — review fixes complete (Round 1)
+**current_step:** Step 10 — self-review APPROVE (Round 2)
 **last_passed_gate:** make verify | 2026-09-12T16:30Z | 8c12392
 **entry_args:** 81
 
@@ -90,7 +90,7 @@ Verified at Step 9 against `8c12392`. The command in each row is the orchestrato
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
-| SR1-1 | 1 | minor | fixed@f7b9508 | `sed -n '231p' internal/scheduler/execute.go` — the watchdog launch's `//nolint` reason text ends *"to free pooled resources and to unblock a handler still writing on it"*. Both halves are false of this code: `Hijack` already removed the connection from the pool (measured: `pgxpool.Conn.Hijack` sets `c.res = nil` and calls `res.Hijack()`), and the goroutine's own `<-resultCh` on the next line means the close runs only after the handler has returned, so no handler can be writing on it. Re-open by quoting the line beside the `<-resultCh` it precedes. |
+| SR1-1 | 1 | minor | fixed@f7b9508 — confirmed@2 | `sed -n '231p' internal/scheduler/execute.go` — the watchdog launch's `//nolint` reason text ends *"to free pooled resources and to unblock a handler still writing on it"*. Both halves are false of this code: `Hijack` already removed the connection from the pool (measured: `pgxpool.Conn.Hijack` sets `c.res = nil` and calls `res.Hijack()`), and the goroutine's own `<-resultCh` on the next line means the close runs only after the handler has returned, so no handler can be writing on it. Re-open by quoting the line beside the `<-resultCh` it precedes. |
 | SR1-2 | 1 | minor | accepted@1 — below severity floor | `grep -n 'Logger:   logger' cmd/bot/assemble.go` returns two sites; `grep -c Logger cmd/bot/assemble_test.go` returns 0. The design's § Decomposition subtask 8 lists `cmd/bot/assemble_test.go` and § Test Design has a *Composition root* scenario `[derived → AC6, AC9]`, but the file is unchanged — deleting either `Logger: logger` fails no test. Accepted because the same § Test Design entry forbids reaching into unexported state and the worker's `logger` field is unexported in another package, so `TestAssemble_HappyPath`'s assembly-succeeds assertion is all that scenario can reach. |
 | SR1-3 | 1 | nit | accepted@1 — below severity floor | `sed -n '25,34p' internal/scheduler/observe.go` — `FailureRolledBack`'s doc ends *"see FailurePanic, which outranks this classification"*, the bare-name-as-pointer shape `ai-docs/doc-convention.md` § DOC-4 leaves to review. Same-package and same const block, so it is close to the contract-symbol exemption; a rephrasing that states the rule instead of pointing would settle it. |
 | SR1-4 | 1 | nit | accepted@1 — below severity floor | `grep -c 'func Test' internal/panicguard/panicguard_test.go` returns 4 separate functions where § Test Design says *"(table-driven, `t.Parallel()`, no database)"*. Accepted: the four scenarios differ structurally (nil result, capture, boundedness, interface satisfaction), so a table would carry a different fixture per row; coverage is equivalent and `t.Parallel()` is present on each. |
@@ -99,6 +99,7 @@ Verified at Step 9 against `8c12392`. The command in each row is the orchestrato
 | SR1-7 | 1 | — | accepted@1 — examined, not a defect | `grep -n 'terminateTimeout' internal/scheduler/execute.go` — a Go constant, not configuration. D5 decides it at `5s` on `detachedCloseTimeout`'s shipped precedent; both bound a local cleanup rather than a gameplay timer, so `docs/DESIGN.md` §16.5's balance-constant rule does not reach it. |
 | SR1-8 | 1 | — | accepted@1 — examined, not a defect | `grep -rn 'postgres://user:pass' --include='*.go' .` — `internal/scheduler/worker_test.go`'s new placeholder DSN matches nine pre-existing sites across `internal/config`, `internal/health`, `internal/tg` and `cmd/bot`, and points at port 1. A fixture, not a secret. |
 | SR1-9 | 1 | — | accepted@1 — examined, not a defect | `grep -n parent_skill ai-docs/templates/progress-format.md` — the field is conditional (*"omit when the current skill IS the parent flow"*), and `/task` is the parent flow here. `current_step`, `last_passed_gate` and `entry_args` are all present. |
+| SR2-1 | 2 | — | accepted@2 — examined, not a defect | `sed -n '231p' internal/scheduler/execute.go` — SR1-1's replacement text says an unclosed connection *"holds its socket and its server-side session for the life of the process"*. The socket half is unconditionally true; the server-side half is true exactly on the paths where the close is load-bearing (a terminate that returned a Go error, so the backend is still alive), and vacuous where the terminate landed, since the backend is already gone. Not the class SR1-1 was: it asserts a general property offered as the close's reason, not a causal role the goroutine's own ordering forbids. |
 
 ## Files touched
 
@@ -181,3 +182,32 @@ No `blocker` or `major` row is open, so the table carries no rows.
 **Prose half of the diff, verified rather than read** (`ai-docs/alert-contract.md`, `ai-docs/code-style.md`, `ai-docs/process-lifecycle.md`, `ai-docs/context.md`): the `failure` enumeration matches the mapper's own order; ownership rule 4's narrowing matches what `TestReclaim_AC8` demonstrates; the process-lifecycle claim that the terminate precedes the watchdog launch matches the code order. Propagation sweep for the claims the diff falsifies — *"no logger"*, *"stays locked"* / *"still locked"* / *"remains locked"*, `#81` — over `.go` and `.md` outside `ai-docs/plans/`: every survivor is either a history surface under `plans/done/`, this task's own artefacts, or a true statement about something else (`settle.go`'s drain probe, `deadline_test.go`'s un-settled row). Nothing live is left falsified.
 - **Step 10**: self-review round 1 returned **APPROVE**; no `blocker` or `major` row, nine register rows all `accepted@1`. Its instrument check was three mutations on a `cp` backup of `execute.go`, each reverted: removing the termination reddened AC7, AC8 and the reversed ctx-ignoring case; deleting the log emission reddened both AC6 tests; flipping the recovered flag reddened AC3 and the unusable-transaction route.
 - **Step 11**: promoted `SR1-1` from `accepted@1 — below severity floor` to a fix, overriding the reviewer's wave-through in the direction of more correctness. Its two premises were re-verified first — `pgxpool.Conn.Hijack` nils the pool resource and hijacks it (read in the module cache at the version `go.mod` pins), and the watchdog's own receive on the handler result channel precedes the close — so both halves of the reason were false of the code they sit on. The design's subtask 5 listed this very comment as one the terminate falsifies, so replacing one false claim with another left that subtask unfinished rather than done. Gates re-run after the edit: build, vet, lint, `fmt -d`, comment-refs — all green.
+
+## Self-Review (Round 2)
+
+**Verdict:** APPROVE
+
+No `blocker` or `major` row is open, so the table carries no rows.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+
+**New `minor` / `nit` count this round: 0.** `SR1-2`, `SR1-3` and `SR1-4` stand as `accepted@1`; nothing in the round-2 diff changes the grounds any of them was accepted on, so none is re-raised. One item was examined and ruled not-a-defect and is registered as `SR2-1` rather than left as prose.
+
+### What was checked
+
+**Round-2 diff window.** `f7dfed4..HEAD` (`b7074e3`) — two commits, two files: `internal/scheduler/execute.go` (one line, comment-only) and this progress file. The register scoped the round: `SR1-1` carries `fixed@f7b9508`, so it was re-examined at that sha; the eight `accepted@1` rows were left alone, per the register rule that a re-raise needs both the accepting reason quoted and a command showing what changed — nothing in this diff touches any of their subjects.
+
+**`SR1-1` — fix verified, not taken on the commit message.** Ran the row's own verifying command, `sed -n '231p' internal/scheduler/execute.go`. Both clauses the row named are gone. The replacement makes three claims and each was re-derived:
+
+- *"hijacking took it out of the pool, so no other owner will ever close it"* — **true**. `go doc github.com/jackc/pgx/v5/pgxpool.Conn.Hijack` → *"Hijack assumes ownership of the connection from the pool. Caller is responsible for closing the connection."*, and the source at the pinned `v5.10.0` sets `c.res = nil` then calls `res.Hijack()`.
+- *"an unclosed connection holds its socket and its server-side session for the life of the process"* — **true as the general property it is offered as**; the one nuance is registered as `SR2-1` rather than raised.
+- *"The receive below orders the close after the orphaned handler has returned, so the close never races a handler still using the connection"* — **true**, and it is the correct inversion of the clause `SR1-1` falsified: `<-resultCh` is the goroutine's first statement and `pconn.Close` its last.
+
+The new text carries no outward reference — no path, no `§`, no acceptance-criterion id, no package-qualified symbol of this module — and *"The receive below"* points inside the comment's own call site rather than out of it. It states the close's guarantee and the mechanism that supplies it, which is what a `//nolint` reason must carry; it does not narrate the body step by step.
+
+**Gates re-run at `b7074e3`**, each captured to a file and read by grep: `go build ./...` **GREEN**; `go vet ./...` **GREEN**; `golangci-lint run` **GREEN** (the `nolintlint` requirement that the directive name a linter and state a reason survives the rewrite); `golangci-lint fmt -d` **GREEN** (0 bytes); `make comment-refs` **GREEN**; `make file-limits` **GREEN**. And, because the commit touches `internal/scheduler/execute.go` — the scheduler worker — the race gate was re-run rather than inherited from round 1: `go test -race ./internal/scheduler ./internal/ingest ./internal/panicguard ./internal/health ./internal/gateguard -count=1` → **GREEN**, 5/5. A shared test server was brought up for it and removed again.
+
+**Round-1 section integrity.** `git diff f7dfed4..HEAD` over this file removes exactly one line — the `**current_step:**` header field, whose content is the calling skill's to own. The `## Self-Review (Round 1)` section is untouched; this round is appended beside it, not over it.
+
+**Everything round 1 established stands unretested here, deliberately.** The round-2 diff changes no compiled statement, so the nine ACs, the three mutations, the domain-invariant sweep, the propagation sweep and the full suite are not re-derived — re-running them would be spending the round on a comment. What could have broken on a comment-only change is the lint, format and comment-reference gates, and each was run.
