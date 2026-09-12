@@ -10,8 +10,8 @@ _Updated: 2026-09-12 19:20_
 **Issue:** #81
 **Spec:** ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md
 
-**current_step:** Step 8 — Group B subtask 10 of 10 complete — Group B DONE, every Step-8 subtask complete
-**last_passed_gate:** golangci-lint run | 2026-09-12T16:18Z | c9bec73
+**current_step:** Step 9 — Verify (ALL PASS) — Group B DONE, every Step-8 subtask complete
+**last_passed_gate:** make verify | 2026-09-12T16:30Z | 8c12392
 **entry_args:** 81
 
 ## Next action
@@ -72,17 +72,19 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
+Verified at Step 9 against `8c12392`. The command in each row is the orchestrator's own, run over that AC's stated scope; it is expected to change between rounds.
+
+| AC | Status | Verifying command |
+|----|--------|-------------------|
+| AC1 | PASS | `go test ./internal/scheduler -run TestPanic_AC1 -count=1 -v` |
+| AC2 | PASS | `go test ./internal/scheduler -run TestPanic_AC2 -count=1 -v` |
+| AC3 | PASS | `go test ./internal/scheduler -run TestPanic_AC3 -count=1 -v` |
+| AC4 | PASS | `grep -A22 'func schedulerFailureLabel' internal/health/labels.go` (the `panic` case is a value of the existing `failure` label, distinct from every other) **and** `git diff c7c4018..HEAD -- 'internal/health/*.go' \| grep -E '^\+.*(NewCounterVec\|NewGaugeVec\|NewHistogramVec\|MustRegister)'` — empty, so no family was added; the pattern was shown to match elsewhere in the tree |
+| AC5 | PASS | `git ls-files '*.md' \| xargs grep -l rolled_back` — one live site (`ai-docs/alert-contract.md`), one history site under `plans/done/`; the live one enumerates `panic` in the mapper's own order. Pipeline controlled in both directions (a token hitting 5 files, a token hitting none) |
+| AC6 | PASS | `go test ./internal/scheduler -run TestPanic_AC6 -count=1 -v` (both the row+log case and the log-only post-breach case) |
+| AC7 | PASS | `go test ./internal/scheduler -run TestReclaim_AC7 -count=1 -v` |
+| AC8 | PASS | `go test ./internal/scheduler -run TestReclaim_AC8 -count=1 -v` |
+| AC9 | PASS | `go test ./internal/ingest -run TestLoop_panic -count=1 -v` — the give-up row plus log case, the superseded-attempt log-only case, and the unchanged reported outcome |
 
 ## Review register
 
@@ -117,3 +119,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `ai-docs/process-lifecycle.md` (the detached-launch paragraph: the watchdog's wait bounded for the in-database case, the out-of-database case named as why the launch stays detached)
 - `ai-docs/context.md` (§ *Layout so far* gains `internal/panicguard`)
 - **Step 8, Group A boundary (orchestrator)**: re-ran `go build ./...`, `go vet ./...`, `golangci-lint run` and `golangci-lint fmt -d` at `e69270b` — all green; the group's own gate claim is confirmed against the tree rather than taken from its return summary. Header fields `Last build`, `last_passed_gate` and `Next action` were left stale by the group and are corrected here.
+- **Step 9**: `make verify` green at `8c12392` — it runs fmt-check, build, vet, lint, file-limits, test, test-race, tidy-check, actionlint, shellcheck, comment-refs and import-guard in one pass, so Step 9 items 1–9b are discharged by it; dependencies did not move and no workflow or shell script was touched, so the tidy and actionlint/shellcheck stages had nothing to act on.
+- **Step 9**: panic-index sync — no `panic(`, `log.Fatal`/`log.Panic` or `Must…` helper was added to any of the ten changed production files (scan controlled against a constructed matching line); `ai-docs/panic-index.md` needs no row and stays empty.
+- **Step 9**: domain-invariant sweep — no balance mutation, no posting or item-movement write in production code, no balance constant in Go, no secret. Two classes of hit are legitimate and recorded here rather than fixed: `store.Post` appears only in `internal/ingest`'s test fixtures, which seed ledger state for the panic tests; and every `time.Now()` hit is either an observability duration measurement on an already-existing pattern (`worker.go`, `loop.go`, `attempt.go`) or a test's polling deadline — this diff touches no generation, combat or replay path, which is what the determinism rule governs. All five sweep patterns were controlled against constructed matching lines.
+- **Step 9**: no telemetry obligation beyond AC4/AC5 — the change adds a value to an existing `failure` label, no metric family and no event; the issue's own Telemetry obligation states "Events: none", and the design records that in D9.
