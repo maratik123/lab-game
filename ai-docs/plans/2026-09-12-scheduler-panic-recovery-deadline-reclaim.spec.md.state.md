@@ -72,7 +72,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 3
 agent_id: a1dad3c5a4aed674f
 prior_qa:
   - round: 1
@@ -81,4 +81,7 @@ prior_qa:
   - round: 1
     question: "Does `internal/ingest`'s panic recovery also gain the stack, or does this task change the scheduler only?"
     answer: "Ingest too — Ingest's recovery records the stack the same way, in this task — one rule, both handler boundaries."
+  - round: 3
+    question: "AC6/AC9 требуют стек на обеих поверхностях («и строка, и лог»), но дизайн показал два случая, где строки физически нет: паника после срыва дедлайна (строка уже занята причиной «deadline exceeded») и паника в ingest, которую переживёт следующая попытка (строка пишется только при исчерпании всех попыток). Что делаем?"
+    answer: "Amend the spec — spec-writer переформулирует AC6/AC9 как «строка везде, где попытка её оставляет, и лог всегда». Даёт выполнимый AC вместо невыполнимого. Цена: раунд spec-writer + полный цикл дизайн→ревью на изменённой паре (в него же уедут замечания 1/2/4)."
 ```
