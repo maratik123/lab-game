@@ -63,7 +63,22 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: ac11c6eef428a2106
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: |
+        Which maze algorithm runs inside a chunk? The choice is visible in how corridors feel, and it closes the DESIGN §16.2 open question.
+    answer: |
+        можно ли задавать вероятность использования того или иного тип алгоритма (из предложенных четырех) (и его входные параметры, такие, как bias input от growing tree) как параметры биома? что-то вроде весов, например: {chunk_algo:{weights:{backtracker: 1, kruskal: 3, prim: 1, growing_tree: 5, wilson_walk: 0}, params:{growing_tree:{bias: 0.5}}} (схема конфига - примерочная, не завязываться на нее). Тогда функция выбора алгоритма может брать сида чанка в качестве входного параметра, а уже выбранный алгоритм добирать остальные параметры (типа growing tree bias) из конфига биома.
+  - round: 1
+    question: |
+        Besides the six face states, what does generation yield for a cell in this task? #28 owns the world/biome config and #34 owns monsters and resources, so the payload here is a scope decision.
+    answer: |
+        Plus cell seed
+  - round: 1
+    question: |
+        What makes 'cheap enough to call on every step without caching being mandatory' met?
+    answer: |
+        Report only
 ```
