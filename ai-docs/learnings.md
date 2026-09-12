@@ -518,3 +518,9 @@ wrong-surface text by message twelve.
 **Rule:** A claim that something does not exist — a validation, a check, a branch — is made only after a raw read of the path that would contain it. Never state one to the owner off a search tool's silence, even as a side remark in a plan.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — re-authored the Spec Amendment recipe's option set instead of offering it
+**What happened:** Routing `design-review`'s `SPEC-REMIT` on AC4 to the owner during Step 7 of the per-checkout container-name task, I built the `AskUserQuestion` from the reviewer's suggestion ("restate the row as the outcome it protects, or strike it") rather than from the recipe. The owner saw "Перефолмулировать / Вычеркнуть / Оставить". The Spec Amendment recipe fixes the set at exactly three: (1) amend the spec, (2) fix the design only, (3) leave it. I had split (1) into two of its instances and dropped (2) entirely. The owner picked a strike, which is a form of (1), so the route taken was legal — but (2) was never on the table, and the recipe says the owner picks among those three, not among the ones the orchestrator finds applicable.
+**Rule:** When a recipe fixes an option set, the options are copied from the recipe, not composed from the finding that triggered it. A reviewer's suggested resolutions belong in the question's prose, where they inform the choice; they never replace the routes. Judging an option inapplicable and omitting it is the orchestrator deciding the thing the owner was asked to decide.
+**Kind:** correction
+**Escalated?** no
