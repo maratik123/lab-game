@@ -8,13 +8,13 @@ _Updated: 2026-09-12 14:42_
 **Last build:** not run
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 8 — Design Amendment written, awaiting design-review round 3; Groups B (subtask 7) and C (subtask 6) not yet started
+**current_step:** Step 8 — Design Amendment closed (design-review round 3 GO, notes folded); Group B (subtask 7) handoff next, Group C (subtask 6) after it
 **last_passed_gate:** go build ./... + go test ./... (whole module) + go test -race ./internal/store/... + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | a0a3cdf
 **entry_args:** 25
 
 ## Next action
 
-**Do this immediately:** re-run design-review on the amended design (round 3 of 3). On GO, spawn the Group B handoff (`code-writer`, subtask 7) per the design's `## Handoff plan` — the `post` `beforeBalances` hook that moves the chain insert ahead of the balance `UPDATE`s, plus the ordered-conflict test on the single-item fixture.
+**Do this immediately:** spawn the Group B handoff (`code-writer`, subtask 7) per the design's `## Handoff plan` — the `post` `beforeBalances` hook that moves the chain insert ahead of the balance `UPDATE`s, the deterministic ordered-conflict test on the single-item fixture, and the symmetric race test's restored fixture with its cross-round assertion.
 
 ## Subtasks
 
@@ -45,6 +45,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 - **Step 8, Design Amendment**: `design-writer` rejected the owner's illustrated mechanism (lock the head movement in phase b) on a probe — a row lock protects a row, but head-ness is the *absence* of a successor, so the blocked `SELECT … FOR UPDATE` returned the stale head and the mechanism needs a paired re-read. Chosen instead: `post` gains a `beforeBalances` hook running after the journal entry exists and before the first balance `UPDATE`, so nothing inside `post` reorders and D4's standing claim about its phase order holds. Decomposition grows subtask 7; groups become A (returned) → B (subtask 7) → C (subtask 6).
 
+- **Step 8, Design Amendment closed**: design-review round 3 returned GO; three notes and three recommendations folded without a further round. The load-bearing one was a false claim in the design's own mitigation — that a per-round `t.Logf` makes a degraded race test visible — refuted by the gates themselves running `go test` with no `-v`. `design-writer` then swept the class rather than the cited line and found the same shape one heading away in subtask 5's bullet.
+
 ## GO notes
 
 | # | round | note | kind | route | resolution |
@@ -58,6 +60,12 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | G7 | 2 | "§ A note on evidence certifies a property over the document's own tags" | design-internal | folded | design § A note on evidence @ 4d7d9b9 — the self-audit clause dropped, both pins kept |
 | G8 | 2 | "D5's \"which one a holder enforces is configuration\" lists two levers … without saying which applies to which kind" | design-internal | folded | design § D5 @ 4d7d9b9 — `slots` by the budget lever alone, `weight` by the cost lever |
 | G9 | 2 | "**whether two conditions share a sentinel** is [review's business]" | design-internal | folded | design § D4 @ 4d7d9b9 — one sentinel per refusal condition in a table, `ErrUnknownItem` and `ErrNotCurrentHolder` stated as never collapsing; § Test Design asserts `errors.Is` against the other is false |
+| G10 | 3 | "§ Risks' last row and § Test Design subtask 7 justify weakening the symmetric race test to a disjunction … on the ground that [it] is logged per round" | design-internal | folded | design § Test Design subtask 7 and § Risks @ 87f1876 — the log claim struck, replaced by a cross-round assertion; the orchestrator verified the premise itself (`grep -n 'go test' Makefile` → no `-v` on any target) before relaying |
+| G11 | 3 | "The ordered conflict test's synchroniser is specified as \"polls `pg_stat_activity` … **until** that row reports `wait_event_type = 'Lock'`\" with no stated bound" | design-internal | folded | design § Test Design subtask 7 @ 87f1876 — a ceiling with `t.Fatalf` naming "the loser never blocked" and the error it returned instead |
+| G12 | 3 | "Group B carries the task's single subtlest artefact … on `sonnet`/`medium` via `code-writer`" | design-internal | folded | design § Handoff plan @ 87f1876 — the Group B subtlety paragraph names three artefacts, `post`'s unchanged phase order and sentinels third, and states the quality-impact estimate explicitly |
+| G13 | 3 | "The amendment's strongest property is worth keeping explicit in `Move`'s doc comment" | design-internal | folded | design § D4 and Decomposition row 7 @ 87f1876 — `ErrOverdraft` on a destination `free` leg is a full backpack, on a source `used` leg pre-existing divergence |
+| G14 | 3 | "The new deadlock class (`40P01`, wrapped rather than sentinel) is correctly recorded … it is the row a future reviewer should re-read when the first such caller lands" | design-internal | folded | design § Risks @ 87f1876 — the row carries its own re-read trigger, expiring with the first non-test caller |
+| G15 | 3 | "**Round-trip required:** before Step 8, update the design doc to incorporate each note/recommendation above" | design-internal | folded | satisfied at 87f1876 — the orchestrator resolved each of G10–G14 in the design before opening Group B, and found one item (G12) only by reading the section rather than trusting a grep |
 
 ## Key discoveries (don't re-investigate)
 
