@@ -634,3 +634,27 @@ a genuinely clean tree share, and the same run also has to be shown capable of a
 
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-12 — process — "the hook accepted it" is a claim about the hook, and a gate starved of its input reports a pass
+
+**What happened:** During `/task` Step 11 I staged the progress file and committed it in one Bash call
+(`git add … ; git commit …`), and told the owner "commit OK (the register-consistency hook accepted
+it)". The hook had not accepted anything: it reads `git diff --cached` at `PreToolUse`, i.e. before
+the command runs, so the index it inspected was still empty and it exited 0 having examined no file.
+Run by hand against the file exactly as committed, the guard exits 1. The self-review caught it a
+round later. Sharper still: that bypass is already logged twice in `ai-docs/harness-gaps.md`, and I
+had *read* one of those entries in this same session — it surfaced as a hit in my own AC4 sweep,
+three tool calls before I walked into it.
+
+**Rule:** A gate's silence is evidence only once you know it received its input. Before writing any
+sentence of the form "<gate> accepted / passed / allowed" — to the owner, a PR body, or a progress
+file — either see the gate's own output, or state the weaker true thing ("the commit went through").
+Two specifics that generalise past this hook. A checker whose input is an index or an enumeration
+(`git diff --cached`, `git ls-files`, a glob) reports the clean answer when the set is empty, so it
+must run *after* the set exists — which for a `PreToolUse` hook means staging in a separate tool call
+from the commit. And reading a hazard does not inoculate against it: a trap met as a search hit is
+filed as evidence about the corpus, not as a constraint on the next command, so the guard has to be
+the call shape itself rather than the memory of having read about it.
+
+**Kind:** correction
+**Escalated?** no
