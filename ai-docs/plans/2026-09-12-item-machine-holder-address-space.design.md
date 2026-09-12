@@ -13,9 +13,9 @@ two machines still agree.
 ### A note on evidence
 
 `[measured <commit>:<path>:<lines> · <cmd> → <output>]` cites this tree at the commit the read was
-taken at — `155bbc8` for round 1, `4098f7b` for anything read in round 2, and `d4e0271` for
-anything read in round 4. `[derived → …]` names the acceptance criterion, subtask or test that will
-establish a claim about something **this task creates**.
+taken at — `155bbc8` for round 1, `4098f7b` for anything read in round 2, `d4e0271` for anything
+read in round 4, and `8b6f6ac` for anything read in round 5. `[derived → …]` names the acceptance
+criterion, subtask or test that will establish a claim about something **this task creates**.
 
 **Round 4 is an amendment made mid-implementation, after Group A returned.** Subtasks 1–5 are
 shipped, committed and pushed, so two classes of claim change standing: what those subtasks were
@@ -24,6 +24,14 @@ round read it. Everything round 4 *adds* — subtask 7 and its tests — is stil
 deviations drove it: `item_capacity_divergence` shipped in a better shape than D6 sketched (folded
 into D6, no decision open), and `Move`'s phase order broke D4's sentinel promise for a lost race
 (the owner ruled the direction; the mechanism is argued in D4).
+
+**Round 5 folds design-review round 3's notes into that amendment** and adds no decision of its
+own. Two of them corrected a test-design claim rather than a mechanism: the symmetric race test's
+degradation was to be caught by a per-round *log*, which this project's gates discard on a pass, so
+it is now caught by a cross-round *assertion*; and the ordered test's "poll until it blocks" gained
+a ceiling and a named failure, because the one case a wait-for-blocked cannot cover is the loser
+that never blocks. The third was a quality-impact estimate needing no change, recorded in
+§ Handoff plan.
 
 **Round 2 corrects a tag error.** Round 1 used a third form, `[measured probe · …]`, for behaviour
 that this task's own schema will have — `item_movement`'s constraints, the `capacity_role` index,
@@ -457,6 +465,16 @@ window is a property of the read-then-write shape rather than of this reorder, a
 § Test Design pins the promise with an **ordered** test rather than with a symmetric one
 `[derived → subtask 7 and its deterministic conflict test]`.
 
+**`Move`'s doc comment carries that reading, and subtask 7 is what puts it there** — it is the
+amendment's strongest property and the one a mechanic author needs at the call site rather than in
+a plan file: an `ErrOverdraft` naming a **destination** holder's `free` account is a full backpack,
+and an `ErrOverdraft` naming a **source** holder's `used` account is not a refusal about capacity
+at all but the two machines having already diverged, with `item_capacity_divergence` as the place
+that says by how much. The comment states the fact and names the view; it points at no section, id
+or path, so it stays inside `AGENTS.md` § DOC-4 and past `make comment-refs`, which subtask 7 runs
+before its commit like every subtask before it `[derived → subtask 7, and the doc-comment reading
+of § Test Design subtask 7]`.
+
 **One sentinel per refusal condition — no two conditions collapse into one error.** `Move` refuses
 more conditions than `Post` does, and a mechanic renders them differently, so each gets its own
 `errors.Is`-comparable sentinel and each is named in the doc comment with the transaction state it
@@ -779,7 +797,7 @@ The `AGENTS.md` and `.claude/**` edits are legal in this group: Learning-Log Bou
 | 4 | `Move` (D4): extract `Post`'s body into the unexported `post` returning the journal-entry id, add `Movement`, `Move` — taking the movements **and** the mechanic's own postings, so one document reaches both machines — the sentinels, and the package comment's second write path; add `move.go` to the append-only scan's non-vacuity list (D3). Tests first: the happy path and the postings it writes, a §11-shaped document carrying movements and the caller's own legs together under one journal entry, each sentinel with the transaction state its doc comment claims, the capacity `CHECK` path returning `ErrOverdraft`, the grant-and-fill document whose net keeps the `CHECK` satisfied, the neither-or-both property, a mint, and the planted-holder-kind case that shows a holder the MVP does not use needs no code. Serves Scope 2, Scope 3, Scope 5, AC2, AC3, AC4, AC6, AC7. | `internal/store/move.go`, `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/move_test.go`, `internal/store/append_only_test.go` | 1 |
 | 5 | The tests that need a shape of their own: a `rapid` property test driving random move sequences against a Go model of holder-per-instance and per-holder occupancy, asserting `item_holder`, both reconciliation views and both capacity balances after every accepted move and no write after every rejected one; and a `-race` concurrency test in which two transactions move one instance at once, asserting exactly one commit, `ErrMoveConflict` for the loser, and a continuous chain afterwards. Serves AC2, AC8. | `internal/store/move_property_test.go`, `internal/store/move_race_test.go` | 4 |
 | 6 | Sweep every live surface for a claim this diff falsifies and fix each (D9). The class is every live site naming the item machine's tables or describing its holder address space, re-derived by a case-insensitive sweep at implementation time — not the illustrative list in D9. Serves Scope 6. | `AGENTS.md`, `ai-docs/domain-invariants.md`, `ai-docs/context.md`, `.claude/skills/task/reference.md`, `docs/DESIGN.md`, plus whatever the sweep finds | 1–5, 7 |
-| 7 | Serialise the chain ahead of the capacity legs (D4, round 4), so a lost race reports `ErrMoveConflict` and `ErrOverdraft` goes back to meaning "the destination is full". `post` gains the `beforeBalances` hook and stops returning the journal-entry id; `Post` passes `nil` and its behaviour, sentinels and transaction states are unchanged; `Move` moves its mint and movement phases into the hook, and its doc-comment phase list moves with them. Tests first: the deterministic ordered conflict test that is the discriminator, and the symmetric race test with its single-item fixture restored — the fixture whose removal hid the defect. Serves Scope 2, AC2, AC3, AC4, AC8. | `internal/store/post.go`, `internal/store/move.go`, `internal/store/move_test.go`, `internal/store/move_race_test.go` | 4, 5 |
+| 7 | Serialise the chain ahead of the capacity legs (D4, round 4), so a lost race reports `ErrMoveConflict` and `ErrOverdraft` goes back to meaning "the destination is full". `post` gains the `beforeBalances` hook and stops returning the journal-entry id; `Post` passes `nil` and its behaviour, sentinels and transaction states are unchanged; `Move` moves its mint and movement phases into the hook, and its doc comment moves with them — the phase list, the lock order it now implies, and what an `ErrOverdraft` means on a destination `free` leg versus a source `used` leg (D4). Tests first: the deterministic ordered conflict test that is the discriminator, and the symmetric race test with its single-item fixture restored — the fixture whose removal hid the defect. Serves Scope 2, AC2, AC3, AC4, AC8. | `internal/store/post.go`, `internal/store/move.go`, `internal/store/move_test.go`, `internal/store/move_race_test.go` | 4, 5 |
 
 **The numbering is a listing, not an order.** What binds inside a group is the `Depends on` column;
 the subtask numbers are labels, and this design states no numeric order and needs none. Group A ran
@@ -834,10 +852,14 @@ transaction so each view is seen red before its green is believed — and both a
 Step 9 reads those two artefacts rather than sampling them.
 
 **Where the subtlety concentrates inside Group B:** the hook's placement inside `post` — it must sit
-after the journal entry and before the first balance `UPDATE`, and nothing else in `post` may move —
-and the deterministic conflict test's synchronisation, which waits on an observable database
-condition rather than on a sleep. Both are named here for the same reason: Step 9 reads them rather
-than sampling them.
+after the journal entry and before the first balance `UPDATE`, and **`post`'s own phase order and
+sentinels are unchanged**, so the `Post`-regression surface is the third artefact to read, not an
+afterthought — and the deterministic conflict test's synchronisation, which waits on an observable
+database condition with a named failure on its ceiling rather than on a sleep. All three are named
+here for the same reason: Step 9 reads them rather than sampling them. This group also carries the
+task's subtlest single artefact on a pinned `sonnet`/`medium` implementor, which sub-point (g)
+forces for any code group; naming the artefacts is the mitigation the contract intends, and it is
+recorded here as the required quality-impact estimate rather than left implicit.
 
 ## Risks
 
@@ -920,7 +942,9 @@ than sampling them.
   (D4); no non-test caller of either function exists yet, so the first mechanic to want both in one
   transaction is the one that reads the doc comment
   `[measured d4e0271 · rg -n --type go '\b(store\.)?(Post|Move)\(' --glob '!*_test.go' → only the two declarations, "internal/store/post.go:75:func Post(" and "internal/store/move.go:71:func Move("]`;
-  and subtask 7 states the order in `Move`'s doc comment.
+  and subtask 7 states the order in `Move`'s doc comment. **This is the row to re-read when the
+  first non-test caller of either function lands** — the measurement above is what makes the risk
+  dormant today, and it expires the moment that caller exists.
 - **After the reorder, a document that fails at the balance stage has already consumed `item`
   identity values, so instance ids can have gaps.** Identity sequences do not roll back. Whether
   any assertion depended on contiguity is settled by subtask 7's own gate run, not by this
@@ -934,10 +958,16 @@ than sampling them.
   would be flaky.** Which of the two losing sentinels a racer sees depends on whether its phase-b
   read ran before or after the winner committed (D4, round 4). Mitigation: the owner's instruction
   is discharged by the **deterministic** ordered test of § Test Design subtask 7, which controls
-  that ordering; the symmetric test asserts the weaker invariant that holds under either ordering —
-  the loser's error is one of the two refusals and never `ErrOverdraft` — and names which one each
-  round produced, so a run that quietly stopped reaching the conflict path is visible instead of
-  green `[derived → subtask 7's two race tests]`.
+  that ordering; the symmetric test asserts the weaker per-round invariant that holds under either
+  ordering — the loser's error is one of the two refusals and never `ErrOverdraft` — **plus a
+  cross-round assertion**: at least one round's loser must be `ErrMoveConflict`, so a run that
+  quietly stopped reaching the conflict path fails rather than passing. Round 5 corrects what this
+  row used to say. The per-round sentinel is also logged, but a log is not the mitigation and this
+  project's gates are why: they run `go test` without `-v`, so `t.Logf` on a **passing** test is
+  discarded and the logging is visible only once something already failed
+  `[measured 8b6f6ac:Makefile:64-68 · grep -n 'go test' Makefile → "test:" runs "go run ./cmd/testpg -- go test ./..." and "test-race:" the same with -race, neither carrying -v]`.
+  A degradation has to be caught by an assertion or it is not caught `[derived → subtask 7's two
+  race tests]`.
 
 ## Test Design
 
@@ -1105,7 +1135,10 @@ Fixtures: a helper that creates a player, grants its backpack a slot budget thro
   second unraced instance at the shared holder so the loser's capacity legs cannot go negative —
   which removes the one case §11 works through, and is what let the phase-order defect ship.
   Subtask 7 restores the single-item fixture and adds the ordered test that pins `ErrMoveConflict`;
-  every assertion above survives, minus the widening.
+  every assertion above survives, minus the widening. **Round 5 supersedes this bullet's
+  "report which goroutine lost" too**, for the same reason it corrected the row in § Risks: a report
+  on a passing test reaches nobody under gates that run without `-v`, so what carries the
+  proposition is subtask 7's cross-round assertion, and the reporting is failure output beside it.
 
 **Subtask 7 — `internal/store/move_race_test.go`, `internal/store/move_test.go`.** Entry point:
 `Move`. Written test-first, like subtask 4: each test below is red against the shipped phase order
@@ -1122,8 +1155,18 @@ before the rework makes it green.
     database condition**, never a sleep: a third connection polls `pg_stat_activity` for the loser's
     own backend pid — taken from its connection with `pg_backend_pid()` before the call — until that
     row reports `wait_event_type = 'Lock'`. Only then does the winner commit. The pools are sized
-    for the winner, the loser and the poller. The wait condition is a synchroniser, not an
-    assertion: the loser blocks under the shipped order too, just at a different lock, which is
+    for the winner, the loser and the poller. **The poll carries a ceiling and a named failure**,
+    because "wait until it blocks" cannot cover the one case where it never does: if a regression
+    makes the loser refuse early — phase b returning `ErrNotCurrentHolder`, say — an unbounded poll
+    hangs until the package's own test timeout panics, which reports a hung package rather than the
+    defect. On the ceiling, `t.Fatalf` says **the loser never blocked** and names the error the
+    loser returned instead. The ceiling is an **instrument**, not the subject: it is a patience
+    budget, sized generously against a shared server under neighbours' load, and widening it
+    asserts nothing — the discipline `go-test-conventions.md`'s wall-clock rule states for exactly
+    this shape
+    `[measured 8b6f6ac:ai-docs/go-test-conventions.md:47 · sed -n '47p' ai-docs/go-test-conventions.md → "An **instrument** is a patience budget — how long a test waits for a condition … and it is made generous, or replaced by polling on the condition with a generous ceiling; widening one changes no asserted proposition."]`.
+    The wait itself is a synchroniser, not an assertion: the loser blocks under the shipped order
+    too, just at a different lock, which is
     exactly why the assertions below and not the wait are what discriminate
     `[measured probe · psql on docker.io/library/postgres:18 (server 18.6) → the blocked inserter appeared in pg_stat_activity as wait_event_type "Lock", wait_event "transactionid", queryable by pid from a third session as the same database user]`.
   - *Assert:* the loser's error satisfies `errors.Is(err, ErrMoveConflict)` **and** explicitly not
@@ -1148,12 +1191,15 @@ before the rework makes it green.
     it recorded. Two independent failures, which is the point
     `[derived → AC8, AC3, AC4, and this test]`.
 - *The symmetric race keeps its shape and loses its widening.* Same N-round `-race` test, single-item
-  fixture: exactly one commit; the loser's error is `ErrMoveConflict` or `ErrNotCurrentHolder` and
-  **never** `ErrOverdraft` nor anything unnamed; which of the two it was is logged per round, so a
-  run that quietly stopped reaching the conflict path is visible rather than green; `item_holder`
-  names the winner's destination and both reconciliation views are empty afterwards. Why the weaker
-  disjunction here rather than `ErrMoveConflict` alone: § Risks' timing-window row
-  `[derived → AC8, AC2]`.
+  fixture. **Per round:** exactly one commit; the loser's error is `ErrMoveConflict` or
+  `ErrNotCurrentHolder` and **never** `ErrOverdraft` nor anything unnamed; `item_holder` names the
+  winner's destination and both reconciliation views are empty afterwards. **Across the rounds, and
+  this assertion is what keeps the disjunction honest:** at least one loser must have been
+  `ErrMoveConflict`, so a run in which every round degraded to `ErrNotCurrentHolder` — never
+  reaching the chain-conflict path at all — **fails** instead of passing. Which sentinel each round
+  produced is still logged, for the failure output; it is not the mitigation, because the gates run
+  `go test` without `-v` and discard `t.Logf` on a pass (§ Risks' timing-window row). Why the
+  disjunction rather than `ErrMoveConflict` per round: the same row `[derived → AC8, AC2]`.
 - *`Post` is unchanged, again.* `Post` passes a nil hook, so the existing `Post` tests — including
   the recorder-based phase and capture-order assertions and every sentinel's transaction-state
   assertion — are the assertion that the extraction is still a refactor
