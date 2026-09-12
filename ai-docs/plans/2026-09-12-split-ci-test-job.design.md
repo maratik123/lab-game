@@ -47,13 +47,28 @@ The `name:` half is what the PR's checks list shows, which is why subtask 5 must
 carry the new names into the failure-class taxonomy that `/pr-ci-failed` and
 `/main-ci-failed` key off the CI job name.
 
-Parallelism needs no keyword. GitHub's workflow-syntax reference states that "a
-workflow run is made up of one or more `jobs`, which **run in parallel by
-default**", and `needs` is the only thing that orders them
-(<https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idneeds>).
-So AC2 is satisfied by each of the four naming `changes` in its `needs` and
-naming no sibling — an absence, which is why § Test Design gives it a positive
-control rather than trusting a clean grep.
+Parallelism needs no keyword, and the primary ground for that is this
+repository's own CI rather than a documentation sentence. Every job of this
+workflow other than `changes` declares `needs: changes` and names no sibling,
+and on a run of `main` they start together and overlap: the jobs that ran
+started within a second of one another, right after `changes` finished, and the
+longest-running one was still in progress long after the shortest had completed
+`[measured 9d7b70c · gh run view 34664604281 --json jobs → `Detect changes` completedAt 01:22:14Z; `Build`, `Test`, `Comment references`, `Harness guards`, `Format` all startedAt 01:22:16Z and `Lint` startedAt 01:22:17Z, while `Format` completedAt 01:22:46Z and `Test` completedAt 01:27:13Z]`
+`[measured 9d7b70c:.github/workflows/ci.yml · grep -n '^  [a-z-]*:$\|^    needs:\|^    name:' .github/workflows/ci.yml → every job key other than `changes` is followed by `name:` and `needs: changes`, and no `needs:` value names another job]`.
+So the shape this design proposes for the four is the shape this workflow's
+existing sibling jobs already run under, in this repository, on this runner
+fleet. GitHub's workflow-syntax reference says the same thing in general terms —
+"a workflow run is made up of one or more `jobs`, which run in parallel by
+default", with `needs` the keyword that orders them
+[<https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idneeds>,
+fetched 2026-09-12] — and is carried as corroboration, not as the load-bearing
+citation.
+
+AC2 is therefore satisfied by each of the four naming `changes` in its `needs`
+and naming no sibling — an absence, which is why § Test Design gives it a
+positive control rather than trusting a clean grep, and why the PR's own run is
+read at the end (§ Test Design, *Run-level verification*) as the observed form
+of the same evidence.
 
 AC3 is satisfied the same structural way: the `changes` job and its `filters:`
 block are untouched, and each of the four repeats the replaced job's
@@ -61,6 +76,30 @@ block are untouched, and each of the four repeats the replaced job's
 of changes that starts each gate is therefore the same set that starts it now —
 the `go` filter — and the verification is a before/after comparison against
 `git show HEAD:.github/workflows/ci.yml`, not a reading of the new file alone.
+
+**What AC3's "set of changes" is, and what it is not.** It is the `changes`
+job's own filter set — which paths-changed condition admits a gate — and the
+reading is recorded here rather than left to a per-reader inference, because
+the old shape carried a **second** suppressor that was never a paths-changed
+condition and that this diff deliberately removes. `ci.yml` declares no
+`continue-on-error` anywhere, and every `if:` in it sits at job level, none
+inside a `steps:` block
+`[measured 9d7b70c:.github/workflows/ci.yml · grep -n continue-on-error .github/workflows/ci.yml → no match, exit 1; grep -n '^    if:' .github/workflows/ci.yml → every hit is a job-level key at four-space indent, none inside a steps: block]`,
+so a red step ended the job and the steps below it never ran. Observed in this
+repository's own run history rather than reasoned from a documented default
+`[measured 9d7b70c · gh run view 34395604132 --json jobs → the `Test` job's steps read `Run make test -> failure`, then `Run make test-race -> skipped`, `Run make cover-ratchet -> skipped`, `Run make test-fallback -> skipped`]`.
+After the split, a change that reddens `make test` does let the other three
+execute. **That is the information the split exists to buy, not an AC3
+violation.** Preserving the suppression would require `needs:` chains among the
+four, which AC2 forbids outright — so a reading of AC3 that demanded it would
+make AC1, AC2 and AC3 mutually unsatisfiable, and the filter-set reading is the
+only one under which all three hold together. Step 9 therefore verifies AC3
+against each new job's paths-changed condition and the untouched `filters:`
+block, and reads the loss of the red-step suppression as the intended
+consequence recorded here. AC3's wording is left exactly as the spec has it;
+this is a design-side reading, not a spec amendment, because that is the option
+the owner chose when the reading was routed to him
+`[measured 9d7b70c, working tree (the round-3 entry is uncommitted at drafting):ai-docs/plans/2026-09-12-split-ci-test-job.spec.md.state.md · grep -n "Только дизайн" … → `answer: "Только дизайн (рекомендую)"` inside prior_qa]`.
 
 ### The comments inside `ci.yml` that assert step ordering are part of this diff
 
@@ -91,7 +130,8 @@ against a future edit quietly re-merging them (§ Open questions — *Nothing ga
   list of names. Third, a matrix brings `fail-fast` into play: GitHub documents
   that when it is on, "if any of the jobs with `continue-on-error: false` fail,
   all jobs that are in progress or queued will be cancelled"
-  (<https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations>),
+  [<https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations>,
+  fetched 2026-09-12],
   so a single red gate would destroy the very information the split exists to
   expose unless the flag is explicitly turned off. Four independent jobs carry
   no such coupling and nothing has to be remembered.
@@ -187,17 +227,37 @@ against a future edit quietly re-merging them (§ Open questions — *Nothing ga
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | Replace the `test` job with the four sibling jobs of the § Approach table: each gets the replaced job's `needs: changes`, `if: needs.changes.outputs.go == 'true'`, `runs-on`, and checkout + `setup-go` preamble, and exactly one `run: make <target>`; none gains a `needs:` on another. Rewrite the in-file comments that assert step ordering and add the cluster comment. `changes` and its `filters:` block are left byte-identical. Run `actionlint .github/workflows/ci.yml` and the before/after gating comparison of § Test Design **before** `git add`. | `.github/workflows/ci.yml` | — |
+| 1 | Replace the `test` job with the four sibling jobs of the § Approach table: each gets the replaced job's `needs: changes`, `if: needs.changes.outputs.go == 'true'`, `runs-on`, and checkout + `setup-go` preamble, and exactly one `run: make <target>`; none gains a `needs:` on another. Rewrite the in-file comments that assert step ordering, and add the cluster comment **immediately above the first of the four job declarations**, where a reader arriving at the cluster meets it before any of the four (the two rewritten rationale comments stay attached to the gate each justifies, now inside that gate's own job). `changes` and its `filters:` block are left byte-identical. Run `actionlint .github/workflows/ci.yml` and the before/after gating comparison of § Test Design **before** `git add`. | `.github/workflows/ci.yml` | — |
 | 2 | Correct the falsified claims in `AGENTS.md`: the ratchet AXIOM's "`make cover-ratchet` and CI's Test job run the identical script with `--check`" must name the job that now runs it; the § *Build & Test* gate enumeration's `Test (incl. -race)` entry must name the four jobs the split creates. Nothing else in that enumeration is re-authored. | `AGENTS.md` | 1 |
 | 3 | Correct the CI job table in `ai-docs/claude-tools-hierarchy.md`: the single `Test` row becomes one row per new job, each naming its own `make` target and keeping the unchanged `go` paths-changed condition. | `ai-docs/claude-tools-hierarchy.md` | 1 |
 | 4 | Correct `ai-docs/go-test-conventions.md`'s "CI runs it as a Test-job step" so it names the job that now runs `make test-fallback`; the surrounding claim about why the fallback path needs its own gate is unchanged. | `ai-docs/go-test-conventions.md` | 1 |
 | 5 | Correct `.claude/skills/pr-ci-failed/SKILL.md` — the `CI exists` job enumeration, and the *CI job* column of the classification table for the `test` and `race` classes, the `test` row gaining `Race` alongside `Test`, `Coverage ratchet` and `Test fallback` per KD-C — and apply the same corrections to its declared CI sync-group siblings `.claude/skills/main-ci-failed/SKILL.md` and `.claude/skills/dependabot-pr/reference.md`, editing `dependabot-pr/reference.md` only if it carries a falsified claim and recording the no-change outcome if it does not. | `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/SKILL.md`, `.claude/skills/dependabot-pr/reference.md` | 1 |
 | 6 | Correct the shared-test-server entry's falsified sentence in `ai-docs/context-status.md` (KD-D) so it names the job that now runs `make test-fallback` rather than asserting CI's Test job runs it as a step. The rest of that entry, every other entry, and the file's entry order are untouched — this is a claim correction inside one existing bullet, not a rewrite of the log. | `ai-docs/context-status.md` | 1 |
-| 7 | Run the AC4 falsified-claim sweep of § Test Design over the live set with its positive control, after the last edit of subtasks 2–6; record the control's output and the sweep's findings. Any site the sweep names whose sentence the diff makes false and that subtasks 2–6 did not reach is fixed here; a site whose sentence stays true is left and recorded (KD-E). **A site the sweep names in a code change-type file** (`*.go`, migrations, `.github/workflows/**` per KD-B, `Makefile`, `.githooks/**`) **is never edited inside this group** — Group B is instructions/harness-homogeneous, so such a site is surfaced to the orchestrator with its line, to be routed back to a code group or ruled out of scope. | (whichever instructions/harness files the sweep names) | 2, 3, 4, 5, 6 |
+| 7 | Run the AC4 falsified-claim sweep of § Test Design over the live set with its positive control, after the last edit of subtasks 2–6; record the control's output and the sweep's findings. Any site the sweep names whose sentence the diff makes false and that subtasks 2–6 did not reach is fixed here; a site whose sentence stays true is left and recorded (KD-E). **A site the sweep names in a code change-type file** (`*.go`, migrations, `.github/workflows/**` per KD-B, `Makefile`, `.githooks/**`) **is never edited inside this group** — Group B is instructions/harness-homogeneous, so such a site is surfaced to the orchestrator with its line. AC4 admits no out-of-scope disposition, so the surfacing has exactly two legitimate ends, and "ruled out of scope" is not one of them: either the site's sentence is **not false** after the diff, in which case it is outside AC4's class by the same keep-or-fix test as any other site and is recorded as decided-and-left (KD-E); or it **is** false, in which case AC4 obliges its correction in this same pull request and the orchestrator must open a **third, code-homogeneous group** for it (within the default maximum of four — § Handoff plan). | (whichever instructions/harness files the sweep names) | 2, 3, 4, 5, 6 |
 
 The CI sync group is declared, so subtask 5's sibling obligation is not a
 judgement call
 `[measured 4a4c909:ai-docs/propagation-groups.md:28-29 · sed -n '28,29p' ai-docs/propagation-groups.md → "`.claude/skills/pr-ci-failed/SKILL.md` | `.claude/skills/main-ci-failed/SKILL.md` AND `.claude/skills/dependabot-pr/reference.md` (CI group — the failure-class taxonomy and the per-class reproducers must agree)"]`.
+And subtasks 2, 3 and 5 are **obligatory rather than discretionary**, because
+the same table declares a row keyed on exactly this diff's trigger — a job
+added, renamed or removed in `ci.yml` — whose target list names the CI group's
+class tables, `AGENTS.md` § *Build & Test* and
+`ai-docs/claude-tools-hierarchy.md`, and whose stated reason is the failure this
+task would otherwise cause
+`[measured 9d7b70c:ai-docs/propagation-groups.md:30 · sed -n '30p' ai-docs/propagation-groups.md → "`.github/workflows/ci.yml` (a job added, renamed, or removed) | The CI group's class tables AND `AGENTS.md` § *Build & Test* AND `ai-docs/claude-tools-hierarchy.md` — a class with no job, or a job with no class, is how a red run becomes unclassifiable"]`.
+That row's test — *a class with no job, or a job with no class* — is precisely
+what KD-C answers, which makes KD-C compliance with a declared row rather than a
+judgement of this design's own.
+
+Subtask 7's code-change-type branch is unlikely to fire, measured rather than
+assumed: the comments in the code-type files nearest this change speak of CI
+without naming the `Test` job, so the diff does not falsify them. The ratchet
+script's header says the gate runs with `--check` in CI and names no job
+`[measured 9d7b70c:.githooks/coverage-ratchet.sh:4-8 · sed -n '4,8p' .githooks/coverage-ratchet.sh → "The pre-commit hook runs it in raise mode, `make cover-ratchet` and CI run it with --check."]`,
+and the `Makefile`'s header says CI invokes the sub-targets from its
+paths-filtered jobs, which stays true when there are more of them
+`[measured 9d7b70c:Makefile:4-6 · sed -n '4,6p' Makefile → "CI never runs `verify` — it invokes the same sub-targets from its paths-filtered jobs, so a local run and a CI run cannot disagree about what any gate's command is."]`.
+`ci.yml`'s own comments are subtask 1's and are not the sweep's to find.
 
 ## Handoff plan
 
@@ -214,7 +274,14 @@ grouped with the code per KD-B. Same-change-type subtasks are clustered into the
 **fewest groups possible**, bounded by the size cap, by dependency order and by
 homogeneity; naive interleaving is the least-desirable fallback and is not used
 here. The default maximum is **4** groups per task, and more than 4 is surfaced
-to the user for approval; this design defines **2**.
+to the user for approval; this design defines **2**. One contingent third group
+is named rather than left to be improvised: if subtask 7's sweep finds a **code**
+change-type file whose sentence the diff falsifies, AC4 obliges the correction
+in this pull request and Group B cannot make it without losing its homogeneity,
+so the orchestrator opens a third, code-homogeneous group for exactly those
+sites. Three is still inside the default maximum of four, so no user gate is
+crossed; the branch is measured as unlikely to fire (§ Decomposition, after the
+table).
 
 - **Entry into Group A:** spawn `/context-reset` per
   `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry). The
@@ -223,6 +290,22 @@ to the user for approval; this design defines **2**.
   subagent, 1M-token window — subtask 1 (code change-type per KD-B:
   `.github/workflows/ci.yml`). Non-terminal; every later subtask depends on it,
   so it cannot be clustered with Group B and cannot be reordered after it.
+  **This group's gates are named here, so the return summary is readable and the
+  implementor reads a list rather than deriving one.** Subtask 1 edits no `*.go`
+  file, so the gates that carry information are
+  `actionlint .github/workflows/ci.yml`, `make comment-refs`, and the § Test
+  Design extractions — gating parity (AC3), sibling independence (AC2), one gate
+  per job (AC1) — each run with its own control against the pre-change tree.
+  This is the list `code-writer`'s own Mode A step 3 asks for rather than an
+  override of it: its gate paragraph carves out a subtask with no `*.go`,
+  directing the implementor to the design's Test Design checks and naming
+  `actionlint` on a changed workflow among them
+  `[measured 9d7b70c:.claude/agents/code-writer.md:65 · sed -n '65p' .claude/agents/code-writer.md → "(For an instructions/harness subtask with no `*.go`, the Go gates simply stay green — run the design's Test Design checks instead: grep / `wc -c` / `actionlint` on a changed workflow / `shellcheck` on a changed script.)"]`.
+  A Go gate run anyway stays green on a YAML-only diff and discharges no AC
+  here; the carve-out's class label reads "instructions/harness" while KD-B
+  groups this subtask with the code, and that mismatch changes nothing, because
+  the condition the carve-out actually turns on is the absence of a `*.go` edit
+  and the substitute check it names is the one this subtask needs.
 - **Handoff after Group A:** spawn `/context-reset` per
   `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry).
   Parent `/task` resumes in Group B with fresh context.
@@ -256,10 +339,14 @@ to the user for approval; this design defines **2**.
 - **Runner-minutes rise even though wall-clock falls.** Work the replaced job
   did once inside a single workspace — the checkout, the Go set-up, and any
   compilation or image layer the later steps inherited from the earlier ones —
-  is done by each of the four jobs separately, because each declares its own
-  checkout and set-up steps and GitHub's runner reference states that "each
-  GitHub-hosted runner is a new virtual machine (VM) hosted by GitHub"
-  (<https://docs.github.com/en/actions/concepts/runners/github-hosted-runners>).
+  is done by each of the four jobs separately. The load-bearing half is local
+  and structural — each of the four declares its own checkout and `setup-go`
+  steps, per § Approach's job table. GitHub's runner reference corroborates that
+  nothing is inherited across them: "With the exception of single-CPU runners,
+  each GitHub-hosted runner is a new virtual machine (VM) hosted by GitHub"
+  [<https://docs.github.com/en/actions/concepts/runners/github-hosted-runners>,
+  fetched 2026-09-12] — quoted with its exception clause intact, which is why
+  the structural half rather than the quote is what the row rests on.
   Each gate was already provisioning its own Postgres before the split, so that
   part of the cost does not move
   `[measured 4a4c909:Makefile:59-68 · sed -n '59,68p' Makefile → "Both route through the provisioning wrapper: it reuses an already-set DSN or an already-running long-lived server (test-db-up) unchanged, and otherwise provisions and removes its own sized, anonymous container"]`.
@@ -317,14 +404,15 @@ to the user for approval; this design defines **2**.
 
 No subtask in § Decomposition touches a `*.go` file, so this change's verifiable
 artefacts are the workflow's structure, the live CI run it produces, and the
-prose sweep. Every claim below is about something this task creates.
+prose sweep.
 
 **Subtask 1 — `actionlint`.** Location: the required workflow gate.
 Entry point: `actionlint .github/workflows/ci.yml`, run before `git add` per the
 `AGENTS.md` § *Build & Test* AXIOM. Scenario: exit 0 on the restructured file.
-The binary is present on this machine — an environment fact, so the tag carries
-the session's commit pin and no path
-`[measured 4a4c909 · actionlint --version → v1.7.12]`.
+The binary is present on this machine — an environment fact about a tool this
+task does not create, not a claim about a new artefact, so the tag is a
+`measured` one carrying the session's commit pin and no path
+`[measured 9d7b70c · actionlint --version → v1.7.12, built from source]`.
 Expected outcome of the restructured file passing it — `[derived → AC1]`.
 
 **Subtask 1 — gating parity (AC3).** Entry point: a comparison, not a read.
@@ -336,8 +424,13 @@ Fixture: the pre-change file itself — the control is that the extraction, run
 against the pre-change tree, must yield the replaced job's gating pair; an
 extractor that yields nothing there is broken and its clean answer on the new
 file means nothing. Edge case the comparison must catch: a job that acquired
-`if: always()`, or one whose `if:` lost the `needs.changes.outputs.go` term —
-`[derived → AC3]`.
+`if: always()`, or one whose `if:` lost the `needs.changes.outputs.go` term.
+**What this comparison deliberately does not check** is whether a red gate still
+suppresses the other three — that suppression was a step-ordering artefact, not
+a paths-changed condition, and removing it is what the split is for, so a
+verifier reading AC3 as requiring it would fail the criterion for delivering the
+change the spec asked for (§ Approach — *What AC3's "set of changes" is, and what
+it is not*) — `[derived → AC3]`.
 
 **Subtask 1 — sibling independence (AC2).** Entry point: the `needs:` value of
 each of the four. Scenario: each names `changes` and names no other of the four.
@@ -402,9 +495,11 @@ Scenarios: (happy) both passes name no live site whose sentence the diff
 falsifies; (keep) a pass names a site whose sentence stays true — recorded with
 its line and left, as KD-E rules for `ai-docs/key-decisions.md` KD-20; (failure)
 a pass names a false site, which is fixed here if it is an instructions/harness
-file and **surfaced to the orchestrator** if it is a code change-type file, per
-subtask 7's remit; (instrument failure) the control prints nothing on an axis,
-in which case nothing about AC4 has been established on that axis.
+file and **surfaced to the orchestrator for a third, code-homogeneous group** if
+it is a code change-type file — never ruled out of scope, because AC4 admits no
+such disposition (§ Decomposition, subtask 7); (instrument failure) the control
+prints nothing on an axis, in which case nothing about AC4 has been established
+on that axis.
 
 The sites known at drafting — the ratchet AXIOM and the gate enumeration in
 `AGENTS.md`, the CI job table row in `ai-docs/claude-tools-hierarchy.md`, the
