@@ -1,5 +1,5 @@
 # Progress: Split the CI Test job into four parallel jobs — ACTIVE
-_Updated: 2026-09-12 02:15_
+_Updated: 2026-09-12 05:22_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -10,18 +10,18 @@ _Updated: 2026-09-12 02:15_
 **Issue:** #99
 **Spec:** ai-docs/plans/2026-09-12-split-ci-test-job.spec.md
 
-**current_step:** Step 8 — Group A subtask 1 of 1 complete
-**last_passed_gate:** actionlint .github/workflows/ci.yml + make comment-refs + AC1/AC2/AC3 Test Design extractions (each with its control) | 2026-09-12 | 606d7c4
+**current_step:** Step 8 — Group B subtask 2 of 6 complete
+**last_passed_gate:** citation guard + relative-markdown-link check + job-name cross-check against the shipped `ci.yml` with its pre-change control | 2026-09-12 | this commit
 **entry_args:** ускоряем gh ci: job Test надо разбить на 4 отдельные джобы, выполняющиеся параллельно: make test, make test-race, make cover-ratchet и make test-fallback
 
 ## Next action
 
-**Do this immediately:** Group A is complete. Enter Group B (subtasks 2–7) via `/context-reset` § Compaction recovery (re-entry) per the design's § Handoff plan.
+**Do this immediately:** Group B is under way. Subtask 3 — `ai-docs/claude-tools-hierarchy.md`'s CI job table: the single `Test` row becomes one row per new job.
 
 ## Subtasks
 
 - [x] 1. `.github/workflows/ci.yml` — four sibling jobs, comment rewrites, cluster comment  (Group A, complete @ 606d7c4)
-- [ ] 2. `AGENTS.md` — ratchet AXIOM + § Build & Test gate enumeration (Group B)
+- [x] 2. `AGENTS.md` — ratchet AXIOM + § Build & Test gate enumeration (Group B, complete)
 - [ ] 3. `ai-docs/claude-tools-hierarchy.md` — CI job table (Group B)
 - [ ] 4. `ai-docs/go-test-conventions.md` — the fallback gate's CI sentence (Group B)
 - [ ] 5. `.claude/skills/pr-ci-failed/SKILL.md` + CI sync-group siblings (Group B)
@@ -36,6 +36,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: design-review round 1 returned ITERATE; the orchestrator re-ran the major finding's three load-bearing measurements before forwarding it, and all three resolved.
 - **Step 7**: design-review round 2 returned GO; its one spec-amending note was routed to the owner, who chose "fix the design only", which is also his per-instance exemption from a re-review. design-review did not run again.
 - **Step 8, Group A, subtask 1**: ran the § Test Design extractions for AC1/AC2/AC3 with their controls before `git add`, per the design's Handoff-plan gate list. AC1 control (extraction over `git show HEAD:.github/workflows/ci.yml`) reported all four `make` targets under the single replaced `test` job; the new file reports exactly one target per new job. AC2's assertion is an absence, so I built a positive-control fixture (a constructed job block declaring `needs: [changes, test]`) and confirmed the same extractor reports it, before reading the new file's clean four `needs: changes` lines as meaningful. AC3 gating parity: each of the four new jobs reproduces the replaced job's `needs: changes` and `if: needs.changes.outputs.go == 'true'` exactly, and a `diff` of the `changes` job block between `git show HEAD:` and the new file is empty (byte-identical `filters:`). `actionlint .github/workflows/ci.yml` and `make comment-refs` both exited 0.
+- **Step 8, Group B, subtask 2**: the gate enumeration's `Test (incl. -race)` entry became four middle-dot entries carrying the four shipped job *names* (`Test · Race · Coverage ratchet · Test fallback`) and no `make` targets — the enumeration is a list of CI job names, and the job-to-target mapping is subtask 3's table. The `(incl. -race)` parenthetical is deleted rather than moved: it existed to disclose that `-race` ran inside the `Test` job, which the split makes false. Both edited sentences were checked against the shipped `ci.yml`: each name written matches a `name:` value there, and the same extractor over the pre-change file reports `Race`, `Coverage ratchet` and `Test fallback` absent and `Test` present — so it discriminates rather than matching everything. `AGENTS.md` was then re-grepped whole for the four gate names and for job vocabulary; the remaining hits name no CI job and stay true.
 
 ## GO notes
 
@@ -73,3 +74,4 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 ## Files touched
 
 - `.github/workflows/ci.yml` (subtask 1, @ 606d7c4)
+- `AGENTS.md` (subtask 2)
