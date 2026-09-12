@@ -51,6 +51,16 @@ already direct
 
 Each property below has a mechanism behind it rather than a promise.
 
+**Scope, after the spec amendment: the criterion is the Go toolchain, and architecture is not a
+condition of this task.** The owner ruled that the game targets linux amd64 for now
+(`answer 5.1`: "пока не планирую запускать игру где-то кроме linux amd64") and that the
+architecture half goes (`answer 5.2`: "Убрать совсем"); AC2 now reads on the toolchain version
+alone and the spec carries the ruling as a Key decision. **The mechanisms below are unchanged by
+that** — fixed-width big-endian preimages, integer-only arithmetic with no floating-point type,
+SHA-256, the owned reductions and the absence of map ranging were never architecture-only measures:
+they are what makes the output a function of its inputs at all, which the toolchain clause and
+plain reproducibility both need. What the amendment removes is a **gate**, not a property.
+
 1. **Every hashed input is encoded at a fixed width, big-endian, behind a domain tag.** The
    preimage is built by one helper per width, each reinterpreting a signed value's
    two's-complement bits. No `int`-width value and no reflection-driven encoder ever reaches a
@@ -198,7 +208,8 @@ That the two sides then agree on whatever the face is, is the separate claim
 `[derived → AC3]`.
 
 **Numeric types and rounding, because they fix world identity too.** The shares and the bias are
-`decimal.Decimal` — arbitrary-precision, so exact and architecture-independent — and **no
+`decimal.Decimal` — arbitrary-precision, so the arithmetic is exact and carries no binary
+floating-point rounding to disagree about — and **no
 floating-point type appears in either package**, which a guard holds structurally. `round(x)` in the
 island-count and extra-passage expressions above means `floor(x + ½)`: multiply exactly, add one
 half, take the floor, then convert to `int`. The bias becomes `floor(bias × 2^32)` as a `uint64`,
@@ -424,7 +435,7 @@ the determinism path"* is a cross-package proposition, and `detguard` is the pac
 | 8 | `Generator`, `New`, `Cell`, the chunks-consulted function `Cell` itself uses, and the `PrefabClaimer` hook with the prefab boundary § Approach sets out — the claim checked before any chunk build, interior faces deferred, **border faces still carried from the portal rule**, no cell seed, and the whole-chunk granularity stated as the interface's precondition with its guarantor named | `internal/maze/generate.go`, `internal/maze/prefab.go`, `internal/maze/generate_test.go`, `internal/maze/prefab_test.go` | 7 |
 | 9 | The property suite (the agreement sweep run both with a nil hook and with a whole-chunk claim; the island-walled scenario asserting every island face reads as a wall from both sides and that the reachable component equals the non-island set exactly), the cell golden with its mint flag and its per-algorithm single-weight sections — **its mint read against the island rule and the algorithm column, not only the diff's shape** — and this package's `guards_test.go` — `detguard` applied to its own directory, plus the two call-site confinements it owns alone (the connectivity helper reached only from island selection, the key derivations only from the fabric and portal builders) | `internal/maze/property_test.go`, `internal/maze/golden_test.go`, `internal/maze/guards_test.go`, `internal/maze/testdata/cells.golden` | 8 |
 | 10 | The benchmarks: one cell, and one per algorithm under a single-weight input | `internal/maze/bench_test.go` | 8 |
-| 11 | **The architecture gate:** a `Makefile` target re-running the two packages' determinism block under a second `GOARCH` — asserting both that it passes and that the word size differs from the host's, so the probe cannot silently rebuild for the host — with the three outcomes separated (agreed / disagreed / built-but-could-not-execute) and the stated direction for each: loud skip locally, loud refusal in CI. Added to the local aggregate and invoked from CI's existing Go test job. `actionlint` before the workflow edit is staged; `shellcheck` if the target grows a script body | `Makefile`, `.github/workflows/ci.yml` | 9 |
+| 11 | **Remove the architecture gate and revert the propagation its CI job required.** This subtask landed as an *addition* before the owner's ruling arrived, so its artefacts are on the branch and the amendment makes their removal the work. Take out the `ARCH_GOARCH` variable, the `test-arch` target and its `.PHONY` and `verify` entries from the `Makefile`; take out the `Architecture` job and the `test-arch` mention in the job-list comment from `.github/workflows/ci.yml`. **Keep `'**/*.golden'` in the `go` paths filter** and rewrite its comment to the surviving reason (below). Then revert the propagation, which binds a removed job exactly as it bound an added one: the `arch` failure class and its `Architecture` row in `.claude/skills/pr-ci-failed/SKILL.md` and `.claude/skills/main-ci-failed/SKILL.md` (frontmatter description, the CI job list, the class table, the reproducer table, the `Class:` enumeration), the `arch` rows in `.claude/skills/dependabot-pr/reference.md`, the `Architecture` row in `ai-docs/claude-tools-hierarchy.md`, the `make test-arch` mention in `ai-docs/go-test-conventions.md`, and both sites in `AGENTS.md` (the command list and the CI job list). `actionlint` before the workflow edit is staged | `Makefile`, `.github/workflows/ci.yml`, `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/SKILL.md`, `.claude/skills/dependabot-pr/reference.md`, `ai-docs/claude-tools-hierarchy.md`, `ai-docs/go-test-conventions.md`, `AGENTS.md` | 9 |
 | 12 | Close the open question in the design corpus and record the engineering decisions: strike the intra-chunk maze-algorithm choice from the open-question list (`docs/DESIGN.md` §16.2, item 2) and record — in §2.2.2, **confined to recording the owner's interview decision and nothing more**: the per-chunk weighted draw over the decided algorithm set, with the weights biome-level — both edits **in Russian**, since `docs/**` is Russian by the workspace's own rule and is not to be translated. Anything beyond recording that decision would be redesigning the corpus and is out of scope. Then add the key decisions (the derivation chain and its domain tag, the topology/generator package split, the island-and-border rule, and what each share input is a share *of*); then sweep every live document, case-insensitively, for the same open-question claim | `docs/DESIGN.md`, `ai-docs/key-decisions.md`, plus whatever the sweep finds | — |
 
 ## Handoff plan
@@ -441,20 +452,20 @@ the determinism path"* is a cross-package proposition, and `detguard` is the pac
 - **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
   (typically xHigh) — **not** pinned — via the `general-purpose` subagent, 1M-token window —
   subtasks 11–12 (instructions/harness change-type: `Makefile`, `.github/workflows/ci.yml`,
-  `docs/**`, `ai-docs/**`). Terminal group (2 subtasks; within the `1..=10` range).
+  `.claude/**`, `AGENTS.md`, `docs/**`, `ai-docs/**`). Terminal group (2 subtasks; within the
+  `1..=10` range).
 
 Two groups, within the default maximum of four; no user gate needed.
 
-**Why subtask 11 is grouped as harness rather than code, stated because the change-type
-enumerations do not name its files.** A `Makefile` target and a workflow edit are neither `*.go`
-nor `*.md`. They are classified harness here for the reason the homogeneity rule exists — model
-routing: the gate wiring is where the workspace's own `actionlint`-before-staging AXIOM, the
-piped-gate rule and the `paths-filter`-per-job semantics bind, and those are the orchestrator tier's
-material rather than an implementor's. The grouping is also what keeps the count minimal: with the
-architecture gate in Group A the code group would exceed the size cap and force a third group. The
-alternative reading — harness executables get "the same treatment as `.go` files" per the build
+**Why subtask 11 is grouped as harness rather than code.** After the amendment the question barely
+arises: most of its file set is `.claude/**`, `AGENTS.md` and `ai-docs/**`, which the change-type
+enumeration names outright. The two files the enumeration does not name — the `Makefile` and the
+workflow — are classified harness for the reason the homogeneity rule exists, model routing: gate
+wiring is where the `actionlint`-before-staging AXIOM and the `paths-filter`-per-job semantics
+bind, and reverting a propagation across six instruction files is instruction work by any reading.
+The alternative reading — harness executables get "the same treatment as `.go` files" per the build
 AXIOM — is about *which gates must pass*, not about which model writes them, so it does not decide
-this.
+this. The grouping also keeps the count minimal, Group A being at the cap already.
 
 ## Risks
 
@@ -478,34 +489,20 @@ this.
   anywhere in either package's non-test files, with no carve-out — which stays a whole-package
   invariant now that no legitimate caller wants one — `[derived → AC14, and the `detguard`
   predicate applied by each package's guard test]`.
-- **AC2's axes are discharged by different things, and the architecture axis is *instrumented*, not
-  argued — architecture here is a build-time choice, not a runner-catalogue entitlement.**
-  *Toolchain:* the stream's stability is gated upstream in `math/rand/v2`'s own test suite
-  (§ Determinism item 3), and this task's goldens re-run on every route that runs the suite at
-  whatever Go version `go.mod` names — CI pins Go by `go-version-file: go.mod`, so a toolchain bump
-  re-runs them rather than bypassing them
+- **AC2 is a single axis now, and it is instrumented end to end.** The criterion is the Go toolchain
+  version and nothing else, the architecture clause having been struck from the spec on the owner's
+  ruling (§ Determinism → *Scope*). What it rests on, plainly, in two parts that meet: **upstream**,
+  the stream's own stability is gated inside `math/rand/v2`'s test suite and SHA-256's inside
+  `crypto/sha256`'s (§ Determinism items 2 and 3), so the two primitives cannot drift under a
+  toolchain bump without the toolchain's own suite going red; **here**, the two goldens pin this
+  task's whole assembled chain — the preimage encoding, the derived keys, the reductions and the
+  construction — and they re-run on every route that runs the suite, at whatever Go version `go.mod`
+  names. CI pins Go by `go-version-file: go.mod`, so a toolchain bump re-runs them rather than
+  bypassing them
   `[measured 61ca7ea:.github/workflows/ci.yml:93,109,133,145,157,173,189,222,316 · grep -n "go-version" .github/workflows/ci.yml → "go-version-file: go.mod" in every Go job]`.
-  *Word size and the primitive's implementation path:* **a second `GOARCH` is a real instrument and
-  it needs no second runner.** This module's own tests build and run 32-bit natively here
-  `[measured 61ca7ea · GOARCH=386 go test -count=1 ./internal/backoff/ → "ok github.com/maratik123/lab-game/internal/backoff"]`,
-  and the axis is not cosmetic: the standard library ships a different implementation of *both*
-  primitives in the chain per architecture, so a 386 run compares a golden minted on the assembly
-  path against the generic one
-  `[measured go1.26.5 · ls $GOROOT/src/internal/chacha8rand/ → chacha8_amd64.s, chacha8_arm64.s, chacha8_loong64.s, chacha8_riscv64.s beside chacha8_generic.go; ls $GOROOT/src/crypto/internal/fips140/sha256/ → sha256block_386.s beside sha256block_amd64.s]`,
-  at 32-bit `int` and 32-bit `big.Word` limbs inside `decimal`. **The primitives this design will
-  compose already agree across that boundary** — measured over the same sequence of existing calls,
-  with the word size demonstrably differing
-  `[measured 61ca7ea · a scratch main under tmp/ over the existing primitives — a big-endian preimage, sha256.Sum256, rand.NewChaCha8, Uint64, and decimal's floor(0.05×256+½) and floor(0.5×2^32) — run natively and under GOARCH=386 → "intbits=64 …" and "intbits=32 …", identical key, draws, island count and bias threshold]`
-  — which is a fact about the standard library and `decimal`, not yet about this task's chain; that
-  the assembled chain agrees is what the gate establishes
-  `[derived → AC2 and the architecture gate]`. So that half becomes a gate, not a paragraph — see
-  § Test Design → *Architecture*.
-  *Endianness:* the residue, and the only half still argued. Every `GOARCH` that runs natively on
-  this host is little-endian, and a big-endian one needs emulation, so no run here crosses that
-  boundary. It rests on the specified encoder plus the encoding golden, which pins the byte
-  sequence the chain hashes independently of host order — an instrument that would discriminate the
-  day any run happens on a big-endian host, rather than a claim that nothing could —
-  `[derived → AC2, the encoding golden and the architecture gate]`.
+  A Go bump that moved any link of the chain therefore reds the goldens in the same PR that raises
+  the directive — which is the whole of AC2's discharge, with no residue left arguing
+  — `[derived → AC2, the two goldens]`.
 - **Wilson's walk has no worst-case bound.** A loop-erased walk's length is not bounded by the
   chunk's size, so the slowest chunk in a world is a Wilson chunk. Nothing gates the cost in this
   task; the benchmark reports it per algorithm so the deferred caching decision has the spread and
@@ -671,30 +668,6 @@ asserts the lattice-connectivity helper is called from the island selector and f
 the package's non-test files, so no connectivity check exists downstream of the structure build for
 a repair to hide in.
 
-**Architecture — AC2's instrumented half.** A `Makefile` target re-runs **these two packages'**
-determinism block — both goldens, the agreement sweep and the order-independence case — under a
-second `GOARCH`, and CI invokes it, so the axis is watched rather than asserted. Scope is
-deliberately these two packages and not the module: they are pure Go with no database, which is
-what makes a 32-bit build trivial, whereas a module-wide 32-bit run would drag the container
-runtime and Postgres into it for no determinism gain. Two expectations, and the second is what
-makes it an instrument rather than a formality: the run must **pass**, and the word size it runs at
-must **differ** from the host's — a probe that silently rebuilt for the host would report the clean
-answer for any chain at all, so the target asserts the word size it actually ran at.
-
-**The skip/fail direction, stated because every other gate here states its own, and because only
-the host half of this one is measured.** The target distinguishes three outcomes rather than
-collapsing them: it **ran and agreed** (pass); it **ran and disagreed** (a determinism finding —
-red, and the loudest result in the set); or it **built but could not execute**, which is a missing
-*capability*, not a finding. For the third: **locally it skips, loudly**, naming the missing 32-bit
-exec support — a developer's machine's exec support is not the change under test, and the coverage
-ratchet sets the precedent for a loud skip on an absent capability. **In CI it refuses, loudly** —
-CI is the reference environment, a determinism gate that quietly stops running there is the
-green-instrument failure this design argues against everywhere else, and CI's assertion is the run
-**passing**, never merely having been attempted. The host half reproduces here; the runner half is
-the unmeasured one, which is exactly why the direction is written down instead of assumed.
-`actionlint` runs before the workflow edit is staged, per the workspace AXIOM
-`[derived → AC2 and the architecture-gate subtask]`.
-
 **Determinism — AC1, AC2.** `testdata/cells.golden`, minted by a `-update` flag on its own test.
 Pinned in its header: the domain tag, the world seed `20260912`, chunk dimensions 16×16, an island
 share of `0.05`, an extra-passage share of `0.15`, a growing-tree bias of `0.5`, and a weight set
@@ -702,13 +675,14 @@ giving every one of the five equal weight, and **a nil prefab hook** — the pre
 nothing of its own, so the golden stays about the derivation chain, and the constant prefab column
 pins that a nil hook defers nothing anywhere.
 
-**The golden carries a section per algorithm as well as the equal-weight region, and that is what
-makes the architecture re-run cover all five.** Under equal weights the region's chunks draw
-whichever algorithms they draw, so some traversals would have no value pinned at all — and the
-per-algorithm AC19 assertions cannot cover for that, because "is a spanning tree" and "is
-connected" are word-size-invariant and pass at any architecture. So the golden adds, for **each**
-of the five in turn, a single-weight `Params` and one named chunk whose faces are pinned. Every
-traversal then has a pinned value that the second-`GOARCH` run re-checks.
+**The golden carries a section per algorithm as well as the equal-weight region, so that every
+traversal has a pinned value and not just the ones the region happens to draw.** Under equal
+weights the region's chunks draw whichever algorithms they draw, leaving some traversals with no
+value pinned at all — and the per-algorithm AC19 assertions cannot cover for that, because "is a
+spanning tree" and "is connected" hold for *any* spanning structure and so would survive a
+traversal being rewritten into a different one. So the golden adds, for **each** of the five in
+turn, a single-weight `Params` and one named chunk whose faces are pinned. That is what makes a
+changed traversal a red golden rather than a silent restyling of the world.
 
 Covered coordinates for the equal-weight region: every cell of the origin chunk;
 every cell of the chunk diagonally below-left of it (negative in both axes); and the border ring of
@@ -718,7 +692,17 @@ the draw is caught even where two algorithms happen to build the same structure.
 means:** the domain tag, the preimage encoding, the digest, the stream, a reduction, the island
 rule, an algorithm's traversal order, the cycle pass or the portal rule changed — every world
 already generated under that seed is now a different world, and the change is a season rotation
-rather than a refactor. **Reviewing the mint is a distinct obligation from reviewing the diff.** A
+rather than a refactor. **The `'**/*.golden'` paths-filter entry stays, and it is not part of the architecture gate.** It
+arrived in the same commit, which is the only thing tying the two together. Its reason stands on
+its own: the goldens are new on this branch, and `paths-filter` decides which jobs run from the
+changed paths, so **without that entry a commit editing only a golden file matches no Go path and
+reaches no Go job at all** — the Test job that compares the golden would not run on the very commit
+that rewrote it, which is the precise shape of a gate that cannot go red. Removing it alongside the
+gate would therefore delete a guard the amendment never touched. What does change is its comment,
+which currently justifies the entry by the `Architecture` job: it is rewritten to the surviving
+reason `[derived → the paths-filter entry the removal subtask keeps]`.
+
+**Reviewing the mint is a distinct obligation from reviewing the diff.** A
 golden is minted by the code it then guards, so a wrong mint is self-consistent and every later run
 agrees with it. The two properties to read the minted file against — not the diff's shape — are the
 island rule (every face of every island coordinate reads as a wall in the minted table) and the
@@ -729,11 +713,8 @@ reader's judgement.
 **What the golden does and does not carry:** it discharges AC1's
 separate-process clause (it was minted by one process and is checked by another, which a re-exec
 test inside this pure-computation package would add nothing to) and AC2's **toolchain** axis (it
-re-runs at whatever Go `go.mod` names). Its architecture half is discharged not by this test's
-default run but by the **same golden re-run under a second `GOARCH`** — § Test Design →
-*Architecture* above — which
-is where the word-size and generic-versus-assembly paths are actually crossed; endianness alone
-stays the argued residue.
+re-runs at whatever Go `go.mod` names, and AC2 has no other clause since the amendment). There is
+no residue left over for a mechanism argument to carry.
 Alongside it: a repeat evaluation in one process yields identical values; evaluating the coordinate
 table in an order shuffled by a test-local fixed seed yields the same values as evaluating it in
 sorted order; and a `-race` case driving one `Generator` from several goroutines yields the same
