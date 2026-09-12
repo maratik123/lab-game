@@ -86,4 +86,9 @@ prior_qa:
         Your weighted per-chunk draw is recorded as decided, and determinism survives it — the chunk seed settles the draw, and the weights and each algorithm's parameters are inputs like the chunk size already is. What remains is cost. Which algorithms must the draw be able to choose from when this task is done? (Your example split Kruskal and Prim, so the named set is five.)
     answer: |
         All five
+  - round: 3
+    question: |
+        (unprompted)
+    answer: |
+        У меня вопрос по поводу Крускал и Прим, я думал, что это 2 разных алгоритма. Или они рисуют одинаковые лабиринты?
 ```
