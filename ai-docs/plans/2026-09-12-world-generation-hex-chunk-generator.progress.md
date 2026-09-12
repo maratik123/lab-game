@@ -30,7 +30,7 @@ _Updated: 2026-09-13 02:05_
 - [x] 8. `Generator`, `New`, `Cell`, the chunks-consulted function, the `PrefabClaimer` boundary
 - [x] 9. The property suite, the cell golden with its per-algorithm sections, this package's `guards_test.go`
 - [x] 10. The benchmarks — one cell, and one per algorithm under a single-weight input
-- [x] 11. The architecture gate — a `Makefile` target re-running the determinism block under a second `GOARCH`, wired into CI
+- [ ] 11. **Re-opened by the amendment** — remove the architecture gate and revert the propagation its CI job required, across the nine paths the design enumerates  ← CURRENT
 - [x] 12. Close the open question in the design corpus and record the engineering decisions
 
 ## Decisions log
@@ -95,7 +95,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | AC | Status |
 |----|--------|
 | AC1 | TESTED — per design § Test Design → *Determinism*: the golden's own mint/check split discharges the separate-process clause (minted by one process, checked by another; a re-exec test here "would add nothing to it"); the no-dependence-on-evaluation-order clause is discharged by three shapes named alongside the golden, all present — repeat evaluation in one process (`TestCell_RepeatEvaluationIsIdentical`), a coordinate table evaluated in an order shuffled by a test-local fixed key vs. sorted order (`TestCell_ShuffledEvaluationOrderMatchesSortedOrder`), and a `-race` case driving one `Generator` from several goroutines (`TestCell_RaceSafeAcrossGoroutines`) |
-| AC2 | TESTED — per the same paragraph: the golden discharges the **toolchain** axis (it re-runs at whatever Go version `go.mod` names). The **architecture** axis is now discharged by `make test-arch` (subtask 11), which rebuilds and re-runs both packages under a second `GOARCH` and refuses unless the word size it ran at differs from the host's; it is in `verify` and in a CI job of its own. **Endianness** is the design's own argued residue, not a gap: "no run here crosses that boundary" is stated as accepted, resting on the encoding golden plus this gate — not something any test in this task was meant to drive |
+| AC2 | PARTIAL — the amendment narrowed AC2 to one clause: "unchanged by the Go toolchain version that built the binary". That clause is discharged by the two goldens, which re-run at whatever Go version `go.mod` names on every route that runs the suite, backed upstream by the stability goldens inside `math/rand/v2` and `crypto/sha256`. There is no architecture axis left in AC2 and no residue for a mechanism argument to carry. PARTIAL rather than TESTED only until subtask 11 has removed the gate and the package doc comment still asserting cross-architecture stability has been reconciled |
 | AC3 | TESTED (face-agreement sweep, nil hook and whole-chunk claim) |
 | AC4 | TESTED (hexgrid coord/face rapid + table tests) |
 | AC5 | TESTED (ChunkOf partition + straddle-zero table) |
