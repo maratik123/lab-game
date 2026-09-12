@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,9 +14,9 @@ import (
 )
 
 // stubSeam records whether provision was called and lets each test control
-// probe/locate/persist/forget without touching a runtime. provision starts
-// no container: it returns a synthetic DSN and a stop closure that only
-// records that it ran.
+// probe/locate/persist/forget/workDir without touching a runtime or the
+// process's real working directory. provision starts no container: it
+// returns a synthetic DSN and a stop closure that only records that it ran.
 type stubSeam struct {
 	provisionCalled bool
 	provisionDSN    string
@@ -29,6 +31,15 @@ type stubSeam struct {
 
 	locateDSN string
 	locateOK  bool
+
+	forgetCalled bool
+
+	// workDirDir stands in for the process's working directory; a valid
+	// stub project directory by default, so tests that do not care about
+	// the derivation still reach a valid container name. workDirErr, when
+	// set, makes the lookup itself fail instead.
+	workDirDir string
+	workDirErr error
 }
 
 func (s *stubSeam) seam() seam {
@@ -53,7 +64,20 @@ func (s *stubSeam) seam() seam {
 		},
 		locate:  func() (string, bool) { return s.locateDSN, s.locateOK },
 		persist: func(string) error { return nil },
-		forget:  func() error { return nil },
+		forget: func() error {
+			s.forgetCalled = true
+			return nil
+		},
+		workDir: func() (string, error) {
+			if s.workDirErr != nil {
+				return "", s.workDirErr
+			}
+			dir := s.workDirDir
+			if dir == "" {
+				dir = "/stub/lab-game"
+			}
+			return dir, nil
+		},
 	}
 }
 
@@ -319,9 +343,15 @@ func TestRunChild_ceilingMatchesTheFormula(t *testing.T) {
 // code that disables the reaper, which is a process-wide setting written to the
 // environment. Two such tests running at once would race each other's writes.
 func TestRun_upDown_useTheSeamWithNoRuntime(t *testing.T) {
+	const dir = "/stub/lab-game"
+	wantName, err := containerNameForDir(dir)
+	if err != nil {
+		t.Fatalf("containerNameForDir(%q): %v", dir, err)
+	}
+
 	// probeMaxConns stands for a server whose capacity admits the need: --up
 	// reads the capacity back rather than reporting the one it asked for.
-	stub := &stubSeam{provisionDSN: "postgres://shared/db", probeMaxConns: 100000}
+	stub := &stubSeam{provisionDSN: "postgres://shared/db", probeMaxConns: 100000, workDirDir: dir}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"--up"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code != 0 {
@@ -333,11 +363,14 @@ func TestRun_upDown_useTheSeamWithNoRuntime(t *testing.T) {
 	if !stub.provisionCalled {
 		t.Errorf("--up did not call provision")
 	}
-	if stub.provisionOpts.ContainerName != testdb.SharedContainerName {
-		t.Errorf("--up provisioned with ContainerName=%q, want %q", stub.provisionOpts.ContainerName, testdb.SharedContainerName)
+	if stub.provisionOpts.ContainerName != wantName {
+		t.Errorf("--up provisioned with ContainerName=%q, want %q", stub.provisionOpts.ContainerName, wantName)
+	}
+	if !strings.Contains(stderr.String(), wantName) {
+		t.Errorf("--up stderr = %q, want the report line to name the container %q", stderr.String(), wantName)
 	}
 
-	stub2 := &stubSeam{locateDSN: "postgres://shared/db", locateOK: true, probeMaxConns: 100}
+	stub2 := &stubSeam{locateDSN: "postgres://shared/db", locateOK: true, probeMaxConns: 100, workDirDir: dir}
 	var stdout2, stderr2 bytes.Buffer
 	code = run([]string{"--down"}, noLookup, stub2.seam(), &stdout2, &stderr2)
 	if code != 0 {
@@ -345,6 +378,9 @@ func TestRun_upDown_useTheSeamWithNoRuntime(t *testing.T) {
 	}
 	if !stub2.provisionCalled || !stub2.stopCalled {
 		t.Errorf("--down did not stop the located server (provisionCalled=%v, stopCalled=%v)", stub2.provisionCalled, stub2.stopCalled)
+	}
+	if stub2.provisionOpts.ContainerName != wantName {
+		t.Errorf("--down provisioned with ContainerName=%q, want %q", stub2.provisionOpts.ContainerName, wantName)
 	}
 }
 
@@ -367,7 +403,10 @@ func TestRun_upOnAnUndersizedExistingServer_failsNamingTheCapacity(t *testing.T)
 func TestRun_downWithNoLocator_isANoOp(t *testing.T) {
 	t.Parallel()
 
-	stub := &stubSeam{}
+	// The working directory carries an invalid name on purpose: the no-op
+	// exit is decided by sm.locate() alone, so a derivation that ran before
+	// it would turn this case into a failure it must not become.
+	stub := &stubSeam{workDirDir: "/stub/-invalid"}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code != 0 {
@@ -403,6 +442,262 @@ func TestRun_noChildArgs_isAUsageError(t *testing.T) {
 	}
 	if stub.provisionCalled {
 		t.Errorf("provision was called with no child command at all")
+	}
+}
+
+func TestContainerNameForDir(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		dir     string
+		want    string
+		wantErr bool
+	}{
+		{name: "first checkout", dir: "/home/dev/lab-game", want: "lab-game-test-postgres"},
+		{name: "sibling checkout", dir: "/home/dev/lab-game2", want: "lab-game2-test-postgres"},
+		{name: "underscore and dot survive", dir: "/home/dev/lab_game.2", want: "lab_game.2-test-postgres"},
+		{name: "space is refused", dir: "/home/dev/lab game", wantErr: true},
+		{name: "leading dash is refused", dir: "/home/dev/-lab-game", wantErr: true},
+		{name: "leading dot is refused", dir: "/home/dev/.lab-game", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := containerNameForDir(tc.dir)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("containerNameForDir(%q) = %q, nil; want an error", tc.dir, got)
+				}
+				if !strings.Contains(err.Error(), filepath.Base(tc.dir)) {
+					t.Errorf("error %q does not name the offending directory %q", err, filepath.Base(tc.dir))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("containerNameForDir(%q) = _, %v; want no error", tc.dir, err)
+			}
+			if got != tc.want {
+				t.Errorf("containerNameForDir(%q) = %q, want %q", tc.dir, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestContainerNameForDir_rootPath_hasNoBaseName(t *testing.T) {
+	t.Parallel()
+
+	if got, err := containerNameForDir("/"); err == nil {
+		t.Fatalf("containerNameForDir(\"/\") = %q, nil; want an error", got)
+	}
+}
+
+func TestContainerNameForDir_sameBaseName_differentParents_isEqual(t *testing.T) {
+	t.Parallel()
+
+	a, errA := containerNameForDir("/home/alpha/lab-game")
+	b, errB := containerNameForDir("/var/beta/lab-game")
+	if errA != nil || errB != nil {
+		t.Fatalf("containerNameForDir errors: %v, %v", errA, errB)
+	}
+	if a != b {
+		t.Errorf("containerNameForDir(.../alpha/lab-game) = %q, containerNameForDir(.../beta/lab-game) = %q; want equal", a, b)
+	}
+}
+
+// Not parallel: reaches the code that disables the reaper, a process-wide
+// environment write.
+func TestRun_up_differentDirs_differentContainerNames(t *testing.T) {
+	stubA := &stubSeam{workDirDir: "/stub/lab-game", probeMaxConns: 100000}
+	var stdoutA, stderrA bytes.Buffer
+	if code := run([]string{"--up"}, noLookup, stubA.seam(), &stdoutA, &stderrA); code != 0 {
+		t.Fatalf("run(--up) [a] = %d, want 0; stderr: %s", code, stderrA.String())
+	}
+
+	stubB := &stubSeam{workDirDir: "/stub/lab-game2", probeMaxConns: 100000}
+	var stdoutB, stderrB bytes.Buffer
+	if code := run([]string{"--up"}, noLookup, stubB.seam(), &stdoutB, &stderrB); code != 0 {
+		t.Fatalf("run(--up) [b] = %d, want 0; stderr: %s", code, stderrB.String())
+	}
+
+	if stubA.provisionOpts.ContainerName == stubB.provisionOpts.ContainerName {
+		t.Errorf("both directories provisioned the same container name %q", stubA.provisionOpts.ContainerName)
+	}
+}
+
+// Not parallel, same reason as above.
+func TestRun_up_sameBaseName_differentParents_sameContainerName(t *testing.T) {
+	stubA := &stubSeam{workDirDir: "/home/alpha/lab-game", probeMaxConns: 100000}
+	var stdoutA, stderrA bytes.Buffer
+	if code := run([]string{"--up"}, noLookup, stubA.seam(), &stdoutA, &stderrA); code != 0 {
+		t.Fatalf("run(--up) [alpha] = %d, want 0; stderr: %s", code, stderrA.String())
+	}
+
+	stubB := &stubSeam{workDirDir: "/var/beta/lab-game", probeMaxConns: 100000}
+	var stdoutB, stderrB bytes.Buffer
+	if code := run([]string{"--up"}, noLookup, stubB.seam(), &stdoutB, &stderrB); code != 0 {
+		t.Fatalf("run(--up) [beta] = %d, want 0; stderr: %s", code, stderrB.String())
+	}
+
+	if stubA.provisionOpts.ContainerName != stubB.provisionOpts.ContainerName {
+		t.Errorf("provisioned names differ: %q vs %q, want equal", stubA.provisionOpts.ContainerName, stubB.provisionOpts.ContainerName)
+	}
+}
+
+// Not parallel, same reason as above.
+func TestRun_down_staleLocator_invalidDir_stillExitsZero(t *testing.T) {
+	stub := &stubSeam{
+		locateDSN:  "postgres://stale/db",
+		locateOK:   true,
+		probeErr:   errUnreachable,
+		workDirDir: "/stub/-invalid",
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--down) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !stub.forgetCalled {
+		t.Errorf("forget was not called for a stale locator")
+	}
+	if stub.provisionCalled {
+		t.Errorf("provision was called although the locator was stale")
+	}
+}
+
+// Not parallel, same reason as above.
+func TestRun_up_invalidDir_failsNamingTheDirectory(t *testing.T) {
+	const dir = "/stub/-invalid"
+	stub := &stubSeam{workDirDir: dir}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up) = 0, want non-zero for an invalid directory name")
+	}
+	if stub.provisionCalled {
+		t.Errorf("provision was called although the directory name is invalid")
+	}
+	if !strings.Contains(stderr.String(), filepath.Base(dir)) {
+		t.Errorf("stderr = %q, want the offending directory name %q", stderr.String(), filepath.Base(dir))
+	}
+}
+
+// Not parallel: asserts on the process-wide reaper environment variable.
+func TestRun_up_invalidDir_leavesReaperSettingUnchanged(t *testing.T) {
+	orig, hadOrig := os.LookupEnv("TESTCONTAINERS_RYUK_DISABLED")
+	t.Cleanup(func() {
+		if hadOrig {
+			_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", orig)
+		} else {
+			_ = os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED")
+		}
+	})
+	if err := os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED"); err != nil {
+		t.Fatalf("Unsetenv: %v", err)
+	}
+
+	stub := &stubSeam{workDirDir: "/stub/-invalid"}
+	var stdout, stderr bytes.Buffer
+	run([]string{"--up"}, noLookup, stub.seam(), &stdout, &stderr)
+
+	if _, ok := os.LookupEnv("TESTCONTAINERS_RYUK_DISABLED"); ok {
+		t.Errorf("TESTCONTAINERS_RYUK_DISABLED was set although the pre-check should fail before it")
+	}
+}
+
+// Not parallel, same reason as above.
+func TestRun_down_invalidDir_stopsNothing(t *testing.T) {
+	stub := &stubSeam{
+		locateDSN:     "postgres://shared/db",
+		locateOK:      true,
+		probeMaxConns: 100,
+		workDirDir:    "/stub/-invalid",
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--down) = 0, want non-zero for an invalid directory name")
+	}
+	if stub.stopCalled {
+		t.Errorf("stop was called although the directory name is invalid")
+	}
+}
+
+// Not parallel: asserts on the process-wide reaper environment variable.
+func TestRun_down_invalidDir_leavesReaperSettingUnchanged(t *testing.T) {
+	orig, hadOrig := os.LookupEnv("TESTCONTAINERS_RYUK_DISABLED")
+	t.Cleanup(func() {
+		if hadOrig {
+			_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", orig)
+		} else {
+			_ = os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED")
+		}
+	})
+	if err := os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED"); err != nil {
+		t.Fatalf("Unsetenv: %v", err)
+	}
+
+	stub := &stubSeam{
+		locateDSN:     "postgres://shared/db",
+		locateOK:      true,
+		probeMaxConns: 100,
+		workDirDir:    "/stub/-invalid",
+	}
+	var stdout, stderr bytes.Buffer
+	run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+
+	if _, ok := os.LookupEnv("TESTCONTAINERS_RYUK_DISABLED"); ok {
+		t.Errorf("TESTCONTAINERS_RYUK_DISABLED was set although the pre-check should fail before it")
+	}
+}
+
+// Not parallel, same reason as above.
+func TestRun_up_workDirLookupFails(t *testing.T) {
+	stub := &stubSeam{workDirErr: errors.New("no such directory")}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up) = 0, want non-zero when the working directory cannot be read")
+	}
+	if stub.provisionCalled {
+		t.Errorf("provision was called although the working directory lookup failed")
+	}
+	if !strings.Contains(stderr.String(), "no such directory") {
+		t.Errorf("stderr = %q, want the lookup's own error", stderr.String())
+	}
+}
+
+// Not parallel, same reason as above.
+func TestRun_down_workDirLookupFails(t *testing.T) {
+	stub := &stubSeam{
+		locateDSN:     "postgres://shared/db",
+		locateOK:      true,
+		probeMaxConns: 100,
+		workDirErr:    errors.New("no such directory"),
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--down) = 0, want non-zero when the working directory cannot be read")
+	}
+	if stub.stopCalled {
+		t.Errorf("stop was called although the working directory lookup failed")
+	}
+}
+
+func TestRunChild_invalidWorkDir_stillRunsToCompletion(t *testing.T) {
+	t.Parallel()
+
+	// runChild must not derive a container name at all: the gate path must
+	// not be able to fail on a fact it never uses.
+	stub := &stubSeam{workDirDir: "/stub/-invalid"}
+	var stdout, stderr bytes.Buffer
+
+	code := runChild(t.Context(), exitChild(3), noLookup, stub.seam(), 1, 1, &stdout, &stderr)
+
+	if code != 3 {
+		t.Fatalf("runChild = %d, want the child's own exit code 3; stderr: %s", code, stderr.String())
 	}
 }
 
