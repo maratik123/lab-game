@@ -159,9 +159,14 @@ Transport which were previously connected from previous requests but are now sit
   the top-level `issues:` section and the whole configuration loads with them present
   [measured e66beb5 · the candidate configuration plus `issues: {max-issues-per-linter: 0,
   max-same-issues: 0}` → the run loads and reports the same set the CLI flags produced]. Lifting them
-  is safe on today's tree: with the caps off and every existing linter enabled, the only findings are
-  the new gates' own [same measurement → every reported line carries `(forbidigo)` or `(govet)`, and no other linter
-  named].
+  is safe on today's tree, and that is pinned to a run with the *second* suppressor off as well: a
+  run made under the line dedup could not have seen a finding another linter had claimed on the same
+  line, which is the next paragraph's whole point, so it is not evidence this paragraph may rest on.
+  With the caps off, the dedup off and every existing linter enabled, the only findings are the new
+  gates' own [measured e66beb5 — the base tree, read in a detached worktree — under the gate
+  configuration at 52ef68e plus `issues: {uniq-by-line: false}` ·
+  `golangci-lint run -c <that file> ./...` → every reported line carries `(forbidigo)` or `(govet)`,
+  and no other linter named].
 
   Put to the owner on 2026-09-12 as § Open questions' "D3's reach", and confirmed in their words:
   *"Set max-issues-per-linter and max-same-issues to 0. Verified independently: today's tree is 0
@@ -475,7 +480,7 @@ Transport which were previously connected from previous requests but are now sit
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
 | 1 | Enable `containedctx` and `fatcontext`; pin `run.relative-path-mode: gomod` (D2); in a top-level `issues:` section, lift the issue-truncation caps **and** switch the cross-linter line dedup off with `uniq-by-line: false` — every default that suppresses a site the gate would otherwise report, closed together (D3). Both linters are silent on today's tree, so the gate stays green with no source change [measured e66beb5 · `golangci-lint run --enable-only=containedctx ./...` → `0 issues.`; the same for `fatcontext`]. `golangci-lint config verify` runs before the green run is believed (§ Risks, the silently-ignored-settings-key row). Serves AC6, AC7. | `.golangci.yml` | — |
-| 2 | Enable `gocritic`'s `deferInLoop` and `govet`'s `nilness`. `deferInLoop` reports nothing on today's tree and `nilness` reports the deliberate typed-nil-in-interface assertion in `internal/store` and nothing else [measured e66beb5 · the candidate configuration on the tree with the truncation caps lifted → `internal/store/basis_test.go:73:11: nilness: impossible condition: non-nil == nil (govet)`, and no `gocritic` line]; that assertion's existing directive gains `govet` beside `staticcheck` and states the added linter's reason. Serves AC8, AC9, AC10. | `.golangci.yml`, `internal/store/basis_test.go` | 1 |
+| 2 | Enable `gocritic`'s `deferInLoop` and `govet`'s `nilness`. `deferInLoop` reports nothing on today's tree and `nilness` reports the deliberate typed-nil-in-interface assertion in `internal/store` and nothing else — pinned to a run with the line dedup off as well as the caps, because a run made under the dedup could not have seen a `deferInLoop` whose line another linter had already claimed (D3) [measured e66beb5 — the base tree, read in a detached worktree — under the gate configuration at 52ef68e with the caps lifted and `issues: {uniq-by-line: false}` · `golangci-lint run -c <that file> ./...` → `internal/store/basis_test.go:73:11: nilness: impossible condition: non-nil == nil (govet)`, the `forbidigo` sites D6 enumerates plus the `time.After` subtask 3 removes, and no `gocritic` line; the checker is live in that configuration rather than merely quiet — the same configuration over a constructed package whose loop body defers a file close reports `deferInLoop: Possible resource leak, 'defer' is called in the 'for' loop (gocritic)` beside `errcheck`'s finding on that line, and drops it again with `uniq-by-line` back at its default]; that assertion's existing directive gains `govet` beside `staticcheck` and states the added linter's reason. Serves AC8, AC9, AC10. | `.golangci.yml`, `internal/store/basis_test.go` | 1 |
 | 3 | Replace the ingest retry loop's unstoppable timer with a wait-or-cancel helper holding a stopped timer (D5). Test first. Serves AC3, AC10. | `internal/ingest/attempt.go`, `internal/ingest/retry_test.go` | — |
 | 4 | Bound the scheduler's detached connection close with its own named-constant timeout (D7). Serves AC5. | `internal/scheduler/execute.go` | — |
 | 5 | Enable `forbidigo` with the patterns under `linters.settings.forbidigo.forbid`, and the two carve-outs each scoped `linters: [forbidigo]` — a new `^cmd/` rule, and `forbidigo` appended to the existing `_test\.go` rule's list (D1, D2, D4). Give every fresh-root-context site the gate reports its `//nolint:forbidigo` carrying a stated reason and a named owner (D6), annotating the re-run's own set rather than D6's prose. `golangci-lint config verify` runs before the green run is believed. The gate must be green at this subtask's commit, so the enabling and the annotations land together. Serves AC4, AC5, AC10, AC14. | `.golangci.yml`, `internal/health/canary.go`, `internal/health/process.go`, `internal/health/server.go`, `internal/scheduler/execute.go`, `internal/testdb/testdb.go`, `internal/tgtest/tgtest.go` | 2, 3, 4 |
@@ -627,7 +632,11 @@ total is within the default maximum of 4 design-defined groups, so no user appro
   shares its line with another linter's finding must be seen reported for `deferInLoop` under the
   configuration as shipped, and seen *not* reported when `uniq-by-line` is put back to its default.
   The repository's own tree discriminates nothing here — it is `0 issues.` either way (D3)
-  [derived → AC8, AC10].
+  [derived → AC8, AC10]. **That control runs in subtask 5, not in subtask 1.** Subtask 1 sets the
+  key, but `gocritic`'s `enabled-checks` does not carry `deferInLoop` until subtask 2, so at subtask
+  1's commit the control has no checker to discriminate with and would come back green whatever the
+  key said — a green instrument rather than evidence. Subtask 5 is where both halves are present and
+  where the gate is re-run anyway [derived → the dependency order in § Decomposition, 5 → 2 → 1].
 - The `//nolint:forbidigo` escape must be seen both to suppress the finding and to be refused when it
   carries no specific linter or no explanation, which `nolintlint`'s existing settings already require
   [derived → AC5].
