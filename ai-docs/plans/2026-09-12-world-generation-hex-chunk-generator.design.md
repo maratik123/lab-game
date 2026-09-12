@@ -25,18 +25,26 @@ coordinate is also the vocabulary doors, discoveries and trails speak; the gener
 of it, not its owner. The direction of the dependency is `maze → hexgrid`, never back
 `[derived → go build ./..., which refuses an import cycle]`.
 
-**Why the package is not named `hex`.** `encoding/hex` occupies that name, and a determinism-path
-package whose import needs an alias wherever a digest is rendered is a name that invites the
-mistake. `hexgrid` names the thing without the clash.
+**Why the package is not named `hex`.** The standard library already has that package name
+`[measured go1.26.5 · go doc encoding/hex → "package hex // import \"encoding/hex\""]`, and a
+determinism-path package whose import needs an alias wherever a digest is rendered is a name that
+invites the mistake. `hexgrid` names the thing without the clash.
 
 **No configuration in this task.** The generation inputs arrive as a plain `maze.Params` value the
 caller fills. The spec puts the biome file that carries the weights, the per-algorithm parameters
 and the island share in #28 and fixes no key name here, so `internal/config` is untouched — even
 though the chunk grid's dimensions already have keys there
 `[measured 46ee531:internal/config/balance_load.go:113-114 · grep -n "world.chunk" → entry("world.chunk.cols", bindInt(&b.World.Chunk.Cols, positiveInt, "positive")), entry("world.chunk.rows", …)]`.
-Mapping those keys (and #28's new ones) onto `Params` belongs to the composition root, with #28.
-Consequence worth stating: `internal/maze` imports `internal/hexgrid`, the standard library and
-`shopspring/decimal`, and nothing else of this module
+Mapping those keys (and #28's new ones) onto `Params` belongs to the composition root, with #28 —
+**and one clause for #28 to inherit rather than rediscover:** those keys are typed `int` in the
+balance struct
+`[measured 61ca7ea:internal/config/balance.go:28-31 · grep -n -A4 "^type ChunkBalance" internal/config/balance.go → "Cols int", "Rows int"]`
+while `hexgrid.Dims` is `int32`, so the mapping carries a narrowing conversion and will meet the
+same `gosec` G115 finding as the preimage helpers below, with the same remedy.
+Consequence worth stating: `internal/maze` will import `internal/hexgrid`, the standard library and
+`shopspring/decimal`, and nothing else of this module `[derived → the import list the two packages
+land with, held by go build's own refusal of a cycle]`. The decimal dependency it leans on is
+already direct
 `[measured 46ee531:go.mod:15 · grep -n shopspring go.mod → github.com/shopspring/decimal v1.4.0]`.
 
 ### Determinism: what makes `f(world_seed, coord)` survive a toolchain
@@ -183,8 +191,11 @@ Everything below is a pure function of `(world seed, chunk coordinate, Params)`.
 For a coordinate no prefab claims — the claimed case is § The prefab boundary below — a cell's six
 faces then read: for each direction, the canonical face; if both its cells are in this chunk, the
 interior face's state; otherwise the border's portal membership. An island's faces are all walls,
-and no neighbour of an island ever carves into it, so agreement from both sides needs no special
-case `[derived → AC3]`.
+and no neighbour of an island ever carves into it — which needs **its own** scenario
+(§ Test Design → *Islands are walled*), because face agreement holds whether or not it is true and
+therefore cannot witness it — `[derived → AC11's first clause, via the island-walled scenario]`.
+That the two sides then agree on whatever the face is, is the separate claim
+`[derived → AC3]`.
 
 **Numeric types and rounding, because they fix world identity too.** The shares and the bias are
 `decimal.Decimal` — arbitrary-precision, so exact and architecture-independent — and **no
@@ -360,8 +371,9 @@ Both new packages need the same determinism predicates, and #28 (configuration o
 Two sites today with a visible third and fourth is the workspace's own "lift it" signal, and the
 argument *"it is only a few predicates"* / *"it needs no new package"* is refused there by name. So
 they are lifted: a new **`internal/detguard`** holds them, following this tree's established
-`…guard` naming (`internal/gateguard`, `internal/panicguard` are already there), and each consuming
-package's `guards_test.go` applies them to its own directory.
+`…guard` naming
+`[measured 61ca7ea · ls -d internal/gateguard internal/panicguard internal/srcguard → all three present]`,
+and each consuming package's `guards_test.go` applies them to its own directory.
 
 **The lift target is deliberately not `internal/srcguard`, and that is worth stating because it is
 the obvious-looking answer.** `srcguard`'s own package comment reserves its scope:
@@ -402,7 +414,7 @@ the determinism path"* is a cross-package proposition, and `detguard` is the pac
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | `internal/detguard`: the shared determinism predicates over a package directory's non-test sources — no clock, no `math/rand` v1 / `hash/maphash` / `crypto/rand`, the single permitted `math/rand/v2` identifier, no floating-point type, no `math` import, no float-valued `decimal` member, no map ranging — composing `internal/srcguard`'s walker and adding no walk of its own, each predicate paired with its own scratch red case carrying the *blind* shape (a method-result float, not only a declaration) | `internal/detguard/doc.go`, `internal/detguard/detguard.go`, `internal/detguard/main_test.go`, `internal/detguard/detguard_test.go` | — |
+| 1 | `internal/detguard`: the shared determinism predicates over a package directory's non-test sources — no clock, no `math/rand` v1 / `hash/maphash` / `crypto/rand`, **no `math/rand/v2` identifier other than the ChaCha8 constructor (zero permitted, never "exactly one")**, no floating-point type, no `math` import, no float-valued `decimal` member, no map ranging — composing `internal/srcguard`'s walker and adding no walk of its own, each predicate paired with its own scratch red case carrying the *blind* shape (a method-result float, not only a declaration) | `internal/detguard/doc.go`, `internal/detguard/detguard.go`, `internal/detguard/main_test.go`, `internal/detguard/detguard_test.go` | — |
 | 2 | `internal/hexgrid`: the axial coordinate, the six directions and `Opposite`, the canonical `Face` with `FaceOf`, `Chunk`, `Dims`, the **floor-division** `ChunkOf` with `Origin`/`Contains`, `ChunkDistance` and `Dims.Distance` — with its table tests, its leak-check `TestMain`, and a `guards_test.go` applying `detguard` to its own directory | `internal/hexgrid/doc.go`, `internal/hexgrid/coord.go`, `internal/hexgrid/face.go`, `internal/hexgrid/chunk.go`, `internal/hexgrid/main_test.go`, `internal/hexgrid/coord_test.go`, `internal/hexgrid/chunk_test.go`, `internal/hexgrid/guards_test.go` | 1 |
 | 3 | `internal/maze` derivation core: the per-width fixed-width preimage helpers with their G115 suppressions, the domain tag, the world key, the cell key and cell seed, the chunk key, the **border key over the canonically ordered chunk pair (lesser, greater)**, the unexported one-method stream interface the ChaCha8 constructor is the only producer of, and the pinned reductions (total bounded draw, shuffle, weighted pick) — with unit tests over a fake stream and a golden over the derived keys | `internal/maze/doc.go`, `internal/maze/seed.go`, `internal/maze/draw.go`, `internal/maze/main_test.go`, `internal/maze/seed_test.go`, `internal/maze/draw_test.go`, `internal/maze/testdata/derive.golden` | 2 |
 | 4 | `Params` with its validation (including the decimal shares and the bias, and the rounding the design pins for each), the `Algorithm` enum with its canonical order, **the weight set as an array indexed by that enum rather than a map** — so no iteration order and no unknown key exist to police — the `FaceState` enum with the deferred state as its zero value, and the weighted per-chunk algorithm draw, and the island-capacity rule (the share's denominator is the chunk's **non-border** cell count, so a positive share is rejected at the degenerate shapes) | `internal/maze/params.go`, `internal/maze/algorithm.go`, `internal/maze/params_test.go`, `internal/maze/algorithm_test.go` | 3 |
@@ -410,9 +422,9 @@ the determinism path"* is a cross-package proposition, and `detguard` is the pac
 | 6 | The algorithm implementations over the non-island induced subgraph: backtracker, Kruskal, frontier Prim, growing tree with its bias threshold, Wilson's walk | `internal/maze/algorithms.go` (split by algorithm if it passes the soft size limit), `internal/maze/algorithms_test.go` | 5 |
 | 7 | The extra-passage pass and border-portal selection, including the canonical-lesser-chunk candidate enumeration | `internal/maze/cycles.go`, `internal/maze/portal.go`, `internal/maze/cycles_test.go`, `internal/maze/portal_test.go` | 6 |
 | 8 | `Generator`, `New`, `Cell`, the chunks-consulted function `Cell` itself uses, and the `PrefabClaimer` hook with the prefab boundary § Approach sets out — the claim checked before any chunk build, interior faces deferred, **border faces still carried from the portal rule**, no cell seed, and the whole-chunk granularity stated as the interface's precondition with its guarantor named | `internal/maze/generate.go`, `internal/maze/prefab.go`, `internal/maze/generate_test.go`, `internal/maze/prefab_test.go` | 7 |
-| 9 | The property suite (the agreement sweep run both with a nil hook and with a whole-chunk claim), the cell golden with its mint flag, and this package's `guards_test.go` — `detguard` applied to its own directory, plus the two call-site confinements it owns alone (the connectivity helper reached only from island selection, the key derivations only from the fabric and portal builders) | `internal/maze/property_test.go`, `internal/maze/golden_test.go`, `internal/maze/guards_test.go`, `internal/maze/testdata/cells.golden` | 8 |
+| 9 | The property suite (the agreement sweep run both with a nil hook and with a whole-chunk claim; the island-walled scenario asserting every island face reads as a wall from both sides and that the reachable component equals the non-island set exactly), the cell golden with its mint flag and its per-algorithm single-weight sections — **its mint read against the island rule and the algorithm column, not only the diff's shape** — and this package's `guards_test.go` — `detguard` applied to its own directory, plus the two call-site confinements it owns alone (the connectivity helper reached only from island selection, the key derivations only from the fabric and portal builders) | `internal/maze/property_test.go`, `internal/maze/golden_test.go`, `internal/maze/guards_test.go`, `internal/maze/testdata/cells.golden` | 8 |
 | 10 | The benchmarks: one cell, and one per algorithm under a single-weight input | `internal/maze/bench_test.go` | 8 |
-| 11 | **The architecture gate:** a `Makefile` target re-running the two packages' determinism block under a second `GOARCH` — asserting both that it passes and that the word size differs from the host's, so the probe cannot silently rebuild for the host — added to the local aggregate and invoked from CI's existing Go test job. `actionlint` before the workflow edit is staged; `shellcheck` if the target grows a script body | `Makefile`, `.github/workflows/ci.yml` | 9 |
+| 11 | **The architecture gate:** a `Makefile` target re-running the two packages' determinism block under a second `GOARCH` — asserting both that it passes and that the word size differs from the host's, so the probe cannot silently rebuild for the host — with the three outcomes separated (agreed / disagreed / built-but-could-not-execute) and the stated direction for each: loud skip locally, loud refusal in CI. Added to the local aggregate and invoked from CI's existing Go test job. `actionlint` before the workflow edit is staged; `shellcheck` if the target grows a script body | `Makefile`, `.github/workflows/ci.yml` | 9 |
 | 12 | Close the open question in the design corpus and record the engineering decisions: strike the intra-chunk maze-algorithm choice from the open-question list (`docs/DESIGN.md` §16.2, item 2) and record — in §2.2.2, **confined to recording the owner's interview decision and nothing more**: the per-chunk weighted draw over the decided algorithm set, with the weights biome-level — both edits **in Russian**, since `docs/**` is Russian by the workspace's own rule and is not to be translated. Anything beyond recording that decision would be redesigning the corpus and is out of scope. Then add the key decisions (the derivation chain and its domain tag, the topology/generator package split, the island-and-border rule, and what each share input is a share *of*); then sweep every live document, case-insensitively, for the same open-question claim | `docs/DESIGN.md`, `ai-docs/key-decisions.md`, plus whatever the sweep finds | — |
 
 ## Handoff plan
@@ -480,10 +492,14 @@ this.
   primitives in the chain per architecture, so a 386 run compares a golden minted on the assembly
   path against the generic one
   `[measured go1.26.5 · ls $GOROOT/src/internal/chacha8rand/ → chacha8_amd64.s, chacha8_arm64.s, chacha8_loong64.s, chacha8_riscv64.s beside chacha8_generic.go; ls $GOROOT/src/crypto/internal/fips140/sha256/ → sha256block_386.s beside sha256block_amd64.s]`,
-  at 32-bit `int` and 32-bit `big.Word` limbs inside `decimal`. Probed over this design's exact
-  chain and its decimal arithmetic, the two agree while the word size demonstrably differs
-  `[measured 61ca7ea · a scratch main under tmp/ running the big-endian preimage → sha256.Sum256 → NewChaCha8 → Uint64 chain plus floor(0.05×256+½) and floor(0.5×2^32) in decimal, under go run and under GOARCH=386 go run → "intbits=64 …" and "intbits=32 …" with identical key, draws, island count and bias threshold]`.
-  So that half becomes a gate, not a paragraph — see § Test Design → *Architecture*.
+  at 32-bit `int` and 32-bit `big.Word` limbs inside `decimal`. **The primitives this design will
+  compose already agree across that boundary** — measured over the same sequence of existing calls,
+  with the word size demonstrably differing
+  `[measured 61ca7ea · a scratch main under tmp/ over the existing primitives — a big-endian preimage, sha256.Sum256, rand.NewChaCha8, Uint64, and decimal's floor(0.05×256+½) and floor(0.5×2^32) — run natively and under GOARCH=386 → "intbits=64 …" and "intbits=32 …", identical key, draws, island count and bias threshold]`
+  — which is a fact about the standard library and `decimal`, not yet about this task's chain; that
+  the assembled chain agrees is what the gate establishes
+  `[derived → AC2 and the architecture gate]`. So that half becomes a gate, not a paragraph — see
+  § Test Design → *Architecture*.
   *Endianness:* the residue, and the only half still argued. Every `GOARCH` that runs natively on
   this host is little-endian, and a big-endian one needs emulation, so no run here crosses that
   boundary. It rests on the specified encoder plus the encoding golden, which pins the byte
@@ -588,6 +604,19 @@ border cell; a share of
 zero yields no island; each degenerate shape, **at share zero**, yields no island (every cell is a
 border cell in each of them) while a **positive** share at those dimensions is rejected by `New`
 with the input named; the set is unchanged by the algorithm weights.
+
+**Islands are walled, asserted where it can fail — AC11's first clause.** Entry point `Cell`, not
+the selector: (a) **every face of every island cell reads `Wall` from both sides**, over the
+multi-chunk region; and (b) the passage-reachable component over that region equals **exactly** the
+region's non-island set — set equality, not "one component". Both halves are needed because the
+suite's other instruments are blind here, and that blindness is the reason this scenario exists
+rather than being folded into a neighbour: *Connectivity* asserts the non-island set is one
+component, which a face wrongly carved into an island does not break, since the island is not in
+that set; *Face agreement* asserts the two sides **agree**, and a passage into an island agrees
+from both sides perfectly well. Without (a) and (b) the only thing standing behind "an island has
+no passage to any reachable cell" would be the cells golden's mint — the wrong-mint failure class
+this design refuses everywhere else. The set-equality form also catches the opposite error, a
+non-island cell left unreachable.
 **The share criterion's instrument is pinned here, not chosen after the first measurement:**
 dimensions 16×16, island share `0.05`, the region the block of chunks spanning chunk coordinates
 `(-2,-2)` through `(1,1)` inclusive — so both signs of both axes are in it — and an **absolute
@@ -651,6 +680,18 @@ runtime and Postgres into it for no determinism gain. Two expectations, and the 
 makes it an instrument rather than a formality: the run must **pass**, and the word size it runs at
 must **differ** from the host's — a probe that silently rebuilt for the host would report the clean
 answer for any chain at all, so the target asserts the word size it actually ran at.
+
+**The skip/fail direction, stated because every other gate here states its own, and because only
+the host half of this one is measured.** The target distinguishes three outcomes rather than
+collapsing them: it **ran and agreed** (pass); it **ran and disagreed** (a determinism finding —
+red, and the loudest result in the set); or it **built but could not execute**, which is a missing
+*capability*, not a finding. For the third: **locally it skips, loudly**, naming the missing 32-bit
+exec support — a developer's machine's exec support is not the change under test, and the coverage
+ratchet sets the precedent for a loud skip on an absent capability. **In CI it refuses, loudly** —
+CI is the reference environment, a determinism gate that quietly stops running there is the
+green-instrument failure this design argues against everywhere else, and CI's assertion is the run
+**passing**, never merely having been attempted. The host half reproduces here; the runner half is
+the unmeasured one, which is exactly why the direction is written down instead of assumed.
 `actionlint` runs before the workflow edit is staged, per the workspace AXIOM
 `[derived → AC2 and the architecture-gate subtask]`.
 
@@ -659,7 +700,17 @@ Pinned in its header: the domain tag, the world seed `20260912`, chunk dimension
 share of `0.05`, an extra-passage share of `0.15`, a growing-tree bias of `0.5`, and a weight set
 giving every one of the five equal weight, and **a nil prefab hook** — the prefab path derives
 nothing of its own, so the golden stays about the derivation chain, and the constant prefab column
-pins that a nil hook defers nothing anywhere. Covered coordinates: every cell of the origin chunk;
+pins that a nil hook defers nothing anywhere.
+
+**The golden carries a section per algorithm as well as the equal-weight region, and that is what
+makes the architecture re-run cover all five.** Under equal weights the region's chunks draw
+whichever algorithms they draw, so some traversals would have no value pinned at all — and the
+per-algorithm AC19 assertions cannot cover for that, because "is a spanning tree" and "is
+connected" are word-size-invariant and pass at any architecture. So the golden adds, for **each**
+of the five in turn, a single-weight `Params` and one named chunk whose faces are pinned. Every
+traversal then has a pinned value that the second-`GOARCH` run re-checks.
+
+Covered coordinates for the equal-weight region: every cell of the origin chunk;
 every cell of the chunk diagonally below-left of it (negative in both axes); and the border ring of
 the chunk below the origin. Compared fields, per line: the six face states **in direction order**,
 the cell seed, the prefab marker, and — per chunk — the algorithm the draw returned, so a change in
@@ -667,7 +718,15 @@ the draw is caught even where two algorithms happen to build the same structure.
 means:** the domain tag, the preimage encoding, the digest, the stream, a reduction, the island
 rule, an algorithm's traversal order, the cycle pass or the portal rule changed — every world
 already generated under that seed is now a different world, and the change is a season rotation
-rather than a refactor. **What the golden does and does not carry:** it discharges AC1's
+rather than a refactor. **Reviewing the mint is a distinct obligation from reviewing the diff.** A
+golden is minted by the code it then guards, so a wrong mint is self-consistent and every later run
+agrees with it. The two properties to read the minted file against — not the diff's shape — are the
+island rule (every face of every island coordinate reads as a wall in the minted table) and the
+per-chunk algorithm column matching the single-weight sections. This is where the residual risk of
+the island-walled scenario actually lands, so it is named as a review step rather than left to the
+reader's judgement.
+
+**What the golden does and does not carry:** it discharges AC1's
 separate-process clause (it was minted by one process and is checked by another, which a re-exec
 test inside this pure-computation package would add nothing to) and AC2's **toolchain** axis (it
 re-runs at whatever Go `go.mod` names). Its architecture half is discharged not by this test's
@@ -724,11 +783,14 @@ the bound of the class. History surfaces (the learnings log, retired plans) are 
 **Guards — AC2, AC12.** The determinism predicates live in `internal/detguard` (§ Approach → *Where
 the guard predicates live*) and each new package's `guards_test.go` applies them to its own
 directory. Over both packages' non-test files: no `time` import and no clock call; no `math/rand`
-(v1), `hash/maphash` or `crypto/rand` import; exactly one identifier referenced from `math/rand/v2`
-— the ChaCha8 constructor, which the unexported stream interface is what keeps satisfiable — so any
-other selector on it fails; no ranging over a map. Plus, in `internal/maze`, the call-site
-confinements above: the connectivity helper reached only from island selection, and the chunk-key
-and border-key derivations reached only from the chunk-fabric builder and the portal builder.
+(v1), `hash/maphash` or `crypto/rand` import; **no identifier from `math/rand/v2` other than the
+ChaCha8 constructor** — zero occurrences permitted, which is what `internal/hexgrid` will have, so
+the predicate must not be written as "exactly one" or it reds on the package that touches the
+stream not at all and the cheapest exit becomes weakening the guard; the unexported stream
+interface is what keeps the permitted count at one in `internal/maze`. And no ranging over a map.
+Plus, in `internal/maze`, the call-site confinements above: the connectivity helper reached only
+from island selection, and the chunk-key and border-key derivations reached only from the
+chunk-fabric builder and the portal builder.
 
 **The float ban needs three bans, not one, because a name-matching guard is blind to the shape that
 actually threatens the rounding.** An AST predicate can only see the identifiers `float32` and
