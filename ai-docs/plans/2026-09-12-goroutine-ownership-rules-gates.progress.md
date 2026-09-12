@@ -1,5 +1,5 @@
 # Progress: Goroutine-leak prevention — ownership rules and the gates that hold them — ACTIVE
-_Updated: 2026-09-12 08:37_
+_Updated: 2026-09-12 08:44_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,13 +8,13 @@ _Updated: 2026-09-12 08:37_
 **Last build:** PASS
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
-**current_step:** Step 8 — subtask 9 of 10 complete (Group B in progress)
-**last_passed_gate:** golangci-lint run | 2026-09-12T08:29Z | 26d0d8d
+**current_step:** Step 8 — subtask 10 of 10 complete (Group B finished; every subtask done)
+**last_passed_gate:** golangci-lint run | 2026-09-12T08:44Z | 239c9f1
 **entry_args:** 80
 
 ## Next action
 
-**Do this immediately:** finish Group B — subtask 10, the sweep of every live surface for a claim this diff falsifies.
+**Do this immediately:** Step 9 — the per-AC verification sweep (the `## AC Status` table is still all `NOT_TESTED`), then Step 9.5's `ai-docs/context-status.md` entry, then Step 10's self-review. Every subtask of the design's Decomposition is complete.
 
 ## Subtasks
 
@@ -27,7 +27,7 @@ _Updated: 2026-09-12 08:37_
 - [x] 7. `cmd/bot`: own HTTP client threaded to the Telegram client and canary legs, plus the closer releasing idle connections (D12)
 - [x] 8. `internal/gateguard`: the launch allow list + checker (D8, D9), the lint-configuration guard (D10), discriminating twins (D11)
 - [x] 9. `ai-docs/code-style.md`: the ownership rules and the reviewer's checklist; § Linter posture brought in line
-- [ ] 10. Sweep every live surface for a claim this diff falsifies and fix each
+- [x] 10. Sweep every live surface for a claim this diff falsifies and fix each
 
 ## Decisions log
 
@@ -41,6 +41,11 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8 (subtask 9)**: § Linter posture's enumeration was made **complete** against `.golangci.yml`'s `linters.enable`, not merely extended by this task's five additions. "Bring the enumeration in line with the enabled set" has no reading under which ten already-omitted linters stay omitted; the bullet became a table, one row per enabled linter plus the two analyzer sets switched on inside `gocritic` and `govet`.
 - **Step 8 (subtask 9)**: the Propagation Rule's Review-checklist group fired. `ai-docs/propagation-groups.md` requires a rule added to `ai-docs/code-style.md` that leaves any half to review to gain a judging row in BOTH `.claude/agents/self-review.md` and `.claude/agents/review-findings.md`; the new ownership rules are largely review-judged (the lint gate and the launch allow list carry only part), so both files gained a goroutine-ownership row in subtask 9's own commit. The design's subtask-9 file list named `ai-docs/code-style.md` alone — the AXIOM in `AGENTS.md` § Propagation Rule outranks a design's file list, and subtask 10's charter is explicitly open-ended ("the class is every live site", not the list drafted there).
 - **Step 8 (subtask 9)**: gates run on the markdown-only tree before the commit — the CI relative-link check (controlled against a constructed broken link, seen RED, then GREEN), the six `ai-docs/scripts/check-*.sh` harness guards, `make comment-refs`, and the Go side unchanged but re-run anyway: `make fmt-check build vet file-limits tidy-check import-guard` and `make lint` (`0 issues.`). `make test`/`test-race` were not re-run: `git diff --stat 26d0d8d..` shows no `.go`, `.sql`, `go.mod` or `go.sum` file in this subtask, so the suite's inputs are byte-identical to the tree the orchestrator already gated at 26d0d8d.
+- **Step 8 (subtask 10)**: the sweep changed four files and eight claims — KD-16's linter enumeration and KD-32's closer-list decision (`ai-docs/key-decisions.md`); the orientation page's package layout, which had no `internal/gateguard`, and its gate list (`ai-docs/context.md`); the lifecycle page's step-11 row, the unwind columns of steps 12 and 13, and the drain's closer walk, each of which now carries the process HTTP client (`ai-docs/process-lifecycle.md`); and `ai-docs/go-test-conventions.md`'s enumeration of `internal/srcguard`'s mechanical half, which gained the compiled-directory predicate subtask 6 moved in.
+- **Step 8 (subtask 10)**: the lifecycle page's **"No goroutine of this module survives the drain"** was the one claim the diff falsified outright rather than left incomplete. `internal/gateguard`'s allow list, added by subtask 8, records the scheduler's deadline watchdog as joined by nothing — the module's one deliberately detached launch — so the unqualified sentence could not stand beside it in the same pull request. It now states the exception and names #81 as where reclaiming the handler under it lives. The watchdog predates this diff; what the diff changed is that the detachment is now written down.
+- **Step 8 (subtask 10)**: `ai-docs/context-status.md` was in the design's drafted file list for this subtask and got **no** change. Its entries are the per-task implementation log written by `/task` Step 9.5, and neither the composition-root entry nor the goroutine-leak entry carries a claim this diff falsifies (both read line by line, including the closer-list and leak-detection bullets). This task's own entry is Step 9.5's to write, not subtask 10's.
+- **Step 8 (subtask 10)**: three surfaces were read and deliberately left unchanged, each with its reason. `.claude/skills/project-review/SKILL.md` is the Review group's third member, so subtask 9's edit obliged a check — it carries no per-topic finding checklist, delegating to `review-findings.md` and `self-review.md`, so the obligation is discharged by the check with no edit. `.claude/agents/design-writer.md` and `design-review.md` illustrate binding lint constraints with `exhaustive` / `revive` / `rowserrcheck` and already instruct the reader to open `.golangci.yml`; no propagation row binds them to a lint-config change and nothing there is falsified. `ai-docs/go-test-conventions.md`'s "only `internal/health` and `internal/ingest` moved onto it" is a statement about the scope of the task that introduced `internal/srcguard`, not about today's importer set (which was already seven files before this branch), so it is history, not drift.
+- **Step 8 (subtask 10)**: gates re-run at 239c9f1 with a markdown-only working tree — the CI relative-link check, the six `ai-docs/scripts/check-*.sh` harness guards, `make comment-refs`, and `make lint` (`0 issues.`). No `.go`, `.yml`, `.sh`, `.sql`, `go.mod` or `go.sum` file is touched by subtask 10 (`git status --short` lists four `.md` paths), so the Go and harness-shellcheck gates read the same inputs they read at 239c9f1.
 
 ## GO notes
 

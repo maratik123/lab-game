@@ -63,8 +63,9 @@ parses the package's own non-test files, not by a grep in a `Makefile`.
 
 - **Enumerate and parse through `internal/srcguard`**, never a hand-rolled walk. Three packages
   had grown their own copies and had already drifted apart in shape; the shared package owns the
-  mechanical half — listing a package's non-test files, walking a subtree, parsing, and writing a
-  scratch package into `t.TempDir()`. **Every predicate stays in the package that owns the
+  mechanical half — listing a package's non-test files, walking a subtree, parsing, deciding which
+  directories the go tool itself never descends into, and writing a scratch package into
+  `t.TempDir()`. **Every predicate stays in the package that owns the
   proposition**, so a rule has exactly one place to look for it. *Scoped exception:*
   `internal/tg/guards_test.go`'s `walkGoFiles` is the third package's copy and was deliberately left
   hand-rolled — migrating it was out of the scope of the task that introduced `internal/srcguard`
