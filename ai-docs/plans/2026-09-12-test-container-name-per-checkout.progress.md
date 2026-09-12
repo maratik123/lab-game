@@ -8,13 +8,13 @@ _Updated: 2026-09-12 00:18_
 **Last build:** PASS
 **Issue:** #91
 **Spec:** ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md
-**current_step:** Step 8 — Group B, subtask 3 of 3 complete (every group done)
-**last_passed_gate:** golangci-lint run | 2026-09-12T00:18:42Z | 57d104e2450f8333d05665a0bf4c2b0a127a4268
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** make verify | 2026-09-12T00:24:25Z | e547cce795790673b2a3fba1757ae644dac61690
 **entry_args:** сделать так, чтобы имя контейнера бд выводилось из имени каталога проекта, например lab-game-test-postgres для ~/lab-game и lab-game2-test-postgres для ~/lab-game2 (для параллелизации разработки)
 
 ## Next action
 
-**Do this immediately:** Step 9 — Verify. Every subtask is implemented and committed; run the full verify list (`make verify` per the design's § Gates, plus the coverage ratchet the pre-commit hook takes) and the verify-time end-to-end probe the design specifies for AC2/AC3/AC4, then the per-AC coverage table.
+**Do this immediately:** Step 9.5 — append this task's entry to `ai-docs/context-status.md` and bump the affected summary bullet in `ai-docs/context.md`.
 
 ## Subtasks
 
@@ -36,6 +36,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 - **Step 8 subtask 3**: amended the two live prose surfaces at 57d104e. KD-20's parenthetical states the derivation (project-directory base name plus `-test-postgres`, both worked examples) instead of naming one fixed container, and a new `*Amended by #91*` clause records the derivation on `--up`/`--down`, the deleted `testdb.SharedContainerName`, the per-checkout consequence, the deliberate sharing between same-named directories, the refuse-rather-than-sanitise rule and the unchanged anonymous fallback; the `*Source:*` line names this design and issue beside the shared-server one and `*Amended:*` moves to 2026-09-12. The test conventions' shared-server bullet gains the derivation, the parallel-checkout consequence and one sentence carrying the one-time stale-locator remedy (delete that checkout's `tmp/testpg-dsn`, or remove the old container). The design's untouched-surface list was re-verified rather than trusted: a repository-wide sweep for the old name and the deleted symbol outside `.git` and `tmp` returns only this task's own plan files, the derivation and its table test, and the KD-20 line rewritten here — `AGENTS.md`, `ai-docs/context.md` and `ai-docs/context-status.md` stay as the design ruled. Gates: `go build ./...`, `go vet ./...`, `golangci-lint fmt -d`, `golangci-lint run`, `make comment-refs`, `make shellcheck`, the citation guard, `check-ac-shape` / `check-spec-shape` / `check-spec-anchors` / `check-script-shape` / `check-harness-gaps-forge` and CI's relative-markdown-link check — all green. The citation guard's green was made evidence about this file first: planting an out-of-range `#9999` on the edited KD-20 line turned it RED naming `ai-docs/key-decisions.md:53`, and the file was restored from a cp-backup.
 
+- **Step 9**: `make verify` green in full at e547cce (fmt · build · vet · lint · file-limits · test · test-race · tidy · actionlint · shellcheck · comment-refs · import-guard) — 0 FAIL over the log, control confirmed the FAIL pattern matches. Deps unmoved (no `go.mod`/`go.sum` in the branch diff), no workflow or shell script touched, no `panic(`/`log.Fatal` added (control confirmed). Domain-invariant sweep not applicable: the change touches no balance, ledger, basis document, scheduler task, event or outbound message — the Go diff is `cmd/testpg` and `internal/testdb` only. Panic index unchanged: the only addition is a package-level `regexp.MustCompile`, which the index carries no row for by established practice in `internal/commentref`.
+- **Step 9**: the design's verify-time probe ran end to end on podman 5.8.2 — two probe servers under derived names, a same-base-name twin joining the first, a child run picking its own checkout's server, `--down` in one leaving the other running and reachable, and teardown leaving no probe container (control confirmed the teardown grep matches). The unrelated `pgshared` container on this host was neither touched nor counted.
+
 ## GO notes
 
 | # | round | note | kind | route | resolution |
@@ -54,12 +57,12 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
+| # | Criterion | Test / Verification | Status |
+|----|-----------|---------------------|--------|
+| AC1 | The name is derived from the checkout's project directory name; `lab-game` → `lab-game-test-postgres`, `lab-game2` → `lab-game2-test-postgres` | `go test ./cmd/testpg -count=1 -run TestContainerNameForDir` — the table carries both worked examples verbatim (run_test.go rows "first checkout" and "sibling checkout"); probe step 4 — the runtime listed `alpha-test-postgres` and `beta-test-postgres` after an `--up` from each directory | PASS |
+| AC2 | Taking the server down in one checkout leaves a differently-named checkout's server running and reachable | probe step 7 — after `--down` from alpha the listing still carried `beta-test-postgres`, and a child run from beta printed beta's DSN (listed *and* reachable, both read) | PASS |
+| AC3 | Gates run in one checkout address that checkout's own server, never another's | probe step 6 — a child run from alpha printed alpha's DSN, with no `admits … falling through` line on stderr (instrument check, control confirmed the pattern matches); `go test ./cmd/testpg -run TestRunChild` — `runChild` derives no name at all | PASS |
+| AC4 | Two checkouts whose project directories carry the same name address one and the same server | `go test ./cmd/testpg -run 'TestContainerNameForDir_sameBaseName_differentParents_isEqual|TestRun_up_sameBaseName_differentParents_sameContainerName'`; probe step 5 — the alpha twin's `--up` raised no container (listing unchanged) and its locator took alpha's DSN, both read because a silently-failed provision would also leave the listing unchanged | PASS |
 
 ## Review register
 
