@@ -559,3 +559,22 @@ satisfying summary of work that genuinely did succeed, so the overclaim rides in
 **at:** 7e2210528f0c51ce3042509508613bcdc72c3c9b
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — read a gate subagent's spawn-prompt contract before spawning, not after the hook refuses
+
+**What happened:** At `/task` Step 7 I spawned `design-review` carrying exactly the five permitted
+items — invocation line, spec path, design path, round number, no progress file yet — but in a
+lexical form the contract does not accept: lowercase `spec:` / `design:` / `round:` where the closed
+list requires `Spec:` / `Design:` / `Round:`. The `PreToolUse` spawn-contract hook refused the call
+and printed the permitted forms. The step I was executing names the file that carries the contract;
+I worked from the orchestrator's prose paraphrase of it rather than opening it.
+
+**Rule:** Before the first spawn of a subagent whose prompt is governed by a closed list, open that
+agent's own spawn-prompt contract and copy its line forms literally. A step that says "per
+`<agent file>`" is a reading directive, not a citation of something already in hand — and a
+paraphrase preserves a contract's *content* while silently dropping the *syntax* the machine check is
+written against, which is exactly the half that decides whether the call goes through. The tell is
+believing you satisfied a contract you never opened.
+
+**Kind:** correction
+**Escalated?** no
