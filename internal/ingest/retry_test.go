@@ -548,3 +548,50 @@ func TestPollOnce_cancellationDuringLongPollReturnsPromptly(t *testing.T) {
 		t.Errorf("PollOnce took %v to return after cancellation, want a prompt return", elapsed)
 	}
 }
+
+func TestWaitOrCancel_returnsNilOnceDelayElapses(t *testing.T) {
+	t.Parallel()
+
+	start := time.Now()
+	if err := waitOrCancel(context.Background(), 20*time.Millisecond); err != nil {
+		t.Fatalf("waitOrCancel: %v, want nil", err)
+	}
+	if elapsed := time.Since(start); elapsed < 20*time.Millisecond {
+		t.Errorf("waitOrCancel returned after %v, want at least the 20ms delay", elapsed)
+	}
+}
+
+func TestWaitOrCancel_returnsContextErrorWhenCancelledFirst(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	err := waitOrCancel(ctx, time.Hour)
+	elapsed := time.Since(start)
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("waitOrCancel: err = %v, want context.Canceled", err)
+	}
+	if elapsed > time.Second {
+		t.Errorf("waitOrCancel took %v to return after cancellation, want a prompt return rather than waiting out the hour delay", elapsed)
+	}
+}
+
+func TestWaitOrCancel_zeroOrNegativeDurationReturnsWithoutWaiting(t *testing.T) {
+	t.Parallel()
+
+	for _, delay := range []time.Duration{0, -time.Second} {
+		start := time.Now()
+		if err := waitOrCancel(context.Background(), delay); err != nil {
+			t.Fatalf("waitOrCancel(%v): %v, want nil", delay, err)
+		}
+		if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+			t.Errorf("waitOrCancel(%v) took %v, want an immediate return", delay, elapsed)
+		}
+	}
+}

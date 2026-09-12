@@ -8,8 +8,8 @@ _Updated: 2026-09-12 07:49_
 **Last build:** PASS
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
-**current_step:** Step 8 — subtask 2 of 10 complete
-**last_passed_gate:** golangci-lint run ./... | 2026-09-12T00:00Z | d757a49
+**current_step:** Step 8 — subtask 3 of 10 complete
+**last_passed_gate:** go test -race ./internal/ingest/... | 2026-09-12T00:00Z | 636e597
 **entry_args:** 80
 
 ## Next action
@@ -20,7 +20,7 @@ _Updated: 2026-09-12 07:49_
 
 - [x] 1. `.golangci.yml`: enable `containedctx` + `fatcontext`; pin `run.relative-path-mode: gomod` (D2); lift the issue-truncation caps (D3)
 - [x] 2. `.golangci.yml` + `internal/store/basis_test.go`: enable `gocritic`'s `deferInLoop` and `govet`'s `nilness`
-- [ ] 3. `internal/ingest`: replace the retry loop's unstoppable timer with a wait-or-cancel helper (D5)
+- [x] 3. `internal/ingest`: replace the retry loop's unstoppable timer with a wait-or-cancel helper (D5)
 - [ ] 4. `internal/scheduler`: bound the detached connection close with its own named-constant timeout (D7)
 - [ ] 5. `.golangci.yml` + 7 files: enable `forbidigo` with patterns and carve-outs (D1, D2, D4); annotate every surviving fresh-root-context site (D6)
 - [ ] 6. `internal/srcguard`: move the compiled-directory predicate in, fold the leak-guard's private copy into it (D9)

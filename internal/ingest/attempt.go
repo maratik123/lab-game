@@ -34,13 +34,27 @@ func (l *Loop) runAttempts(ctx context.Context, h Handler, u Update) error {
 		}
 
 		delay := backoff.Exponential(attempt, l.cfg.RetryBaseDelay, l.cfg.RetryMaxDelay, l.cfg.RetryFactor)
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(delay):
+		if err := waitOrCancel(ctx, delay); err != nil {
+			return err
 		}
 	}
 	return l.settleGivenUp(ctx, u, l.cfg.RetryMaxAttempts, lastErr)
+}
+
+// waitOrCancel blocks until delay has elapsed or ctx is done, whichever
+// comes first. It returns nil once delay elapses and ctx.Err() when ctx
+// is cancelled first, returning promptly rather than waiting out the
+// full delay. The timer it holds is stopped on every exit, so the
+// unstoppable time.After never leaks its own goroutine.
+func waitOrCancel(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // attemptOnce runs h.Handle inside its own transaction for u: a panic
