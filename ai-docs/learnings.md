@@ -524,3 +524,9 @@ wrong-surface text by message twelve.
 **Rule:** When a recipe fixes an option set, the options are copied from the recipe, not composed from the finding that triggered it. A reviewer's suggested resolutions belong in the question's prose, where they inform the choice; they never replace the routes. Judging an option inapplicable and omitting it is the orchestrator deciding the thing the owner was asked to decide.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — tooling — extracted a Go file into the repository's `tmp/` and broke `go build ./...`
+**What happened:** Verifying a self-review finding, I ran `git show <sha>:cmd/testpg/run_test.go > tmp/pre.go` to compare the pre-change file. `tmp/` is gitignored but it is still inside the module, so the extraction became a package: the next `go build ./...` and `golangci-lint run` both went RED with `undefined: seam`, `undefined: runChild` in `tmp/pre.go`. I deleted the file and both gates went green. Nothing was committed, and `git status` never showed the file, because the ignore rule hides it.
+**Rule:** The repository's `tmp/` is for gate logs and non-source scratch only. Anything with a source extension a toolchain globs — `.go` above all — goes to the session scratchpad outside the repository, or the module grows a package nobody can see in `git status`. Redirecting a `git show` of a source file is the shape that produces one without ever looking like a write.
+**Kind:** correction
+**Escalated?** no

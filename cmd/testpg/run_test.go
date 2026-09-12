@@ -507,7 +507,7 @@ func TestContainerNameForDir_sameBaseName_differentParents_isEqual(t *testing.T)
 }
 
 // Not parallel: reaches the code that disables the reaper, a process-wide
-// environment write (see the comment on TestRun_upDown_useTheSeamWithNoRuntime).
+// environment write.
 func TestRun_up_differentDirs_differentContainerNames(t *testing.T) {
 	stubA := &stubSeam{workDirDir: "/stub/lab-game", probeMaxConns: 100000}
 	var stdoutA, stderrA bytes.Buffer

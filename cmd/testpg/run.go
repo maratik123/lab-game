@@ -129,7 +129,7 @@ var containerNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
 func containerNameForDir(dir string) (string, error) {
 	base := filepath.Base(dir)
 	if !containerNamePattern.MatchString(base) {
-		return "", fmt.Errorf("testpg: project directory %q must start with a letter or digit and contain only letters, digits, underscores, dots or dashes to name a test-server container", base)
+		return "", fmt.Errorf("project directory %q must start with a letter or digit and contain only letters, digits, underscores, dots or dashes to name a test-server container", base)
 	}
 	return base + testServerSuffix, nil
 }
