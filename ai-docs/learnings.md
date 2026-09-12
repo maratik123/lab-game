@@ -537,3 +537,25 @@ wrong-surface text by message twelve.
 **at:** 02735e75fcb66222e1e817a719c36791e65c9b0e
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-12 — process — recording a string comparison as a fact without running the comparison
+
+**What happened:** Twice in one `/bugfix` run I wrote a comparison onto a durable surface without
+executing it. The commit message claimed the induced regression reproduced issue #92's failure "on
+the reported failure line, byte for byte" — the message matched, but the line number did not (162
+against 202, because the induction helper is inserted above the assertion), and a line includes its
+number. Separately the trace's Root Cause asserted that a third runner "would additionally widen the
+window it is not in"; `wantPrefix` was a hand-written two-element literal, so `len(wantPrefix)` is 2
+whatever `a.runners` holds and a third runner widens nothing. Self-review caught the second; the
+first I caught only on re-reading my own commit, after it was already written.
+
+**Rule:** A comparison is a command, not an impression. Before writing "identical", "byte for byte",
+"matches", or a consequence of the form "adding X would also do Y" onto any durable surface — commit
+message, PR body, trace, design — run the `diff` (or the mutant) that decides it, and then state the
+claim at the granularity the run actually licenses: "the message matches, the line number differs" is
+what a `diff` establishes; "byte for byte" is not. The pull is that the stronger phrasing is the more
+satisfying summary of work that genuinely did succeed, so the overclaim rides in on a true result.
+
+**at:** 7e2210528f0c51ce3042509508613bcdc72c3c9b
+**Kind:** correction
+**Escalated?** no
