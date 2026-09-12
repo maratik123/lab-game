@@ -1,5 +1,5 @@
 # Progress: Scheduler panic recovery and deadline reclaim — ACTIVE
-_Updated: 2026-09-12 18:05_
+_Updated: 2026-09-12 19:20_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -10,13 +10,13 @@ _Updated: 2026-09-12 18:05_
 **Issue:** #81
 **Spec:** ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md
 
-**current_step:** Step 8 — Group A subtask 9 of 9 complete — Group A DONE, ready for handoff to Group B
-**last_passed_gate:** golangci-lint run | 2026-09-12T16:11Z | e69270b
+**current_step:** Step 8 — Group B subtask 10 of 10 complete — Group B DONE, every Step-8 subtask complete
+**last_passed_gate:** golangci-lint run | 2026-09-12T16:18Z | c9bec73
 **entry_args:** 81
 
 ## Next action
 
-**Do this immediately:** hand off into Group B per the design's `## Handoff plan` — spawn `general-purpose` (no inline `model=`) for subtask 10, the documentation propagation across `ai-docs/alert-contract.md`, `ai-docs/code-style.md`, `ai-docs/process-lifecycle.md` and `ai-docs/context.md`. Group A (subtasks 1–9) is complete and its gates are green at `e69270b`.
+**Do this immediately:** push the branch per Step 8's visibility rule, then run Step 9 (Verify) — the full verify list, including `go test ./...` and `go test -race ./...`, which the scheduler and ingest changes require, plus the per-AC coverage table that turns the nine `NOT_TESTED` rows below into verdicts. Both groups are complete: Group A (subtasks 1–9) at `e69270b`, Group B (subtask 10) at `c9bec73`.
 
 ## Subtasks
 
@@ -34,7 +34,7 @@ Group A — code (`code-writer`, `sonnet`/`medium`):
 
 Group B — instructions (`general-purpose`, `inherit`):
 
-- [ ] 10. Documentation propagation (AC5): failure-value enumeration, ownership rule 4's clause, the detached-launch paragraph, the `internal/` layout enumeration
+- [x] 10. Documentation propagation (AC5): failure-value enumeration, ownership rule 4's clause, the detached-launch paragraph, the `internal/` layout enumeration
 
 ## Decisions log
 
@@ -47,6 +47,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: GO at design-review round 4 (4 of a cap of 5). All five notes and three recommendations are design-internal; folded, and design-review did not run again.
 - **Step 8, subtask 5**: verified `TestReclaim_AC7_…` and `TestReclaim_AC8_…` red against the pre-terminate tree (git-stashing only `execute.go`'s subtask-5 edits, re-running, then popping the stash) before trusting them green: AC7 failed on its own lock-free budget, AC8 failed on the handler never returning within its bound — both the exact red directions the design names, neither a context cancellation nor a 57P01.
 - **Step 8, subtask 5**: `TestPanic_AC6_logOnlySurface_blockedPastDeadlineThenPanics` (subtask 4) initially asserted exactly one log entry; running it after the terminate landed showed a second, benign "no live backend" debug entry, because `blockThenPanicHandler` never touches `tx`, so its transaction goes idle in transaction right after the savepoint statement and the server's own `idle_in_transaction_session_timeout` (armed against the same `TaskTimeout` as the breach branch's terminate, per D5) can beat the terminate to killing the backend. Amended the test to assert on the panic's own log record by message rather than on the total entry count, since which of the two clocks wins is undecided by design and both orderings are benign.
+- **Step 8, subtask 10**: `ai-docs/context.md`'s § Status *Code:* bullet was considered as a second enumeration the new package falsifies and deliberately left alone — it already omits `internal/srcguard`, `internal/leaktest` and `internal/gateguard`, so it enumerates feature blocks rather than packages, and adding one support package there would misdescribe the bullet rather than complete it. The § *Layout so far* enumeration on the same page is the one that rosters packages, and it took the addition.
+- **Step 8, subtask 10**: the post-edit sweep (`grep -rni` over `.claude/`, `AGENTS.md`, `ai-docs/`, `docs/` and `README.md` for the failure-value enumeration, `#81`, the reclaim/terminate wording, ownership rule 4's clause and the package roster) found no live site beyond the design's four. `ai-docs/context-status.md`'s PR #105 entry carries the superseded reading — *"the reclamation belongs to its own issue"* — and was left as written: that file declares itself the append-only per-task log, and this task appends its own entry at Step 9.5.
 
 ## GO notes
 
@@ -110,4 +112,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `internal/health/labels_test.go`, `internal/health/scheduler_test.go`, `internal/health/guards_test.go` (panic value driven/expected)
 - `cmd/bot/assemble.go` (Logger threaded into scheduler.New and ingest.New)
 - `internal/gateguard/guard_test.go` (`(*Worker).executeOne` launch table rows updated: panicTo/stops narrowed for both the handler launch and the watchdog launch)
+- `ai-docs/alert-contract.md` (§ Scheduler: `panic` added to the `failure` value enumeration, with the clause telling it apart from `handler`)
+- `ai-docs/code-style.md` (ownership rule 4 narrowed to the goroutine alone and only outside the database; the row's lock put outside the exception in both cases)
+- `ai-docs/process-lifecycle.md` (the detached-launch paragraph: the watchdog's wait bounded for the in-database case, the out-of-database case named as why the launch stays detached)
+- `ai-docs/context.md` (§ *Layout so far* gains `internal/panicguard`)
 - **Step 8, Group A boundary (orchestrator)**: re-ran `go build ./...`, `go vet ./...`, `golangci-lint run` and `golangci-lint fmt -d` at `e69270b` — all green; the group's own gate claim is confirmed against the tree rather than taken from its return summary. Header fields `Last build`, `last_passed_gate` and `Next action` were left stale by the group and are corrected here.
