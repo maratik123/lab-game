@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -31,6 +32,14 @@ import (
 // timing on that first path, not only for classifying the failure as
 // FailureDeadline.
 const setTimeoutsSQL = `SELECT set_config('statement_timeout', $1, true), set_config('idle_in_transaction_session_timeout', $1, true)`
+
+// detachedCloseTimeout bounds the watchdog goroutine's close of a
+// hijacked connection once its orphaned handler returns. A named
+// constant, not a configuration key: the close is a local cleanup, not
+// a tunable balance value, and a socket that never drains its own
+// Close within this long is one the goroutine must stop waiting on
+// rather than block forever.
+const detachedCloseTimeout = 5 * time.Second
 
 // handlerResult is what the handler goroutine reports back to executeOne.
 type handlerResult struct {
@@ -148,7 +157,9 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 		})
 		go func() { //nolint:gosec,contextcheck // G118/contextcheck: context.Background() is deliberate here — ctx (and deadlineCtx) may already be done by the time this fires, and closing the connection must still happen, since that is what finally releases the row's lock for a handler that ignores its own ctx
 			<-resultCh // wait for the orphaned handler goroutine to return
-			_ = pconn.Close(context.Background())
+			closeCtx, cancel := context.WithTimeout(context.Background(), detachedCloseTimeout)
+			defer cancel()
+			_ = pconn.Close(closeCtx)
 		}()
 		obs.Outcome = OutcomeFailed
 		obs.Failure = FailureDeadline
