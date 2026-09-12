@@ -1,5 +1,5 @@
 # Progress: Goroutine-leak prevention — ownership rules and the gates that hold them — ACTIVE
-_Updated: 2026-09-12 07:49_
+_Updated: 2026-09-12 08:37_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,13 +8,13 @@ _Updated: 2026-09-12 07:49_
 **Last build:** PASS
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
-**current_step:** Step 8 — subtask 8 of 10 complete (Group A finished)
+**current_step:** Step 8 — subtask 9 of 10 complete (Group B in progress)
 **last_passed_gate:** golangci-lint run | 2026-09-12T08:29Z | 26d0d8d
 **entry_args:** 80
 
 ## Next action
 
-**Do this immediately:** spawn Group A (subtasks 1–8) through `/context-reset` with `subagent_type="code-writer"`, per the design's `## Handoff plan`.
+**Do this immediately:** finish Group B — subtask 10, the sweep of every live surface for a claim this diff falsifies.
 
 ## Subtasks
 
@@ -26,7 +26,7 @@ _Updated: 2026-09-12 07:49_
 - [x] 6. `internal/srcguard`: move the compiled-directory predicate in, fold the leak-guard's private copy into it (D9)
 - [x] 7. `cmd/bot`: own HTTP client threaded to the Telegram client and canary legs, plus the closer releasing idle connections (D12)
 - [x] 8. `internal/gateguard`: the launch allow list + checker (D8, D9), the lint-configuration guard (D10), discriminating twins (D11)
-- [ ] 9. `ai-docs/code-style.md`: the ownership rules and the reviewer's checklist; § Linter posture brought in line
+- [x] 9. `ai-docs/code-style.md`: the ownership rules and the reviewer's checklist; § Linter posture brought in line
 - [ ] 10. Sweep every live surface for a claim this diff falsifies and fix each
 
 ## Decisions log
@@ -38,6 +38,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8**: `base_commit` recorded as the post-design commit, so the self-review diff covers implementation only; spec and design were already gated by design-review.
 - **Step 8**: Group A returned; the orchestrator re-ran the gates itself at 26d0d8d rather than accepting the return summary — `go build`, `go vet`, `golangci-lint fmt -d`, `golangci-lint run` (`0 issues.`) and `golangci-lint config verify` all green. `last_passed_gate` corrected from the delegate's `91904f8` / `00:00Z` placeholder to this measured run.
 - **Step 8**: the detached close's bound is `5 * time.Second`, the value of the `pingTimeout` precedent the design named as its shape; the design fixed the shape, not the number, and no free choice outside the design survived.
+- **Step 8 (subtask 9)**: § Linter posture's enumeration was made **complete** against `.golangci.yml`'s `linters.enable`, not merely extended by this task's five additions. "Bring the enumeration in line with the enabled set" has no reading under which ten already-omitted linters stay omitted; the bullet became a table, one row per enabled linter plus the two analyzer sets switched on inside `gocritic` and `govet`.
+- **Step 8 (subtask 9)**: the Propagation Rule's Review-checklist group fired. `ai-docs/propagation-groups.md` requires a rule added to `ai-docs/code-style.md` that leaves any half to review to gain a judging row in BOTH `.claude/agents/self-review.md` and `.claude/agents/review-findings.md`; the new ownership rules are largely review-judged (the lint gate and the launch allow list carry only part), so both files gained a goroutine-ownership row in subtask 9's own commit. The design's subtask-9 file list named `ai-docs/code-style.md` alone — the AXIOM in `AGENTS.md` § Propagation Rule outranks a design's file list, and subtask 10's charter is explicitly open-ended ("the class is every live site", not the list drafted there).
+- **Step 8 (subtask 9)**: gates run on the markdown-only tree before the commit — the CI relative-link check (controlled against a constructed broken link, seen RED, then GREEN), the six `ai-docs/scripts/check-*.sh` harness guards, `make comment-refs`, and the Go side unchanged but re-run anyway: `make fmt-check build vet file-limits tidy-check import-guard` and `make lint` (`0 issues.`). `make test`/`test-race` were not re-run: `git diff --stat 26d0d8d..` shows no `.go`, `.sql`, `go.mod` or `go.sum` file in this subtask, so the suite's inputs are byte-identical to the tree the orchestrator already gated at 26d0d8d.
 
 ## GO notes
 
