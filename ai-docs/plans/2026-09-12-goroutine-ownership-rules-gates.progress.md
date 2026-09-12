@@ -8,13 +8,13 @@ _Updated: 2026-09-12 08:44_
 **Last build:** PASS
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
-**current_step:** Step 9 — Design Amendment in flight (D3: `uniq-by-line`); verify paused, all 10 subtasks complete
+**current_step:** Step 9 — amendment GO (design-review round 2); implementing the follow-on, then the per-AC sweep
 **last_passed_gate:** golangci-lint run | 2026-09-12T08:44Z | 239c9f1
 **entry_args:** 80
 
 ## Next action
 
-**Do this immediately:** Step 9 — the per-AC verification sweep (the `## AC Status` table is still all `NOT_TESTED`), then Step 9.5's `ai-docs/context-status.md` entry, then Step 10's self-review. Every subtask of the design's Decomposition is complete.
+**Do this immediately:** implement the amendment follow-on (subtask 1a/8a below), then re-run the gates and the Step 9 per-AC sweep.
 
 ## Subtasks
 
@@ -27,6 +27,7 @@ _Updated: 2026-09-12 08:44_
 - [x] 7. `cmd/bot`: own HTTP client threaded to the Telegram client and canary legs, plus the closer releasing idle connections (D12)
 - [x] 8. `internal/gateguard`: the launch allow list + checker (D8, D9), the lint-configuration guard (D10), discriminating twins (D11)
 - [x] 9. `ai-docs/code-style.md`: the ownership rules and the reviewer's checklist; § Linter posture brought in line
+- [ ] 1a/8a. **Amendment follow-on (design rounds 3–4):** `.golangci.yml` gains `issues.uniq-by-line: false` beside the two caps (subtask 1's amended half); `internal/gateguard`'s lint-configuration guard asserts the key is present and boolean `false` (subtask 8's amended half), with the § Test Design scenario that drives the ABSENT-key case; subtask 5's dedup control  ← CURRENT
 - [x] 10. Sweep every live surface for a claim this diff falsifies and fix each
 
 ## Decisions log
