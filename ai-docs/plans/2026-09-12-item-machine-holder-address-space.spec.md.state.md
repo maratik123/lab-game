@@ -64,7 +64,22 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: aefe725063b6523c3
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: |
+      What does capacity measure in the item machine — the slots a holder has, the weight it can carry, or both? (The number itself is balance and stays config; this is which ledger kinds the migration creates, and enum members are permanent.)
+    answer: |
+      Both, config picks: The schema admits both kinds; which one a holder enforces is configuration, so the choice can be made per mechanic later.
+  - round: 1
+    question: |
+      Is the player's storage scope bound to a group chat? The migration creates the scope, and a scope key is forward-migration-only afterwards.
+    answer: |
+      Still undecided: The migration ships the backpack scope only; the storage scope waits for #30 to close §16.7, and the spec records it as an open question.
+  - round: 1
+    question: |
+      Does an item instance carry mutable per-instance properties in this task, and must their earlier values stay recoverable?
+    answer: |
+      Identity only: No mutable property lands here. Durability is undesigned and item stats belong to #32, so the first mechanic that needs one brings it by forward migration.
 ```
