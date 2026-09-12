@@ -8,8 +8,8 @@ _Updated: 2026-09-12 08:44_
 **Last build:** PASS
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
-**current_step:** Step 9 — amendment follow-on (subtask 1a/8a) implemented; Step 9's per-AC sweep next
-**last_passed_gate:** golangci-lint run (0 issues.) | 2026-09-12T09:05Z | fd5b27c
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** make verify | 2026-09-12T09:32Z | 80b5f22
 **entry_args:** 80
 
 ## Next action
@@ -51,6 +51,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8 (subtask 10)**: gates re-run at 239c9f1 with a markdown-only working tree — the CI relative-link check, the six `ai-docs/scripts/check-*.sh` harness guards, `make comment-refs`, and `make lint` (`0 issues.`). No `.go`, `.yml`, `.sh`, `.sql`, `go.mod` or `go.sum` file is touched by subtask 10 (`git status --short` lists four `.md` paths), so the Go and harness-shellcheck gates read the same inputs they read at 239c9f1.
 - **Step 9 (subtask 1a/8a)**: `.golangci.yml` gained `issues.uniq-by-line: false` beside the two caps; `internal/gateguard/guard_test.go` gained `isFalseBool` (present-and-boolean-`false`, distinct from `isZeroInt`'s numeric zero because the key's own default is `true`), the `checkLintConfig` assertion using it, the `configOpts.uniqByLine`/`omitUniqByLine` fields and their rendering, and `TestLintConfigGuard_UniqByLineFails` driving both the explicit-`true` and the absent-key case as its own scenario, per the design's Test Design table for subtask 8. `golangci-lint config verify` accepted the amended file (exit 0); `go build ./...`, `go test ./...` (all packages `ok`, `internal/gateguard` included), `go vet ./...` and `golangci-lint run` (`0 issues.`) all re-ran green at fd5b27c plus the working-tree edit.
 - **Step 9 (subtask 1a/8a)**: subtask 5's dedup control (design § Test Design, "The line-dedup switch gets a control of its own") re-run against the shipped configuration rather than only the design's earlier investigation copy: a scratch module outside the tree with a `defer` inside a `for` loop, `.golangci.yml` copied in verbatim with `--enable-only=gocritic,errcheck` — `uniq-by-line: false` (as shipped) reports both `main.go:8:16: errcheck` and `main.go:8:3: deferInLoop (gocritic)`; the same file with `uniq-by-line: true` (the linter's own default) reports only `errcheck` on that line and drops `deferInLoop`. Run in the session scratchpad, never in the working tree.
+- **Step 9**: ALL PASS at `80b5f22`. No panic-index row added — no `panic(` or `log.Fatal` in any non-test file this branch changed, and the index keeps its empty row. No posting signature and no event-dictionary row: the diff touches no migration, `.sql`, ledger, posting or event surface, which matches the spec's "Metrics: none. Events: none."
+- **Step 9**: AC13's `README.md` clause has no target — this repository has no README. Recorded as such in the AC table rather than reported as a verified clean pass, because a sweep over a path that does not exist is an absent instrument, not evidence.
 
 ## GO notes
 
@@ -76,23 +78,23 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
-| AC10 | NOT_TESTED |
-| AC11 | NOT_TESTED |
-| AC12 | NOT_TESTED |
-| AC13 | NOT_TESTED |
-| AC14 | NOT_TESTED |
-| AC15 | NOT_TESTED |
+| AC | Status | How it was verified (the orchestrator's own command) |
+|----|--------|------|
+| AC1 | PASS | `TestLaunchGuard_UnknownKeyFails` drives the real `checkLaunches` over a scratch file holding an actual `go func(){}()` against an empty table; `TestLaunchGuard_RealTreePasses` over the tree |
+| AC2 | PASS | `launchAnswer`'s four fields plus `missingField()` make it structural; `TestLaunchGuard_EmptyAnswerFails`; the table's 11 answers equal the 11 `go` statements in compiled non-test source, counted independently |
+| AC3 | PASS | constructed violating module under the shipped config: `time.Tick` and `time.After` both reported by `forbidigo` |
+| AC4 | PASS | same module: `context.Background` and `context.TODO` both reported by `forbidigo` |
+| AC5 | PASS | all 8 `//nolint:forbidigo` directives read: each states a reason and names an owner; the one detached site (the scheduler watchdog) carries `detachedCloseTimeout` |
+| AC6 | PASS | same module: `containedctx` reports the struct-held context |
+| AC7 | PASS | same module: `fatcontext` reports BOTH halves — `nested context in loop` and `nested context in function literal` |
+| AC8 | PASS | same module: `deferInLoop` reported — it was SUPPRESSED before the amendment by the line dedup; a second module whose only reportable shape is the defer exits 1 on its own |
+| AC9 | PASS | same module: `nilness` reports BOTH halves — `tautological condition: nil == nil` and `nil dereference in load` |
+| AC10 | PASS | `golangci-lint run` over the tree → `0 issues.`; the amendment closed the line-dedup blind spot that made "every site it would otherwise report" unenumerable |
+| AC11 | PASS | `ai-docs/code-style.md` § Concurrency → Ownership rules 1–12 carry the twelve rules of Scope item 6, one for one |
+| AC12 | PASS | the same section's reviewer's checklist carries all five categories — per `go` statement, channel, context, resource, pull request — and each question Scope item 7 enumerates |
+| AC13 | PASS (one clause has no target) | swept the live instruction files and `docs/`; the `docs/DESIGN.md` goroutine sentence is about session state, not the module's goroutine set, so the diff does not falsify it. **This repository has no `README.md`**, so that clause of the criterion has nothing to check — recorded rather than reported as a clean pass |
+| AC14 | PASS | `forbidigo` reported in `internal/testdb` (×3) and `internal/tgtest` — non-test files of packages only tests import — and each required annotation on the same terms as production; the exclusion-reach guard keeps it so |
+| AC15 | PASS | `TestServe_ReleasesTheProcessHTTPClientsIdleConnectionsOnDrain` goes through the real `assemble`+`serve`, counts exactly 1 `CloseIdleConnections` after the drain, then strips the closer and requires 0 — red when the mechanism is removed |
 
 ## Review register
 
