@@ -70,7 +70,7 @@ func TestBasis_nil_returns_ErrNoBasis_without_panicking(t *testing.T) {
 	// panic. staticcheck SA4023 flags both lines below as statically
 	// decidable — that decidability is exactly the Go gotcha under test.
 	var basis PostingBasis = nilPO
-	if basis == nil { //nolint:staticcheck // SA4023: never true by design — asserts the typed-nil-in-interface gotcha
+	if basis == nil { //nolint:staticcheck,govet // SA4023/nilness: never true by design — asserts the typed-nil-in-interface gotcha
 		t.Fatalf("a typed-nil *PlayerOperation stored in PostingBasis must not compare equal to nil")
 	}
 	if _, err := basis.entrySQL(); !errors.Is(err, ErrNoBasis) {

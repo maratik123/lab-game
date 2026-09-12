@@ -42,6 +42,12 @@ linters:
   settings:
     exhaustive:
       default-signifies-exhaustive: true
+    gocritic:
+      enabled-checks:
+        - deferInLoop      # a defer inside a loop never runs until the function returns
+    govet:
+      enable:
+        - nilness          # provable nil dereference or impossible nil comparison
     nolintlint:
       require-explanation: true
       require-specific: true
