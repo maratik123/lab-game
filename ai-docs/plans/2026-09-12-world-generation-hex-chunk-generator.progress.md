@@ -10,8 +10,8 @@ _Updated: 2026-09-12 21:32_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 8 — Group A subtask 9 of 10 complete
-**last_passed_gate:** `go build ./... && go test ./... && go vet ./... && golangci-lint run && go test -race ./...` (internal/maze property suite + cells golden + guards_test.go) | 2026-09-13
+**current_step:** Step 8 — Group A COMPLETE (subtasks 1-10 of 10); ready for handoff into Group B (subtasks 11-12)
+**last_passed_gate:** `go build ./... && go test ./... && go vet ./... && golangci-lint run && go test -race ./...` (internal/maze bench_test.go) | 2026-09-13
 **entry_args:** 27
 
 ## Next action
@@ -29,8 +29,8 @@ _Updated: 2026-09-12 21:32_
 - [x] 7. The extra-passage pass and border-portal selection, with the canonical-lesser-chunk candidate ordering
 - [x] 8. `Generator`, `New`, `Cell`, the chunks-consulted function, the `PrefabClaimer` boundary
 - [x] 9. The property suite, the cell golden with its per-algorithm sections, this package's `guards_test.go`
-- [ ] 10. The benchmarks — one cell, and one per algorithm under a single-weight input  ← CURRENT
-- [ ] 11. The architecture gate — a `Makefile` target re-running the determinism block under a second `GOARCH`, wired into CI
+- [x] 10. The benchmarks — one cell, and one per algorithm under a single-weight input
+- [ ] 11. The architecture gate — a `Makefile` target re-running the determinism block under a second `GOARCH`, wired into CI  ← Group B (next handoff)
 - [ ] 12. Close the open question in the design corpus and record the engineering decisions
 
 ## Decisions log
@@ -46,6 +46,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8 (subtask 2)**: `internal/hexgrid` — `Direction` is `int8`, canonical order `DirE,DirNE,DirNW,DirW,DirSW,DirSE`; `Opposite` pairs (E,W),(NE,SW),(NW,SE); `FaceOf` canonicalises to the earlier direction of the opposite pair. `ChunkOf` floor-divides; `ChunkDistance` uses the standard axial hex-distance formula widened to `int64` before subtracting.
 - **Step 8 (subtask 3)**: `internal/maze` derivation core — `worldKey(seed)` folds the domain tag `"lab-game/maze/v1"` and the seed once; `cellKey`/`chunkKey`/`borderKey` each fold `worldKey` with their own purpose byte (`'c','i','a','s','x','b'`) so every stream/value is domain-separated by construction. `borderKey` canonicalises its chunk pair by (Q,R) before folding. `stream` is an unexported one-method interface; `newStream` is the sole `math/rand/v2` reference. `boundedDraw` is total (bound ≤1 returns 0, untouched) and uses reject-above-limit sampling, never a bare modulo. `testdata/derive.golden` pins the raw preimage encoding table plus the derived keys/cell seeds/border-key symmetry; minted via `-update` and read back before commit.
 - **Step 8 (subtask 5 design note, decided during subtask 4)**: `nonBorderCellCount(d) = max(0,Cols-2)*max(0,Rows-2)` — derived directly from a cell's six neighbour deltas: all six neighbours of local coordinate (lq,lr) stay inside the chunk iff lq∈[1,Cols-2] and lr∈[1,Rows-2]. Lives in `params.go` (needed by `Params.validate`, ahead of subtask 5's own chunk-graph file) and will be reused, not re-derived, by `chunkgraph.go`.
+- **Step 8 (subtask 10)**: `bench_test.go` — `BenchmarkCell` (equal-weight reference Params) and `BenchmarkCellPerAlgorithm` (one sub-benchmark per algorithm, single-weight Params each). No threshold asserted; measured once locally at `-benchtime=1x` to confirm compilation and a sane order of magnitude (~0.7-0.9ms/cell on this host) — the real numbers belong in the PR body per the design, not in a tracked comment. Group A (subtasks 1-10) is now complete; ready for `/context-reset` handoff into Group B (subtasks 11-12, harness change-type, orchestrator tier).
 - **Step 8 (subtask 9)**: `testdata/cells.golden` minted (seed 20260912, dims 16x16, island share 0.05, extra-passage share 0.15, growing-tree bias 0.5, equal weights, nil hook): the origin chunk in full, the diagonally-below-left chunk in full, and the border ring of the chunk below the origin, plus one single-weight section per algorithm over its own named chunk (each section's `chunk(...).algorithm=` line confirms the intended algorithm was actually drawn there). **Scope reduction from the design's own text, stated rather than left implicit**: dumps are full-chunk (256 cells) rather than also cross-checked cell-by-cell against a hand-reviewed table — the mint review here is automated (`TestCellsGolden_EveryIslandCellHasAllSixFacesAsWallInTheMintedTable` cross-checks the golden's own "all six faces wall" lines against a live re-derivation of the origin chunk's island set) rather than a manual line-by-line read of ~1850 lines; this is a narrower substitute for the design's "review the mint" step and is named here as a deviation. `property_test.go` adds the island-walled scenario (both halves: every island face is a wall from both sides; the passage-reachable component equals the non-island set exactly, over chunks (-2,-2)..(1,1)), the island-share tolerance check (±0.01 at the pinned instrument), the AC19 single-weight sweep, and a multi-chunk connectivity sweep over several seeds. `guards_test.go` applies `detguard.Check` to the package's own directory and confirms via AST that `connectedOverInduced` is called only from `island.go` and that `chunkKey`/`borderKey` are called only from `generate.go`.
 - **Step 8 (subtask 8)**: `generate.go`'s `Cell` derives `own` from `chunksConsulted(dims, coord)[0]` (a real dependency, not a restated twin) and lazily builds its own chunk's fabric only once per call, only when an interior face is actually needed and the coordinate is not claimed — a claimed coordinate never triggers a fabric build at all. Border faces always go through the portal rule regardless of any claim, on either side. `New` validates once; `Cell` returns without an error/panic path. Caught and fixed during this subtask's own test-writing (not a shipped defect): the first connectivity-sanity test used a region with a partial chunk slice at its edge, which is not itself internally connected — fixed to whole-chunk-aligned bounds; and a locality "near vs far from origin" test compared coordinates at different positions *within* their chunks (interior vs border), which conflates position-in-chunk with distance-from-origin — fixed to compare the same local offset at two different chunk distances.
 - **Step 8 (subtask 7)**: `cycles.go`'s `addExtraPassages` only ever draws from `nonIslandInteriorFaces` still closed, so it structurally cannot open a border face. `portal.go`'s `borderCandidates` enumerates the canonically-lesser chunk's own cells row-major × six directions, keeping faces whose destination is the greater chunk — verified identical when called with the pair reversed. `selectPortals` draws a count of 1 or 2 via `boundedDraw(s,2)+1`, capped by candidate count; the two diagonal borders (delta (+1,-1) and its mirror) verified to carry exactly one candidate at three different Dims, and exactly one portal is drawn there on every sampled seed.
@@ -78,25 +79,25 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
-| AC10 | NOT_TESTED |
-| AC11 | NOT_TESTED |
-| AC12 | NOT_TESTED |
-| AC13 | NOT_TESTED |
-| AC14 | NOT_TESTED |
-| AC15 | NOT_TESTED |
-| AC16 | NOT_TESTED |
-| AC17 | NOT_TESTED |
-| AC18 | NOT_TESTED |
-| AC19 | NOT_TESTED |
+| AC1 | PARTIAL (repeat-eval + concurrent-goroutine equality tested; shuffled-order-of-generation and separate-process clauses not separately driven) |
+| AC2 | PARTIAL (toolchain axis: derive.golden + cells.golden re-run at whatever Go version go.mod names; architecture axis is Group B subtask 11, not yet wired) |
+| AC3 | TESTED (face-agreement sweep, nil hook and whole-chunk claim) |
+| AC4 | TESTED (hexgrid coord/face rapid + table tests) |
+| AC5 | TESTED (ChunkOf partition + straddle-zero table) |
+| AC6 | TESTED (ChunkDistance table + rapid triangle inequality + overflow) |
+| AC7 | TESTED (per-chunk + multi-chunk connectivity, no repair-stage guard test) |
+| AC8 | TESTED (borderCandidates/selectPortals: 1-2 count, diagonal-border-always-1) |
+| AC9 | TESTED (multi-chunk connectivity sweep over several seeds) |
+| AC10 | TESTED (addExtraPassages: zero share, positive share, capped) |
+| AC11 | TESTED (island-walled both halves + share-tolerance) |
+| AC12 | TESTED (chunksConsulted size/membership) |
+| AC13 | TESTED (prefab hook: no-hook, claimed-interior, claimed-border, claim-suppresses-fabric, asked-every-coordinate) |
+| AC14 | TESTED (drawAlgorithm: stable/zero-weight-never/spread/weight-change) |
+| AC15 | TESTED (growing-tree bias extremes differ) |
+| AC16 | TESTED (cellSeed: coord-alone, pairwise-distinct, golden) |
+| AC17 | TESTED (BenchmarkCell + BenchmarkCellPerAlgorithm exist, no threshold asserted, per design) |
+| AC18 | NOT_TESTED (Group B subtask 12 — doc-corpus edit, not a Go test) |
+| AC19 | TESTED (single-weight sweep, all five algorithms) |
 
 ## Review register
 
@@ -105,4 +106,6 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## Files touched
 
-- (none yet — Group A has not been handed off)
+- `internal/detguard/` (doc.go, detguard.go, main_test.go, detguard_test.go)
+- `internal/hexgrid/` (doc.go, coord.go, face.go, chunk.go, main_test.go, coord_test.go, chunk_test.go, guards_test.go)
+- `internal/maze/` (doc.go, seed.go, draw.go, params.go, algorithm.go, chunkgraph.go, island.go, algorithms.go, cycles.go, portal.go, generate.go, prefab.go, main_test.go, seed_test.go, draw_test.go, params_test.go, algorithm_test.go, chunkgraph_test.go, island_test.go, algorithms_test.go, cycles_test.go, portal_test.go, generate_test.go, prefab_test.go, property_test.go, golden_test.go, guards_test.go, bench_test.go, testdata/derive.golden, testdata/cells.golden)
