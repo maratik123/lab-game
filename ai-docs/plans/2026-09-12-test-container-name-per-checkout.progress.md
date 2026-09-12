@@ -1,5 +1,5 @@
 # Progress: Test database container named per checkout — ACTIVE
-_Updated: 2026-09-12 00:00_
+_Updated: 2026-09-12 00:18_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,19 +8,19 @@ _Updated: 2026-09-12 00:00_
 **Last build:** PASS
 **Issue:** #91
 **Spec:** ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md
-**current_step:** Step 8 — Group A, subtask 2 of 2 complete (group A done)
-**last_passed_gate:** golangci-lint run | 2026-09-12T00:13:18Z | a806d3a5318ec2fb4030f378b9b7589bc5552934
+**current_step:** Step 8 — Group B, subtask 3 of 3 complete (every group done)
+**last_passed_gate:** golangci-lint run | 2026-09-12T00:18:42Z | 57d104e2450f8333d05665a0bf4c2b0a127a4268
 **entry_args:** сделать так, чтобы имя контейнера бд выводилось из имени каталога проекта, например lab-game-test-postgres для ~/lab-game и lab-game2-test-postgres для ~/lab-game2 (для параллелизации разработки)
 
 ## Next action
 
-**Do this immediately:** hand off Group B (subtask 3, `ai-docs/key-decisions.md` + `ai-docs/go-test-conventions.md`) to `general-purpose` per the design's `## Handoff plan`.
+**Do this immediately:** Step 9 — Verify. Every subtask is implemented and committed; run the full verify list (`make verify` per the design's § Gates, plus the coverage ratchet the pre-commit hook takes) and the verify-time end-to-end probe the design specifies for AC2/AC3/AC4, then the per-AC coverage table.
 
 ## Subtasks
 
 - [x] 1. The pure derivation: suffix constant, compiled validity pattern, directory → container name or error. Table test first.
 - [x] 2. Wire it: the working-directory seam member, `runUp` / `runDown` derivation with their ordering pins, delete `testdb.SharedContainerName`.
-- [ ] 3. Amend the live prose: KD-20's parenthetical and the test conventions' shared-server bullet.
+- [x] 3. Amend the live prose: KD-20's parenthetical and the test conventions' shared-server bullet.
 
 ## Decisions log
 
@@ -33,6 +33,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8 subtask 2**: added `workDir func() (string, error)` to `seam`, wired to `os.Getwd` in `productionSeam` and to a stub field in `stubSeam` (defaulting to `/stub/lab-game` when unset, so existing cases keep passing unmodified). `runUp` derives the container name before disabling the reaper/provisioning; `runDown` derives it after `sm.locate()`/`sm.probe()`, before its own `os.Setenv` — matching D5's ordering. `--up`'s success report line now names the provisioned container (D8). Deleted `testdb.SharedContainerName` and its doc comment from `internal/testdb/server.go`; `grep -rn SharedContainerName --include='*.go' .` returns nothing. Added the full case list from the design's Test Design subtask-2 section (differing/same-basename `--up` pairs, invalid-directory and workDir-lookup-failure cases for both `--up`/`--down`, the reaper-untouched assertions pinning pre-check position, the stale-locator-cleanup-with-invalid-dir case pinning D5's reachability half, and `runChild` never deriving a name). Confirmed the discriminating `--up` different-directory test fails (red) against a `containerNameForDir` mutant hardcoded to a constant, and passes (green) against the real implementation — checked the mutant **builds** first. Two comment-ref violations (`D5` cited as a decision anchor in two test comments) were caught by `go run ./cmd/commentrefs` and fixed by dropping the anchor, restating in prose. Full gate run: `go build ./...`, `go test ./... -count=1`, `go vet ./...`, `golangci-lint fmt -d`, `golangci-lint run`, `go run ./cmd/commentrefs`, `go run ./cmd/importguard` — all green.
 
 - **Step 8 group boundary**: the orchestrator re-ran the group's gates itself rather than recording the delegate's claim — `go build ./...`, `go test ./cmd/testpg -count=1`, `go vet ./...`, `golangci-lint run`, `make comment-refs`, all green — and read the derivation call sites: `runUp` derives at run.go:267 above the reaper `Setenv` at :282, `runDown` derives at :350 below `sm.locate()` (:330) and `sm.probe()` (:336) and above its `Setenv` (:360), and `runChild` calls it nowhere. The delegate left `Last build`, `last_passed_gate` and `Next action` at their Step-8-creation values; refreshed here.
+
+- **Step 8 subtask 3**: amended the two live prose surfaces at 57d104e. KD-20's parenthetical states the derivation (project-directory base name plus `-test-postgres`, both worked examples) instead of naming one fixed container, and a new `*Amended by #91*` clause records the derivation on `--up`/`--down`, the deleted `testdb.SharedContainerName`, the per-checkout consequence, the deliberate sharing between same-named directories, the refuse-rather-than-sanitise rule and the unchanged anonymous fallback; the `*Source:*` line names this design and issue beside the shared-server one and `*Amended:*` moves to 2026-09-12. The test conventions' shared-server bullet gains the derivation, the parallel-checkout consequence and one sentence carrying the one-time stale-locator remedy (delete that checkout's `tmp/testpg-dsn`, or remove the old container). The design's untouched-surface list was re-verified rather than trusted: a repository-wide sweep for the old name and the deleted symbol outside `.git` and `tmp` returns only this task's own plan files, the derivation and its table test, and the KD-20 line rewritten here — `AGENTS.md`, `ai-docs/context.md` and `ai-docs/context-status.md` stay as the design ruled. Gates: `go build ./...`, `go vet ./...`, `golangci-lint fmt -d`, `golangci-lint run`, `make comment-refs`, `make shellcheck`, the citation guard, `check-ac-shape` / `check-spec-shape` / `check-spec-anchors` / `check-script-shape` / `check-harness-gaps-forge` and CI's relative-markdown-link check — all green. The citation guard's green was made evidence about this file first: planting an out-of-range `#9999` on the edited KD-20 line turned it RED naming `ai-docs/key-decisions.md:53`, and the file was restored from a cp-backup.
 
 ## GO notes
 
@@ -69,3 +71,5 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `cmd/testpg/run.go` — `containerNameForDir`, `testServerSuffix`, `containerNamePattern` (subtask 1); `seam.workDir`, `productionSeam.workDir`, `runUp`/`runDown` derivation wiring, `--up` report line naming the container (subtask 2)
 - `cmd/testpg/run_test.go` — `TestContainerNameForDir`, `TestContainerNameForDir_rootPath_hasNoBaseName`, `TestContainerNameForDir_sameBaseName_differentParents_isEqual` (subtask 1); `stubSeam.workDirDir`/`workDirErr`/`forgetCalled`, and the `--up`/`--down`/`runChild` wiring cases (subtask 2)
 - `internal/testdb/server.go` — deleted `SharedContainerName` (subtask 2)
+- `ai-docs/key-decisions.md` — KD-20's parenthetical and its `Amended by #91` clause (subtask 3)
+- `ai-docs/go-test-conventions.md` — the shared-server bullet: the derivation, the parallel-checkout consequence and the stale-locator remedy (subtask 3)
