@@ -297,7 +297,7 @@ func TestPanic_AC6_rowAndLogBothCarryStack(t *testing.T) {
 		t.Fatalf("row = failures:%d (found=%v), want 1", failures, found)
 	}
 	if lastError == nil || !strings.Contains(*lastError, "boom-ac6-marker") || !strings.Contains(*lastError, "panickingHandler") {
-		t.Fatalf("last_error = %v, want it to contain the panic value and a frame naming panickingHandler", lastError)
+		t.Fatalf("last_error = %s, want it to contain the panic value and a frame naming panickingHandler", errText(lastError))
 	}
 
 	entries := logs.Entries()
@@ -384,7 +384,7 @@ func TestPanic_AC6_logOnlySurface_blockedPastDeadlineThenPanics(t *testing.T) {
 		t.Fatalf("row after drain: state=%q failures=%d (found=%v), want dead/1", state, failures, found)
 	}
 	if lastError == nil || !strings.Contains(*lastError, "deadline") {
-		t.Fatalf("last_error = %v, want it to mention the deadline breach that settled this attempt, not the later panic", lastError)
+		t.Fatalf("last_error = %s, want it to mention the deadline breach that settled this attempt, not the later panic", errText(lastError))
 	}
 }
 
@@ -440,7 +440,7 @@ func TestPanic_D4_rowsLeftOpen_unusableTransactionStillSettlesThroughDrain(t *te
 		t.Fatalf("row after drain: failures=%d (found=%v), want 1", failures, found)
 	}
 	if lastError == nil || !strings.Contains(*lastError, "boom-d4-marker") || !strings.Contains(*lastError, "openRowsThenPanicHandler") {
-		t.Fatalf("last_error = %v, want it to contain the panic value and a frame naming openRowsThenPanicHandler", lastError)
+		t.Fatalf("last_error = %s, want it to contain the panic value and a frame naming openRowsThenPanicHandler", errText(lastError))
 	}
 }
 
