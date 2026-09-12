@@ -8,8 +8,8 @@ _Updated: 2026-09-12 14:42_
 **Last build:** not run
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 8 — Group A handoff, subtask 1 of 6 complete
-**last_passed_gate:** go build ./... + go test ./... + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | 6df87d3
+**current_step:** Step 8 — Group A handoff, subtask 2 of 6 complete
+**last_passed_gate:** go build ./... + go test ./... + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | 0625a73
 **entry_args:** 25
 
 ## Next action
@@ -19,8 +19,8 @@ _Updated: 2026-09-12 14:42_
 ## Subtasks
 
 - [x] 1. Forward migration + Go mirrors + the assertions the schema change moves
-- [ ] 2. The schema's own refusals, by SQLSTATE and constraint name  ← CURRENT
-- [ ] 3. The reconciliation views' tests, each anomaly class planted and seen red
+- [x] 2. The schema's own refusals, by SQLSTATE and constraint name
+- [ ] 3. The reconciliation views' tests, each anomaly class planted and seen red  ← CURRENT
 - [ ] 4. `Move`: extract `post`, add `Movement` / `Move` / the sentinels
 - [ ] 5. The `rapid` property test and the `-race` concurrency test
 - [ ] 6. Propagation sweep over every live surface the diff falsifies
@@ -80,3 +80,4 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 ## Files touched
 
 - Subtask 1: `internal/store/migrations/00006_capacity_kinds.sql` (new), `internal/store/migrations/00007_item_machine.sql` (new), `internal/store/ids.go`, `internal/store/enums.go`, `internal/store/catalog.go`, `internal/store/migrate_test.go`, `internal/store/migrate_process_test.go`, `internal/store/enums_test.go`, `internal/store/views_test.go`, `internal/store/owner_test.go`, `internal/store/post_test.go`, `internal/store/append_only_test.go` — commit 6df87d3.
+- Subtask 2: `internal/store/schema_test.go` (`TestSchema_itemMachineConstraints`) — commit 0625a73.
