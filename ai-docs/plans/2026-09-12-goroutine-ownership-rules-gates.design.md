@@ -111,6 +111,21 @@ Transport which were previously connected from previous requests but are now sit
   excluded, which is what makes the gate reach the non-test source of a package only tests import on
   the same terms as production code (AC14).
 
+  **Both carve-outs are scoped `linters: [forbidigo]`, and that scoping is load-bearing.** An
+  exclusion rule with a `path` and no `linters` list switches *every* linter off for that path, so an
+  unscoped `^cmd/` rule would silently take `containedctx`, `fatcontext`, `gocritic`'s `deferInLoop`
+  and `govet`'s `nilness` off every `main` package — the criteria that carry those shapes (AC6–AC9)
+  name no `main` carve-out, only AC3 and AC4 do. It would not go red: `cmd/` carries none of those
+  shapes today, and D10's reach guard inspects `internal/` non-test paths only. For `^cmd/` that
+  means a new rule whose `linters` list is `forbidigo` alone; for `_test\.go` it means **appending**
+  `forbidigo` to the list the existing rule already carries rather than adding a second rule
+  [measured 20cf1aa:.golangci.yml · `cat .golangci.yml` → `linters.exclusions.rules` carries
+  `path: _test\.go` with `linters:` `goconst`, `gosec`, `unparam`, and no other rule].
+
+  The settings key is `linters.settings.forbidigo.forbid`, each entry a `pattern`. The name matters
+  more than a spelling usually does here, because a wrong one is not an error: see the
+  silently-ignored-settings-key row in § Risks.
+
 - **D2 — `run.relative-path-mode: gomod` is pinned, because the `^cmd/` anchor is meaningless without
   it.** The exclusion regex is matched against the path as rendered, and the rendering depends on
   where the configuration file sits: run from a configuration outside the module root, the same rule
@@ -144,6 +159,11 @@ Transport which were previously connected from previous requests but are now sit
   the new gates' own [same measurement → every reported line carries `(forbidigo)` or `(govet)`, and no other linter
   named].
 
+  Put to the owner on 2026-09-12 as § Open questions' "D3's reach", and confirmed in their words:
+  *"Set max-issues-per-linter and max-same-issues to 0. Verified independently: today's tree is 0
+  issues under the CURRENT config with the caps lifted, so nothing goes red. Under the defaults the
+  gate was truncating and hiding real sites."*
+
 - **D4 — `time.After` is forbidden outright in gated files, not only inside a loop, and that is a
   deliberate widening.** No linter of the installed golangci-lint can express "inside a loop" for it:
   `staticcheck`'s own rule for the unstoppable-timer class is gated off by the module's Go directive
@@ -159,8 +179,12 @@ Transport which were previously connected from previous requests but are now sit
   specific linter and a stated reason, which the gate honours
   [measured e66beb5 · a scratch package whose only `context.Background()` carries
   `//nolint:forbidigo // <reason>` run under `forbidigo` plus `nolintlint` with
-  `require-explanation`/`require-specific` → `0 issues.`]. § Open questions carries this for the
-  owner.
+  `require-explanation`/`require-specific` → `0 issues.`].
+
+  Put to the owner on 2026-09-12 as § Open questions' "D4's widening", and confirmed in their words:
+  *"Forbid `time.After` outright in gated files; a site that needs it carries //nolint with a stated
+  reason. Stricter than AC3 asked for. Zero new dependencies, one linter pattern."* The widening is
+  therefore the design's shape, and the `ruleguard` alternative below is closed, not deferred.
 
 - **D5 — The gated-file `time.After` is fixed, not excused.** It sits in the ingest retry loop's
   `select` beside `ctx.Done()`
@@ -178,28 +202,68 @@ Transport which were previously connected from previous requests but are now sit
   ask for it. Recorded here so the trade-off is auditable rather than invisible.
 
 - **D6 — Every fresh-root-context site that survives keeps its context, and each carries a stated
-  reason and a named owner (AC5).** They are the composition-independent lifetimes, and each already
-  has an owner to name: the canary's tick loop, whose `Shutdown` cancels it and waits on its done
-  channel; the health listener's bind and its graceful-stop goroutine, owned by the same `Shutdown`;
-  the readiness gauge's per-scrape context, which already carries its own timeout; the scheduler's
-  deadline watchdog; and the test-helper packages' own roots — `testdb.Main`, which is a test
-  binary's entry point and has no caller context above it, `testdb.Schema` and its cleanup dropper,
-  whose signature is fixed by design, and `tgtest.New`, whose `tb.Cleanup` cancels it and closes the
-  server [measured e66beb5:internal/tgtest/tgtest.go · `sed -n '92,98p' internal/tgtest/tgtest.go` →
+  reason and a named owner (AC5). The list is exactly the set the gate reports, and it is that set
+  because an annotation with nothing under it is itself a finding.** They are the
+  composition-independent lifetimes, and each already has an owner to name: the canary's tick-loop
+  root, whose `Shutdown` cancels it and waits on its done channel; the health listener's bind, owned
+  by the same package's `Shutdown`; the readiness gauge's per-scrape context, which already carries
+  its own timeout; the scheduler's deadline watchdog; and the test-helper packages' own roots —
+  `testdb.Main`, which is a test binary's entry point and has no caller context above it,
+  `testdb.Schema` and `Schema`'s cleanup dropper, whose signature is fixed by design, and
+  `tgtest.New`, whose `tb.Cleanup` cancels it and closes the server
+  [measured 20cf1aa:internal/tgtest/tgtest.go · `sed -n '92,98p' internal/tgtest/tgtest.go` →
   the `tb.Cleanup` calling `cancelBase()` then closing the server and the listener].
 
-- **D7 — "Detached" means the caller does not wait, and by that test the scheduler's deadline
-  watchdog is the only detached site.** AC5's timeout clause needs a definition the implementor can
-  apply the same way twice; this is it. The watchdog is detached — it outlives `executeOne`, which
-  returns before the orphaned handler does
-  [measured e66beb5:internal/scheduler/execute.go · `sed -n '140,160p' internal/scheduler/execute.go`
-  → the `go func()` that waits on `resultCh` and then calls `pconn.Close(context.Background())`, with
-  `executeOne` returning nil immediately after] — so it gains its own bound, a named constant beside
-  the code in the shape `pingTimeout` already sets
-  [measured e66beb5:cmd/bot/assemble.go · `sed -n '24,29p' cmd/bot/assemble.go` → "A named constant,
+  The health server's *graceful-stop* goroutine is deliberately **not** on that list: it runs
+  `httpSrv.Shutdown` on the caller's own `ctx`, so the gate never reports it, and
+  `internal/health/server.go` yields the bind and nothing else [measured 20cf1aa · the candidate
+  configuration over `./...` → `forbidigo` reports `internal/health/canary.go` at `Start`'s run
+  context, `internal/health/process.go` at the readiness gauge's scrape context,
+  `internal/health/server.go` at the listener bind and at no other position in that file,
+  `internal/scheduler/execute.go` at the watchdog's close, `internal/testdb/testdb.go` at `Main`, at
+  `Schema` and at `Schema`'s cleanup dropper, `internal/tgtest/tgtest.go` at `New`'s base context,
+  and the `time.After` at `internal/ingest/attempt.go` that subtask 3 removes].
+  Listing a site the gate does not report is not a harmless surplus: `nolintlint` runs with
+  `allow-unused` unset, so a directive with no finding under it fails the gate [measured 20cf1aa · a
+  scratch package under the candidate configuration carrying one `//nolint:forbidigo` over a real
+  `context.TODO()` and one over a function with no forbidden identifier → the second reported,
+  ``directive `//nolint:forbidigo …` is unused for linter "forbidigo" (nolintlint)``, the first
+  silent]. Subtask 5 therefore annotates what its own re-run reports, not what this row names.
+
+- **D7 — "Detached" means the work the fresh context bounds continues after the function that created
+  that context has returned *and nothing in the process joins it*; by that test the scheduler's
+  deadline watchdog is the only detached site.** AC5's timeout clause needs a definition the
+  implementor can apply the same way twice, and "the caller does not wait" is not that definition —
+  applied literally it catches the canary's tick loop, the health server's serve goroutine and
+  `tgtest`'s server, each of which is owned perfectly well by something that is simply not the
+  creating function's caller. The second half of the test is what separates them: a *join* is
+  anything in the process
+  that ends the work deterministically and is reachable from an owner — a channel a stopper waits on,
+  or a cleanup registered before the owning scope ends. Under it:
+
+  | Site | Joined by | Detached? |
+  |---|---|---|
+  | `(*Canary).Start`'s tick loop | `Shutdown` cancels, then waits on `done` | no |
+  | `(*Server).Start`'s serve goroutine | `Shutdown` receives its terminal error on `serveErr` | no |
+  | `tgtest.New`'s serve goroutine | the `tb.Cleanup` `New` registers, which cancels the base context and closes the server and the listener | no |
+  | the scheduler's deadline watchdog | nothing — `executeOne` returns before the orphaned handler does, and no shutdown path reaches the goroutine | **yes** |
+
+  [measured 20cf1aa:internal/health/canary.go,internal/health/server.go,internal/tgtest/tgtest.go,internal/scheduler/execute.go
+  · `cat` of each → `Shutdown` selecting on `c.done`; `Shutdown`'s stopper reading `<-serveErr`;
+  `New`'s `tb.Cleanup` calling `cancelBase()` then `Close()`; and the `go func()` that waits on
+  `resultCh` and then calls `pconn.Close(context.Background())`, with `executeOne` returning nil
+  immediately after]. The watchdog therefore gains its own bound, a named constant beside the code in
+  the shape `pingTimeout` already sets
+  [measured 20cf1aa:cmd/bot/assemble.go · `sed -n '24,29p' cmd/bot/assemble.go` → "A named constant,
   not a configuration key"]. This is not a balance value, so § *Magic numbers vs balance constants*
-  puts it in Go rather than in configuration. Every other surviving site is awaited by its caller and
-  takes no timeout.
+  puts it in Go rather than in configuration. No other surviving site is detached, so none takes a
+  timeout — and the canary's root context and `tgtest`'s base context in particular do not, which is
+  the outcome the joined column is there to make unambiguous.
+
+  That the bound lands here rather than in #81, which is slated to rework the same site, was put to
+  the owner on 2026-09-12 as § Open questions' "Subtask 4 against #81" and confirmed in their words:
+  *"Land it here. Minimal change now: the detached close carries a named-constant timeout,
+  satisfying AC5 at that site. #81 may rework or remove it later."*
 
 - **D8 — The bare-`go` allow list is a table keyed by symbol, not by line, and it lives in the guard's
   own source.** One row per gated launch, keyed by the launch's package directory and the name of the
@@ -208,7 +272,19 @@ Transport which were previously connected from previous requests but are now sit
   its error goes, and where its panic goes. The checker reports a `go` statement whose key is absent from
   the table, a row whose answers do not cover every launch its function makes, and any answer left
   empty [derived → AC1 and AC2, established by the guard and its discriminating twin in § Test
-  Design]. Keying by symbol rather than by file position is the form this repository requires of a
+  Design].
+
+  **A `go` statement with no enclosing `FuncDecl` is a guard failure, not a skip.** Such a launch —
+  a function literal in a package-level `var` initialiser is the reachable shape — has no key the
+  table can hold, and a checker that silently walked past it would leave open exactly the hole AC1
+  exists to close. The guard instead fails, naming the file and the statement's position, which
+  forces whoever introduces the shape to decide how it is keyed rather than inheriting silence. This
+  is forward-looking: no such launch exists in the module today
+  [measured 20cf1aa · `rg -U 'var\s+\w+\s*=\s*func\(' --type go` → no output; `rg -n '^\s*go\s+'
+  --type go --glob '!*_test.go'` → every hit's enclosing declaration is a `func`, cross-read against
+  the file].
+
+  Keying by symbol rather than by file position is the form this repository requires of a
   reference written down to be read later
   [measured e66beb5:ai-docs/doc-convention.md ·
   `grep -n 'Durable references' ai-docs/doc-convention.md` → the section "Durable references — a
@@ -219,14 +295,27 @@ Transport which were previously connected from previous requests but are now sit
   that is not a `_test.go` file and does not lie under a directory the go tool itself never compiles —
   `testdata`, or a name beginning with `.` or `_`. `main` packages are **not** carved out: the spec
   carves `main` out of the lint-gate criteria only, and the composition root's own join goroutine is a
-  launch that deserves its answers as much as any other. That directory predicate exists today as an
+  launch that deserves its answers as much as any other.
+
+  Test source **is** carved out, and that asymmetry is a decision rather than an oversight. Scope
+  item 1 states no test carve-out, unlike Scope item 2 — but the spec already assigns test launches a
+  different gate: Scope item 6 has this task write down that a test stops everything it started
+  through `t.Cleanup`, which is a reviewed written rule, and AC14 states its own reach as the
+  "non-`_test.go` files" of a test-only package, which presupposes the boundary. A per-launch
+  allow-list row for every launch in the module's test files would put the module's own fixtures and
+  fakes into a table whose purpose is reviewing *production* ownership, and would answer "who waits
+  for it" with the same `t.Cleanup` sentence over and over. The written rule is the gate for test
+  source; the table is the gate for compiled source.
+
+  That directory predicate exists today as an
   unexported helper inside the leak-detection guard
   [measured e66beb5:internal/leaktest/guard_test.go · `sed -n '44,56p' internal/leaktest/guard_test.go`
   → `excludedByDirName`, skipping `testdata` and any part beginning with `.` or `_`]; it is mechanical
   walking, which is `internal/srcguard`'s stated charter, so it moves there and the private copy is
   deleted rather than duplicated.
 
-- **D10 — AC14 gets a guard of its own, over the lint configuration's reach.** The proposition — every
+- **D10 — AC14 gets a guard of its own over the lint configuration, and that guard is also where
+  subtasks 1 and 5 get their regression.** The proposition — every
   gate binds the non-test files of a test-only package on the same terms as production code — is a
   property of the exclusion rules, so the guard reads `.golangci.yml`, compiles every
   `linters.exclusions.rules[].path` pattern, and fails when any of them matches a non-test `.go` file
@@ -237,6 +326,25 @@ Transport which were previously connected from previous requests but are now sit
   `//nolint` channel and no magic comment … exempted by adding a path prune to the `file-limits`
   recipe in `Makefile`, in a reviewed diff"]. The YAML parser it needs is already a direct requirement
   [measured e66beb5:go.mod · `cat go.mod` → `go.yaml.in/yaml/v3 v3.0.5` in the first require block].
+
+  Since the guard has the parsed configuration in hand, it carries further assertions about it, and
+  they are what turn "the gate this task added is still the gate" from a one-time scratch probe into
+  a repository-resident regression — subtasks 1 and 5 have no other:
+
+  - **Every exclusion rule names its `linters`.** A rule with a `path` and no `linters` list
+    switches every linter off for that path; the guard fails on any such rule, which is D1's scoping
+    made structural rather than remembered.
+  - **The enabled set still holds what this task enabled** — `containedctx`, `fatcontext`,
+    `forbidigo` and `gocritic` in `linters.enable`; `deferInLoop` in `gocritic`'s `enabled-checks`;
+    `nilness` in `govet`'s `enable`; and a `forbid` entry for each of the four identifiers D1 names.
+  - **The two settings D2 and D3 pin are still pinned** — `run.relative-path-mode` is `gomod`,
+    without which the `^cmd/` anchor stops meaning the module root, and both issue-truncation caps
+    are `0`, without which AC10's "every site" stops being checkable.
+
+  A guard over the file's *content* does not prove golangci-lint *accepts* that content — those are
+  different questions, and the silently-ignored-settings-key row in § Risks is why the difference is
+  not academic. `golangci-lint config verify` answers the second one, and § Test Design puts it in
+  subtasks 1 and 5 rather than in this guard, which has no golangci-lint binary to call.
 
 - **D11 — Both guards live in one new package, `internal/gateguard`.** Its package comment states the
   shared proposition: the gates this module points at its own source — which files they reach, and
@@ -262,6 +370,18 @@ Transport which were previously connected from previous requests but are now sit
   backwards walk]. When the caller supplies a client the process uses that one and still releases its
   idle connections on the way out, so AC15 holds on every route rather than only the production one.
 
+- **D13 — The panic-recovery rule lands in this task even though its one named site does not yet
+  comply, and the allow list records that site's real answer rather than an aspirational one.** Scope
+  item 6 has this task write down that a goroutine running an interface-supplied handler recovers a
+  panic at that boundary; the scheduler's handler goroutine does not, and the spec puts that site in
+  #81 and out of scope. Put to the owner on 2026-09-12 as § Open questions' "The rule that arrives
+  ahead of its one exception", and confirmed in their words: *"Land now. The rule goes into
+  code-style.md now; the allow list records the scheduler's launch honestly as today's non-compliant
+  answer. Matches the issue body's own line: \"The scheduler's application of this rule is #81.\""*
+  The consequence for subtask 8 is concrete: that launch's row answers "where its panic goes" with
+  what is true today, so the gap is visible in the one file whose entire purpose is reviewing
+  launches, rather than papered over by a row written as though #81 had already landed.
+
 ### Rejected alternatives
 
 - **A `gocritic` `ruleguard` rule for "`time.After` inside a loop".** It would give AC3 its exact
@@ -269,7 +389,8 @@ Transport which were previously connected from previous requests but are now sit
   experimental checker enabled by name, and a module that is not a dependency today
   [measured e66beb5:go.mod,go.sum · `grep -n "quasilyte\|go-ruleguard" go.mod go.sum` → no output].
   D4's widening plus a reasoned `//nolint` is the cheaper shape for a module whose only gated-file
-  instance of the identifier is being removed anyway. § Open questions puts the trade to the owner.
+  instance of the identifier is being removed anyway. Put to the owner on 2026-09-12 and rejected in
+  their words — *"Zero new dependencies, one linter pattern"* (D4).
 
 - **A central allow list keyed by file and line.** Refused by the repository's own rule for a
   reference written down to be read later
@@ -299,14 +420,14 @@ Transport which were previously connected from previous requests but are now sit
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | Enable `containedctx` and `fatcontext`; pin `run.relative-path-mode: gomod` (D2); lift the issue-truncation caps in a top-level `issues:` section (D3). Both linters are silent on today's tree, so the gate stays green with no source change [measured e66beb5 · `golangci-lint run --enable-only=containedctx ./...` → `0 issues.`; the same for `fatcontext`]. Serves AC6, AC7. | `.golangci.yml` | — |
+| 1 | Enable `containedctx` and `fatcontext`; pin `run.relative-path-mode: gomod` (D2); lift the issue-truncation caps in a top-level `issues:` section (D3). Both linters are silent on today's tree, so the gate stays green with no source change [measured e66beb5 · `golangci-lint run --enable-only=containedctx ./...` → `0 issues.`; the same for `fatcontext`]. `golangci-lint config verify` runs before the green run is believed (§ Risks, the silently-ignored-settings-key row). Serves AC6, AC7. | `.golangci.yml` | — |
 | 2 | Enable `gocritic`'s `deferInLoop` and `govet`'s `nilness`. `deferInLoop` reports nothing on today's tree and `nilness` reports the deliberate typed-nil-in-interface assertion in `internal/store` and nothing else [measured e66beb5 · the candidate configuration on the tree with the truncation caps lifted → `internal/store/basis_test.go:73:11: nilness: impossible condition: non-nil == nil (govet)`, and no `gocritic` line]; that assertion's existing directive gains `govet` beside `staticcheck` and states the added linter's reason. Serves AC8, AC9, AC10. | `.golangci.yml`, `internal/store/basis_test.go` | 1 |
 | 3 | Replace the ingest retry loop's unstoppable timer with a wait-or-cancel helper holding a stopped timer (D5). Test first. Serves AC3, AC10. | `internal/ingest/attempt.go`, `internal/ingest/retry_test.go` | — |
 | 4 | Bound the scheduler's detached connection close with its own named-constant timeout (D7). Serves AC5. | `internal/scheduler/execute.go` | — |
-| 5 | Enable `forbidigo` with the patterns and the carve-outs (D1, D2, D4); give every surviving fresh-root-context site its `//nolint:forbidigo` carrying a stated reason and a named owner (D6). The gate must be green at this subtask's commit, so the enabling and the annotations land together. Serves AC4, AC5, AC10, AC14. | `.golangci.yml`, `internal/health/canary.go`, `internal/health/process.go`, `internal/health/server.go`, `internal/scheduler/execute.go`, `internal/testdb/testdb.go`, `internal/tgtest/tgtest.go` | 2, 3, 4 |
+| 5 | Enable `forbidigo` with the patterns under `linters.settings.forbidigo.forbid`, and the two carve-outs each scoped `linters: [forbidigo]` — a new `^cmd/` rule, and `forbidigo` appended to the existing `_test\.go` rule's list (D1, D2, D4). Give every fresh-root-context site the gate reports its `//nolint:forbidigo` carrying a stated reason and a named owner (D6), annotating the re-run's own set rather than D6's prose. `golangci-lint config verify` runs before the green run is believed. The gate must be green at this subtask's commit, so the enabling and the annotations land together. Serves AC4, AC5, AC10, AC14. | `.golangci.yml`, `internal/health/canary.go`, `internal/health/process.go`, `internal/health/server.go`, `internal/scheduler/execute.go`, `internal/testdb/testdb.go`, `internal/tgtest/tgtest.go` | 2, 3, 4 |
 | 6 | Move the compiled-directory predicate into `internal/srcguard` with its own table test, and fold the leak-detection guard's private copy into it (D9). Serves AC1 (as the guard's scope rule). | `internal/srcguard/srcguard.go`, `internal/srcguard/srcguard_test.go`, `internal/leaktest/guard_test.go` | — |
 | 7 | Give the composition root its own HTTP client, thread it into the Telegram client and the canary legs, and append the closer that releases its idle connections (D12). Test first. Serves AC15. | `cmd/bot/assemble.go`, `cmd/bot/assemble_test.go`, `cmd/bot/serve_test.go` | — |
-| 8 | Add `internal/gateguard`: the launch allow list and its checker (D8, D9), the lint-exclusion-reach guard (D10), and a discriminating twin for each (D11). The allow list is written against the tree subtasks 1–7 leave. Serves AC1, AC2, AC14. | `internal/gateguard/doc.go`, `internal/gateguard/guard_test.go`, `internal/gateguard/main_test.go` | 5, 6, 7 |
+| 8 | Add `internal/gateguard`: the launch allow list and its checker (D8, D9), the lint-configuration guard — exclusion reach, exclusion scoping, the enabled set and the pinned settings (D10) — and a discriminating twin for each (D11). The allow list is written against the tree subtasks 1–7 leave, and the scheduler's launch row answers "where its panic goes" with what is true today (D13). Serves AC1, AC2, AC14. | `internal/gateguard/doc.go`, `internal/gateguard/guard_test.go`, `internal/gateguard/main_test.go` | 5, 6, 7 |
 | 9 | Write the ownership rules and the reviewer's checklist into `ai-docs/code-style.md` § Concurrency, and bring § Linter posture's enumeration in line with the enabled set. Serves AC11, AC12, and part of AC13. | `ai-docs/code-style.md` | — |
 | 10 | Sweep every live surface for a claim this diff falsifies and fix each: the decision log's linter enumeration and its closer-list decision, the orientation page's package layout and gate list, and the lifecycle page's start-up-step row and closer walk. The class is every live site whose claim the diff falsifies, not the list drafted here. Serves AC13. | `ai-docs/key-decisions.md`, `ai-docs/context.md`, `ai-docs/process-lifecycle.md`, `ai-docs/context-status.md` | 1–9 |
 
@@ -366,11 +487,27 @@ total is within the default maximum of 4 design-defined groups, so no user appro
   has no recover [measured e66beb5 · `rg -n 'recover\(\)' --type go --glob '!*_test.go'` →
   `internal/ingest/attempt.go` only]. *Mitigation:* the spec puts that site in #81 and out of scope;
   the allow-list row records today's answer honestly rather than an aspirational one, so the gap is
-  visible where a reviewer looks. Carried to § Open questions.
+  visible where a reviewer looks. Settled by the owner on 2026-09-12 — D13.
 
 - **Subtask 4 edits a site #81 is slated to rework.** *Mitigation:* the change is one bounded context
-  around one close, with no change to the watchdog's structure or to what it waits on; § Open
-  questions puts it to the owner.
+  around one close, with no change to the watchdog's structure or to what it waits on. Settled by the
+  owner on 2026-09-12 — D7's closing paragraph.
+
+- **An unrecognised key under `linters.settings` is accepted silently by `golangci-lint run`, so a
+  mistyped settings block reads as a clean gate.** Measured on this toolchain: the candidate
+  configuration written with `linters.settings.forbidigo.patterns` instead of `forbid` runs to
+  completion, reports not one `forbidigo` finding over the whole module, prints no warning, and exits
+  on the unrelated `govet` finding alone; `golangci-lint config verify` on the identical file rejects
+  it, naming the key [measured 20cf1aa · the candidate configuration under both spellings →
+  with `patterns`, `1 issues: * govet: 1` and no diagnostic about the configuration; `config verify`
+  → ``jsonschema: "linters.settings.forbidigo" … additional properties 'patterns' not allowed``;
+  with `forbid`, the set D6 enumerates]. This is the green-instrument shape
+  exactly: a gate that cannot fire and a gate with nothing to find are indistinguishable from the
+  exit status. *Mitigation, two halves because the two questions differ:* subtasks 1 and 5 run
+  `golangci-lint config verify` before believing any green run and see a constructed violation
+  reported for every pattern and checker enabled (§ Test Design), and D10's guard asserts the
+  enabled set and the pinned settings from the parsed file so the next edit to `.golangci.yml` has a
+  repository-resident regression to break.
 
 - **A caller-supplied HTTP client now has `CloseIdleConnections` called on it during the drain.** The
   client stays usable afterwards, so a test that reuses it is unaffected
@@ -412,9 +549,20 @@ total is within the default maximum of 4 design-defined groups, so no user appro
   for the `^cmd/` and `_test\.go` carve-outs by checking that the same shape inside a `main` package
   and inside a `_test.go` file is *not* reported while the shape in `internal/` non-test source is
   [derived → AC3, AC4, AC6, AC7, AC14].
+- The carve-outs are checked for **scope**, not only for reach: with the `^cmd/` rule in place, a
+  constructed `containedctx` / `fatcontext` / `deferInLoop` / `nilness` shape inside a `main` package
+  must still be reported, because those criteria carry no `main` carve-out (D1)
+  [derived → AC6, AC7, AC8, AC9].
+- `golangci-lint config verify` runs on `.golangci.yml` before any green run of the gate is believed,
+  in both subtasks. A green `golangci-lint run` is evidence about the *tree* only once the
+  configuration is known to have loaded as written; an unrecognised settings key is accepted in
+  silence (§ Risks, the silently-ignored-settings-key row) [derived → AC10].
 - The `//nolint:forbidigo` escape must be seen both to suppress the finding and to be refused when it
   carries no specific linter or no explanation, which `nolintlint`'s existing settings already require
   [derived → AC5].
+- Subtask 5 annotates the sites its **own** re-run reports rather than the list D6 names: `nolintlint`
+  runs with `allow-unused` unset, so a directive over a site the gate does not report fails the gate
+  in its own right (D6) [derived → AC5, AC10].
 
 ### Subtask 2 — the nil-comparison gate
 
@@ -482,7 +630,7 @@ total is within the default maximum of 4 design-defined groups, so no user appro
 
 - Location: `internal/gateguard/guard_test.go`, with `main_test.go` running the module's
   goroutine-leak check as every package with tests does.
-- Entry points: the launch checker over a tree root, and the exclusion-reach checker over a lint
+- Entry points: the launch checker over a tree root, and the lint-configuration checker over a lint
   configuration path.
 - Scenarios, launch checker:
   - the real tree passes, every launch the allow list names accounted for [derived → AC1, AC2];
@@ -493,14 +641,27 @@ total is within the default maximum of 4 design-defined groups, so no user appro
     AC2];
   - a launch inside a nested function literal is attributed to the outermost enclosing declaration
     [derived → D8];
+  - a scratch package whose `go` statement has **no** enclosing `FuncDecl` — a function literal in a
+    package-level `var` initialiser — fails, and the failure names the file and the statement's
+    position rather than passing over it [derived → D8's no-enclosing-declaration clause];
   - a `go` statement under `testdata` or under a `.`/`_`-prefixed directory is not gated, and one in a
     non-test file of a package only tests import **is** [derived → AC14];
+  - a `go` statement in a `_test.go` file is not gated [derived → D9's test carve-out];
   - the joined forms are not `go` statements and are not gated [derived → D8].
-- Scenarios, exclusion-reach checker:
-  - the repository's own lint configuration passes [derived → AC14];
+- Scenarios, lint-configuration checker:
+  - the repository's own lint configuration passes every assertion [derived → AC14, D10];
   - a scratch configuration whose exclusion rule matches a non-test path under `internal/` fails, and
     the failure names the rule [derived → AC14];
-  - a scratch configuration excluding only `_test.go` and `^cmd/` passes [derived → D1].
+  - a scratch configuration excluding only `_test.go` and `^cmd/`, each with its `linters` list,
+    passes [derived → D1];
+  - a scratch configuration whose exclusion rule carries a `path` and **no** `linters` list fails,
+    and the failure names the rule [derived → D1's scoping clause];
+  - a scratch configuration missing one enabled linter, one `gocritic` check, one `govet` analyzer or
+    one `forbidigo` pattern fails, and the failure names what is missing — driven once per assertion
+    so no single omission is the only one exercised [derived → D10's enabled-set assertion];
+  - a scratch configuration whose `run.relative-path-mode` is absent or not `gomod`, and one whose
+    issue-truncation caps are absent or non-zero, each fail [derived → D10's pinned-settings
+    assertion].
 - Fixtures: `internal/srcguard`'s scratch-file writer for every constructed tree, so no case ever
   touches the working tree; `internal/repotest` for the repository root and the lint configuration's
   path.
@@ -518,23 +679,17 @@ composition root holds and closes.
 
 ## Open questions
 
-- **D4's widening.** The lint gate cannot express "`time.After` inside a loop", so this design
-  forbids the identifier outright in gated files and leaves a reasoned `//nolint` as the escape.
-  The alternative is a `gocritic` `ruleguard` rule that expresses the loop condition exactly, at the
-  cost of a rule file, an experimental checker and a module that is not a dependency today. Confirm
-  the widening, or ask for the precise gate.
+**None open.** The four this design raised were put to the owner on 2026-09-12 and all four confirmed
+the design as drafted. Each answer is recorded in the owner's own words at the decision it settles,
+so nothing below asks what has been answered:
 
-- **D3's reach.** Lifting the issue-truncation caps makes the lint gate report every finding of every
-  linter, not only the new ones. It is what makes AC10's "every site" checkable, and today's tree is
-  clean either way (D3's second measurement), but it changes the gate's behaviour beyond the criteria
-  that asked for it. Confirm or strike.
+| Question, as it was asked | Owner's answer, 2026-09-12 | Recorded at |
+|---|---|---|
+| D4's widening — forbid `time.After` outright, or build the precise loop gate? | "Confirm widening" | D4's closing paragraph, and the `ruleguard` entry in § Rejected alternatives |
+| D3's reach — lift the issue-truncation caps for every linter, or strike? | "Confirm lift" | D3's closing paragraph |
+| Subtask 4 against #81 — bound the detached close here, or defer it? | "Land it here" | D7's closing paragraph |
+| The rule that arrives ahead of its one exception — land it now, or wait for #81? | "Land now" | D13 |
 
-- **Subtask 4 against #81.** Bounding the scheduler's detached connection close is what AC5's timeout
-  clause asks for at the one detached site, and that site is inside the code #81 is to rework.
-  Confirm the minimal change lands here, or defer the bound to #81 and leave the site with its stated
-  reason and named owner alone.
-
-- **The rule that arrives ahead of its one exception.** Scope item 6 has this task write down that a
-  goroutine running an interface-supplied handler recovers a panic at that boundary; the scheduler's
-  handler goroutine does not, and #81 owns it. Confirm the rule lands now with the gap visible in the
-  allow list, rather than waiting for #81.
+None of these four became a spec row: the spec states what counts as solved and these settle how, so
+they live here and in the Key decisions they bind, per `design-writer`'s § Rules → *The spec states
+what*.
