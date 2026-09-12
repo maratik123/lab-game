@@ -104,21 +104,65 @@ against a future edit quietly re-merging them (§ Open questions — *Nothing ga
   `[measured 4a4c909:ai-docs/plans/done/2026-09-08-shared-postgres-test-server.design.md:633-636 · sed -n '633,636p' ai-docs/plans/done/2026-09-08-shared-postgres-test-server.design.md → "The files of this change that fall in **neither** enumerated class — `Makefile`, `.githooks/**` and `.github/workflows/**` — are grouped with the code"]`.
   This is what forces two groups in § Handoff plan.
 - **KD-C — the failure-class taxonomy gains no class, only corrected job
-  names.** After the split a `--- FAIL:` line can arrive from `Test`,
-  `Coverage ratchet` or `Test fallback`, and a `WARNING: DATA RACE` from `Race`.
-  The *CI job* column of both CI skills' classification tables is therefore
-  falsified and must be corrected. The *class* column is not: introducing a
-  `cover-ratchet` class would be new scope the task does not ask for, and the
-  gap it would fill is pre-existing (§ Open questions — *no class for a coverage-ratchet verdict*).
-- **KD-D — `ai-docs/context-status.md` is not edited.** Its own header declares
-  it "the detailed, append-only implementation log: one entry per completed
-  task", written at `/task` Step 9.5
-  `[measured 4a4c909:ai-docs/context-status.md:3 · sed -n '3p' ai-docs/context-status.md → "The detailed, append-only implementation log: one entry per completed task, capturing the design decisions, traps and invariants worth not rediscovering. Written by `/task` Step 9.5"]`.
-  Its sentence "`make test-fallback` … CI's Test job runs it as a step" is a
-  dated record of what landed at an earlier PR, in the same genre as
-  `ai-docs/learnings.md` and `ai-docs/plans/done/**`, which the Propagation
-  Rule's step 4 leaves untouched. The log stays current by *gaining* this task's
-  own Step-9.5 entry, not by having an old one rewritten.
+  names.** Today the `test` class's *CI job* column reads `Test` and the `race`
+  class's reads `Test`
+  `[measured e64fd73:.claude/skills/pr-ci-failed/SKILL.md:165-166 · sed -n '165,166p' .claude/skills/pr-ci-failed/SKILL.md → "| `test` | Test | `--- FAIL:` / `FAIL	github.com/...` |" and "| `race` | Test | `WARNING: DATA RACE` under `go test -race` |"]`.
+  After the split a `--- FAIL:` line can arrive from `Test`, `Race`,
+  `Coverage ratchet` **or** `Test fallback` — `Race` included, because a test
+  that simply fails under `go test -race` emits the `test` class's signal and
+  not the `race` class's. Executed rather than reasoned about, on a throwaway
+  module outside the tree
+  `[measured e64fd73 · go test -race ./... on a throwaway module whose only test calls t.Fatal → the log carries "--- FAIL: TestPlainFailure" and a "FAIL" summary line, and grep -c "WARNING: DATA RACE" over that log returns 0]`.
+  So the `test` class's job column must list `Race` or the shipped table tells a
+  `/pr-ci-failed` run that a `--- FAIL:` cannot come from `Race`. The `race`
+  class's column stays `Race` alone: that signal has exactly one origin, because
+  `Race` is the only one of the four jobs whose target passes `-race`
+  — `[derived → AC1; § Approach's job table]`. The *CI job* column of both CI skills' classification tables is
+  therefore falsified and must be corrected on both rows. The *class* column is
+  not: introducing a `cover-ratchet` class would be new scope the task does not
+  ask for, and the gap it would fill is pre-existing (§ Open questions — *no class for a coverage-ratchet verdict*).
+- **KD-D — `ai-docs/context-status.md` IS edited; the exclusion argued in
+  round 1 does not survive its own measurements.** The file's header calls it
+  "the detailed, append-only implementation log", and round 1 read that as
+  putting it in the genre of `ai-docs/learnings.md` and `ai-docs/plans/done/**`.
+  Three measurements refute that reading. (a) The Propagation Rule's step 4
+  enumerates its history surfaces and this file is not among them
+  `[measured e64fd73:AGENTS.md:288 · sed -n '288p' AGENTS.md → "Completeness test: every LIVE doc must agree; history surfaces (`ai-docs/learnings.md`, `ai-docs/plans/done/**`) are left untouched."]`.
+  (b) An in-place correction of an existing entry's body in this file is
+  established practice, not an exception
+  `[measured e64fd73:ai-docs/context-status.md · git show --stat 55682cc → subject "docs: correct the test-cache claim in three live documents", touching `ai-docs/context-status.md` alongside `AGENTS.md` and `Makefile`; `git show 55682cc -- ai-docs/context-status.md` is a `-`/`+` rewrite of an existing entry's bullet]`.
+  (c) `/task`'s own Step 12 mandates an in-place `Edit` of an existing line of
+  this file, so "append-only" is already not literal
+  `[measured e64fd73:.claude/skills/task/SKILL.md:271 · sed -n '271p' .claude/skills/task/SKILL.md → "`Edit` `ai-docs/context-status.md`, replacing the literal `#TBD-at-Step-12` in this run's entry heading with `#<N>`"]`.
+  «Append-only» there governs how the log *grows* — one entry per task, entries
+  are never reordered or deleted — not whether a present-tense sentence inside
+  an entry may be made true again. And the sentence at issue is present-tense
+  and false after this diff
+  `[measured e64fd73:ai-docs/context-status.md:188 · grep -n "CI's Test job runs it as a step" ai-docs/context-status.md → "`make test-fallback` keeps the per-binary container path executed and CI's Test job runs it as a step"]`
+  — squarely AC4's class. It is corrected in subtask 6, and the file stays
+  **inside** the AC4 sweep's set: an exclusion decided by the same key decision
+  the sweep exists to bound would make the instrument circular.
+- **KD-E — the AC4 sweep is scoped by AGENTS.md step 4 alone, and the
+  keep-or-fix test is falsity, not vocabulary.** Excluded from the sweep are
+  exactly the surfaces step 4 names (`ai-docs/learnings.md`,
+  `ai-docs/plans/done/**`), the retired interview state under
+  `ai-docs/plans/ignored/**`, and this task's own spec, state, design and
+  progress files. Everything else tracked is swept — `ai-docs/context-status.md`
+  (KD-D), `ai-docs/harness-gaps.md` and `ai-docs/key-decisions.md` included. For
+  each site the sweep names the test is a single measurable question: **is the
+  sentence false once the diff lands?** False → corrected. True → left, and the
+  ruling recorded. One ruling is made here rather than left to the sweep,
+  because it is the case the class's wording does not settle:
+  `ai-docs/key-decisions.md` KD-20 says `make test-fallback` is "run as its own
+  CI step"
+  `[measured e64fd73:ai-docs/key-decisions.md:53 · grep -n "run as its own CI step" ai-docs/key-decisions.md → "and `make test-fallback` — a bare whole-module run with the variable explicitly cleared, run as its own CI step — is what keeps the per-binary path executed now that no default gate reaches it"]`.
+  After the split that gate still runs as a `run:` step, now the only step of
+  its own job, so the sentence is **true** and names no job; it is
+  **decided-and-left**, and subtask 7 does not re-decide it. The
+  job-versus-step vocabulary is nonetheless added to the sweep's pattern set
+  (§ Test Design), because the axis is what round 1's pattern set could not
+  reach at all — an unreachable axis and a reachable-but-true site are different
+  defects, and only the second one is closed by a ruling.
 
 ### Rejected alternatives
 
@@ -147,8 +191,9 @@ against a future edit quietly re-merging them (§ Open questions — *Nothing ga
 | 2 | Correct the falsified claims in `AGENTS.md`: the ratchet AXIOM's "`make cover-ratchet` and CI's Test job run the identical script with `--check`" must name the job that now runs it; the § *Build & Test* gate enumeration's `Test (incl. -race)` entry must name the four jobs the split creates. Nothing else in that enumeration is re-authored. | `AGENTS.md` | 1 |
 | 3 | Correct the CI job table in `ai-docs/claude-tools-hierarchy.md`: the single `Test` row becomes one row per new job, each naming its own `make` target and keeping the unchanged `go` paths-changed condition. | `ai-docs/claude-tools-hierarchy.md` | 1 |
 | 4 | Correct `ai-docs/go-test-conventions.md`'s "CI runs it as a Test-job step" so it names the job that now runs `make test-fallback`; the surrounding claim about why the fallback path needs its own gate is unchanged. | `ai-docs/go-test-conventions.md` | 1 |
-| 5 | Correct `.claude/skills/pr-ci-failed/SKILL.md` — the `CI exists` job enumeration, and the *CI job* column of the classification table for the `test` and `race` classes — and apply the same corrections to its declared CI sync-group siblings `.claude/skills/main-ci-failed/SKILL.md` and `.claude/skills/dependabot-pr/reference.md`, editing `dependabot-pr/reference.md` only if it carries a falsified claim and recording the no-change outcome if it does not. | `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/SKILL.md`, `.claude/skills/dependabot-pr/reference.md` | 1 |
-| 6 | Run the AC4 falsified-claim sweep of § Test Design over the tracked live set with its positive control, after the last edit of subtasks 2–5; record the control's output and the sweep's findings. Any site the sweep names that subtasks 2–5 did not reach is fixed here. | (whichever files the sweep names) | 2, 3, 4, 5 |
+| 5 | Correct `.claude/skills/pr-ci-failed/SKILL.md` — the `CI exists` job enumeration, and the *CI job* column of the classification table for the `test` and `race` classes, the `test` row gaining `Race` alongside `Test`, `Coverage ratchet` and `Test fallback` per KD-C — and apply the same corrections to its declared CI sync-group siblings `.claude/skills/main-ci-failed/SKILL.md` and `.claude/skills/dependabot-pr/reference.md`, editing `dependabot-pr/reference.md` only if it carries a falsified claim and recording the no-change outcome if it does not. | `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/SKILL.md`, `.claude/skills/dependabot-pr/reference.md` | 1 |
+| 6 | Correct the shared-test-server entry's falsified sentence in `ai-docs/context-status.md` (KD-D) so it names the job that now runs `make test-fallback` rather than asserting CI's Test job runs it as a step. The rest of that entry, every other entry, and the file's entry order are untouched — this is a claim correction inside one existing bullet, not a rewrite of the log. | `ai-docs/context-status.md` | 1 |
+| 7 | Run the AC4 falsified-claim sweep of § Test Design over the live set with its positive control, after the last edit of subtasks 2–6; record the control's output and the sweep's findings. Any site the sweep names whose sentence the diff makes false and that subtasks 2–6 did not reach is fixed here; a site whose sentence stays true is left and recorded (KD-E). **A site the sweep names in a code change-type file** (`*.go`, migrations, `.github/workflows/**` per KD-B, `Makefile`, `.githooks/**`) **is never edited inside this group** — Group B is instructions/harness-homogeneous, so such a site is surfaced to the orchestrator with its line, to be routed back to a code group or ruled out of scope. | (whichever instructions/harness files the sweep names) | 2, 3, 4, 5, 6 |
 
 The CI sync group is declared, so subtask 5's sibling obligation is not a
 judgement call
@@ -183,10 +228,14 @@ to the user for approval; this design defines **2**.
   Parent `/task` resumes in Group B with fresh context.
 - **Group B** — model `inherit` (the orchestrator's), effort inherited from the
   orchestrator (typically xHigh), 1M-token window, via the `general-purpose`
-  subagent with no inline `model=` — subtasks 2–6 (instructions/harness
+  subagent with no inline `model=` — subtasks 2–7 (instructions/harness
   change-type: `AGENTS.md`, `ai-docs/**`, `.claude/**`). Terminal group
-  (5 subtasks; within the `1..=10` range). All same-change-type subtasks are
-  clustered into this ONE group rather than interleaved with Group A.
+  (6 subtasks; within the `1..=10` range). All same-change-type subtasks are
+  clustered into this ONE group rather than interleaved with Group A. Subtask 7
+  is the group's homogeneity boundary in practice: a site its sweep names in a
+  code change-type file leaves the group as a surfaced finding rather than as an
+  edit, so the group cannot become non-homogeneous by way of the sweep's
+  open-ended file column.
 
 ## Risks
 
@@ -236,10 +285,28 @@ to the user for approval; this design defines **2**.
 - **The sweep that discharges AC4 reports clean because it cannot detect
   anything.** A grep over prose fails on the encoding it was not written for —
   `Test job` against `Test-job`, a table cell `| Test |` against an enumeration
-  `· Test ·`, a capital against a lower-case. Mitigation: the sweep runs a
-  positive control drawn from the **pre-change** tree before its verdict is
-  readable, and varies the encoding — `[derived → AC4; § Test Design, "AC4
-  falsified-claim sweep"]`.
+  `· Test ·`, a capital against a lower-case, and — the axis round 1's pattern
+  set missed entirely — a claim written in step vocabulary rather than job
+  vocabulary (`run as its own CI step`, `CI runs it as a Test-job step`), which
+  no amount of varying the spelling of `Test` reaches. Mitigation, structural
+  rather than enumerative: the sweep's **primary pass is over the gate names
+  themselves** — the four `make` targets and the four job names — because a
+  sentence in AC4's class must name a gate to make a claim about it, so the
+  primary pass cannot be escaped by vocabulary; the encoding variants are a
+  secondary pass over the job names, now carrying the step-vocabulary axis. The
+  positive control drawn from the **pre-change** tree runs before either
+  verdict is readable — `[derived → AC4; § Test Design, "AC4 falsified-claim
+  sweep"]`.
+- **The sweep's own scope is decided by the design it is meant to check.**
+  Round 1 excluded `ai-docs/context-status.md` from the sweep set on the same
+  key decision that declined to edit it, so the instrument bounding AC4's class
+  was configured blind to a member of that class — and a control drawn from
+  already-known sites cannot detect that kind of blindness. Mitigation: the
+  exclusion set is no longer a design judgement but a quotation of the
+  Propagation Rule's own step-4 enumeration plus this task's own artefacts
+  (KD-E), and every keep-or-fix call inside the swept set is the single
+  measurable question *is the sentence false after the diff?* —
+  `[derived → AC4; § Test Design, "AC4 falsified-claim sweep"]`.
 - **A corrected sentence introduces an outward reference into a gated file.**
   `ci.yml` is inside the comment-reference gate's tracked set, so a rewritten
   comment that names a path or a section number turns the `Comment references`
@@ -292,31 +359,60 @@ the rewritten and added `ci.yml` comments carry no path, section number, URL or
 issue number. Run before `git add`, alongside `actionlint` —
 `[derived → subtask 1's gate list]`.
 
-**Subtask 6 — AC4 falsified-claim sweep.** Location: the tracked live set —
-`git ls-files` minus the history surfaces (`ai-docs/learnings.md`,
-`ai-docs/harness-gaps.md`, `ai-docs/context-status.md` per KD-D,
-`ai-docs/plans/done/**`, `ai-docs/plans/ignored/**`) and minus this task's own
-spec, state and design files. Entry point: a case-insensitive scan for the
-claim class — *a site stating which CI job runs any of the four gates* — run in
-each of the encodings the class actually takes in this tree: the possessive
-prose form (`CI's Test job`), the hyphenated form (`Test-job`), the bare form
-(`Test job` / `job Test`), the table-cell form (`| Test |`), and the
-middle-dot job enumeration (`Format · Build · Test · …`). Fixtures: none needed
-beyond the tree. **Positive control, mandatory before the verdict is readable:**
-run the same pattern set against the **pre-change** tree via
-`git show HEAD:<path>` for `AGENTS.md`, `.claude/skills/pr-ci-failed/SKILL.md`
-and `ai-docs/go-test-conventions.md`, and require each to print its falsified
-line; a sweep whose control prints nothing is evidence about the pattern, not
-about the tree. Scenarios: (happy) the post-edit sweep names no live site;
-(failure) it names one, which is fixed in subtask 6; (instrument failure) the
-control prints nothing, in which case nothing about AC4 has been established and
-the pattern set is rewritten before the sweep is re-run. The sites known at
-drafting — the ratchet AXIOM and the gate enumeration in `AGENTS.md`, the CI job
-table row in `ai-docs/claude-tools-hierarchy.md`, the fallback paragraph in
-`ai-docs/go-test-conventions.md`, and the `CI exists` line plus the
-classification table in each of `.claude/skills/pr-ci-failed/SKILL.md` and
-`.claude/skills/main-ci-failed/SKILL.md` — illustrate the class; the sweep
-bounds it — `[derived → AC4]`.
+**Subtask 7 — AC4 falsified-claim sweep.** Location: the tracked live set —
+`git ls-files` minus exactly what KD-E excludes: the surfaces the Propagation
+Rule's step 4 names (`ai-docs/learnings.md`, `ai-docs/plans/done/**`), the
+retired interview state under `ai-docs/plans/ignored/**`, and this task's own
+spec, state, design and progress files. `ai-docs/context-status.md`,
+`ai-docs/harness-gaps.md` and `ai-docs/key-decisions.md` are **in** the set.
+
+Entry point — **two passes, the first of which vocabulary cannot escape.**
+
+*Pass 1, over the gates themselves.* Scan the set, case-insensitively, for the
+four target names (`make test`, `make test-race`, `make cover-ratchet`,
+`make test-fallback`, and the bare `test-race` / `cover-ratchet` /
+`test-fallback` forms) and the four job names the split creates, then **read
+each hit's sentence** and ask the single keep-or-fix question of KD-E: is this
+sentence false once the diff lands? This pass is the one that bounds the class,
+because a sentence claiming where in CI a gate runs must name that gate; it
+reaches a claim written in step vocabulary, in job vocabulary, or in neither.
+
+*Pass 2, over the job-name encodings.* The same scan restricted to the shapes the
+class takes in this tree, kept as a cross-check on pass 1's sentence-reading:
+the possessive prose form (`CI's Test job`), the hyphenated form (`Test-job`),
+the bare form (`Test job` / `job Test`), the table-cell form (`| Test |`), the
+middle-dot job enumeration (`Format · Build · Test · …`), and — the axis round 1
+lacked — the **job-versus-step vocabulary** (`CI step`, `run as its own CI
+step`, `runs it as a step`, `as a Test-job step`, `CI's <Job>`).
+
+Fixtures: none needed beyond the tree. **Positive control, mandatory before
+either pass's verdict is readable:** run the pattern set against the
+**pre-change** tree via `git show HEAD:<path>`, requiring a printed line from at
+least one site per encoding axis — the possessive/job axis from `AGENTS.md`, the
+hyphenated + step axis from `ai-docs/go-test-conventions.md`, the table-cell
+axis from `.claude/skills/pr-ci-failed/SKILL.md`, and the step-vocabulary axis
+from `ai-docs/context-status.md` and `ai-docs/key-decisions.md`. An axis whose
+pattern prints nothing on the pre-change tree is evidence about that pattern,
+not about the tree, and is rewritten before the sweep is re-run. The control is
+a liveness check on the instrument, **not** a completeness argument: completeness
+rests on pass 1, whose input is the gate names rather than a guess at how a
+sentence phrases its claim.
+
+Scenarios: (happy) both passes name no live site whose sentence the diff
+falsifies; (keep) a pass names a site whose sentence stays true — recorded with
+its line and left, as KD-E rules for `ai-docs/key-decisions.md` KD-20; (failure)
+a pass names a false site, which is fixed here if it is an instructions/harness
+file and **surfaced to the orchestrator** if it is a code change-type file, per
+subtask 7's remit; (instrument failure) the control prints nothing on an axis,
+in which case nothing about AC4 has been established on that axis.
+
+The sites known at drafting — the ratchet AXIOM and the gate enumeration in
+`AGENTS.md`, the CI job table row in `ai-docs/claude-tools-hierarchy.md`, the
+fallback paragraph in `ai-docs/go-test-conventions.md`, the `CI exists` line plus
+the classification table in each of `.claude/skills/pr-ci-failed/SKILL.md` and
+`.claude/skills/main-ci-failed/SKILL.md`, and the shared-test-server entry's
+sentence in `ai-docs/context-status.md` — illustrate the class; the sweep bounds
+it — `[derived → AC4]`.
 
 **Run-level verification (AC2, observed rather than asserted).** The PR's own CI
 run is the final instrument: this diff touches `.github/workflows/**`, which the
