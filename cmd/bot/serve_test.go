@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/tgtest"
 )
 
 // shutdownBudget is the drain budget these instrument cases pass to
@@ -469,5 +473,90 @@ func TestServe_FailingCloserReportedNotFatal(t *testing.T) {
 				t.Errorf("stderr = %q, want it to report the failing closer by name", stderr.String())
 			}
 		})
+	}
+}
+
+// closeCountingTransport counts CloseIdleConnections calls while
+// delegating RoundTrip to the wrapped transport — the fixture that lets
+// the process HTTP client's release call be observed through a real
+// drain without a second, real-listener Bot API stub.
+type closeCountingTransport struct {
+	http.RoundTripper
+	closes atomic.Int32
+}
+
+func (t *closeCountingTransport) CloseIdleConnections() {
+	t.closes.Add(1)
+}
+
+// TestServe_ReleasesTheProcessHTTPClientsIdleConnectionsOnDrain drives a
+// real assemble + serve through a full SIGTERM drain and observes the
+// process HTTP client's CloseIdleConnections being called exactly once.
+// The discriminating half is exercised deliberately, once: with the
+// "http client" closer stripped from an otherwise identical closer
+// list, the same transport must see no call at all — proving this case
+// would have caught a missing closer rather than passing vacuously.
+func TestServe_ReleasesTheProcessHTTPClientsIdleConnectionsOnDrain(t *testing.T) {
+	t.Parallel()
+	srv := tgtest.New(t, tgtest.Success(nil))
+	counting := &closeCountingTransport{RoundTripper: srv.Client().Transport}
+	client := &http.Client{Transport: counting}
+
+	var stderr bytes.Buffer
+	a, err := assemble(context.Background(), assembleOptions{
+		Lookup:     mapLookup(assembleTestEnv(t)),
+		Stderr:     &stderr,
+		Version:    "test-version",
+		StartedAt:  time.Now(),
+		HTTPClient: client,
+	})
+	if err != nil {
+		t.Fatalf("assemble: %v (stderr: %s)", err, stderr.String())
+	}
+
+	done := make(chan int, 1)
+	go func() { done <- a.serve(context.Background(), shutdownBudget, &stderr) }()
+	a.signals <- syscall.SIGTERM
+
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Errorf("serve() = %d, want 0 (stderr: %s)", code, stderr.String())
+		}
+	case <-time.After(giveUpCeiling):
+		t.Fatal("serve did not return in time")
+	}
+
+	if got := counting.closes.Load(); got != 1 {
+		t.Errorf("CloseIdleConnections calls = %d, want exactly 1", got)
+	}
+
+	var stripped []closer
+	for _, c := range a.closers {
+		if c.name != "http client" {
+			stripped = append(stripped, c)
+		}
+	}
+	if len(stripped) != len(a.closers)-1 {
+		t.Fatalf("did not find exactly one \"http client\" closer to strip (closers: %v)", closerNames(a))
+	}
+
+	counting.closes.Store(0)
+	a2 := &app{
+		readiness: newReadiness(nil),
+		signals:   make(chan os.Signal, 2),
+		closers:   stripped,
+	}
+	done2 := make(chan int, 1)
+	go func() { done2 <- a2.serve(context.Background(), shutdownBudget, &stderr) }()
+	a2.signals <- syscall.SIGTERM
+
+	select {
+	case <-done2:
+	case <-time.After(giveUpCeiling):
+		t.Fatal("serve did not return in time (stripped-closer run)")
+	}
+	if got := counting.closes.Load(); got != 0 {
+		t.Errorf("CloseIdleConnections calls with the closer stripped = %d, want 0 — this discriminating run must NOT see the release", got)
 	}
 }

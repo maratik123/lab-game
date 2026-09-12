@@ -56,14 +56,17 @@ type app struct {
 	healthSrv *health.Server
 	cfg       *config.Config
 
-	// client, router and taskRegistry are the constructed subsystems a
-	// test observes directly, independent of the runner/closer seam: the
-	// Telegram client every outbound call passes through, and the
-	// router/registry the ingest loop and the scheduler worker were each
-	// constructed from — never re-derived from what New was called with.
+	// client, router, taskRegistry and httpClient are the constructed
+	// subsystems a test observes directly, independent of the
+	// runner/closer seam: the Telegram client every outbound call passes
+	// through, the router/registry the ingest loop and the scheduler
+	// worker were each constructed from, and the process HTTP client
+	// threaded into both the Telegram client and the canary legs — never
+	// re-derived from what New was called with.
 	client       *tg.Client
 	router       *ingest.Router
 	taskRegistry *scheduler.Registry
+	httpClient   *http.Client
 
 	signals chan os.Signal
 
@@ -296,7 +299,29 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		return unwind(ctx, a, opts.Stderr, "scheduler", err)
 	}
 
-	// Step 11: Telegram client.
+	// Step 11: Telegram client — the process's own HTTP client is built
+	// here too, folded into this step rather than added as one of its
+	// own: the caller's client is used when supplied, and otherwise a
+	// clone of the default transport becomes "the process HTTP client",
+	// threaded into both this client and the canary legs (step 13) and
+	// released on the way out by its own closer.
+	httpClient := opts.HTTPClient
+	if httpClient == nil {
+		defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			return unwind(ctx, a, opts.Stderr, "telegram client", fmt.Errorf("http.DefaultTransport is not *http.Transport, got %T", http.DefaultTransport))
+		}
+		httpClient = &http.Client{Transport: defaultTransport.Clone()}
+	}
+	a.httpClient = httpClient
+	a.closers = append(a.closers, closer{
+		name: "http client",
+		close: func(context.Context) error {
+			httpClient.CloseIdleConnections()
+			return nil
+		},
+	})
+
 	gate := ingest.NewPoolGate(cfg.AllowedChatIDs, pool)
 	client, err := tg.New(tg.Options{
 		BaseURL:    cfg.BotAPIBaseURL.String(),
@@ -304,7 +329,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		Transport:  cfg.Transport,
 		Gate:       gate,
 		Observer:   transportObs,
-		HTTPClient: opts.HTTPClient,
+		HTTPClient: httpClient,
 	})
 	if err != nil {
 		return unwind(ctx, a, opts.Stderr, "telegram client", err)
@@ -336,7 +361,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		CloudToken:   cfg.Health.CanaryCloudToken,
 		CloudBaseURL: cfg.Health.CanaryCloudBaseURL.String(),
 		Transport:    cfg.Transport,
-		HTTPClient:   opts.HTTPClient,
+		HTTPClient:   httpClient,
 	})
 	if err != nil {
 		return unwind(ctx, a, opts.Stderr, "canary", err)
