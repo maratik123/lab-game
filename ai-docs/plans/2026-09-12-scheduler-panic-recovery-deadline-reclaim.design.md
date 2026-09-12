@@ -25,12 +25,19 @@ by a **new value of the existing `FailureKind` enum**, which reaches
 already owns (AC3, AC4) [measured 69073e9:internal/health/labels.go:67-82 · `sed -n '67,82p'` →
 `schedulerFailureLabel` switch, one case per member, `default` → `unknownLabelValue`].
 
-**The stack lands on both surfaces the owner named.** The row's `last_error` column is unbounded
+**The stack lands on the surfaces the amended spec names: the log record always, the row wherever
+the attempt leaves the row an outcome of its own.** The row's `last_error` column is unbounded
 `text` and needs no migration [measured 69073e9:internal/store/migrations/00002_scheduler.sql:12 ·
 `sed -n '12p'` → `last_error           text,`], and the settlement statement already writes the
 handler error's rendered text there [measured 69073e9:internal/scheduler/settle.go:221-226 ·
 `sed -n '221,226p'` → `lastError = handlerErr.Error()`]. So an error whose rendering carries the stack
-reaches the row with no schema change and no new statement. The log surface needs a logger, which
+reaches the row with no schema change and no new statement, on both settlement paths: the inline one,
+and the deferred drain, whose `reason` text is bound into the same column (D4's measurement of
+`deferredFailedStatement`). Where the attempt leaves the row no outcome of its own — a panic on a
+goroutine whose deadline was already breached, so the row records the breach; an ingest panic a later
+attempt supersedes, so the give-up row records that later attempt or is never written at all — the
+log record is the whole surface, which is why it is emitted at the recovery point rather than at
+settlement (D8, where both paths are measured). The log surface needs a logger, which
 neither package takes today; both gain one as an `Options` field, following the module's existing
 `*slog.Logger` parameter convention [measured 69073e9:internal/store/migrate.go:71 · `sed -n '71p'` →
 `func Migrate(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, opts ...MigrateOption) (err error)`].
@@ -74,7 +81,7 @@ database gets `57P01` and returns, which releases its goroutine and its connecti
 | A lease/heartbeat protocol to reclaim the row | Argued and rejected in the delivered scheduler design; the terminate is the layer that design named as the alternative and the owner has now chosen. |
 | Issue the terminate inside the existing watchdog goroutine | Makes AC7 an asynchronous promise instead of a property that holds when `executeOne` returns, and puts the one statement whose failure an operator must see on the module's one deliberately detached launch, where no error has anywhere to go. |
 | Duplicate the recover-and-capture code in both packages | Two handler boundaries today and an open trajectory (the general rule is written for *any* goroutine running a supplied handler, and the outbound-notification sender is a named future one), against this workspace's ≥3-site / ≥2-with-trajectory lift rule. See D1. |
-| A size cap on the recorded stack | Unnecessary: a recovered panic's stack is bounded by the runtime's own frame cap [measured go1.26.5 linux/amd64 · a deferred `recover` calling `debug.Stack()` at recursion depth 1/50/200/5000 → `bytes=1117/8080/14185/14088`, `frames=9/58/101/101`]. Introducing a cap would add a tunable nobody needs. |
+| A size cap on the recorded stack | Unnecessary: the traceback the runtime renders for a recovered panic is frame-capped by the runtime itself, so the rendered stack stops growing once that cap is reached however deep the recursion goes [measured go1.26.5 linux/amd64 (`go version` → `go1.26.5-X:nodwarf5 linux/amd64`) · a deferred `recover` calling `debug.Stack()` at rising recursion depth → the rendered byte length plateaus instead of growing with depth, and the deepest probe renders no longer than the mid one]. Introducing a cap would add a tunable nobody needs. |
 
 **On the spec's mechanism-naming rows.** The spec's `## Key decisions` rows that name mechanisms —
 `pg_terminate_backend`, the handler-boundary recovery point, and the `failure`-label shape — are each
@@ -133,6 +140,29 @@ frees the row: pgx destroys a busy connection on release rather than returning i
 [measured pgx/v5@v5.10.0:pgxpool/conn.go:19-38 · `sed -n '19,38p'` → `if conn.IsClosed() ||
 conn.PgConn().IsBusy() || conn.PgConn().TxStatus() != 'I' { res.Destroy() … }`], and the row goes
 lock-free after it [measured postgres:18.6/pgx v5.10.0 · probe → `row lock-free after Release`].
+
+**What this branch reports, in full.** It borrows the deadline breach's *mechanism* and none of its
+*classification*. Each value below is fixed here rather than left to the implementor, because this
+branch is where AC2, AC3 and AC6 all land on code with no settlement statement to ride:
+
+- the observation's `Failure` is the **panic member** (D2) — not `FailureDeadline`, which the breach
+  branch uses [measured 100928c:internal/scheduler/execute.go:164-166 · `sed -n '163,168p'` → the
+  breach branch's `obs.Outcome = OutcomeFailed`, `obs.Failure = FailureDeadline`,
+  `obs.ConsecutiveFailures = task.ConsecutiveFailures + 1`], and not `FailureRolledBack`, which the
+  nearest existing enqueue-and-observe branch uses
+  [measured 100928c:internal/scheduler/execute.go:202-212 · `sed -n '200,224p'` → `settleAndAfter`'s
+  commit-failure branch: `enqueuePending` with `consecutiveFailures: task.ConsecutiveFailures` and a
+  `reason` built from the error, then `obs.Failure = FailureRolledBack`]. The attempt ended in a
+  panic, and D3's outranking rule decides it;
+- the observation's `Outcome` is failed and its `ConsecutiveFailures` is the claimed count plus one,
+  and the enqueued `consecutiveFailures` is the claimed count itself — the commit-failure branch's
+  shape verbatim (same measurement), since the drain adds its own one;
+- `pendingSettlement.reason` is the **rendered recovered-panic error** — the same text the inline
+  settlement would have written — never the deadline's fixed string. That is the only way the stack
+  reaches `last_error` on this branch, since `reason` is what the drain binds there
+  [measured 69073e9:internal/scheduler/settle.go:132-154 · `sed -n '132,154p'`]. The drain's write is
+  this attempt's own outcome on the row, so amended AC6's row clause binds here and is met.
+
 The common case is unaffected: a panic with no open rows leaves the transaction fully usable
 [measured postgres:18.6/pgx v5.10.0 · probe → `rollback-to-savepoint err=<nil>`,
 `settlement-update err=<nil>`, `commit err=<nil>`, and the handler's own write rolled back].
@@ -150,6 +180,45 @@ bounds a local cleanup, not a tuning value [measured 69073e9:internal/scheduler/
 through to the pre-existing layers (the server's idle-in-transaction timeout, and the watchdog's
 close), which are unchanged.
 
+**D5a — The terminate reverses a shipped test's central assertion, and the reversal is the design's
+call, not the implementor's.** `TestDeadline_ctxIgnoringHandler_negativeCase` asserts today that the
+row **stays locked** while its ctx-ignoring handler runs
+[measured 100928c:internal/scheduler/deadline_test.go:759 · `grep -n "want it to stay locked"` →
+`t.Fatalf("row became claimable while the ctx-ignoring handler was still running, want it to stay locked")`].
+Its fixture keeps the transaction's backend alive by looping over a short `pg_sleep` on a context of
+its own [measured 100928c:internal/scheduler/deadline_test.go:57-65 · `sed -n '40,90p'` →
+`ctxIgnoringHandler.Execute`'s `for` loop over
+`tx.Exec(context.Background(), "SELECT pg_sleep(0.02)")`] — and the breach branch now terminates that
+backend, which takes the row's lock with it whether the handler is mid-statement or between
+statements, **before `RunOnce` returns**. That assertion therefore inverts to *claimable on the first
+probe*, and the test's own doc comment, which today promises the row "becomes claimable once it
+returns and the watchdog closes the hijacked connection"
+[measured 100928c:internal/scheduler/deadline_test.go:709 ·
+`grep -n "locked while the handler keeps running"`], is rewritten to what it now asserts. The test
+keeps its place as the weaker, already-shipped witness for AC7; the new reclaim test is the
+instrumented one (§ Test Design). Its name says `negativeCase` of a defence that no longer has this
+residue, so the name moves with the assertion.
+
+**D5b — The lock half of the ownership rule's named exception narrows; the goroutine half survives.**
+Rule 4's exception covers *a scheduler handler blocked outside the database after its deadline*, and
+its explanatory clause today reads that no mechanism reclaims that goroutine
+[measured 100928c:ai-docs/code-style.md:84 · `grep -n "The one named exception is a scheduler handler"` →
+ownership rule 4, verbatim]. After this
+change the clause is true of a handler blocked **outside** the database only: one blocked **in** it
+gets `57P01` and returns, so both its goroutine and its connection are reclaimed
+— `[derived → AC8]`. The row's lock leaves the exception entirely, in **both** cases, and that half
+is measured rather than reasoned: a backend that is **idle in transaction** — the state a handler
+blocked on a Go channel leaves it in — holding `FOR NO KEY UPDATE` is terminated just as a busy one
+is, and the row is claimable immediately afterwards
+[measured postgres:18.6 (`select version()` → `PostgreSQL 18.6 (Debian 18.6-1.pgdg13+2)`) · holder
+session left idle in transaction holding the row → `holder state: idle in transaction`,
+`claim-before-terminate: blocked-or-skipped`, `terminate returned: t`,
+`claim-after-terminate: got:1`, `backend still in pg_stat_activity: 0`, and the holder's own session
+→ `FATAL: terminating connection due to administrator command`]. So the row half of the exception
+disappears for every handler; only the goroutine half, and only outside the database, survives.
+Subtask 10 carries that narrowing; the same falsification is what subtasks 5 and 9 carry in the code
+comments and the goroutine-ownership allow list.
+
 **D6 — The PID binds as an `int64` and the SQL carries no cast.** Both halves are measured: Postgres
 resolves `pg_terminate_backend($1)` with a Go `int64` bound and no cast (D-probe above), and the
 narrowing conversion the alternative would need trips the security linter while the widening one is
@@ -166,13 +235,40 @@ where a logger is mandatory [measured 69073e9:internal/scheduler/scheduler_test.
 → `store.Migrate(ctx, pool, slog.New(slog.DiscardHandler))`].
 
 **D8 — The log record is emitted at the recovery point, on the handler's own goroutine.** Not at
-settlement: a handler that panics *after* its deadline was already breached has no settlement of its
-own to ride, and the log is then the only surface its stack can reach. The record carries the stack
-as its own attribute plus the task/update identity, at error level.
+settlement: an attempt does not always leave the row an outcome of its own, and the log is then the
+only surface its stack can reach. The amended spec's row clause is satisfied on every path that does
+settle; these are the paths it does not, and each is why the emission point is the recovery point:
 
-**D9 — No new configuration key, no balance number.** Nothing this design adds is a tuning value in
-the sense `docs/DESIGN.md` §16.5 reserves for balance; the only numbers are the terminate's local
-timeout bound (D5) and the failure-label spelling (D2).
+- a scheduler handler that panics *after* its deadline was already breached — the pending settlement
+  the breach enqueued records the breach, and this goroutine is an orphan with no settlement of its
+  own;
+- an ingest panic a later attempt supersedes — ingest persists a row only when every attempt is
+  spent, and the give-up row's `last_error` is the **last** attempt's error
+  [measured 100928c:internal/ingest/settle.go:64-66 · `sed -n '63,66p'` → `lastErrText := ""` /
+  `if lastErr != nil {` / `lastErrText = lastErr.Error()`, inside `settleGivenUp`],
+  so a panic on any earlier attempt — whether a later one succeeds or a later one fails differently —
+  leaves the row nothing of its own.
+
+The record carries the stack as its own attribute plus the task/update identity, at error level.
+
+The scheduler's recovery point sits inside `runHandlerWithSavepoint`, which is a package-level
+function with no `*Worker` receiver [measured 100928c:internal/scheduler/execute.go:232 ·
+`grep -n "func runHandlerWithSavepoint"` → `func runHandlerWithSavepoint(ctx context.Context, tx pgx.Tx, handler Handler, task Task) (outcome Outcome, handlerErr, releaseErr error)`],
+so the logger reaches the emission site as an added **parameter** on that function, passed by
+`executeOne` from the `Worker` field subtask 2 adds. It is not reached by giving the function a
+receiver, and not by a package-level logger variable.
+
+**D9 — No new configuration key, no balance number, and no event-dictionary row.** Nothing this
+design adds is a tuning value in the sense `docs/DESIGN.md` §16.5 reserves for balance; the only
+numbers are the terminate's local timeout bound (D5) and the failure-label spelling (D2). The
+telemetry AXIOM's two halves are discharged asymmetrically and deliberately: the **metrics** half is
+the `failure`-label value (D2, AC4) with its propagation (AC5), and the **events** half is nothing —
+the issue's *Telemetry obligation* states *"Events: none — the event dictionary holds gameplay events
+only"*, and a scheduler handler panic is infrastructure, not a gameplay event
+[measured 100928c:ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md.state.md:63
+· `grep -n "Events: none"` → the issue body's Telemetry obligation, verbatim]. Recorded here so the
+AXIOM is visibly discharged rather than silently skipped. This change moves no balance, so it has no
+posting signature to declare.
 
 **D10 — No schema change, therefore no forward migration.** The stack rides the existing
 `last_error` text column in both packages' existing give-up/settlement statements, and no persisted
@@ -187,13 +283,13 @@ are the operator-facing projections.
 | 1 | New shared primitive: the recovered-panic type (value + captured stack), its constructor taking a `recover()` result, its `error` rendering, package comment, tests, and the package's leak-check `TestMain` | `internal/panicguard/panicguard.go`, `internal/panicguard/panicguard_test.go`, `internal/panicguard/main_test.go` | — |
 | 2 | `scheduler.Options` gains `Logger *slog.Logger`; `Worker` carries it; `New` substitutes a discard handler for nil (D7) | `internal/scheduler/worker.go`, `internal/scheduler/worker_test.go` | — |
 | 3 | `FailureKind` gains the panic member with its doc comment; `FailureRolledBack`'s doc gains the clause that excludes a panic from it (D2, D3) | `internal/scheduler/observe.go`, `internal/scheduler/observe_test.go` | — |
-| 4 | Handler-boundary recovery and its settlement: recover around `Handler.Execute` only; carry the recovered panic on the handler result; classify it first in the settlement switch; route an unusable transaction into the pending-settlement set; emit the log record at the boundary (D1, D3, D4, D8) | `internal/scheduler/execute.go`, `internal/scheduler/settle.go`, `internal/scheduler/panic_test.go` | 1, 2, 3 |
-| 5 | Deadline reclaim: read the backend PID on the idle pooled connection; terminate the breached backend from the pool after the breach; log a failed terminate; correct the two doc comments whose claims this falsifies — the timeouts constant's *"one of two things"* lock-release sentence and `Handler`'s *"its row stays locked until the handler returns"* clause (D5, D6) | `internal/scheduler/execute.go`, `internal/scheduler/task.go`, `internal/scheduler/reclaim_test.go` | 2 |
+| 4 | Handler-boundary recovery and its settlement: recover around `Handler.Execute` only; thread the logger into `runHandlerWithSavepoint` as a parameter so the emission site can reach it; carry the recovered panic on the handler result; classify it first in the settlement switch; route an unusable transaction into the pending-settlement set with the panic failure kind and the rendered panic as its reason; emit the log record at the boundary (D1, D3, D4, D8) | `internal/scheduler/execute.go`, `internal/scheduler/settle.go`, `internal/scheduler/panic_test.go` | 1, 2, 3 |
+| 5 | Deadline reclaim: read the backend PID on the idle pooled connection; terminate the breached backend from the pool after the breach; log a failed terminate; **reverse `TestDeadline_ctxIgnoringHandler_negativeCase`'s row-stays-locked assertion to claimable-on-the-first-probe** and rewrite that test's doc comment and name (D5a); correct every doc comment whose claim the terminate falsifies — the timeouts constant's *"one of two things"* lock-release sentence, `Handler`'s *"its row stays locked until the handler returns"* clause, the watchdog launch's `//nolint` reason claiming the close is *what finally releases the row's lock*, and `waitLockFree`'s doc comment enumerating the two pre-existing release mechanisms (D5, D5a, D6) | `internal/scheduler/execute.go`, `internal/scheduler/task.go`, `internal/scheduler/deadline_test.go`, `internal/scheduler/reclaim_test.go` | 2 |
 | 6 | Update ingestion: `Options` gains `Logger`; the recovery helper returns the shared recovered-panic value instead of a bare `panicked` flag; its rendering carries the stack into the give-up row's `last_error`, and a log record carries it as an attribute. The reported outcome is unchanged (D1, D7, D8) | `internal/ingest/loop.go`, `internal/ingest/attempt.go`, `internal/ingest/retry_test.go`, `internal/ingest/loop_test.go` | 1 |
 | 7 | Health: the failure-label mapper gains the panic case; the label unit test, the observer's failure-label test and the closed-set label guard's driver and expectation all take the new value | `internal/health/labels.go`, `internal/health/labels_test.go`, `internal/health/scheduler_test.go`, `internal/health/guards_test.go` | 3 |
 | 8 | Composition root: thread the process logger into both constructors | `cmd/bot/assemble.go`, `cmd/bot/assemble_test.go` | 2, 6 |
 | 9 | Goroutine-ownership allow list: the handler launch's panic answer stops saying the recovery is follow-up work, and the watchdog launch's stop answer records that a handler blocked in the database is now bounded by the terminate | `internal/gateguard/guard_test.go` | 4, 5 |
-| 10 | Documentation propagation (AC5): the scheduler failure-value enumeration; the ownership rule's explanatory clause about the ctx-ignoring handler; the detached-launch paragraph that currently points at this issue as unfinished work | `ai-docs/alert-contract.md`, `ai-docs/code-style.md`, `ai-docs/process-lifecycle.md` | 3, 5 |
+| 10 | Documentation propagation (AC5): the scheduler failure-value enumeration; ownership rule 4's explanatory clause, which narrows to a handler blocked *outside* the database — the row's lock leaves the exception entirely (D5b); the detached-launch paragraph that currently points at this issue as unfinished work | `ai-docs/alert-contract.md`, `ai-docs/code-style.md`, `ai-docs/process-lifecycle.md` | 3, 5 |
 
 ## Handoff plan
 
@@ -228,10 +324,12 @@ Group A.
 - **A handler that panics after its deadline was already breached puts its stack only in the log,
   not in the row.** The breach branch has already enqueued the pending settlement whose reason text
   is the deadline, so the row records what settled the attempt rather than what the orphaned
-  goroutine did afterwards. Mitigation: none needed — the log record is emitted at the recovery
-  point on the handler's own goroutine (D8), so the stack is never lost; recorded as a consequence of
-  the settlement order, not a defect — `[derived → the boundary-emitted log record asserted by the
-  scheduler panic test in § Test Design]`.
+  goroutine did afterwards. This is no longer a deviation to argue: the round-3 amendment narrowed
+  AC6 to *the log record in every case, the row wherever the attempt leaves the row an outcome*, and
+  this path is one of the two the narrowing was written for. Mitigation: the log record is emitted at
+  the recovery point on the handler's own goroutine (D8), so the stack is never lost, and § Test
+  Design gives the path its own witness rather than leaving it argued —
+  `[derived → the post-breach panic scenario under AC6 in § Test Design]`.
 - **The terminate can fail, and then AC7's guarantee falls back to the pre-existing layers.** A
   saturated pool, a closing pool on shutdown, or a backend that is already gone all make the
   statement fail or report `false`. Mitigation: the failure is logged and the pre-existing layers —
@@ -239,6 +337,21 @@ Group A.
   are left in place unchanged, so the behaviour degrades to today's rather than to nothing.
   Terminating an already-dead pid is harmless [measured postgres:18.6 · probe → repeated terminate
   → `ok, returned: false`].
+- **The terminate turns a shipped, green test red by design, and a subtask that only adds files would
+  leave it red.** `TestDeadline_ctxIgnoringHandler_negativeCase` asserts the pre-change outcome
+  directly [measured 100928c:internal/scheduler/deadline_test.go:759 ·
+  `grep -n "want it to stay locked"`], so its inversion is part of subtask 5's contract rather than
+  an unexpected failure to diagnose mid-implementation. Mitigation: D5a fixes the new assertion, and
+  subtask 5's file list names `deadline_test.go` so the edit is in the group's scope from the start.
+  The other `waitLockFree` callers are expected to keep passing: the helper polls until the row can
+  be locked and fails only on its own timeout, so an earlier release satisfies it
+  [measured 100928c:internal/scheduler/deadline_test.go:76-101 · `sed -n '68,101p'` → `waitLockFree`
+  loops on a `FOR NO KEY UPDATE SKIP LOCKED` probe until its patience budget expires] — asserted by
+  running the package rather than assumed, `[derived → the package suite re-run at subtask 5]`. And
+  `TestDeadline_drainDoesNotBlockOnLockedRow` holds its
+  lock in a transaction of the test's own, not through a breach, so no terminate reaches it
+  [measured 100928c:internal/scheduler/deadline_test.go:559-596 · `sed -n '540,630p'` → the test
+  begins its own `holder` transaction and takes `FOR NO KEY UPDATE` on the row itself].
 - **An instantly claimable row can be re-claimed by another worker before this worker's drain counts
   the attempt.** The drain's guard already handles it: a row whose `run_at` moved on matches nothing
   and the id is dropped rather than counted against work it did not do
@@ -307,8 +420,9 @@ Every claim below is about a test that does not exist yet.
 - Entry point: `(*Worker).RunOnce` driving a registered handler that panics.
 - Fixtures: a handler that always panics with a recognisable value; a handler that panics on its
   first call and succeeds afterwards; a handler that opens rows, leaves them open and panics
-  (the unusable-transaction case of D4); a recording `slog.Handler` installed through the new
-  `Options.Logger`, collecting records behind a mutex.
+  (the unusable-transaction case of D4); a handler that blocks on a test-controlled channel until
+  after its deadline is breached and then panics (the log-only surface case); a recording
+  `slog.Handler` installed through the new `Options.Logger`, collecting records behind a mutex.
 - Scenarios:
   - AC1 — after the panicking task, the same worker's next cycle claims and runs a second due task,
     and neither `RunOnce` call returns an error — `[derived → AC1]`.
@@ -317,14 +431,23 @@ Every claim below is about a test that does not exist yet.
   - AC3 — the observation for the panicking attempt carries the failed outcome and the panic failure
     kind, and a sibling case with a handler that *returns* an error carries the handler failure kind,
     so the two are asserted apart rather than one in isolation — `[derived → AC3]`.
-  - AC6 — the task row's `last_error` contains both the panic value and a frame naming the
-    panicking fixture, and the recording logger holds a record whose stack attribute contains the
+  - AC6 (row surface) — the task row's `last_error` contains both the panic value and a frame naming
+    the panicking fixture, and the recording logger holds a record whose stack attribute contains the
     same frame — `[derived → AC6]`.
+  - AC6 (log-only surface) — the narrowed clause gets its own witness rather than an argument: a
+    handler that blocks past its deadline and **then** panics, released by the test after `RunOnce`
+    has returned. The recording logger holds a record whose stack attribute names the panicking
+    fixture, while the row — after the next cycle's drain — records the deadline, not the panic.
+    Asserting both halves is what makes this a test of the amended rule rather than of the log alone
+    — `[derived → AC6]`.
   - D3 — a handler that panics **and** whose savepoint rollback succeeds still classifies as a panic,
     not as rolled-back — `[derived → AC3]`.
-  - D4 — the rows-left-open handler: the attempt is still counted (the row's failure count rises
-    after the next cycle's drain), the row becomes claimable, and `RunOnce` returns no error —
-    `[derived → AC2]`.
+  - D4 — the rows-left-open handler, asserted on each of the values D4 fixes: the attempt is
+    still counted (the row's failure count rises after the next cycle's drain), the row becomes
+    claimable, and `RunOnce` returns no error — `[derived → AC2]`; the observation for that attempt
+    carries the panic failure kind, not the deadline or rolled-back one — `[derived → AC3]`; and the
+    `last_error` the drain writes contains the panic value and a frame naming the fixture, which is
+    the only route the stack has to the row on this branch — `[derived → AC6]`.
 - Discriminating direction: each assertion must be able to go red. The panic-versus-error pair is
   the control for AC3; for AC2 the red direction is the pre-change behaviour, where the process
   ends instead of counting an attempt.
@@ -350,21 +473,44 @@ Every claim below is about a test that does not exist yet.
     from `pg_stat_activity`, which is the connection-released assertion in a form the test can make
     exactly — `[derived → AC8]`.
   - The observation still carries the deadline failure kind, unchanged — `[derived → AC7]`.
+- **Polling, and where it is banned.** The `pg_stat_activity` row's disappearance is server-side
+  state read after `pg_terminate_backend` has already returned; whether it is gone at the *instant*
+  the terminate returns is not something this design measured — D5b's probe read it after a short
+  delay — so that assertion **polls within a generous bound** rather than reading once: a patience
+  budget in the shape the package's existing lock-free helper already uses, never a fixed sleep, and
+  never a single immediate read, which would land as a flake under cross-package load. The AC7 claim probe is the opposite and deliberately so: it must
+  succeed on its **first** attempt with no polling, because the property under test is that the row
+  is claimable at the instant `executeOne` returns, and a poll would pass equally against the
+  pre-change tree's idle-in-transaction release — `[derived → AC7, AC8]`.
 - Fixtures/helpers: the existing lock-free poll helper stays for the tests that legitimately wait;
   the AC7 assertion deliberately does **not** use it. Each test releases its fixture on cleanup so
   the package's leak check ends clean.
+- **The shipped negative case moves with the mechanism** (D5a): `TestDeadline_ctxIgnoringHandler_negativeCase`'s
+  row-stays-locked assertion is rewritten to claimable-on-the-first-probe, and its doc comment and
+  name follow. For AC7 it is a sound witness — the row's lock dies with the
+  backend whether the handler is mid-statement or between statements — but it witnesses **nothing**
+  about AC8: its loop discards the error each `tx.Exec` returns and keeps spinning until the test
+  closes its release channel (D5a's measurement of the fixture), so it never demonstrates a handler
+  *returning* on the terminate.
+  That is what the instrumented fixture above is for, and why it stays the primary one —
+  `[derived → AC7]`.
 
 **Update ingestion** (`internal/ingest`, database-backed)
 - Entry point: the loop's attempt path with a route whose handler panics.
 - Scenarios:
-  - AC9 — after every attempt panics, the give-up row's `last_error` contains the panic value and a
-    frame naming the panicking fixture, and the recording logger holds a record per recovered panic
-    whose stack attribute contains the same frame — `[derived → AC9]`.
+  - AC9 (row surface) — after every attempt panics, the give-up row's `last_error` contains the panic
+    value and a frame naming the panicking fixture, and the recording logger holds a record per
+    recovered panic whose stack attribute contains the same frame — `[derived → AC9]`.
+  - AC9 (log-only surface) — the narrowed clause's ingest half, with its own witness: a route whose
+    handler panics on its first attempt and succeeds on a later one. No give-up row is written at
+    all, and the recording logger still holds a record whose stack attribute names the fixture.
+    Asserting the row's absence alongside the record is what makes this a test of the amended rule
+    — `[derived → AC9]`.
   - AC9 (unchanged outcome) — the per-attempt observations still report the panic outcome for each
     attempt and the give-up outcome once, in the counts the existing recovery test already pins, so
     the reported outcome is asserted unchanged rather than assumed — `[derived → AC9]`.
-- Fixtures: the package's existing always-panicking handler, plus the same recording `slog.Handler`
-  shape the scheduler tests use.
+- Fixtures: the package's existing always-panicking handler; a handler that panics once and then
+  succeeds; plus the same recording `slog.Handler` shape the scheduler tests use.
 
 **Health** (`internal/health`, no database)
 - Entry point: the failure-label mapper, the scheduler observer, and the closed-set label guard.
@@ -383,13 +529,17 @@ race gate is mandatory here because the change touches the scheduler and gorouti
 
 ## Open questions
 
-- **AC9's "the same two surfaces AC6 names", for update ingestion.** AC6's two surfaces are the
-  task's own row and a log record. Update ingestion's row analogue is the give-up row, which is
-  written only when **every** attempt has failed; a panic that a later attempt recovers from
-  persists no row at all, by the existing design — that is exactly what the distinct panic outcome
-  exists to report [measured 69073e9:internal/ingest/observe.go:33-37 · `sed -n '33,37p'` →
-  *"Reported distinctly from OutcomeFailed so a recovered panic that a later attempt fixes is never
-  erased"*]. The design proceeds on the reading that AC9 binds the surfaces update ingestion has:
-  the log record on **every** recovered panic, and the give-up row's `last_error` wherever ingestion
-  persists an error at all. If the owner meant a persisted row per recovered panic, that is a new
-  table and a spec amendment, not a wiring change — flagged rather than assumed.
+- None. Round 1's one open question — whether AC6/AC9's "both surfaces" bound a row that some
+  attempts physically never leave — went to the owner and was answered by amending the spec: Scope
+  item 3, the `Where does a handler panic's stack land?` Key decisions row, AC6 and AC9 now read *the
+  log record in every case, the row wherever the attempt leaves the row an outcome*, and the owner
+  confirmed that four-row reach in a second round-3 answer
+  [measured 100928c:ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md.state.md:84-89
+  · `sed -n '84,89p'` → the two round-3 `prior_qa` entries, *"Amend the spec"* and *"Keep all four"*].
+  This design is reconciled to the amended pair: the narrowed clause is stated in § Approach, its
+  emission point is D8, and each of its two log-only paths now carries its own test rather than an
+  argument (§ Test Design). The ingest reading round 1 flagged — the give-up row is where ingestion
+  persists an error, and a panic a later attempt supersedes persists none — is what the amendment
+  ratified, so nothing is left assumed
+  [measured 69073e9:internal/ingest/observe.go:33-37 · `sed -n '33,37p'` → *"Reported distinctly from
+  OutcomeFailed so a recovered panic that a later attempt fixes is never erased"*].
