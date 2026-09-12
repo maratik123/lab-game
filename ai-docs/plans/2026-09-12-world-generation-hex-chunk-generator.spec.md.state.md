@@ -63,7 +63,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 3
+round: 4
 agent_id: ac11c6eef428a2106
 prior_qa:
   - round: 1
@@ -91,4 +91,9 @@ prior_qa:
         (unprompted)
     answer: |
         У меня вопрос по поводу Крускал и Прим, я думал, что это 2 разных алгоритма. Или они рисуют одинаковые лабиринты?
+  - round: 3
+    question: |
+        Kruskal and Prim are genuinely two different algorithms — you were right, and my round-1 bundling of them was the simplification. They are close relatives though: the maze literature notes that classical Prim over random edge weights would be stylistically identical to Kruskal, and the distinctness comes only from the frontier-based Prim, which grows outward from one start cell where Kruskal carves fragments all over the chunk that later merge. Kruskal on equally weighted edges tends toward regular, uniform patterns, and neither samples mazes without bias — Wilson's walk is the only one of the five that does. Does 'all five' still stand?
+    answer: |
+        вопрос, алгоритмы оценивались только по dead-end или другие параметры тоже брались для оценки, например, количество прямых, количество ветвлений, длина от ветвления до тупика? и еще вопрос - все алгоритмы годятся для генерации в гексагональноя ячейке? если да, то все 5, где prim - frontier-based вариант
 ```
