@@ -13,9 +13,9 @@ two machines still agree.
 ### A note on evidence
 
 `[measured <commit>:<path>:<lines> · <cmd> → <output>]` cites this tree at the commit the read was
-taken at — `155bbc8` for round 1, `4098f7b` for anything read in round 2, the round-1 design commit
-having moved HEAD without touching any cited file. `[derived → …]` names the acceptance criterion,
-subtask or test that will establish a claim about something **this task creates**.
+taken at — `155bbc8` for round 1, `4098f7b` for anything read in round 2. `[derived → …]` names the
+acceptance criterion, subtask or test that will establish a claim about something **this task
+creates**.
 
 **Round 2 corrects a tag error.** Round 1 used a third form, `[measured probe · …]`, for behaviour
 that this task's own schema will have — `item_movement`'s constraints, the `capacity_role` index,
@@ -203,8 +203,18 @@ owner judged the declarative guard illusory»
 `[measured 155bbc8:ai-docs/key-decisions.md:47 · grep -n 'No composite FKs' ai-docs/key-decisions.md → "No composite FKs and no move-control: such moves are not planned by design, and the owner judged the declarative guard illusory."]`.
 Neither half transfers. The guarded event here is not unplanned — a `from` that disagrees with the
 chain is the exact failure §11 names as *the* invariant of this machine — and the guard is not
-illusory: it refuses the row rather than merely describing it. The decision is recorded here rather
-than silently taken, and subtask 2 is where the refusal stops being a design claim.
+illusory: it refuses the row rather than merely describing it. Subtask 2 is where the refusal stops
+being a design claim.
+
+**The owner settled this in round 3, and the answer is scoped rather than blanket.** Put the
+question as "is «No composite FKs» unconditional?", the answer was, verbatim: *"Scoped — take the
+FK: The design as written. Neither half of KD-17's reason transfers: a `from` disagreeing with the
+chain is the exact failure §11 names as THE invariant of this machine, and the probe shows the FK
+refuses the row rather than being illusory."* The alternative that was on the table and is now
+rejected — dropping the composite FK and leaving the chain check to `Move` plus the successor
+unique index — is strictly weaker: it holds for every write that goes through `Move` and for
+nothing else. The timing mattered and is now moot: a schema constraint is forward-only, so an
+answer arriving after the migration shipped would have cost a second migration rather than an edit.
 
 **Why the movement points at `journal_entry`, not at its own exclusive arc.** §11 says the movement
 carries «документ-основание (тот же exclusive arc)». `journal_entry` **is** that arc: it is 1:1
@@ -294,10 +304,22 @@ grant. The `movements` slice is mandatory and positional because it is the thing
 `Move` rather than `Post`; the postings are the optional tail so the common
 move-with-nothing-else call stays short.
 
+**`NewItem` is a mint marker, not an instance id, so the duplicate check skips it.** A document may
+mint more than one instance — a craft yielding several arrows is the obvious case — and phase e's
+"one `item` row per `NewItem` movement" says so already. The duplicate-instance rule therefore
+reads: **no *existing* instance may appear twice in one batch**, and `NewItem` movements are exempt
+because they name no instance yet.
+
+**The returned slice is parallel to `movements`, one entry per movement, in the caller's order.**
+`ids[i]` is the instance that `movements[i]` moved: the freshly minted id where that movement
+carried `NewItem`, and the caller's own `ItemID` echoed back where it did not. The alternative —
+one entry per mint — is more compact and worse, because it makes the caller track which input
+indices were mints in order to read its own result.
+
 `Move`'s phases, mirroring `Post`'s documented shape so a reader of one can read the other:
 
-- **a. static shape, no SQL** — movements non-empty; no `From == To`; no instance named twice in
-  one batch; a `NewItem` movement's `From` is `WorldHolder`. Transaction untouched.
+- **a. static shape, no SQL** — movements non-empty; no `From == To`; no existing instance named
+  twice in one batch; a `NewItem` movement's `From` is `WorldHolder`. Transaction untouched.
 - **b. two `SELECT`s, no writes** — the chain head of every named instance (its id and current
   holder), and the `free`/`used` account of every touched holder in the `slots` kind. Refuses an
   unknown instance, a `From` that is not the current holder (AC2), and a holder with no capacity
@@ -319,6 +341,31 @@ document and one `journal_entry` exist; `item_movement.journal_entry_id` points 
 (D3); and both posting sets hang off it. A mechanic can therefore write §11's worked examples as
 one call each, and #26's framework has one document to check both signatures against
 `[derived → AC3, and the one-document test of § Test Design subtask 4]`.
+
+**One sentinel per refusal condition — no two conditions collapse into one error.** `Move` refuses
+more conditions than `Post` does, and a mechanic renders them differently, so each gets its own
+`errors.Is`-comparable sentinel and each is named in the doc comment with the transaction state it
+leaves:
+
+| Condition | Sentinel | Transaction |
+|---|---|---|
+| `movements` is empty | `ErrNoMovements` | untouched |
+| a movement's `From` equals its `To` | `ErrSelfMove` | untouched |
+| an existing instance appears twice in one batch | `ErrDuplicateItem` | untouched |
+| a `NewItem` movement's `From` is not `WorldHolder` | `ErrMintNotFromWorld` | untouched |
+| an `ItemID` with no `item` row | `ErrUnknownItem` | usable, nothing written |
+| `From` is not the instance's current holder | `ErrNotCurrentHolder` | usable, nothing written |
+| a holder with no capacity account of the posted kind | `ErrNoCapacityAccount` | usable, nothing written |
+| a concurrent transaction moved the instance first | `ErrMoveConflict` | aborted |
+
+The pair that must **not** share a sentinel is `ErrUnknownItem` and `ErrNotCurrentHolder`: the
+first is a caller bug and the second is a lost race against another player, and a mechanic that
+cannot tell them apart renders "that item does not exist" for "someone looted it first". Every
+other sentinel `Move` can return is `post`'s, unchanged and propagated so `errors.Is` still finds
+it — `ErrNoBasis`, `ErrAlreadyPosted`, `ErrInvalidAmount` and `ErrUnbalanced` on a caller leg,
+`ErrUnknownAccount`, `ErrOverdraft`, `ErrBalanceRowMissing`
+`[measured 155bbc8:internal/store/errors.go:8-56 · cat -n internal/store/errors.go → Post's sentinel block, each with the transaction state its comment states]`
+`[derived → subtask 4's per-sentinel scenarios]`.
 
 **Why the caller supplies `From` rather than `Move` deriving it.** Deriving would make AC2
 inexpressible and would silently convert "loot the corpse" into "move the item from wherever it
@@ -348,7 +395,12 @@ What AC9 asks for is that the **schema admit** both, and it does: both `ledger_k
 both `free`/`used` account definitions on the world and backpack scope definitions ship here. The
 kind a holder actually enforces is then decided by what a later mechanic brings — the budget
 it grants in that kind (a configuration number) and whether it declares a cost in that kind —
-neither of which is a property of the schema. That is the owner's answer, discharged:
+neither of which is a property of the schema. **The two levers do not apply to both kinds equally,
+and saying which is which is what makes AC9's discharge unambiguous:** because `Move` always posts
+a `slots` leg, `slots` is governed by the **budget** lever alone — a holder granted nothing in
+`slots` can hold nothing, one granted a budget enforces it — while `weight` is governed by the
+**cost** lever, because no leg is posted in it at all until a mechanic declares one. Neither lever
+is in the schema, which is the property AC9 asks for. That is the owner's answer, discharged:
 «The schema admits both kinds; which one a holder enforces is configuration, so the choice can be
 made per mechanic later»
 `[measured 155bbc8:ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md.state.md · grep -n 'admits both kinds' … → "Both, config picks: The schema admits both kinds; which one a holder enforces is configuration, so the choice can be made per mechanic later."]`.
@@ -426,11 +478,33 @@ WITH RECURSIVE walk AS (
         FROM walk w JOIN item_movement n
           ON n.prev_movement_id = w.id AND n.item_id = w.item_id
          AND n.from_holder_id = w.to_holder_id
-)
-SELECT i.id AS item_id, reached_movement, recorded_movement, head_movement
-FROM item i LEFT JOIN … -- per-instance counts from walk, item_movement and item_holder
-WHERE reached_movement <> recorded_movement OR recorded_movement = 0 OR head_movement <> 1;
+),
+reached  AS (SELECT item_id, count(*) AS n FROM walk          GROUP BY item_id),
+recorded AS (SELECT item_id, count(*) AS n FROM item_movement GROUP BY item_id),
+heads    AS (SELECT item_id, count(*) AS n FROM item_holder   GROUP BY item_id)
+SELECT
+    i.id                    AS item_id,
+    COALESCE(reached.n,  0) AS reached_movement,
+    COALESCE(recorded.n, 0) AS recorded_movement,
+    COALESCE(heads.n,    0) AS head_movement
+FROM item i
+LEFT JOIN reached  ON reached.item_id  = i.id
+LEFT JOIN recorded ON recorded.item_id = i.id
+LEFT JOIN heads    ON heads.item_id    = i.id
+WHERE COALESCE(reached.n, 0) <> COALESCE(recorded.n, 0)
+   OR COALESCE(recorded.n, 0) = 0
+   OR COALESCE(heads.n,    0) <> 1;
 ```
+
+**The join runs from `item` and every count is `COALESCE`d, and that is load-bearing rather than
+tidy.** The walk starts only at a World genesis, so an instance whose only movement is an
+*off-World* genesis contributes no row to `walk` at all: its reached count arrives as `NULL`, and a
+bare `reached <> recorded` predicate is NULL-blind — the comparison yields `NULL`, the `WHERE` drops
+the row, and the view reports a broken instance as healthy. Driving the outer join from `item`
+rather than from the walk, with every count defaulted to zero, is what closes it. Subtask 3's
+planted "genesis whose `from` is not World" scenario is exactly the discriminator for this mistake,
+so that scenario going red is what pins the join — not the implementor's join style
+`[derived → AC5, and subtask 3's off-World-genesis scenario]`.
 
 `item_capacity_divergence` joins `item_holder`'s per-holder count against the `account_balance` of
 each `slots` / `used` account, and adds a second branch for a holder holding instances with no such
@@ -539,8 +613,12 @@ the item-machine bullet's table names to the ones the same section's naming deci
 requires, and the spec's
 § *Source conflicts* is the authority that chose them
 `[measured 155bbc8:ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md:44-54 · sed -n '44,54p' … → "Resolution: the singular. Chosen by the task text itself, whose Scope line names `item` and `item_movement`, and which agrees with the naming decision of the same section"]`.
-It is flagged in § Open questions all the same, because editing the decision corpus is the owner's
-call even when the edit only removes a contradiction.
+Editing the decision corpus is the owner's call even when the edit only removes a contradiction, so
+it was put to them in round 3 — the spec settles the *names*, the owner settles whether `docs/**` is
+touched here. The answer, verbatim: *"Yes — fix §11 here: Subtask 6 edits `docs/DESIGN.md` §11
+along with the other falsified surfaces. Leaving it would leave a live document contradicting both
+the shipped schema and §11's own naming decision."* Subtask 6 carries it, and unlike the composite
+FK this one gated only the last group: a prose sync is an edit at any time, not a second migration.
 
 The `AGENTS.md` and `.claude/**` edits are legal in this group: Learning-Log Boundary rule 2's
 `PreToolUse` guard blocks them only while a spec state file exists **without**
@@ -551,10 +629,10 @@ The `AGENTS.md` and `.claude/**` edits are legal in this group: Learning-Log Bou
 
 | # | Task | Files | Depends on |
 |---|------|-------|------------|
-| 1 | The forward migration (D7) and the Go mirrors that must move with it, in one commit because neither is green alone. `00006` carries the capacity `ledger_kind` members and nothing else; `00007` carries the `capacity_role` enum, the `account_definition` column and its partial unique index, the `backpack` scope definition, the capacity account definitions for the world and backpack scope definitions, the world capacity accounts, the backfill, `item`, `item_movement` with D3's constraints and covering indexes, and D6's views. Alongside: the enum and catalog mirrors including `capacity_role` (D5), the `ItemID` / `NewItem` / `HolderID` / `WorldHolder` identity declarations, the append-only guard extended to `item_movement` with its controls and decoy (D3), and the existing assertions the schema change moves — the table set, enum members, seed counts, identity sequences, goose row count and index list in `migrate_test.go`, the enum table and the `account_definition` query in `enums_test.go`, the view-name set and column contract in `views_test.go`, the player's account set in `owner_test.go`, and the totality `exhaustive` forces on `post_test.go`'s `Kind` switches (§ Risks). Serves Scope 1, AC1, AC5, AC6, AC7, AC9, AC10. | `internal/store/migrations/00006_capacity_kinds.sql`, `internal/store/migrations/00007_item_machine.sql`, `internal/store/enums.go`, `internal/store/catalog.go`, `internal/store/ids.go`, `internal/store/migrate_test.go`, `internal/store/enums_test.go`, `internal/store/views_test.go`, `internal/store/owner_test.go`, `internal/store/post_test.go`, `internal/store/append_only_test.go` | — |
+| 1 | The forward migration (D7) and the Go mirrors that must move with it, in one commit because neither is green alone. `00006` carries the capacity `ledger_kind` members and nothing else; `00007` carries the `capacity_role` enum, the `account_definition` column and its partial unique index, the `backpack` scope definition, the capacity account definitions for the world and backpack scope definitions, the world capacity accounts, the backfill, `item`, `item_movement` with D3's constraints and covering indexes, and D6's views. Alongside: the enum and catalog mirrors including `capacity_role` (D5), the `ItemID` / `NewItem` / `HolderID` / `WorldHolder` identity declarations, the append-only guard extended to `item_movement` with its controls and decoy (D3), and the existing assertions the schema change moves — the table set, enum members, seed counts, identity sequences, goose row count and index list in `migrate_test.go`, the enum table and the `account_definition` query in `enums_test.go`, the view-name set and column contract in `views_test.go`, the player's account set in `owner_test.go`, and the totality `exhaustive` forces on `post_test.go`'s `Kind` switches (§ Risks). Serves Scope 1, Scope 4, AC1, AC5, AC6, AC7, AC9, AC10. | `internal/store/migrations/00006_capacity_kinds.sql`, `internal/store/migrations/00007_item_machine.sql`, `internal/store/enums.go`, `internal/store/catalog.go`, `internal/store/ids.go`, `internal/store/migrate_test.go`, `internal/store/enums_test.go`, `internal/store/views_test.go`, `internal/store/owner_test.go`, `internal/store/post_test.go`, `internal/store/append_only_test.go` | — |
 | 2 | The schema's own refusals, asserted by SQLSTATE and constraint name in the existing `schema_test.go` idiom: same-holder move, genesis not from World, a `from` disagreeing with the predecessor, a predecessor of another instance, a fork, a second genesis, a duplicate `(scope_definition, kind, capacity_role)`, and an explicit id into `item`'s `GENERATED ALWAYS` identity. Additive; green on top of subtask 1. Serves AC1, AC2, AC8, AC10. | `internal/store/schema_test.go` | 1 |
-| 3 | The reconciliation views' tests: both views empty on a healthy tree, `item_holder` naming the right holder after a hand-built chain, and each anomaly class of `item_chain_break` and `item_capacity_divergence` planted and seen reported — the plant made inside a transaction that drops the chain constraints and is rolled back, so the instrument is shown going red before its green is believed. Serves AC5. | `internal/store/item_views_test.go` | 1 |
-| 4 | `Move` (D4): extract `Post`'s body into the unexported `post` returning the journal-entry id, add `Movement`, `Move` — taking the movements **and** the mechanic's own postings, so one document reaches both machines — the sentinels, and the package comment's second write path; add `move.go` to the append-only scan's non-vacuity list (D3). Tests first: the happy path and the postings it writes, a §11-shaped document carrying movements and the caller's own legs together under one journal entry, each sentinel with the transaction state its doc comment claims, the capacity `CHECK` path returning `ErrOverdraft`, the grant-and-fill document whose net keeps the `CHECK` satisfied, the neither-or-both property, a mint, and the planted-holder-kind case that shows a holder the MVP does not use needs no code. Serves Scope 2, Scope 5, AC2, AC3, AC4, AC6, AC7. | `internal/store/move.go`, `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/move_test.go`, `internal/store/append_only_test.go` | 1 |
+| 3 | The reconciliation views' tests: both views empty on a healthy tree, `item_holder` naming the right holder after a hand-built chain, and each anomaly class of `item_chain_break` and `item_capacity_divergence` planted and seen reported — the plant made inside a transaction that drops the chain constraints and is rolled back, so the instrument is shown going red before its green is believed. Serves Scope 4, AC5. | `internal/store/item_views_test.go` | 1 |
+| 4 | `Move` (D4): extract `Post`'s body into the unexported `post` returning the journal-entry id, add `Movement`, `Move` — taking the movements **and** the mechanic's own postings, so one document reaches both machines — the sentinels, and the package comment's second write path; add `move.go` to the append-only scan's non-vacuity list (D3). Tests first: the happy path and the postings it writes, a §11-shaped document carrying movements and the caller's own legs together under one journal entry, each sentinel with the transaction state its doc comment claims, the capacity `CHECK` path returning `ErrOverdraft`, the grant-and-fill document whose net keeps the `CHECK` satisfied, the neither-or-both property, a mint, and the planted-holder-kind case that shows a holder the MVP does not use needs no code. Serves Scope 2, Scope 3, Scope 5, AC2, AC3, AC4, AC6, AC7. | `internal/store/move.go`, `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/move_test.go`, `internal/store/append_only_test.go` | 1 |
 | 5 | The tests that need a shape of their own: a `rapid` property test driving random move sequences against a Go model of holder-per-instance and per-holder occupancy, asserting `item_holder`, both reconciliation views and both capacity balances after every accepted move and no write after every rejected one; and a `-race` concurrency test in which two transactions move one instance at once, asserting exactly one commit, `ErrMoveConflict` for the loser, and a continuous chain afterwards. Serves AC2, AC8. | `internal/store/move_property_test.go`, `internal/store/move_race_test.go` | 4 |
 | 6 | Sweep every live surface for a claim this diff falsifies and fix each (D9). The class is every live site naming the item machine's tables or describing its holder address space, re-derived by a case-insensitive sweep at implementation time — not the illustrative list in D9. Serves Scope 6. | `AGENTS.md`, `ai-docs/domain-invariants.md`, `ai-docs/context.md`, `.claude/skills/task/reference.md`, `docs/DESIGN.md`, plus whatever the sweep finds | 1–5 |
 
@@ -582,6 +660,14 @@ change-type split and the dependency order allow.
 Group-count check: the change-type switch between subtask 5 and subtask 6 forces the boundary, and
 subtask 6 depends on the whole code group, so no reordering collapses the two groups into one. The
 total is within the default maximum of 4 design-defined groups, so no user approval is needed.
+
+**Where the subtlety concentrates inside Group A**, since the contract gives a code group no
+reroute: D3's self-referential composite FK under `MATCH SIMPLE` with `NULLS NOT DISTINCT`, and
+D6's recursive-CTE `item_chain_break` with the NULL-blind predicate it has to avoid. Both are
+mitigated by design rather than by care — subtask 2 asserts every D3 refusal by SQLSTATE **and**
+constraint name, and subtask 3 plants each anomaly class inside a constraint-dropping rolled-back
+transaction so each view is seen red before its green is believed — and both are named here so
+Step 9 reads those two artefacts rather than sampling them.
 
 ## Risks
 
@@ -745,11 +831,24 @@ Fixtures: a helper that creates a player, grants its backpack a slot budget thro
   movements that consume it in the same call. Assert it succeeds, that the holder's `free` balance
   is the net, and — as the control that the ordering is genuinely irrelevant — that the same call
   with the postings supplied in the opposite order succeeds identically.
-- *Every sentinel, with the transaction state its doc comment claims.* Empty movements; `From ==
-  To`; one instance named twice; a `NewItem` whose `From` is not `WorldHolder`; an unknown
-  instance; a `From` that is not the current holder; a holder with no capacity account; a nil and a
-  typed-nil basis; and a caller posting set that is not zero-sum per kind, which must surface
-  `Post`'s own `ErrUnbalanced` rather than a new sentinel. For each pre-write sentinel, `newStoreWithRecorder` plus `rec.Reset()`
+- *Multi-mint and the returned slice.* One call carrying several `NewItem` movements alongside a
+  move of an existing instance. Assert it succeeds — `NewItem` is exempt from the duplicate-instance
+  rule (D4) — that each mint got its own `item` row and its own genesis movement, and that the
+  returned slice is **parallel to the input**: one entry per movement in the caller's order,
+  carrying the minted id where the movement named `NewItem` and echoing the caller's own `ItemID`
+  where it did not. The discriminating control is the negative twin: the *same* existing instance
+  named twice in one call is refused with `ErrDuplicateItem`, so a test cannot pass by the rule
+  having been dropped altogether.
+- *Every sentinel, with the transaction state its doc comment claims — one scenario per row of
+  D4's sentinel table, asserted by `errors.Is` on that row's own sentinel.* Empty movements;
+  `From == To`; an existing instance named twice; a `NewItem` whose `From` is not `WorldHolder`; an
+  unknown instance; a `From` that is not the current holder; a holder with no capacity account; a
+  nil and a typed-nil basis; and a caller posting set that is not zero-sum per kind, which must
+  surface `Post`'s own `ErrUnbalanced` rather than a new sentinel. **The pair that carries the most
+  weight is `ErrUnknownItem` against `ErrNotCurrentHolder`**: each scenario asserts its own
+  sentinel *and* asserts `errors.Is` against the other is false, because the defect this guards is
+  the two collapsing into one and a mechanic then rendering "no such item" for "someone looted it
+  first". For each pre-write sentinel, `newStoreWithRecorder` plus `rec.Reset()`
   immediately before the call asserts no `INSERT`/`UPDATE`/`DELETE` was issued and the transaction
   is still usable — the recorder discipline the `Post` property test already uses
   `[measured 155bbc8:internal/store/post_property_test.go:151-168 · sed -n '151,168p' internal/store/post_property_test.go → rec.Reset() before the rejected Post and the assertion that only the phase-b SELECT was recorded]`.
@@ -815,29 +914,24 @@ re-derived sweep coming back empty on a pattern shown to match a constructed pos
   singular table names of the §11 naming decision; and reconciliation an operator can run without
   new code. Raised because a design that silently obeys a mechanism-naming row is indistinguishable
   from one that never noticed.
-- **Should `docs/DESIGN.md` §11's plural table names be corrected in this PR?** The spec's
-  § *Source conflicts* settles the *names*; what is the owner's is whether the decision corpus is
-  edited here at all. The design proceeds with the edit (D9) because leaving it would leave a live
-  document contradicting both the shipped schema and its own naming decision. Answer "no" and the
-  only change is that subtask 6 leaves `docs/**` alone; nothing else in the design moves.
-- **Is KD-17's «No composite FKs» meant unconditionally?** D3 reads it as scoped to the guard it
-  was written about, and takes the composite chain FK on the strength of the probe output. If the
-  owner reads it as a blanket rule, the chain check falls back to `Move` alone plus the successor
-  unique index — the same behaviour for every write that goes through `Move`, and no guarantee at
-  all for one that does not.
+- **Both owner-facing rows are closed.** Round 3 answered them, and each is recorded where the
+  decision lives rather than here: KD-17's «No composite FKs» is **scoped**, and the composite
+  chain FK stands (D3); `docs/DESIGN.md` §11's plural table names **are** corrected in this PR, by
+  subtask 6 (D9). Both answers confirmed the design as written, so no decision moved — the words
+  are in those two sections.
 - **One instance, one slot — for how long?** AC5's identity fixes it, and D5 builds on it. A future
   item definition that wants a two-slot greatsword (#32's territory) would break the identity, and
   the reconciliation would have to compare against a summed per-definition cost instead. Not
   blocking, and named now because the cheapest moment to say "slots are per instance, weight is per
   item" is before #32 assumes otherwise.
-- **Is `[measured probe · …]` a legal tag form?** `design-writer.md` § Quality checklist → Claims
-  allows three, and a fact about Postgres, goose, `go build` or `golangci-lint` fits none: it is
-  not `[derived]` (nothing here creates it) and it cannot carry a `<commit>:<path>:<lines>` pin
-  (it is not in this tree). Round 2 narrowed the form to exactly that class and re-tagged every
-  claim about this task's own artefacts as `[derived → …]` (§ A note on evidence). The residue is
-  either a gap in the three-form rule or a licence to stop citing external behaviour at all;
-  settling it is the orchestrator's, and the same question binds every design in this repository,
-  not only this one.
+- **`[measured probe · …]` is a fourth tag form, and it is parked rather than open.** The
+  orchestrator decided in round 3 that the design keeps the form on its out-of-tree subjects, and
+  the underlying gap — the claim-tag closed list having no shape for an executed external
+  measurement — is recorded as a harness diagnosis in `ai-docs/harness-gaps.md`, appended at commit
+  `d2a1f6b`. Nothing in this design rests on the form alone: each subject's in-tree half is pinned
+  separately, and every claim about an artefact this task creates carries `[derived → …]`
+  (§ A note on evidence). Listed here so a later reader finds the disposition rather than
+  re-opening it.
 - **The player's storage scope and its chat binding.** Carried forward from the spec unchanged: it
   waits on #30 closing §16.7, and this task creates the backpack scope alone, so neither answer is
   foreclosed. No design decision here depends on it.
