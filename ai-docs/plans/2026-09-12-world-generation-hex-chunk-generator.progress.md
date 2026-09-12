@@ -10,8 +10,8 @@ _Updated: 2026-09-12 21:32_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 8 — Group A subtask 6 of 10 complete
-**last_passed_gate:** `go build ./... && go test ./... && go vet ./... && golangci-lint run && go test -race ./...` (internal/maze algorithms.go) | 2026-09-13
+**current_step:** Step 8 — Group A subtask 7 of 10 complete
+**last_passed_gate:** `go build ./... && go test ./... && go vet ./... && golangci-lint run && go test -race ./...` (internal/maze cycles.go + portal.go) | 2026-09-13
 **entry_args:** 27
 
 ## Next action
@@ -26,8 +26,8 @@ _Updated: 2026-09-12 21:32_
 - [x] 4. `Params` and its validation — decimal shares, bias, the enum-indexed weight array, the rounding
 - [x] 5. The chunk cell graph — index mapping, six-neighbour adjacency, border-cell predicate, interior-face enumeration
 - [x] 6. The five algorithms over the non-island induced subgraph — backtracker, Kruskal, frontier Prim, growing tree, Wilson
-- [ ] 7. The extra-passage pass and border-portal selection, with the canonical-lesser-chunk candidate ordering  ← CURRENT
-- [ ] 8. `Generator`, `New`, `Cell`, the chunks-consulted function, the `PrefabClaimer` boundary
+- [x] 7. The extra-passage pass and border-portal selection, with the canonical-lesser-chunk candidate ordering
+- [ ] 8. `Generator`, `New`, `Cell`, the chunks-consulted function, the `PrefabClaimer` boundary  ← CURRENT
 - [ ] 9. The property suite, the cell golden with its per-algorithm sections, this package's `guards_test.go`
 - [ ] 10. The benchmarks — one cell, and one per algorithm under a single-weight input
 - [ ] 11. The architecture gate — a `Makefile` target re-running the determinism block under a second `GOARCH`, wired into CI
@@ -46,6 +46,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8 (subtask 2)**: `internal/hexgrid` — `Direction` is `int8`, canonical order `DirE,DirNE,DirNW,DirW,DirSW,DirSE`; `Opposite` pairs (E,W),(NE,SW),(NW,SE); `FaceOf` canonicalises to the earlier direction of the opposite pair. `ChunkOf` floor-divides; `ChunkDistance` uses the standard axial hex-distance formula widened to `int64` before subtracting.
 - **Step 8 (subtask 3)**: `internal/maze` derivation core — `worldKey(seed)` folds the domain tag `"lab-game/maze/v1"` and the seed once; `cellKey`/`chunkKey`/`borderKey` each fold `worldKey` with their own purpose byte (`'c','i','a','s','x','b'`) so every stream/value is domain-separated by construction. `borderKey` canonicalises its chunk pair by (Q,R) before folding. `stream` is an unexported one-method interface; `newStream` is the sole `math/rand/v2` reference. `boundedDraw` is total (bound ≤1 returns 0, untouched) and uses reject-above-limit sampling, never a bare modulo. `testdata/derive.golden` pins the raw preimage encoding table plus the derived keys/cell seeds/border-key symmetry; minted via `-update` and read back before commit.
 - **Step 8 (subtask 5 design note, decided during subtask 4)**: `nonBorderCellCount(d) = max(0,Cols-2)*max(0,Rows-2)` — derived directly from a cell's six neighbour deltas: all six neighbours of local coordinate (lq,lr) stay inside the chunk iff lq∈[1,Cols-2] and lr∈[1,Rows-2]. Lives in `params.go` (needed by `Params.validate`, ahead of subtask 5's own chunk-graph file) and will be reused, not re-derived, by `chunkgraph.go`.
+- **Step 8 (subtask 7)**: `cycles.go`'s `addExtraPassages` only ever draws from `nonIslandInteriorFaces` still closed, so it structurally cannot open a border face. `portal.go`'s `borderCandidates` enumerates the canonically-lesser chunk's own cells row-major × six directions, keeping faces whose destination is the greater chunk — verified identical when called with the pair reversed. `selectPortals` draws a count of 1 or 2 via `boundedDraw(s,2)+1`, capped by candidate count; the two diagonal borders (delta (+1,-1) and its mirror) verified to carry exactly one candidate at three different Dims, and exactly one portal is drawn there on every sampled seed.
 - **Step 8 (subtask 6)**: `algorithms.go` implements the five over an `edgeSet` (canonical-pair-keyed open-face set), each dispatched from `buildSpanningStructure`. Backtracker is an explicit-stack DFS; Kruskal shuffles non-island interior faces and uses a component-label array with relabel-on-merge (its one call site, per the design — no shared disjoint-set helper introduced); frontier Prim maintains an explicit frontier list distinct from Kruskal/backtracker; growing tree shares one function for both extremes via `biasedNewest`; Wilson's loop erasure is the standard "overwrite next-step per cell" trick, replayed from the walk start along the surviving pointers. `Algorithm.String()` (spec's lower_snake_case names) added as production code, since a later golden needs to print the drawn algorithm.
 - **Step 8 (subtask 5)**: `chunkgraph.go` implements `isBorderCell` via the direct edge check (lq==0 etc.) — verified equal to the interior-condition reading `nonBorderCellCount` uses, by a test asserting the two counts agree. `interiorFaces()` keeps a face only from its lower-index endpoint's iteration, giving a Dims-only deterministic order for later shuffling. `island.go` added `islandTarget` (round(share × total cells), the share's own denominator, distinct from `nonBorderCellCount`'s capacity denominator) and extended `Params.validate` with the general "rounded target exceeds capacity" rejection alongside the existing degenerate-dims blanket rejection — the blanket one still needed since a share can be positive yet round to a target of 0 at those dims. `selectIslands`/`connectedOverInduced` scope the flood fill to the chunk-induced subgraph only, per the design's "no neighbouring chunk may reconnect it" requirement.
 
