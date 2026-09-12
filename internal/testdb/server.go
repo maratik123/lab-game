@@ -28,6 +28,18 @@ const (
 	// tmpfsOptions caps the mount. Measured: a full run of every
 	// database-backed package against one server leaves a 193 MB cluster.
 	tmpfsOptions = "rw,size=512m"
+	// walRetentionMB is the server's max_wal_size, in the same const block
+	// as tmpfsOptions because the two numbers are one decision, not two:
+	// max_wal_size bounds how much WAL the server lets accumulate before a
+	// checkpoint recycles it, and that WAL lives on the same fixed-size
+	// tmpfs as the cluster itself. A retention target picked without regard
+	// to the mount cap can let sustained write load fill the mount out from
+	// under the cluster, however small the cluster is — measured, the
+	// server then PANICs, goes into recovery and exits, and every
+	// connection open at that instant dies mid-statement. 64 MB leaves the
+	// 512 MB mount enough headroom for the cluster's own measured size at
+	// up to two checkpoint intervals of WAL.
+	walRetentionMB = 64
 )
 
 const (
@@ -114,6 +126,7 @@ func StartServer(ctx context.Context, opts ServerOptions) (*Server, error) {
 				"PGDATA":               tmpfsPGDATA,
 				"POSTGRES_INITDB_ARGS": "--no-sync",
 			}),
+			testcontainers.WithCmdArgs("-c", fmt.Sprintf("max_wal_size=%dMB", walRetentionMB)),
 		}
 		if opts.ContainerName != "" {
 			moduleOpts = append(moduleOpts, testcontainers.WithReuseByName(opts.ContainerName))

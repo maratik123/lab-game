@@ -66,8 +66,9 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 	)
 
 	for {
+		now := time.Now()
 		deadline, hasDeadline := ctx.Deadline()
-		t, ok, acquireErr := c.client.limiter.acquire(call, time.Now(), deadline, hasDeadline)
+		t, ok, acquireErr := c.client.limiter.acquire(call, now, deadline, hasDeadline)
 		if acquireErr != nil {
 			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous,
 				fmt.Errorf("limiter: %w", acquireErr))
@@ -76,7 +77,7 @@ func (c *caller) Call(ctx context.Context, rawURL string, data *ta.RequestData) 
 		}
 		if !ok {
 			tgErr := c.client.giveUpError(method, lastStatus, lastDescription, lastRetryAfter, attempts, lastAmbiguous,
-				errors.New("limiter: required wait ends after the context deadline"))
+				limiterRefusalCause(now, deadline, hasDeadline))
 			c.client.observe(method, time.Since(start), lastStatus, rateLimited, observedRetries(attempts))
 			return nil, tgErr
 		}
@@ -159,6 +160,29 @@ func observedRetries(attempts int) int {
 		return 0
 	}
 	return attempts - 1
+}
+
+// limiterRefusalCause answers which cause a limiter refusal carries, from
+// the same instant and deadline the limiter decided that refusal from, so
+// the decision and its explanation can never disagree. It is called only
+// where the limiter has already refused.
+//
+// A deadline that had already passed at that instant makes the refusal a
+// deadline breach decided before any wait, and the cause then wraps
+// context.DeadlineExceeded, so a caller can tell it apart from a refusal
+// made for a wait that would end past a deadline still ahead. The
+// comparison is strict: at an instant equal to the deadline a zero wait is
+// still granted, so a refusal decided exactly there is a real-wait refusal
+// and the deadline has not passed.
+//
+// A refusal without a deadline cannot occur, because a refusal needs one to
+// be decided against; the no-deadline answer exists only so the function is
+// total.
+func limiterRefusalCause(now, deadline time.Time, hasDeadline bool) error {
+	if hasDeadline && now.After(deadline) {
+		return fmt.Errorf("limiter: the context deadline had already passed: %w", context.DeadlineExceeded)
+	}
+	return errors.New("limiter: required wait ends after the context deadline")
 }
 
 // doAttempt performs exactly one HTTP round trip and decodes its Bot API

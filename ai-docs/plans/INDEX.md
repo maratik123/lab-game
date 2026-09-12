@@ -17,6 +17,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | [2026-09-09 — health metrics and canaries: `/metrics`, update and scheduler lag, dual `getMe`](done/2026-09-09-health-metrics-canaries.spec.md) | ✅ implemented | #23 | #19 · #20 · #22 |
 | [2026-09-10 — `cmd/bot` composition root: wiring, migration policy, graceful shutdown](done/2026-09-10-cmd-bot-composition-root.spec.md) | ✅ implemented | #24 | #18 · #19 · #20 · #22 · #23 |
 | [2026-09-11 — goroutine-leak detection: every test binary ends with a goleak check](done/2026-09-11-goroutine-leak-detection-goleak.spec.md) | ✅ implemented | #74 | #24 · #67 |
+| [2026-09-12 — canary limiter refusal label: an expired deadline reports `timeout`](done/2026-09-12-canary-limiter-refusal-label.spec.md) | ✅ implemented | #89 | #19 · #23 |
 | [2026-09-12 — test database container named per checkout](done/2026-09-12-test-container-name-per-checkout.spec.md) | ✅ implemented | #91 | #67 |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
