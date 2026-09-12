@@ -16,7 +16,7 @@ _Updated: 2026-09-12 21:32_
 
 ## Next action
 
-**Do this immediately:** hand off Group A (subtasks 1–10) to `code-writer` through `/context-reset`, per the design's `## Handoff plan`.
+**Do this immediately:** Group A is subtasks 1–10. Their binding per-subtask specification is `ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.design.md` § Decomposition, with the mechanisms in § Approach, § Determinism, § The per-chunk construction, § The prefab boundary, § Risks and § Test Design — the `## Subtasks` rows below are one-line summaries for orientation and are **not** the contract.
 
 ## Subtasks
 
