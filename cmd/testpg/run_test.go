@@ -29,6 +29,15 @@ type stubSeam struct {
 	probeMaxConns int
 	probeErr      error
 
+	// containerPresent stands for a container that still exists on the
+	// runtime whether or not it is running, and containerExistsErr for a
+	// runtime that could not be asked. containerExistsCalled records that
+	// the question was put at all.
+	containerPresent      bool
+	containerExistsErr    error
+	containerExistsCalled bool
+	containerExistsName   string
+
 	locateDSN string
 	locateOK  bool
 
@@ -61,6 +70,11 @@ func (s *stubSeam) seam() seam {
 		},
 		probe: func(_ context.Context, _ string) (int, error) {
 			return s.probeMaxConns, s.probeErr
+		},
+		containerExists: func(_ context.Context, name string) (bool, error) {
+			s.containerExistsCalled = true
+			s.containerExistsName = name
+			return s.containerPresent, s.containerExistsErr
 		},
 		locate:  func() (string, bool) { return s.locateDSN, s.locateOK },
 		persist: func(string) error { return nil },
@@ -414,6 +428,103 @@ func TestRun_downWithNoLocator_isANoOp(t *testing.T) {
 	}
 	if stub.provisionCalled {
 		t.Errorf("provision was called with no locator; --down must be a no-op")
+	}
+}
+
+// Not parallel: --down sets the reaper environment variable once it gets past
+// the probe, and these three cases all do.
+
+// A server that stopped answering has not necessarily gone away. After a
+// reboot, a crash or an OOM kill the container is still there, still holding
+// the anonymous volume the image's VOLUME directive created, and nothing else
+// will ever collect it: --up left it unsupervised by design, so no reaper is
+// watching. Treating "unreachable" as "already gone" leaks the container and
+// its volume while reporting success, and drops the locator that was the only
+// handle on either.
+func TestRun_down_unreachableButContainerPresent_removesItAndForgets(t *testing.T) {
+	const dir = "/stub/lab-game"
+	wantName, err := containerNameForDir(dir)
+	if err != nil {
+		t.Fatalf("containerNameForDir(%q): %v", dir, err)
+	}
+
+	stub := &stubSeam{
+		locateDSN:        "postgres://shared/db",
+		locateOK:         true,
+		probeErr:         errUnreachable,
+		containerPresent: true,
+		workDirDir:       dir,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--down) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !stub.containerExistsCalled {
+		t.Errorf("--down never asked whether the container is still present")
+	}
+	if stub.containerExistsName != wantName {
+		t.Errorf("--down asked about container %q, want %q", stub.containerExistsName, wantName)
+	}
+	// provision reattaches by name and stop is what reaches Terminate, which
+	// is the only call that removes the container's anonymous volume with it.
+	if !stub.provisionCalled || !stub.stopCalled {
+		t.Errorf("--down left an existing container behind (provisionCalled=%v, stopCalled=%v); its anonymous volume leaks with it",
+			stub.provisionCalled, stub.stopCalled)
+	}
+	if stub.provisionOpts.ContainerName != wantName {
+		t.Errorf("--down provisioned with ContainerName=%q, want %q", stub.provisionOpts.ContainerName, wantName)
+	}
+	if !stub.forgetCalled {
+		t.Errorf("--down removed the container but kept the locator")
+	}
+}
+
+// The counter-case that keeps the fix from over-correcting: with the container
+// genuinely gone there is nothing to remove, and provisioning here would
+// create a fresh server only to delete it again.
+func TestRun_down_unreachableAndContainerGone_forgetsWithoutProvisioning(t *testing.T) {
+	stub := &stubSeam{
+		locateDSN:        "postgres://stale/db",
+		locateOK:         true,
+		probeErr:         errUnreachable,
+		containerPresent: false,
+		workDirDir:       "/stub/lab-game",
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--down) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if stub.provisionCalled {
+		t.Errorf("provision was called although no container exists; --down must not create one to delete it")
+	}
+	if !stub.forgetCalled {
+		t.Errorf("forget was not called for a locator whose container is gone")
+	}
+}
+
+// Not knowing is not the same as knowing it is gone: if the runtime cannot be
+// asked, dropping the locator would discard the only handle on a container
+// that may well still exist.
+func TestRun_down_containerExistsFails_keepsTheLocatorAndReports(t *testing.T) {
+	stub := &stubSeam{
+		locateDSN:          "postgres://shared/db",
+		locateOK:           true,
+		probeErr:           errUnreachable,
+		containerExistsErr: errStub("container runtime client: no socket"),
+		workDirDir:         "/stub/lab-game",
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--down) = 0, want non-zero when the runtime could not be asked; stderr: %s", stderr.String())
+	}
+	if stub.forgetCalled {
+		t.Errorf("--down forgot the locator although it never learned whether the container exists")
+	}
+	if !strings.Contains(stderr.String(), "no socket") {
+		t.Errorf("stderr = %q, want the runtime error named", stderr.String())
 	}
 }
 
