@@ -8,8 +8,8 @@ _Updated: 2026-09-12 07:49_
 **Last build:** PASS
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
-**current_step:** Step 8 — subtask 7 of 10 complete
-**last_passed_gate:** go test -race ./cmd/bot/... | 2026-09-12T00:00Z | 22ecdf6
+**current_step:** Step 8 — subtask 8 of 10 complete (Group A finished)
+**last_passed_gate:** golangci-lint run ./... | 2026-09-12T00:00Z | 91904f8
 **entry_args:** 80
 
 ## Next action
@@ -25,7 +25,7 @@ _Updated: 2026-09-12 07:49_
 - [x] 5. `.golangci.yml` + 7 files: enable `forbidigo` with patterns and carve-outs (D1, D2, D4); annotate every surviving fresh-root-context site (D6)
 - [x] 6. `internal/srcguard`: move the compiled-directory predicate in, fold the leak-guard's private copy into it (D9)
 - [x] 7. `cmd/bot`: own HTTP client threaded to the Telegram client and canary legs, plus the closer releasing idle connections (D12)
-- [ ] 8. `internal/gateguard`: the launch allow list + checker (D8, D9), the lint-configuration guard (D10), discriminating twins (D11)
+- [x] 8. `internal/gateguard`: the launch allow list + checker (D8, D9), the lint-configuration guard (D10), discriminating twins (D11)
 - [ ] 9. `ai-docs/code-style.md`: the ownership rules and the reviewer's checklist; § Linter posture brought in line
 - [ ] 10. Sweep every live surface for a claim this diff falsifies and fix each
 
