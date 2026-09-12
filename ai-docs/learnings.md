@@ -583,3 +583,23 @@ satisfying summary of work that genuinely did succeed, so the overclaim rides in
 **Rule:** After resolving a conflict in an append-only file, reconcile the arithmetic before believing the result: `merged == main + ours - mergebase` in lines, plus a structural count (entries, headings, JSON lines) and a check that separators survived. A hunk is not the whole change — git moves shared context out of it — so a resolver that reconstructs from the two halves alone is lossy by construction, and the loss lands exactly at the seam where nobody is reading.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — tooling — a gate's documented exit code is a claim until the caller's own status has been read
+
+**What happened:** Fixing the `test-contention` classifier's vocabulary would have delivered a correct
+`INSTRUMENT FAILURE` message and still exited 1, because the target invoked its wrapper through
+`go run`, which does not propagate a non-zero child status: it prints `exit status N` to stderr and
+exits 1 itself. The gate's "prints INSTRUMENT FAILURE and exits 2 / exit 1 is the race gate's own
+verdict" contract had been carried on two live surfaces since the gate was written and had never once
+been observable from the command the developer actually runs. The wrapper's own doc comment already
+said a go-run invocation of it "later flattens it" — nobody had joined that sentence to the contract,
+because nobody had run the outermost command and read its status.
+**Rule:** A documented exit code is a claim about the WHOLE invocation chain, not about the program
+that returns it. Before writing one or believing one, run the outermost command the caller actually
+runs and read `$?` — `go run` collapses every non-zero child status to 1, so any exit code a gate
+distinguishes has to come from a built binary. This applies hardest to a sentence already in the
+tree: a contract carried on a live surface for months is only as true as the last time somebody
+executed it, and the cheapest refutation is two lines of shell.
+**at:** b50f0eeea382f25efcb558b13006b30c3a501280
+**Kind:** validation
+**Escalated?** no

@@ -107,7 +107,7 @@ test-fallback:
 # Job control is on so the load loop is its own process group and the kill
 # below reaches the go test inside it rather than only the subshell around
 # it; an orphaned loop otherwise dies in the container teardown and fills
-# its log with failures that the exhaustion scan then has to read past.
+# its log with failures that the classification then has to read past.
 #
 # The loop's own failure is swallowed on purpose. The subshell inherits -e,
 # so without that the loop would stop at its FIRST failing iteration and the
@@ -115,10 +115,18 @@ test-fallback:
 # last seconds ran under no load at all, and the trigger correlates with the
 # very condition being probed. The loop is a load source, not an assertion.
 #
-# The exhaustion scan runs here rather than in whoever reads the logs. A run
-# that ran the server out of connections says nothing about contention in
-# either direction, so it is neither a pass nor a finding: the target names
-# it and exits 2, distinct from the foreground gate's own status.
+# The classification runs here rather than in whoever reads the logs, and it
+# does two things: it scans both child logs for the shared server's own
+# failure signatures (exhausted connections, exhausted disk, crash recovery
+# or shutdown), and — once the children have exited — it probes the shared
+# server directly for liveness, because a way the server dies without
+# leaving any of those signatures behind is still a way the run says nothing
+# about contention. Either kind of finding is neither a pass nor a finding:
+# the target names it and exits 2, distinct from the foreground gate's own
+# status. The two binaries below are built rather than run through `go run`
+# because a `go run` invocation flattens a non-zero child exit status to 1,
+# which would make the exit-2 half of this contract unreachable by its
+# caller.
 #
 # The target's OWN output — the granted ceiling the
 # wrapper echoes, the client count and the pinned parallelism — is captured
@@ -131,8 +139,10 @@ test-fallback:
 # status crosses a pipe.
 test-contention:
 	mkdir -p tmp
+	go build -o tmp/testpg ./cmd/testpg
+	go build -o tmp/contentionverdict ./cmd/contentionverdict
 	status=0; \
-	go run ./cmd/testpg --clients 2 --parallel $(CONTENTION_PARALLEL) -- bash -c '\
+	tmp/testpg --clients 2 --parallel $(CONTENTION_PARALLEL) -- bash -c '\
 	  set -eu -o pipefail; \
 	  set -m; \
 	  ( while true; do go test -count=1 -parallel $(CONTENTION_PARALLEL) ./internal/ingest/... ./internal/scheduler/... ./internal/store/... ./internal/testdb/... || true; done ) >tmp/test-contention-load.log 2>&1 & \
@@ -141,19 +151,10 @@ test-contention:
 	  go test -race -count=1 -parallel $(CONTENTION_PARALLEL) ./... >tmp/test-contention-race.log 2>&1 || fg_status=$$?; \
 	  kill -- -"$$load_pid" 2>/dev/null || true; \
 	  wait "$$load_pid" 2>/dev/null || true; \
-	  exhausted=0; \
-	  grep -qE "sorry, too many clients already|SQLSTATE 53300" tmp/test-contention-race.log tmp/test-contention-load.log || exhausted=$$?; \
 	  echo "test-contention: clients=2 parallel=$(CONTENTION_PARALLEL)"; \
-	  if [ "$$exhausted" -eq 0 ]; then \
-	    echo "test-contention: INSTRUMENT FAILURE — the server ran out of connections, so this run says nothing about contention either way"; \
-	    exit 2; \
-	  fi; \
-	  if [ "$$exhausted" -ne 1 ]; then \
-	    echo "test-contention: INSTRUMENT FAILURE — the exhaustion scan itself failed (grep exit $$exhausted), so a clean result would be a claim about the scan"; \
-	    exit 2; \
-	  fi; \
-	  echo "test-contention: exhaustion scan clean"; \
-	  exit "$$fg_status" \
+	  cls=0; \
+	  tmp/contentionverdict -status "$$fg_status" -dsn "$${LAB_GAME_TEST_DSN:-}" tmp/test-contention-race.log tmp/test-contention-load.log || cls=$$?; \
+	  exit "$$cls" \
 	' > tmp/test-contention.log 2>&1 || status=$$?; \
 	cat tmp/test-contention.log; \
 	exit "$$status"
