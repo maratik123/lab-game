@@ -9,10 +9,10 @@
 #
 # WHY IT IS A GATE. The same finding was raised in FIVE consecutive rounds of
 # one run: "N rows still read open although round N-1's own table marks them
-# ✅ Fixed". Each round fixed the
-# instance by hand and the next round found the next one. Five recurrences of a rule that
-# exists as text — one more than the four this project had previously measured
-# as the point where a disposition is proven not to hold.
+# ✅ Fixed". Each round fixed the instance by hand and the next round found the
+# next one. Five recurrences of a rule that exists as text — one more than the
+# four this project had previously measured as the point where a disposition is
+# proven not to hold.
 #
 # THE JOIN KEY is the register id: a self-review row for finding `n` of round
 # `N` is `R<N>-<n>` (`SR<N>-<n>` is also accepted; the leading letters are

@@ -79,6 +79,7 @@ func TestClassify_OneNegativePerClass(t *testing.T) {
 		{"no_url_for_plain_prose", "call the API before returning"},
 		{"no_module_symbol_for_bare_name", "returns a Session for the caller"},
 		{"no_review_register_id_for_a_date_or_a_range", "measured on 2026-09-08 across rounds 1-5"},
+		{"no_review_register_id_for_an_unminted_prefix_or_mid_word", "the guard would accept DR1-1, and xR1-5 is not an id either"},
 	}
 
 	for _, tc := range tests {

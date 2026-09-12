@@ -72,6 +72,7 @@ to its end, since a section is renumbered and a document is renamed.
 | A path to a markdown file | a token ending in `.md` |
 | A spec or design acceptance-criterion id | `AC` followed by a number |
 | A key-decision anchor | `KD-` or `D` followed by a number |
+| A review-register finding id | `R` or `SR` followed by a round number, a hyphen and a finding number |
 | A design-section number written without its file | the `§` sign |
 | An issue or pull-request number outside the `TODO(#…)` form | `#` followed by a number |
 | A repository path carrying neither a line number nor a revision | a token whose first segment is a top-level directory here, a token ending in a source extension of the gated set, or a repository-root file name |
