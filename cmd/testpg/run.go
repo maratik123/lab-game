@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"syscall"
 
@@ -100,6 +102,32 @@ func run(argv []string, lookup envLookup, sm seam, stdout, stderr io.Writer) int
 	default:
 		return runChild(ctx, childArgv, lookup, sm, *clients, *parallel, stdout, stderr)
 	}
+}
+
+// testServerSuffix is appended to a project directory's base name to derive
+// the long-lived test-server container name, so each checkout on a host
+// addresses its own server.
+const testServerSuffix = "-test-postgres"
+
+// containerNamePattern is this project's own copy of the container
+// runtime's naming rule: a name must start with a letter or digit and
+// continue with letters, digits, underscores, dots or dashes. It exists to
+// fail fast, naming the offending directory, rather than let a doomed name
+// reach the runtime and come back as an unattributed refusal.
+var containerNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+
+// containerNameForDir derives the long-lived test-server container name
+// from a project directory: its base name plus the fixed test-server
+// suffix, so two checkouts sharing a base name address one server and two
+// checkouts with distinct base names address distinct ones. It returns an
+// error naming dir's base name and the rule when that base name is empty or
+// contains a character the container runtime refuses.
+func containerNameForDir(dir string) (string, error) {
+	base := filepath.Base(dir)
+	if !containerNamePattern.MatchString(base) {
+		return "", fmt.Errorf("testpg: project directory %q must start with a letter or digit and contain only letters, digits, underscores, dots or dashes to name a test-server container", base)
+	}
+	return base + testServerSuffix, nil
 }
 
 // splitAtSeparator returns argv split at its first bare "--" element: the

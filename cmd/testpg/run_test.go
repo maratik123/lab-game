@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -403,6 +404,67 @@ func TestRun_noChildArgs_isAUsageError(t *testing.T) {
 	}
 	if stub.provisionCalled {
 		t.Errorf("provision was called with no child command at all")
+	}
+}
+
+func TestContainerNameForDir(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		dir     string
+		want    string
+		wantErr bool
+	}{
+		{name: "first checkout", dir: "/home/dev/lab-game", want: "lab-game-test-postgres"},
+		{name: "sibling checkout", dir: "/home/dev/lab-game2", want: "lab-game2-test-postgres"},
+		{name: "underscore and dot survive", dir: "/home/dev/lab_game.2", want: "lab_game.2-test-postgres"},
+		{name: "space is refused", dir: "/home/dev/lab game", wantErr: true},
+		{name: "leading dash is refused", dir: "/home/dev/-lab-game", wantErr: true},
+		{name: "leading dot is refused", dir: "/home/dev/.lab-game", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := containerNameForDir(tc.dir)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("containerNameForDir(%q) = %q, nil; want an error", tc.dir, got)
+				}
+				if !strings.Contains(err.Error(), filepath.Base(tc.dir)) {
+					t.Errorf("error %q does not name the offending directory %q", err, filepath.Base(tc.dir))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("containerNameForDir(%q) = _, %v; want no error", tc.dir, err)
+			}
+			if got != tc.want {
+				t.Errorf("containerNameForDir(%q) = %q, want %q", tc.dir, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestContainerNameForDir_rootPath_hasNoBaseName(t *testing.T) {
+	t.Parallel()
+
+	if got, err := containerNameForDir("/"); err == nil {
+		t.Fatalf("containerNameForDir(\"/\") = %q, nil; want an error", got)
+	}
+}
+
+func TestContainerNameForDir_sameBaseName_differentParents_isEqual(t *testing.T) {
+	t.Parallel()
+
+	a, errA := containerNameForDir("/home/alpha/lab-game")
+	b, errB := containerNameForDir("/var/beta/lab-game")
+	if errA != nil || errB != nil {
+		t.Fatalf("containerNameForDir errors: %v, %v", errA, errB)
+	}
+	if a != b {
+		t.Errorf("containerNameForDir(.../alpha/lab-game) = %q, containerNameForDir(.../beta/lab-game) = %q; want equal", a, b)
 	}
 }
 

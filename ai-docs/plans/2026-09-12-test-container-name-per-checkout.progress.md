@@ -8,7 +8,7 @@ _Updated: 2026-09-12 00:00_
 **Last build:** not run
 **Issue:** #91
 **Spec:** ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md
-**current_step:** Step 8 — Implementation start
+**current_step:** Step 8 — Group A, subtask 1 of 2 complete
 **last_passed_gate:** golangci-lint run | 2026-09-12T00:00:09Z | 8e18df9f46e5b1ccec36e9c825a43dbb9b2e8f6f
 **entry_args:** сделать так, чтобы имя контейнера бд выводилось из имени каталога проекта, например lab-game-test-postgres для ~/lab-game и lab-game2-test-postgres для ~/lab-game2 (для параллелизации разработки)
 
@@ -18,8 +18,8 @@ _Updated: 2026-09-12 00:00_
 
 ## Subtasks
 
-- [ ] 1. The pure derivation: suffix constant, compiled validity pattern, directory → container name or error. Table test first.  ← CURRENT
-- [ ] 2. Wire it: the working-directory seam member, `runUp` / `runDown` derivation with their ordering pins, delete `testdb.SharedContainerName`.
+- [x] 1. The pure derivation: suffix constant, compiled validity pattern, directory → container name or error. Table test first.
+- [ ] 2. Wire it: the working-directory seam member, `runUp` / `runDown` derivation with their ordering pins, delete `testdb.SharedContainerName`.  ← CURRENT
 - [ ] 3. Amend the live prose: KD-20's parenthetical and the test conventions' shared-server bullet.
 
 ## Decisions log
@@ -29,6 +29,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: design-review round 1 ITERATE (1 major, 1 minor, 3 notes), round 2 ITERATE (1 major, 2 notes, 1 minor), round 3 GO (2 notes, 2 recommendations); 3 of 3 rounds used.
 - **Step 7**: the round-1 `SPEC-REMIT` on AC4 went to the owner, who ruled "strike it" (state file `prior_qa` round 3); the spec was amended by `spec-writer` at 4043659 and the design reconciled at 4798daf.
 - **Step 7**: the orchestrator's `AskUserQuestion` for that ruling offered "restate / strike / leave" instead of the recipe's "amend / fix the design only / leave" — logged in `ai-docs/learnings.md` 2026-09-12.
+- **Step 8 subtask 1**: `containerNameForDir` implemented as designed — `filepath.Base(dir)` validated against `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`, then `+ "-test-postgres"`. Table test written first, observed red against a placeholder returning `("", nil)` (all non-trivial cases failed by name), then implemented and observed green. All gates (`go build`, `go test ./...`, `go vet`, `golangci-lint fmt -d`, `golangci-lint run`) passed.
 
 ## GO notes
 
@@ -62,4 +63,5 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## Files touched
 
-- (none yet)
+- `cmd/testpg/run.go` — `containerNameForDir`, `testServerSuffix`, `containerNamePattern` (subtask 1)
+- `cmd/testpg/run_test.go` — `TestContainerNameForDir`, `TestContainerNameForDir_rootPath_hasNoBaseName`, `TestContainerNameForDir_sameBaseName_differentParents_isEqual` (subtask 1)
