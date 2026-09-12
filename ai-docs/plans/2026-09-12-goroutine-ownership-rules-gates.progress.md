@@ -8,7 +8,7 @@ _Updated: 2026-09-12 08:44_
 **Last build:** PASS
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
-**current_step:** Step 8 — subtask 10 of 10 complete (Group B finished; every subtask done)
+**current_step:** Step 9 — Design Amendment in flight (D3: `uniq-by-line`); verify paused, all 10 subtasks complete
 **last_passed_gate:** golangci-lint run | 2026-09-12T08:44Z | 239c9f1
 **entry_args:** 80
 
