@@ -603,3 +603,101 @@ executed it, and the cheapest refutation is two lines of shell.
 **at:** b50f0eeea382f25efcb558b13006b30c3a501280
 **Kind:** validation
 **Escalated?** no
+### 2026-09-12 — process — read a gate subagent's spawn-prompt contract before spawning, not after the hook refuses
+
+**What happened:** At `/task` Step 7 I spawned `design-review` carrying exactly the five permitted
+items — invocation line, spec path, design path, round number, no progress file yet — but in a
+lexical form the contract does not accept: lowercase `spec:` / `design:` / `round:` where the closed
+list requires `Spec:` / `Design:` / `Round:`. The `PreToolUse` spawn-contract hook refused the call
+and printed the permitted forms. The step I was executing names the file that carries the contract;
+I worked from the orchestrator's prose paraphrase of it rather than opening it.
+
+**Rule:** Before the first spawn of a subagent whose prompt is governed by a closed list, open that
+agent's own spawn-prompt contract and copy its line forms literally. A step that says "per
+`<agent file>`" is a reading directive, not a citation of something already in hand — and a
+paraphrase preserves a contract's *content* while silently dropping the *syntax* the machine check is
+written against, which is exactly the half that decides whether the call goes through. The tell is
+believing you satisfied a contract you never opened.
+
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — process — the hand-back token is written in the turn that hands off, not recalled later
+
+**What happened:** During `/task` Step 8 I spawned the Group A implementor and closed the turn with a
+status report to the owner. Handing control out to a background delegate is one of the conditions the
+in-flight marker's contract names as a legitimate hand-back, so the stop itself was fine — but the
+contract requires the `handback:` line to be appended *in that same turn*, and I appended nothing. The
+`Stop` hook blocked the turn and recorded a `blocked:` line in the marker's ledger, which is now part
+of the count Step 12 item 13 obliges the closing report to cite.
+
+**Rule:** A turn inside an active `/task` ends in exactly one of two shapes, and the shape is chosen
+*before* writing the reply: it advances the flow with tool calls, or it hands back — and handing back
+is two actions, the surfaced message **and** the `handback:` append, never just the first. The trap is
+that a turn which genuinely hands off *feels* complete once the delegate is spawned and the owner is
+told, so the token reads as bookkeeping about a decision already made rather than as the second half
+of making it. Waiting on a delegate is a legitimate stop and still costs a token.
+
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — process — a progress file's decisions log is appended to, not inserted into
+
+**What happened:** At the subtask-2 boundary of a `/task` Step 8 group I added my decisions-log bullet
+to the run's progress file by anchoring the `Edit` on the FIRST line of the previous group's last
+entry, which placed the new bullet above it. The section's own header says "Append-only, one line per
+non-trivial decision ... Never edit or remove prior entries", and the spawn prompt said "append". No
+prior entry's text changed, so nothing was destroyed, and I moved the bullet to the end before the
+commit — but for the length of two tool calls the log read as though Group B had decided something
+before Group A did.
+
+**Rule:** Append to a chronological log by anchoring the edit on the CURRENT LAST line of the section,
+never on the first line of the entry you happen to have in context. The pull toward the wrong anchor is
+that the previous entry's opening words are the text most recently read, so they are the cheapest
+unique string to match — and an insert-above is invisible in the editor's success message, which
+reports only that the replacement happened. Ordering in an append-only log is part of what the log
+asserts: a reader takes position for sequence.
+
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — testing — an extractor that prints nothing is an instrument failure until proved otherwise
+
+**What happened:** Verifying that a documentation table's four rows matched the CI workflow's real
+job-to-`make`-target mapping, my `awk` extractor printed zero lines for the filter naming the four
+targets. The filter was correct; the extractor's `substr` offset was off by one, so every value it
+emitted began `ake …` and matched nothing. Read as a verdict, the empty output would have said "no job
+runs any of these targets" — a clean answer for every possible input. I read the cardinality first,
+found the instrument broken, fixed the offset and re-ran before recording anything.
+
+**Rule:** For any check shaped as *grep a corpus* / *intersect two sets*, read the cardinality of the
+output — and of both inputs — before reading the verdict. Empty is the shape an instrument failure and
+a genuinely clean tree share, and the same run also has to be shown capable of a non-empty answer
+(here: the same extractor over the pre-change file, where all four targets sit under one job).
+
+**Kind:** validation
+**Escalated?** no
+
+### 2026-09-12 — process — "the hook accepted it" is a claim about the hook, and a gate starved of its input reports a pass
+
+**What happened:** During `/task` Step 11 I staged the progress file and committed it in one Bash call
+(`git add … ; git commit …`), and told the owner "commit OK (the register-consistency hook accepted
+it)". The hook had not accepted anything: it reads `git diff --cached` at `PreToolUse`, i.e. before
+the command runs, so the index it inspected was still empty and it exited 0 having examined no file.
+Run by hand against the file exactly as committed, the guard exits 1. The self-review caught it a
+round later. Sharper still: that bypass is already logged twice in `ai-docs/harness-gaps.md`, and I
+had *read* one of those entries in this same session — it surfaced as a hit in my own AC4 sweep,
+three tool calls before I walked into it.
+
+**Rule:** A gate's silence is evidence only once you know it received its input. Before writing any
+sentence of the form "<gate> accepted / passed / allowed" — to the owner, a PR body, or a progress
+file — either see the gate's own output, or state the weaker true thing ("the commit went through").
+Two specifics that generalise past this hook. A checker whose input is an index or an enumeration
+(`git diff --cached`, `git ls-files`, a glob) reports the clean answer when the set is empty, so it
+must run *after* the set exists — which for a `PreToolUse` hook means staging in a separate tool call
+from the commit. And reading a hazard does not inoculate against it: a trap met as a search hit is
+filed as evidence about the corpus, not as a constraint on the next command, so the guard has to be
+the call shape itself rather than the memory of having read about it.
+
+**Kind:** correction
+**Escalated?** no

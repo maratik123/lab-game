@@ -112,6 +112,15 @@ jobs:
       - run: make tidy-check
       - run: make import-guard
 
+  # The Test job is split into four sibling jobs below — test, test-race,
+  # cover-ratchet, test-fallback — each gated exactly as the job it replaces:
+  # same needs, same if, one make target apiece. Four jobs rather than four
+  # steps of one because siblings run at the same time: a run costs the
+  # slowest of them instead of their sum, and a gate that goes red no longer
+  # stops the other three from reporting — which is the point, since a step
+  # that never executed tells you nothing. Sequencing any of them after
+  # another, however reasonable it looks for one pair, gives both of those
+  # back: none of the four may acquire a needs: on another.
   test:
     name: Test
     needs: changes
@@ -123,16 +132,48 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make test
+
+  test-race:
+    name: Race
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
       - run: make test-race
-      # The ratchet is the LAST gate, not the only one: the pre-commit hook is
-      # where a drop is meant to be caught. This step catches a commit made on
-      # a machine whose core.hooksPath is unset, and it re-rolls the suite's
-      # timing-dependent statements on a runner rather than on the author's
-      # machine.
+
+  cover-ratchet:
+    name: Coverage ratchet
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # This job is not the only gate: the pre-commit hook is where a drop is
+      # meant to be caught. This job catches a commit made on a machine whose
+      # core.hooksPath is unset, and it re-rolls the suite's timing-dependent
+      # statements on a runner rather than on the author's machine.
       - run: make cover-ratchet
-      # No other step above still reaches the per-package container path:
-      # test/test-race/cover-ratchet all provision or reuse one shared
-      # server. Without this step that path would be true only on the day
+
+  test-fallback:
+    name: Test fallback
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # No sibling job still reaches the per-binary container path: test,
+      # test-race and cover-ratchet all provision or reuse one shared
+      # server. Without this job that path would be true only on the day
       # it was checked, and unchecked forever after.
       - run: make test-fallback
 
