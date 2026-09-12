@@ -107,6 +107,91 @@ func TestProbe_matchesOrdinaryQuery(t *testing.T) {
 	}
 }
 
+// walCheckpointFactor is how many times its WAL retention target a cluster
+// is allowed to reach here before the mount is called too small for it. A
+// checkpoint starts when that much WAL has accumulated and keeps writing
+// while it runs, so the directory peaks above the target rather than at it;
+// PostgreSQL documents the target as a soft limit for exactly that reason.
+//
+// clusterBaselineMB is the cluster's own measured size — the same figure
+// tmpfsOptions was sized on: a full run of every database-backed package
+// against one server leaves 193 MB behind, and the WAL has to fit beside it,
+// not instead of it.
+const (
+	walCheckpointFactor = 2
+	clusterBaselineMB   = 193
+)
+
+// mountCapMB returns the megabyte cap declared by a tmpfs mount-option
+// string of the form this package builds — "rw,size=512m". It fails tb
+// rather than returning an error, because a size this package cannot read
+// back out of its own constant is a defect in the constant.
+func mountCapMB(tb testing.TB, options string) int {
+	tb.Helper()
+
+	for opt := range strings.SplitSeq(options, ",") {
+		size, ok := strings.CutPrefix(opt, "size=")
+		if !ok {
+			continue
+		}
+		mb, err := strconv.Atoi(strings.TrimSuffix(size, "m"))
+		if err != nil {
+			tb.Fatalf("tmpfs size option %q is not a megabyte count: %v", opt, err)
+		}
+		return mb
+	}
+
+	tb.Fatalf("tmpfs options %q declare no size", options)
+	return 0
+}
+
+// TestStartServer_WALRetentionFitsThePGDATAMount asserts a server this
+// package provisions cannot be filled by its own write-ahead log. PGDATA
+// lives on a fixed-size tmpfs, and max_wal_size is how much WAL the server
+// lets accumulate before a checkpoint recycles it — so a retention target
+// the mount cannot hold means sustained write load exhausts the mount
+// whatever the load is doing. The server then PANICs, goes into recovery
+// and exits, and every connection open at that instant dies mid-statement.
+func TestStartServer_WALRetentionFitsThePGDATAMount(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	server, err := StartServer(ctx, ServerOptions{})
+	if err != nil {
+		t.Fatalf("StartServer: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := server.Stop(context.Background()); err != nil {
+			t.Errorf("stopping the server: %v", err)
+		}
+	})
+
+	pool, err := pgxpool.New(ctx, server.DSN())
+	if err != nil {
+		t.Fatalf("connect to the provisioned server: %v", err)
+	}
+	defer pool.Close()
+
+	var (
+		walSize int
+		unit    string
+	)
+	if err := pool.QueryRow(ctx,
+		"SELECT setting::int, unit FROM pg_settings WHERE name = 'max_wal_size'",
+	).Scan(&walSize, &unit); err != nil {
+		t.Fatalf("read max_wal_size: %v", err)
+	}
+	if unit != "MB" {
+		t.Fatalf("max_wal_size is reported in %q, this assertion reads megabytes", unit)
+	}
+
+	mountMB := mountCapMB(t, tmpfsOptions)
+	if peak := walCheckpointFactor*walSize + clusterBaselineMB; peak > mountMB {
+		t.Errorf("max_wal_size is %d MB: at up to %d× that between checkpoints, beside the %d MB cluster, a run needs %d MB of a %d MB PGDATA mount",
+			walSize, walCheckpointFactor, clusterBaselineMB, peak, mountMB)
+	}
+}
+
 // TestProbe_unreachablePort asserts a DSN naming a port nothing listens on
 // returns an error rather than hanging or panicking.
 func TestProbe_unreachablePort(t *testing.T) {
