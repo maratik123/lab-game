@@ -11,11 +11,6 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-// SharedContainerName is the shared name a long-lived server is created
-// under, so that a later, separate invocation can find it again by name
-// rather than by any host-local convention.
-const SharedContainerName = "lab-game-test-postgres"
-
 // The cluster lives in RAM and is never synced: a test database that
 // survives a crash buys nothing, and both costs are startup costs.
 // initdb's final sync of the fresh cluster is 6 of the 8 seconds a

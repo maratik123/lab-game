@@ -8,7 +8,7 @@ _Updated: 2026-09-12 00:00_
 **Last build:** not run
 **Issue:** #91
 **Spec:** ai-docs/plans/2026-09-12-test-container-name-per-checkout.spec.md
-**current_step:** Step 8 — Group A, subtask 1 of 2 complete
+**current_step:** Step 8 — Group A, subtask 2 of 2 complete (group A done)
 **last_passed_gate:** golangci-lint run | 2026-09-12T00:00:09Z | 8e18df9f46e5b1ccec36e9c825a43dbb9b2e8f6f
 **entry_args:** сделать так, чтобы имя контейнера бд выводилось из имени каталога проекта, например lab-game-test-postgres для ~/lab-game и lab-game2-test-postgres для ~/lab-game2 (для параллелизации разработки)
 
@@ -19,7 +19,7 @@ _Updated: 2026-09-12 00:00_
 ## Subtasks
 
 - [x] 1. The pure derivation: suffix constant, compiled validity pattern, directory → container name or error. Table test first.
-- [ ] 2. Wire it: the working-directory seam member, `runUp` / `runDown` derivation with their ordering pins, delete `testdb.SharedContainerName`.  ← CURRENT
+- [x] 2. Wire it: the working-directory seam member, `runUp` / `runDown` derivation with their ordering pins, delete `testdb.SharedContainerName`.
 - [ ] 3. Amend the live prose: KD-20's parenthetical and the test conventions' shared-server bullet.
 
 ## Decisions log
@@ -30,6 +30,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: the round-1 `SPEC-REMIT` on AC4 went to the owner, who ruled "strike it" (state file `prior_qa` round 3); the spec was amended by `spec-writer` at 4043659 and the design reconciled at 4798daf.
 - **Step 7**: the orchestrator's `AskUserQuestion` for that ruling offered "restate / strike / leave" instead of the recipe's "amend / fix the design only / leave" — logged in `ai-docs/learnings.md` 2026-09-12.
 - **Step 8 subtask 1**: `containerNameForDir` implemented as designed — `filepath.Base(dir)` validated against `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`, then `+ "-test-postgres"`. Table test written first, observed red against a placeholder returning `("", nil)` (all non-trivial cases failed by name), then implemented and observed green. All gates (`go build`, `go test ./...`, `go vet`, `golangci-lint fmt -d`, `golangci-lint run`) passed.
+- **Step 8 subtask 2**: added `workDir func() (string, error)` to `seam`, wired to `os.Getwd` in `productionSeam` and to a stub field in `stubSeam` (defaulting to `/stub/lab-game` when unset, so existing cases keep passing unmodified). `runUp` derives the container name before disabling the reaper/provisioning; `runDown` derives it after `sm.locate()`/`sm.probe()`, before its own `os.Setenv` — matching D5's ordering. `--up`'s success report line now names the provisioned container (D8). Deleted `testdb.SharedContainerName` and its doc comment from `internal/testdb/server.go`; `grep -rn SharedContainerName --include='*.go' .` returns nothing. Added the full case list from the design's Test Design subtask-2 section (differing/same-basename `--up` pairs, invalid-directory and workDir-lookup-failure cases for both `--up`/`--down`, the reaper-untouched assertions pinning pre-check position, the stale-locator-cleanup-with-invalid-dir case pinning D5's reachability half, and `runChild` never deriving a name). Confirmed the discriminating `--up` different-directory test fails (red) against a `containerNameForDir` mutant hardcoded to a constant, and passes (green) against the real implementation — checked the mutant **builds** first. Two comment-ref violations (`D5` cited as a decision anchor in two test comments) were caught by `go run ./cmd/commentrefs` and fixed by dropping the anchor, restating in prose. Full gate run: `go build ./...`, `go test ./... -count=1`, `go vet ./...`, `golangci-lint fmt -d`, `golangci-lint run`, `go run ./cmd/commentrefs`, `go run ./cmd/importguard` — all green.
 
 ## GO notes
 
@@ -63,5 +64,6 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## Files touched
 
-- `cmd/testpg/run.go` — `containerNameForDir`, `testServerSuffix`, `containerNamePattern` (subtask 1)
-- `cmd/testpg/run_test.go` — `TestContainerNameForDir`, `TestContainerNameForDir_rootPath_hasNoBaseName`, `TestContainerNameForDir_sameBaseName_differentParents_isEqual` (subtask 1)
+- `cmd/testpg/run.go` — `containerNameForDir`, `testServerSuffix`, `containerNamePattern` (subtask 1); `seam.workDir`, `productionSeam.workDir`, `runUp`/`runDown` derivation wiring, `--up` report line naming the container (subtask 2)
+- `cmd/testpg/run_test.go` — `TestContainerNameForDir`, `TestContainerNameForDir_rootPath_hasNoBaseName`, `TestContainerNameForDir_sameBaseName_differentParents_isEqual` (subtask 1); `stubSeam.workDirDir`/`workDirErr`/`forgetCalled`, and the `--up`/`--down`/`runChild` wiring cases (subtask 2)
+- `internal/testdb/server.go` — deleted `SharedContainerName` (subtask 2)

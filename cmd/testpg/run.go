@@ -39,19 +39,22 @@ func logf(w io.Writer, format string, args ...any) {
 }
 
 // seam bundles what run needs from testdb — starting and stopping a server,
-// probing one's capacity, and reading/writing/removing the locator file —
-// behind values run depends on rather than functions it calls directly, so
-// tests can substitute a stub that starts no container and dials nothing.
+// probing one's capacity, reading/writing/removing the locator file, and
+// reading the process's working directory — behind values run depends on
+// rather than functions it calls directly, so tests can substitute a stub
+// that starts no container, dials nothing and names no real directory.
 type seam struct {
 	provision func(ctx context.Context, opts testdb.ServerOptions) (dsn string, stop func(context.Context) error, err error)
 	probe     func(ctx context.Context, dsn string) (maxConns int, err error)
 	locate    func() (dsn string, ok bool)
 	persist   func(dsn string) error
 	forget    func() error
+	workDir   func() (dir string, err error)
 }
 
-// productionSeam wraps testdb's real provisioning and the on-disk locator
-// file under the repository's ignored scratch directory.
+// productionSeam wraps testdb's real provisioning, the on-disk locator file
+// under the repository's ignored scratch directory, and the process's
+// actual working directory.
 func productionSeam() seam {
 	return seam{
 		provision: func(ctx context.Context, opts testdb.ServerOptions) (string, func(context.Context) error, error) {
@@ -65,6 +68,7 @@ func productionSeam() seam {
 		locate:  readLocator,
 		persist: writeLocator,
 		forget:  removeLocator,
+		workDir: os.Getwd,
 	}
 }
 
@@ -255,6 +259,17 @@ func execChild(ctx context.Context, childArgv []string, dsn string, stdout, stde
 // running under that name, disables the reaper for the rest of this
 // process so the container survives it, and writes the locator file.
 func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr io.Writer) int {
+	dir, err := sm.workDir()
+	if err != nil {
+		logf(stderr, "testpg: reading the working directory: %v\n", err)
+		return exitFailure
+	}
+	containerName, err := containerNameForDir(dir)
+	if err != nil {
+		logf(stderr, "testpg: %v\n", err)
+		return exitFailure
+	}
+
 	ceiling, err := testdb.Ceiling(clients, parallel)
 	if err != nil {
 		logf(stderr, "testpg: %v\n", err)
@@ -270,7 +285,7 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 	}
 
 	dsn, _, err := sm.provision(ctx, testdb.ServerOptions{
-		ContainerName: testdb.SharedContainerName,
+		ContainerName: containerName,
 		ConnCeiling:   ceiling,
 	})
 	if err != nil {
@@ -301,8 +316,8 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 			"with, so take it down and bring it up again to resize\n", actual, ceiling, clients, parallel)
 		return exitFailure
 	default:
-		logf(stderr, "testpg: shared server up, capacity %d admits the %d needed (clients=%d, parallel=%d)\n",
-			actual, ceiling, clients, parallel)
+		logf(stderr, "testpg: shared server %q up, capacity %d admits the %d needed (clients=%d, parallel=%d)\n",
+			containerName, actual, ceiling, clients, parallel)
 	}
 	return 0
 }
@@ -327,6 +342,17 @@ func runDown(ctx context.Context, sm seam, stdout, stderr io.Writer) int {
 		return 0
 	}
 
+	dir, err := sm.workDir()
+	if err != nil {
+		logf(stderr, "testpg: reading the working directory: %v\n", err)
+		return exitFailure
+	}
+	containerName, err := containerNameForDir(dir)
+	if err != nil {
+		logf(stderr, "testpg: %v\n", err)
+		return exitFailure
+	}
+
 	// Disabled for the same reason it is when creating the server, and one
 	// more: this invocation only reaches an existing container in order to
 	// remove it, so a reaper started here would supervise nothing and
@@ -336,7 +362,7 @@ func runDown(ctx context.Context, sm seam, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
-	_, stop, err := sm.provision(ctx, testdb.ServerOptions{ContainerName: testdb.SharedContainerName})
+	_, stop, err := sm.provision(ctx, testdb.ServerOptions{ContainerName: containerName})
 	if err != nil {
 		logf(stderr, "testpg: could not reach the shared server to remove it: %v\n", err)
 		return exitFailure
