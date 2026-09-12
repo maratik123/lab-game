@@ -9,7 +9,7 @@ _Updated: 2026-09-12 07:49_
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
 **current_step:** Step 8 — subtask 8 of 10 complete (Group A finished)
-**last_passed_gate:** golangci-lint run ./... | 2026-09-12T00:00Z | 91904f8
+**last_passed_gate:** golangci-lint run | 2026-09-12T08:29Z | 26d0d8d
 **entry_args:** 80
 
 ## Next action
@@ -36,6 +36,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: design-review returned GO on round 1; five issues (3 minor, 2 note) and three recommendations folded by `design-writer` round 2, no re-review per the Step 7 table.
 - **Step 7**: the owner settled all four of the design's open questions — widening confirmed, caps lifted, subtask 4 lands here, the panic-recovery rule lands now; none became a spec row.
 - **Step 8**: `base_commit` recorded as the post-design commit, so the self-review diff covers implementation only; spec and design were already gated by design-review.
+- **Step 8**: Group A returned; the orchestrator re-ran the gates itself at 26d0d8d rather than accepting the return summary — `go build`, `go vet`, `golangci-lint fmt -d`, `golangci-lint run` (`0 issues.`) and `golangci-lint config verify` all green. `last_passed_gate` corrected from the delegate's `91904f8` / `00:00Z` placeholder to this measured run.
+- **Step 8**: the detached close's bound is `5 * time.Second`, the value of the `pingTimeout` precedent the design named as its shape; the design fixed the shape, not the number, and no free choice outside the design survived.
 
 ## GO notes
 
