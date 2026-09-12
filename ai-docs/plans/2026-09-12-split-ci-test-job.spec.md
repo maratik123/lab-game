@@ -2,7 +2,7 @@
 
 **Source:** user description (free-text entry)
 **Date:** 2026-09-12
-**Tracked in:** none — free-text entry, no tracking issue yet.
+**Tracked in:** #99
 
 ## Scope
 1. `make test`, `make test-race`, `make cover-ratchet` and `make test-fallback` run in CI as four separate jobs that execute at the same time, so a CI run reaching them costs the wall-clock of the slowest of the four rather than the sum of all four. [task: "ускоряем gh ci: job Test надо разбить на 4 отдельные джобы, выполняющиеся параллельно: make test, make test-race, make cover-ratchet и make test-fallback"]
