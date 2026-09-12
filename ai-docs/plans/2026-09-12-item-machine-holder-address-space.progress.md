@@ -5,16 +5,16 @@ _Updated: 2026-09-12 17:47_
 
 **Branch:** feat/2026-09-12-item-machine-holder-address-space
 **base_commit:** 4d7d9b91561d3676367e593c144b32f7513c7d70
-**Last build:** not run
+**Last build:** PASS
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 8 — Group C (subtask 6) complete; every group returned, Step 9 next
-**last_passed_gate:** make comment-refs + the CI markdown relative-link check + the six ai-docs/scripts harness guards + the re-derived propagation sweep (empty on a pattern shown matching a constructed positive first), all green | 2026-09-12T17:47:07Z | 08a61d2
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** make verify + make cover-ratchet | 2026-09-12T17:55:39Z | 8dea86f2b32808150c6c60f2fa628698ddd1a5a2
 **entry_args:** 25
 
 ## Next action
 
-**Do this immediately:** Step 8 is complete — every design-defined group has returned. Run Step 9 (Verify): the full gate list plus the per-AC coverage table, then Step 9.5. Note for Step 9.5: subtask 6 deliberately left `ai-docs/context.md`'s § Architecture layout paragraph and its § Status «Code:» bullet alone, because both are Step 9.5's own named surface ("bump the affected block's summary bullet"); both still enumerate `internal/store` without the item machine or `store.Move`, and Step 9.5 owes them that addition along with the `context-status.md` entry.
+**Do this immediately:** Step 9.5 — append this task's entry to `ai-docs/context-status.md` with the literal `#TBD-at-Step-12` locator, bump the affected `ai-docs/context.md` summary bullets (the §Architecture layout paragraph and the §Status "Code:" bullet Group C deliberately left), then Step 10 self-review.
 
 ## Subtasks
 
@@ -56,6 +56,10 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8, subtask 6**: `docs/DESIGN.md` was touched at exactly one line — §11's item-machine bullet, table names only (`items`→`item`, `item_movements`→`item_movement`), per the owner's round-3 authorisation. §11's three other `store.Post` mentions (lines 314, 320, 325) describe `Post`'s own design, which this diff does not change, and were deliberately left alone.
 - **Step 8, subtask 6**: the corrected Step-9 domain sweep pattern was validated before being written down — `INSERT INTO (posting|item_movement)\b|store\.(Post|Move)\(` was run against a constructed fixture and shown to match `posting`, `item_movement`, `store.Post(` and `store.Move(` while skipping the `item_movement_archive` decoy, the nonexistent `postings`, and `store.Posting{}`. The old pattern named two tables that do not exist and missed `store.Move` entirely.
 
+- **Step 9**: ALL PASS. `make verify` exit 0 with all twelve sub-gates executed, `make cover-ratchet` 90.34% against 90.47% within the 0.60 pp tolerance, no new panic site, the domain sweep's two hits both legitimate (`post`'s own balance `UPDATE`, a property test's fixture constant). The `internal/store` result in `make verify` came back `(cached)` on both the plain and the race route, so the race behaviour the whole amendment exists for was re-run uncached (`go test -race -count=1 ./internal/store/` → ok 13.185s) rather than recorded from a replayed profile.
+- **Step 9**: the propagation sweep was re-derived by the orchestrator rather than accepted from Group C's report — control first, on four encodings, then the live surfaces, which came back empty. Three `Post`-is-the-only hits were read individually: two already say `store.Post` and `store.Move`, one is a ledger-core history entry still true in its own scope, and one was my own pattern matching an HTTP `POST`.
+- **Step 9**: no panic-index change and no event-dictionary or posting-signature addition — this task ships the machine, and the framework that checks a document's declared posting and movement sets is the separate issue the spec places out of scope.
+
 ## GO notes
 
 | # | round | note | kind | route | resolution |
@@ -85,18 +89,18 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
-| AC10 | NOT_TESTED |
+| # | Criterion | Test / Verification | Status |
+|---|-----------|---------------------|--------|
+| AC1 | An instance is a record with its own identity; every movement names the instance, both holders and exactly one basis document | `awk '/CREATE TABLE item_movement \(/,/^\);/' internal/store/migrations/00007_item_machine.sql` → `item_id`, `from_holder_id`, `to_holder_id`, `journal_entry_id NOT NULL` (and `journal_entry` is 1:1 with its basis document through the exclusive arc); `TestSchema_itemMachineConstraints/explicit_id_into_item_refused`; `TestMove_happyPath` | PASS |
+| AC2 | A movement whose `from` is not the current holder is refused; no accepted movement leaves an instance at other than exactly one holder | `TestMove_sentinels/not_current_holder`; `TestSchema_itemMachineConstraints/{successor_from_disagrees_with_predecessor_to,successor_names_predecessor_of_a_different_instance,fork_second_successor_refused,second_genesis_for_one_instance_refused}`; `TestMove_property` (rapid, model-checked after every accepted and rejected move) | PASS |
+| AC3 | Movements and their capacity postings carry the same basis document in the same transaction; neither is durable without the other | `TestMove_oneDocumentBothMachines`; `TestMove_orderedConflict` — the loser's document, entry, postings and movement are all absent after rollback | PASS |
+| AC4 | A move past a holder's capacity is refused by the ledger's `CHECK (balance >= 0)`, not by a check beside it | `TestMove_capacityOverdraft`; `rg -n 'UPDATE account_balance' --type go --glob '!*_test.go'` → the single site, inside `post` | PASS |
+| AC5 | Chain continuity, and instance count against capacity balance, are each answerable by a query over the shipped data | `grep -n '^CREATE VIEW' internal/store/migrations/00007_item_machine.sql` → `item_holder`, `item_chain_break`, `item_capacity_divergence`; `TestItemViews_chainBreakDetectsAnomalies/{fork,second_genesis,orphaned_segment,off_world_genesis,instance_with_no_movement}`; `TestItemViews_capacityDivergence/{count_mismatch,no_slots_used_account_vs_uncontrolled_absent,world_absent_as_genesis_source}`; `TestItemViews_healthyIsEmptyAndNotVacuous` | PASS |
+| AC6 | Backpack, chest, corpse, construction and World are each expressible as an address in the one shared space, and a move between any two is the same operation | `TestMove_holderKindTheMVPDoesNotUse` — a `planted_corpse` scope definition plus its capacity pair is two catalog rows, after which `CreateOwner` and `Move` work unchanged; `TestMove_grantAndFillUnderOneDocument` | PASS |
+| AC7 | Nothing in the machine branches on a holder's kind, and a holder kind the MVP does not use costs no restructuring | `rg -n 'owner_kind\|scope_definition\|holder.*kind' internal/store/move.go` → the only hit is `m.From != WorldHolder`, a check on one **address** (the mint precondition), not on a holder kind; `TestMove_holderKindTheMVPDoesNotUse` | PASS |
+| AC8 | Of two simultaneous moves of one instance at most one is accepted, and the chain is continuous afterwards | `TestMove_orderedConflict` — deterministic: the loser blocks on the successor index, returns `ErrMoveConflict`, is asserted **not** `ErrOverdraft`, and issued no balance `UPDATE`; `TestMove_antiConflict` — 15 rounds, exactly one commit per round, with a cross-round assertion that at least one loser was `ErrMoveConflict`; `go test -race -count=1 ./internal/store/` → ok 13.185s, a fresh draw rather than a replayed profile | PASS |
+| AC9 | Both capacity kinds exist with the account definitions carrying them, which one a holder enforces is configuration rather than schema, and the backpack scope exists for a player | `grep -n 'ADD VALUE' internal/store/migrations/00006_capacity_kinds.sql` → `slots`, `weight`; `capacity_role` enum, column and partial unique index, and `INSERT INTO scope_definition (id, code, owner_kind) VALUES (3, 'backpack', 'player')` in `00007`; resolution is by `(scope_id, kind, capacity_role)`, no Go constant; `TestSchema_itemMachineConstraints/duplicate_capacity_role_refused` | PASS |
+| AC10 | An instance carries its identity and no mutable per-instance property | `awk '/CREATE TABLE item \(/,/\);/' internal/store/migrations/00007_item_machine.sql` → one column, `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` | PASS |
 
 ## Review register
 
@@ -105,10 +109,12 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## Files touched
 
-- Subtask 1: `internal/store/migrations/00006_capacity_kinds.sql` (new), `internal/store/migrations/00007_item_machine.sql` (new), `internal/store/ids.go`, `internal/store/enums.go`, `internal/store/catalog.go`, `internal/store/migrate_test.go`, `internal/store/migrate_process_test.go`, `internal/store/enums_test.go`, `internal/store/views_test.go`, `internal/store/owner_test.go`, `internal/store/post_test.go`, `internal/store/append_only_test.go` — commit 6df87d3.
-- Subtask 2: `internal/store/schema_test.go` (`TestSchema_itemMachineConstraints`) — commit 0625a73.
-- Subtask 4: `internal/store/move.go` (new), `internal/store/move_test.go` (new), `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/append_only_test.go` — commit 28c7c50.
-- Subtask 3: `internal/store/item_views_test.go` (new), `internal/store/migrations/00007_item_machine.sql` (view fix) — commit 67cab15.
-- Subtask 5: `internal/store/move_property_test.go` (new), `internal/store/move_race_test.go` (new), `internal/store/item_views_test.go` (Queryer generalisation) — commit a0a3cdf.
-- Subtask 6: `AGENTS.md` (the API-stability carve-out's table name; the ledger AXIOM's table name and second write path), `ai-docs/domain-invariants.md` (§ 1's rule and action table; § 2's table names, the chain's database guards, the `scope` address, the `free`/`used` pair and the two reconciliation views), `ai-docs/key-decisions.md` (KD-17 amended: «No composite FKs» scoped, `capacity_role` recorded), `ai-docs/code-style.md` (§ Database access), `ai-docs/context.md` (the ledger-posting invariant bullet), `.claude/agents/self-review.md` + `.claude/agents/review-findings.md` + `.claude/agents/design-writer.md` (the domain-invariant sync group), `.claude/skills/task/reference.md` (the Step-9 domain sweep pattern), `docs/DESIGN.md` (§11 item-machine bullet, table names only) — commit 08a61d2.
-- Subtask 7: `internal/store/post.go` (`post` gains the `beforeBalances` hook, drops its `int64` return), `internal/store/move.go` (`Move`'s mint-and-movements phases run inside the hook; doc comment states the post-reorder sentinel readings), `internal/store/move_race_test.go` (`TestMove_antiConflict` restored to the single-item fixture with a cross-round `ErrMoveConflict` assertion; new `TestMove_orderedConflict`) — commit 4d47d56.
+- `internal/store/migrations/00006_capacity_kinds.sql` — the two capacity `ledger_kind` members, alone in their file because the hygiene gate forbids an `ADD VALUE` file doing anything else
+- `internal/store/migrations/00007_item_machine.sql` — `capacity_role`, the `account_definition` column and its partial unique index, the backpack scope definition and capacity account definitions, the backfill for pre-existing owners, `item`, `item_movement` with its chain guards, and the three views
+- `internal/store/move.go` — `Movement`, `Move`, the sentinels, and the mint/movement phases that run inside `post`'s hook
+- `internal/store/post.go` — `post` gains `beforeBalances` and drops its return; `Post` is the thin wrapper passing `nil`, its exported signature unchanged
+- `internal/store/errors.go`, `ids.go`, `enums.go`, `catalog.go`, `store.go` — the sentinels, the identity types, the enum and catalog mirrors, the package comment's second write path
+- `internal/store/{move,move_property,move_race,item_views,schema}_test.go` — the new suites
+- `internal/store/{append_only,enums,migrate,migrate_process,owner,post,views}_test.go` — the existing assertions the schema change moved
+- `AGENTS.md`, `ai-docs/{domain-invariants,code-style,context,key-decisions}.md`, `.claude/agents/{design-writer,review-findings,self-review}.md`, `.claude/skills/task/reference.md`, `docs/DESIGN.md` — the propagation sweep: singular table names, the second balance-mover, the holder address space, KD-17's scoped composite-FK clause, and the Step-9 sweep pattern that had been matching two tables that do not exist
+- `ai-docs/learnings.md` — two entries from this run
