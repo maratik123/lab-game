@@ -10,8 +10,8 @@ _Updated: 2026-09-12 18:05_
 **Issue:** #81
 **Spec:** ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md
 
-**current_step:** Step 8 — Group A subtask 7 of 9 complete
-**last_passed_gate:** go build ./... + go test ./internal/health/... + golangci-lint run ./internal/health/... + go vet ./... + go run ./cmd/commentrefs | subtask 7
+**current_step:** Step 8 — Group A subtask 8 of 9 complete
+**last_passed_gate:** go build ./... + go test ./cmd/bot/... + golangci-lint run ./cmd/bot/... + go vet ./... + go run ./cmd/commentrefs | subtask 8
 **entry_args:** 81
 
 ## Next action
@@ -29,7 +29,7 @@ Group A — code (`code-writer`, `sonnet`/`medium`):
 - [x] 5. Deadline reclaim: PID read before the handler goroutine launches; one-argument terminate; two non-success shapes reported apart; `TestDeadline_ctxIgnoringHandler_negativeCase` assertion reversed; falsified comments corrected
 - [x] 6. Update ingestion: `Options` gains `Logger`; the recovery helper returns the shared value; stack into the give-up row and the log; reported outcome unchanged
 - [x] 7. Health: failure-label mapper gains the panic case; label test, observer test and closed-set guard take the new value
-- [ ] 8. Composition root: thread the process logger into both constructors
+- [x] 8. Composition root: thread the process logger into both constructors
 - [ ] 9. Goroutine-ownership allow list: the handler launch's `panicTo` and `stops`, and the watchdog launch's `stops`
 
 Group B — instructions (`general-purpose`, `inherit`):
@@ -108,3 +108,4 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `internal/ingest/loop_test.go` (newLoopWithLogger helper)
 - `internal/health/labels.go` (schedulerFailureLabel gains the panic case)
 - `internal/health/labels_test.go`, `internal/health/scheduler_test.go`, `internal/health/guards_test.go` (panic value driven/expected)
+- `cmd/bot/assemble.go` (Logger threaded into scheduler.New and ingest.New)

@@ -291,6 +291,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		Registry: taskRegistry,
 		Config:   cfg.Scheduler,
 		Observer: schedulerObs,
+		Logger:   logger,
 	})
 	if err != nil {
 		return unwind(ctx, a, opts.Stderr, "scheduler", err)
@@ -349,6 +350,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		Router:   router,
 		Config:   cfg.Ingest,
 		Observer: ingestObs,
+		Logger:   logger,
 	})
 	if err != nil {
 		return unwind(ctx, a, opts.Stderr, "ingest loop", err)
