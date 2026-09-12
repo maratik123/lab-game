@@ -8,7 +8,7 @@ _Updated: 2026-09-12 08:44_
 **Last build:** PASS
 **Issue:** #80
 **Spec:** ai-docs/plans/2026-09-12-goroutine-ownership-rules-gates.spec.md
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** make verify | 2026-09-12T09:32Z | 80b5f22
 **entry_args:** 80
 
@@ -53,6 +53,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 9 (subtask 1a/8a)**: subtask 5's dedup control (design § Test Design, "The line-dedup switch gets a control of its own") re-run against the shipped configuration rather than only the design's earlier investigation copy: a scratch module outside the tree with a `defer` inside a `for` loop, `.golangci.yml` copied in verbatim with `--enable-only=gocritic,errcheck` — `uniq-by-line: false` (as shipped) reports both `main.go:8:16: errcheck` and `main.go:8:3: deferInLoop (gocritic)`; the same file with `uniq-by-line: true` (the linter's own default) reports only `errcheck` on that line and drops `deferInLoop`. Run in the session scratchpad, never in the working tree.
 - **Step 9**: ALL PASS at `80b5f22`. No panic-index row added — no `panic(` or `log.Fatal` in any non-test file this branch changed, and the index keeps its empty row. No posting signature and no event-dictionary row: the diff touches no migration, `.sql`, ledger, posting or event surface, which matches the spec's "Metrics: none. Events: none."
 - **Step 9**: AC13's `README.md` clause has no target — this repository has no README. Recorded as such in the AC table rather than reported as a verified clean pass, because a sweep over a path that does not exist is an absent instrument, not evidence.
+- **Step 9.5**: `context-status.md` gained this task's entry with the literal `#TBD-at-Step-12` locator (exactly one occurrence, which is what sub-step 10a's `Edit` needs). `context.md`'s Status date was still `2026-09-11` after the branch had edited that page — every one of the last five tasks touching it moved the date, so it was a missed propagation, not a convention; bumped to `2026-09-12`. No open question in `context.md` was resolved by this task.
 
 ## GO notes
 
