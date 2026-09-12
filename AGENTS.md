@@ -103,7 +103,7 @@ go run ./cmd/bot migrate                                # apply pending migratio
 > `.githooks/coverage-ratchet.sh` measures `go test -coverprofile ./...`, compares it with
 > the value recorded in [`ai-docs/coverage-ratchet.txt`](ai-docs/coverage-ratchet.txt), refuses a
 > drop past the tolerance, and records a new high-water mark in the same commit. `make cover-ratchet`
-> and CI's Test job run the identical script with `--check` — it never writes there.
+> and CI's Coverage ratchet job run the identical script with `--check` — it never writes there.
 >
 > | State | What happens |
 > |---|---|
@@ -135,7 +135,7 @@ go run ./cmd/bot migrate                                # apply pending migratio
 > environments, before changing the number; the script's header carries the recipe and `git log -p`
 > on it carries why the number is what it is.
 
-**CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta + the import gate) · Test (incl. `-race`) · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Comment references · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
+**CI runs the same gates** (`.github/workflows/ci.yml`, Go via `make`): Format · Build (build + vet + `go mod tidy` delta + the import gate) · Test · Race · Coverage ratchet · Test fallback · Lint · Harness guards (shellcheck on every script and hook body, the citation guard, the guard suites, the link check) · Comment references · Actionlint. Each job is `paths-filter`-gated, so **a job that did not run is not a passing job** — read the run, not the absence of red.
 
 Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-index.md)); fall back to `rg <pattern> --type go [-l | -C 3]` when `ast-index` returns empty.
 
