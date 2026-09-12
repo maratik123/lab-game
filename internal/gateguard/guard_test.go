@@ -123,7 +123,7 @@ var launchTable = map[launchKey][]launchAnswer{
 			panicTo:  "unrecovered — the scheduler's own handler-panic recovery is tracked as separate follow-up work",
 		},
 		{
-			stops:    "the bounded connection close returns, bounded by its own named-constant timeout",
+			stops:    "first an unbounded receive on the orphaned handler's buffered result channel, which cannot wake on cancellation — the one launch the ownership rules name as their exception — and only then the connection close, bounded by its own named-constant timeout",
 			waitedBy: "nothing — this is the module's one deliberately detached launch",
 			errorTo:  "discarded",
 			panicTo:  "unrecovered",
