@@ -114,9 +114,13 @@ jobs:
 
   # The Test job is split into four sibling jobs below — test, test-race,
   # cover-ratchet, test-fallback — each gated exactly as the job it replaces:
-  # same needs, same if, one make target apiece. None of the four may
-  # acquire a needs: on another; that would silently re-merge the split this
-  # comment exists to prevent.
+  # same needs, same if, one make target apiece. Four jobs rather than four
+  # steps of one because siblings run at the same time: a run costs the
+  # slowest of them instead of their sum, and a gate that goes red no longer
+  # stops the other three from reporting — which is the point, since a step
+  # that never executed tells you nothing. Sequencing any of them after
+  # another, however reasonable it looks for one pair, gives both of those
+  # back: none of the four may acquire a needs: on another.
   test:
     name: Test
     needs: changes
