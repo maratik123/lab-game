@@ -228,7 +228,7 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 		}
 		termCancel()
 
-		go func() { //nolint:gosec,contextcheck // G118/contextcheck: context.Background() is deliberate here — ctx (and deadlineCtx) may already be done by the time this fires, and closing the connection must still happen: the row's own lock is normally already released by the terminate above, but the connection itself still needs closing to free pooled resources and to unblock a handler still writing on it
+		go func() { //nolint:gosec,contextcheck // G118/contextcheck: context.Background() is deliberate here — ctx (and deadlineCtx) may already be done by the time this fires, and closing the connection must still happen: hijacking took it out of the pool, so no other owner will ever close it, and an unclosed connection holds its socket and its server-side session for the life of the process. The receive below orders the close after the orphaned handler has returned, so the close never races a handler still using the connection
 			<-resultCh                                                                          // wait for the orphaned handler goroutine to return
 			closeCtx, cancel := context.WithTimeout(context.Background(), detachedCloseTimeout) //nolint:forbidigo // this is the watchdog's detached close: no shutdown path joins this goroutine, so it owns its own bounded root
 			defer cancel()
