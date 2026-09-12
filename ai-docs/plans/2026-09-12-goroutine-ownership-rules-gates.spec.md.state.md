@@ -113,7 +113,22 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: ae7590ade59f48c1c
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: |
+      Do the new gates bind the test-helper packages — the non-_test.go files that only tests import?
+    answer: |
+      Bind them: Gated exactly like production code: every current site in those packages is fixed or carries its stated reason. Widest coverage; the helper that starts a goroutine today has to answer for it.
+  - round: 1
+    question: |
+      Which review surfaces carry the written ownership rules and the reviewer's checklist?
+    answer: |
+      code-style only: ai-docs/code-style.md carries both; every agent and reviewer reaches it through AGENTS.md. One surface to keep true.
+  - round: 1
+    question: |
+      The production path passes no HTTP client, so the Bot API client and both canary legs use http.DefaultClient, and nothing on the shutdown path releases its idle connections. What does this task do about that instance?
+    answer: |
+      Close it here: This task delivers it: the shutdown path releases those idle connections. Adds production Go code to a rules-and-gates task.
 ```
