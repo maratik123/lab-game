@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/maratik123/lab-game/internal/panicguard"
 )
 
 // setTimeoutsSQL sets the two transaction-local timeouts through
@@ -45,6 +48,9 @@ const detachedCloseTimeout = 5 * time.Second
 type handlerResult struct {
 	outcome                Outcome
 	handlerErr, releaseErr error
+	// panicked is true when handlerErr wraps a recovered handler panic
+	// rather than an error the Handler returned.
+	panicked bool
 }
 
 // executeOne runs id's whole per-task transaction, including the
@@ -133,8 +139,8 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 	defer cancel()
 	resultCh := make(chan handlerResult, 1)
 	go func() {
-		outcome, handlerErr, releaseErr := runHandlerWithSavepoint(deadlineCtx, tx, decl.Handler, task)
-		resultCh <- handlerResult{outcome, handlerErr, releaseErr}
+		outcome, handlerErr, releaseErr, panicked := runHandlerWithSavepoint(deadlineCtx, tx, decl.Handler, task, w.logger)
+		resultCh <- handlerResult{outcome, handlerErr, releaseErr, panicked}
 	}()
 
 	select {
@@ -173,7 +179,11 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 // conn. On a commit failure it defers the same settlement instead: the
 // commit that would have written it never happened, so the row is left
 // exactly as due as it was, and only a
-// later drain can count the attempt. The caller has already marked its
+// later drain can count the attempt. A panic that also left the savepoint
+// rollback unable to apply is routed the same way, before any settlement
+// statement is attempted: the connection is unusable at that point,
+// so no statement on tx — not a rollback, not the settlement UPDATE, not
+// COMMIT — can be relied on to apply. The caller has already marked its
 // own handled flag true; this function owns tx/conn from here on.
 func (w *Worker) settleAndAfter(
 	ctx context.Context, tx pgx.Tx, conn *pgxpool.Conn,
@@ -181,10 +191,37 @@ func (w *Worker) settleAndAfter(
 ) error {
 	defer conn.Release()
 
+	if r.panicked && r.releaseErr != nil {
+		// The recovered panic left rows open, which leaves the connection
+		// busy: every later statement on it fails, including the
+		// savepoint's own rollback (already failed, in r.releaseErr) and
+		// any settlement statement this function would otherwise issue.
+		// Releasing conn is what frees the row — pgxpool destroys a busy
+		// connection on release rather than returning it to the pool —
+		// so the deferred settlement above is the only route left, using
+		// the rendered panic (not the deadline's fixed string) as its
+		// reason so the stack still reaches last_error on the later drain.
+		w.enqueuePending(pendingSettlement{
+			id: task.ID, runAt: task.RunAt, consecutiveFailures: task.ConsecutiveFailures,
+			recurrence: decl.Recurrence, reason: r.handlerErr.Error(),
+		})
+		obs.Outcome = OutcomeFailed
+		obs.Failure = FailurePanic
+		obs.ConsecutiveFailures = task.ConsecutiveFailures + 1
+		w.observeTask(obs)
+		return nil
+	}
+
 	outcome := r.outcome
 	handlerErr := r.handlerErr
 	failure := FailureNone
 	switch {
+	case r.panicked:
+		// Tested first: a panic outranks a rollback failure in the
+		// classification. By this point r.releaseErr is nil — the
+		// branch above already routed the alternative.
+		outcome = OutcomeFailed
+		failure = FailurePanic
 	case r.releaseErr != nil:
 		outcome = OutcomeFailed
 		failure = FailureRolledBack
@@ -228,13 +265,18 @@ func (w *Worker) settleAndAfter(
 // database error inside the handler) is reported as releaseErr and the
 // subtransaction is then rolled back so the settlement statement can
 // still apply. On OutcomeNoop or OutcomeFailed, or a non-nil handler
-// error, it rolls back to the savepoint.
-func runHandlerWithSavepoint(ctx context.Context, tx pgx.Tx, handler Handler, task Task) (outcome Outcome, handlerErr, releaseErr error) {
+// error, it rolls back to the savepoint. A panic from handler.Execute is
+// recovered at that call — and only at that call, never around the
+// savepoint statements themselves — per this module's goroutine-
+// ownership rule; logger receives the recovered panic's log record,
+// emitted at this recovery point since not every attempt leaves a
+// settled row for its stack to ride.
+func runHandlerWithSavepoint(ctx context.Context, tx pgx.Tx, handler Handler, task Task, logger *slog.Logger) (outcome Outcome, handlerErr, releaseErr error, panicked bool) {
 	if _, err := tx.Exec(ctx, "SAVEPOINT handler"); err != nil {
-		return OutcomeFailed, fmt.Errorf("scheduler: savepoint: %w", err), nil
+		return OutcomeFailed, fmt.Errorf("scheduler: savepoint: %w", err), nil, false
 	}
 
-	outcome, handlerErr = handler.Execute(ctx, tx, task)
+	outcome, handlerErr, panicked = callHandlerRecovered(ctx, tx, handler, task, logger)
 
 	if handlerErr == nil && outcome == OutcomeDone {
 		if _, err := tx.Exec(ctx, "RELEASE SAVEPOINT handler"); err != nil {
@@ -243,15 +285,42 @@ func runHandlerWithSavepoint(ctx context.Context, tx pgx.Tx, handler Handler, ta
 			// (still accepted after a failed release) so the settlement
 			// statement below can apply.
 			if _, rbErr := tx.Exec(ctx, "ROLLBACK TO SAVEPOINT handler"); rbErr != nil {
-				return OutcomeFailed, handlerErr, fmt.Errorf("scheduler: rollback after failed release: %w", errors.Join(err, rbErr))
+				return OutcomeFailed, handlerErr, fmt.Errorf("scheduler: rollback after failed release: %w", errors.Join(err, rbErr)), false
 			}
-			return OutcomeFailed, handlerErr, fmt.Errorf("release failed: %w", err)
+			return OutcomeFailed, handlerErr, fmt.Errorf("release failed: %w", err), false
 		}
-		return OutcomeDone, nil, nil
+		return OutcomeDone, nil, nil, false
 	}
 
 	if _, err := tx.Exec(ctx, "ROLLBACK TO SAVEPOINT handler"); err != nil {
-		return outcome, handlerErr, fmt.Errorf("scheduler: rollback to savepoint: %w", err)
+		return outcome, handlerErr, fmt.Errorf("scheduler: rollback to savepoint: %w", err), panicked
 	}
-	return outcome, handlerErr, nil
+	return outcome, handlerErr, nil, panicked
+}
+
+// callHandlerRecovered calls handler.Execute on task inside tx, recovering
+// a panic at that boundary: the ownership rule that a goroutine running a
+// handler supplied through an interface recovers a panic there, records
+// its stack, and routes it into the same failure path a returned error
+// takes. A recovered panic is reported as OutcomeFailed with handlerErr
+// wrapping the recovered value, panicked set true, and a log record at
+// error level carrying the task identity and the stack as its own
+// attribute.
+func callHandlerRecovered(ctx context.Context, tx pgx.Tx, handler Handler, task Task, logger *slog.Logger) (outcome Outcome, handlerErr error, panicked bool) {
+	defer func() {
+		rec := panicguard.New(recover())
+		if rec == nil {
+			return
+		}
+		panicked = true
+		outcome = OutcomeFailed
+		handlerErr = fmt.Errorf("scheduler: handler panic: %w", rec)
+		logger.LogAttrs(ctx, slog.LevelError, "scheduler: recovered handler panic",
+			slog.Int64("task_id", int64(task.ID)),
+			slog.String("task_type", string(task.Type)),
+			slog.String("stack", string(rec.Stack)),
+		)
+	}()
+	outcome, handlerErr = handler.Execute(ctx, tx, task)
+	return outcome, handlerErr, false
 }
