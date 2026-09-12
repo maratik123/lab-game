@@ -372,6 +372,23 @@ func TestRunChild_ceilingMatchesTheFormula(t *testing.T) {
 	if stub.provisionOpts.Clients != clients {
 		t.Errorf("provision was called with Clients=%d, want %d", stub.provisionOpts.Clients, clients)
 	}
+	// clients and parallel are distinct here (2 vs 3), and the mount string
+	// this run's own client count derives is distinct from a one-client
+	// mount, so a mutant substituting a zero/hard-coded count into the log
+	// call, or one swapping the clients/parallel format arguments, changes
+	// what gets logged even though every assertion above still passes.
+	if wantMount := testdb.MountOptions(clients); !strings.Contains(stderr.String(), wantMount) {
+		t.Errorf("stderr = %q, want the mount option string %q for this run's own client count", stderr.String(), wantMount)
+	}
+	if oneClientMount := testdb.MountOptions(1); strings.Contains(stderr.String(), oneClientMount) {
+		t.Errorf("stderr = %q, want the mount sized for %d clients, not a one-client mount %q", stderr.String(), clients, oneClientMount)
+	}
+	if !strings.Contains(stderr.String(), "clients=2") {
+		t.Errorf("stderr = %q, want clients=2 echoed", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "parallel=3") {
+		t.Errorf("stderr = %q, want parallel=3 echoed", stderr.String())
+	}
 }
 
 // Not parallel, and neither is the undersized-reuse case below: both reach the
