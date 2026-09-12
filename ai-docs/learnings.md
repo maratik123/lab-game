@@ -777,3 +777,52 @@ then each false positive costs a rewrite of legitimate prose.
 **at:** 196287f (the 39-vs-3 measurement, taken on the clean tree before any edit)
 **Kind:** validation
 **Escalated?** no
+
+### 2026-09-12 — process — read the propagation table by the change's SUBJECT, not by the file the edit started in
+
+**What happened:** Taught the comment-reference gate a tenth reference class and committed it with
+every rule document still enumerating nine. The declared sync group for that ban exists for exactly
+this edit — its trigger reads "a class added or removed" — and its row even names the code as a
+member, closing with "because a rule the reviewers state and the gate does not decide is a rule with
+two readings". Self-review caught it as a `major`: the gate was refusing contributors with a class
+name that appeared in no rule text, and a reviewer working from either review checklist could not
+have known the class existed. The row's anchor column names the *document*, and the plan I built and
+had approved began in the *code*, so when I consulted the group table I was scanning for my starting
+file and a row naming my change went unread.
+
+**Rule:** Consult the propagation table by what the change IS, not by which file it starts in. A row
+written "edits to A propagate to B" still fires when the change enters at B and is of the kind the row
+names — an obligation that is bidirectional in substance is often written in one direction only, and
+this row says so out loud by listing the code among its members. Operationally, for any change to the
+set a gate decides: before the commit, grep the rule documents for the enumeration that gate
+implements and count it against the code. Do this while drafting the plan, not after, because the
+propagation is part of the scope the owner is approving — presenting a plan that omits it makes the
+approval unsound as well as the commit.
+
+**at:** b949e91
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — tooling — `rg -r` is a replacement flag, so a verification sweep can rewrite its own evidence and still exit 0
+
+**What happened:** To confirm one term was spelled consistently across five rule documents, ran
+`rg -rn '<phrase>' <files>`, then `rg -rni '<phrase>' .` over the tree. In ripgrep `-r` takes a
+replacement argument, so those parsed as "replace each match with `n`" and "with `ni`": both printed
+every matching line with the matched text substituted, and both exited 0. What made it visible was
+that the substitution was absurd on its face — the documents appeared to read "a n," and a Go doc
+comment "is a ni id", so the output looked like the files had been mangled. They had not; `-r`
+rewrites the output only. Had the replacement string happened to read plausibly, I would have
+recorded a consistency verdict the command never computed. This trap is named verbatim in the
+workspace rules, in the same breath as the piped-gate one — "a mutating flag (`rg -r`) rewriting
+output while exiting 0" — so this was a failure to apply a written rule, not a discovery.
+
+**Rule:** Do not bundle `-r` into a short-flag cluster; `-n`, `-i` and `-l` are safe to combine and
+`-r` is not. More generally, a sweep is not evidence until its pattern has been run against a
+constructed string it MUST match and the control line read — the control would have shown the same
+substitution and settled it in one line. And when output suggests the FILES changed under a read-only
+tool, treat that as a claim about the command before it is a claim about the tree: check with
+`git diff`, not by re-reading the output.
+
+**at:** eeda7c7
+**Kind:** correction
+**Escalated?** no
