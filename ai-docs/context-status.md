@@ -277,7 +277,7 @@ Entry shape:
   - A goroutine this module's code starts is ended by its owner — a cleanup, a context, a close — before the package's tests finish; an ignore entry is only for a dependency's process-lifetime goroutine.
   - `internal/leaktest`'s non-test code imports only goleak and the standard library, so any test binary can use it without an import cycle.
 
-## Test database container named per checkout — each checkout owns its own long-lived test server (PR #TBD-at-Step-12, 2026-09-12)
+## Test database container named per checkout — each checkout owns its own long-lived test server (PR #97, 2026-09-12)
 
 - **What landed:** `cmd/testpg` derives the long-lived test-server container name from the base name of its own working directory plus a fixed `-test-postgres` suffix, on `--up` and `--down` alike; a working-directory lookup joins the wrapper's `seam` beside the locator accessors; `--up`'s report line names the container it brought up; `testdb.SharedContainerName` is deleted outright, leaving the wrapper as the only thing in this module that names a container. `ai-docs/key-decisions.md` KD-20 and the shared-server bullet of `ai-docs/go-test-conventions.md` state the derivation, its parallel-checkout consequence and the one-time stale-locator remedy.
 
