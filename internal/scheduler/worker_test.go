@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"math"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -221,6 +222,17 @@ func schedulerTaskRow(t *testing.T, pool *pgxpool.Pool, id TaskID) (state string
 	return state, failures, lastError, runAt, true
 }
 
+// errText renders a nullable last_error column for a failure message: the
+// quoted string when the column is set, the literal <nil> when it is not.
+// A *string formatted with %v prints an address, which tells a reader
+// nothing about why the assertion failed.
+func errText(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+	return strconv.Quote(*s)
+}
+
 func TestRunOnce_batchBoundedAndSkipNotWait(t *testing.T) {
 	t.Parallel()
 
@@ -361,7 +373,7 @@ func TestRunOnce_failedHandler_writesRolledBack_attemptRecorded(t *testing.T) {
 		t.Fatalf("row deleted after a failure, want it to remain pending")
 	}
 	if state != "pending" || failures != 1 || lastError == nil || *lastError == "" {
-		t.Fatalf("row after failure = state:%s failures:%d lastError:%v, want pending/1/non-empty", state, failures, lastError)
+		t.Fatalf("row after failure = state:%s failures:%d lastError:%s, want pending/1/non-empty", state, failures, errText(lastError))
 	}
 }
 
@@ -420,7 +432,7 @@ func TestRunOnce_swallowedDatabaseError_settlesAsFailure(t *testing.T) {
 		t.Fatalf("row deleted after a swallowed-error attempt, want it to remain pending as a recorded failure")
 	}
 	if state != "pending" || failures != 1 || lastError == nil || *lastError == "" {
-		t.Fatalf("row after swallowed error = state:%s failures:%d lastError:%v, want pending/1/non-empty", state, failures, lastError)
+		t.Fatalf("row after swallowed error = state:%s failures:%d lastError:%s, want pending/1/non-empty", state, failures, errText(lastError))
 	}
 
 	var count int
