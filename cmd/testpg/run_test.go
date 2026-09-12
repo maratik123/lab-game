@@ -29,6 +29,19 @@ type stubSeam struct {
 	probeMaxConns int
 	probeErr      error
 
+	// containerPresent stands for a container that still exists on the
+	// runtime whether or not it is running, and containerExistsErr for a
+	// runtime that could not be asked. containerExistsCalled records that
+	// the question was put at all, and containerExistsRyukEnv snapshots the
+	// reaper environment variable at the moment the question is put, so a
+	// test can pin that the variable was disabled before this call rather
+	// than merely by the time run returns.
+	containerPresent       bool
+	containerExistsErr     error
+	containerExistsCalled  bool
+	containerExistsName    string
+	containerExistsRyukEnv string
+
 	locateDSN string
 	locateOK  bool
 
@@ -61,6 +74,12 @@ func (s *stubSeam) seam() seam {
 		},
 		probe: func(_ context.Context, _ string) (int, error) {
 			return s.probeMaxConns, s.probeErr
+		},
+		containerExists: func(_ context.Context, name string) (bool, error) {
+			s.containerExistsCalled = true
+			s.containerExistsName = name
+			s.containerExistsRyukEnv = os.Getenv("TESTCONTAINERS_RYUK_DISABLED")
+			return s.containerPresent, s.containerExistsErr
 		},
 		locate:  func() (string, bool) { return s.locateDSN, s.locateOK },
 		persist: func(string) error { return nil },
@@ -417,6 +436,103 @@ func TestRun_downWithNoLocator_isANoOp(t *testing.T) {
 	}
 }
 
+// Not parallel: --down sets the reaper environment variable once it gets past
+// the probe, and these three cases all do.
+
+// A server that stopped answering has not necessarily gone away. After a
+// reboot, a crash or an OOM kill the container is still there, still holding
+// the anonymous volume the image's VOLUME directive created, and nothing else
+// will ever collect it: --up left it unsupervised by design, so no reaper is
+// watching. Treating "unreachable" as "already gone" leaks the container and
+// its volume while reporting success, and drops the locator that was the only
+// handle on either.
+func TestRun_down_unreachableButContainerPresent_removesItAndForgets(t *testing.T) {
+	const dir = "/stub/lab-game"
+	wantName, err := containerNameForDir(dir)
+	if err != nil {
+		t.Fatalf("containerNameForDir(%q): %v", dir, err)
+	}
+
+	stub := &stubSeam{
+		locateDSN:        "postgres://shared/db",
+		locateOK:         true,
+		probeErr:         errUnreachable,
+		containerPresent: true,
+		workDirDir:       dir,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--down) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !stub.containerExistsCalled {
+		t.Errorf("--down never asked whether the container is still present")
+	}
+	if stub.containerExistsName != wantName {
+		t.Errorf("--down asked about container %q, want %q", stub.containerExistsName, wantName)
+	}
+	// provision reattaches by name and stop is what reaches Terminate, which
+	// is the only call that removes the container's anonymous volume with it.
+	if !stub.provisionCalled || !stub.stopCalled {
+		t.Errorf("--down left an existing container behind (provisionCalled=%v, stopCalled=%v); its anonymous volume leaks with it",
+			stub.provisionCalled, stub.stopCalled)
+	}
+	if stub.provisionOpts.ContainerName != wantName {
+		t.Errorf("--down provisioned with ContainerName=%q, want %q", stub.provisionOpts.ContainerName, wantName)
+	}
+	if !stub.forgetCalled {
+		t.Errorf("--down removed the container but kept the locator")
+	}
+}
+
+// The counter-case that keeps the fix from over-correcting: with the container
+// genuinely gone there is nothing to remove, and provisioning here would
+// create a fresh server only to delete it again.
+func TestRun_down_unreachableAndContainerGone_forgetsWithoutProvisioning(t *testing.T) {
+	stub := &stubSeam{
+		locateDSN:        "postgres://stale/db",
+		locateOK:         true,
+		probeErr:         errUnreachable,
+		containerPresent: false,
+		workDirDir:       "/stub/lab-game",
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--down) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if stub.provisionCalled {
+		t.Errorf("provision was called although no container exists; --down must not create one to delete it")
+	}
+	if !stub.forgetCalled {
+		t.Errorf("forget was not called for a locator whose container is gone")
+	}
+}
+
+// Not knowing is not the same as knowing it is gone: if the runtime cannot be
+// asked, dropping the locator would discard the only handle on a container
+// that may well still exist.
+func TestRun_down_containerExistsFails_keepsTheLocatorAndReports(t *testing.T) {
+	stub := &stubSeam{
+		locateDSN:          "postgres://shared/db",
+		locateOK:           true,
+		probeErr:           errUnreachable,
+		containerExistsErr: errStub("container runtime client: no socket"),
+		workDirDir:         "/stub/lab-game",
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--down) = 0, want non-zero when the runtime could not be asked; stderr: %s", stderr.String())
+	}
+	if stub.forgetCalled {
+		t.Errorf("--down forgot the locator although it never learned whether the container exists")
+	}
+	if !strings.Contains(stderr.String(), "no socket") {
+		t.Errorf("stderr = %q, want the runtime error named", stderr.String())
+	}
+}
+
 func TestRun_upAndDownTogether_isAUsageError(t *testing.T) {
 	t.Parallel()
 
@@ -649,6 +765,43 @@ func TestRun_down_invalidDir_leavesReaperSettingUnchanged(t *testing.T) {
 
 	if _, ok := os.LookupEnv("TESTCONTAINERS_RYUK_DISABLED"); ok {
 		t.Errorf("TESTCONTAINERS_RYUK_DISABLED was set although the pre-check should fail before it")
+	}
+}
+
+// Not parallel: asserts on the process-wide reaper environment variable.
+// Pins the ordering: the reaper must be disabled BEFORE
+// the existence question is put on the unreachable-but-present path,
+// because answering that question already builds the container-runtime
+// client the reaper setting is read by.
+func TestRun_down_unreachablePresent_disablesReaperBeforeExistsCheck(t *testing.T) {
+	orig, hadOrig := os.LookupEnv("TESTCONTAINERS_RYUK_DISABLED")
+	t.Cleanup(func() {
+		if hadOrig {
+			_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", orig)
+		} else {
+			_ = os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED")
+		}
+	})
+	if err := os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED"); err != nil {
+		t.Fatalf("Unsetenv: %v", err)
+	}
+
+	stub := &stubSeam{
+		locateDSN:        "postgres://stale/db",
+		locateOK:         true,
+		probeErr:         errUnreachable,
+		containerPresent: true,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--down) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !stub.containerExistsCalled {
+		t.Fatalf("containerExists was never called")
+	}
+	if stub.containerExistsRyukEnv != "true" {
+		t.Errorf("TESTCONTAINERS_RYUK_DISABLED at containerExists time = %q, want %q", stub.containerExistsRyukEnv, "true")
 	}
 }
 

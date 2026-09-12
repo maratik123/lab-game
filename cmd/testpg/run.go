@@ -39,17 +39,19 @@ func logf(w io.Writer, format string, args ...any) {
 }
 
 // seam bundles what run needs from testdb — starting and stopping a server,
-// probing one's capacity, reading/writing/removing the locator file, and
+// probing one's capacity, asking whether a named container is present at all,
+// reading/writing/removing the locator file, and
 // reading the process's working directory — behind values run depends on
 // rather than functions it calls directly, so tests can substitute a stub
 // that starts no container, dials nothing and names no real directory.
 type seam struct {
-	provision func(ctx context.Context, opts testdb.ServerOptions) (dsn string, stop func(context.Context) error, err error)
-	probe     func(ctx context.Context, dsn string) (maxConns int, err error)
-	locate    func() (dsn string, ok bool)
-	persist   func(dsn string) error
-	forget    func() error
-	workDir   func() (dir string, err error)
+	provision       func(ctx context.Context, opts testdb.ServerOptions) (dsn string, stop func(context.Context) error, err error)
+	probe           func(ctx context.Context, dsn string) (maxConns int, err error)
+	containerExists func(ctx context.Context, name string) (bool, error)
+	locate          func() (dsn string, ok bool)
+	persist         func(dsn string) error
+	forget          func() error
+	workDir         func() (dir string, err error)
 }
 
 // productionSeam wraps testdb's real provisioning, the on-disk locator file
@@ -64,11 +66,12 @@ func productionSeam() seam {
 			}
 			return server.DSN(), server.Stop, nil
 		},
-		probe:   testdb.Probe,
-		locate:  readLocator,
-		persist: writeLocator,
-		forget:  removeLocator,
-		workDir: os.Getwd,
+		probe:           testdb.Probe,
+		containerExists: testdb.ContainerExists,
+		locate:          readLocator,
+		persist:         writeLocator,
+		forget:          removeLocator,
+		workDir:         os.Getwd,
 	}
 }
 
@@ -324,8 +327,14 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 
 // runDown removes the long-lived server this project's own target started,
 // never one it merely found: with no locator file there is nothing to
-// remove, and an unreachable locator is treated as stale and forgotten
-// rather than turned into a fresh container only to delete it again.
+// remove. An unreachable locator is not treated as proof the container is
+// gone — a container stopped by a reboot, a crash or an OOM kill is still
+// present, still holding the anonymous volume the image's VOLUME directive
+// created, and --up left it unsupervised by design, so nothing else will
+// ever collect it. The locator is dropped only once the container's fate is
+// actually known: forgotten when it is confirmed gone, removed together
+// with its volume when it is confirmed present, and kept when the runtime
+// could not even be asked.
 func runDown(ctx context.Context, sm seam, stdout, stderr io.Writer) int {
 	dsn, ok := sm.locate()
 	if !ok {
@@ -334,12 +343,7 @@ func runDown(ctx context.Context, sm seam, stdout, stderr io.Writer) int {
 	}
 
 	if _, err := sm.probe(ctx, dsn); err != nil {
-		logf(stderr, "testpg: the shared server is already unreachable (%v); removing the stale locator\n", err)
-		if err := sm.forget(); err != nil {
-			logf(stderr, "testpg: removing the locator file: %v\n", err)
-			return exitFailure
-		}
-		return 0
+		return runDownUnreachable(ctx, sm, err, stdout, stderr)
 	}
 
 	dir, err := sm.workDir()
@@ -353,16 +357,93 @@ func runDown(ctx context.Context, sm seam, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
-	// Disabled for the same reason it is when creating the server, and one
-	// more: this invocation only reaches an existing container in order to
-	// remove it, so a reaper started here would supervise nothing and
-	// outlive the thing it was started for.
-	if err := os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true"); err != nil {
-		logf(stderr, "testpg: disabling the reaper: %v\n", err)
+	return removeNamedContainer(ctx, sm, containerName, stdout, stderr)
+}
+
+// runDownUnreachable handles --down when the located server did not answer
+// the probe. An unreachable locator alone does not mean the container is
+// gone, so this asks the runtime directly before deciding: an underivable
+// container name (workDir or containerNameForDir failing) leaves nothing
+// this command can address and falls back to today's forget-and-return-zero
+// behaviour; a runtime that cannot even answer the existence question keeps
+// the locator, since not knowing is not the same as knowing it is gone; and
+// a confirmed-present container is removed along with its anonymous volume
+// through the same path the reachable case uses.
+//
+// The reaper is disabled here, before the existence question is put, because
+// that question already builds the same container-runtime client the reaper
+// setting is read by: waiting until a container is confirmed present is too
+// late, this path exists for post-reboot/post-crash recovery, and the client
+// built to answer "does it exist" must not need the reaper image pullable.
+func runDownUnreachable(ctx context.Context, sm seam, probeErr error, stdout, stderr io.Writer) int {
+	dir, err := sm.workDir()
+	if err != nil {
+		return forgetStaleLocator(sm, probeErr, stderr)
+	}
+	name, err := containerNameForDir(dir)
+	if err != nil {
+		return forgetStaleLocator(sm, probeErr, stderr)
+	}
+
+	if !disableReaper(stderr) {
 		return exitFailure
 	}
 
-	_, stop, err := sm.provision(ctx, testdb.ServerOptions{ContainerName: containerName})
+	exists, err := sm.containerExists(ctx, name)
+	switch {
+	case err != nil:
+		logf(stderr, "testpg: the shared server is unreachable (%v), and whether container %q still exists could not be determined: %v\n", probeErr, name, err)
+		return exitFailure
+	case !exists:
+		return forgetStaleLocator(sm, probeErr, stderr)
+	default:
+		logf(stderr, "testpg: the shared server is unreachable (%v); container %q is still present, removing it\n", probeErr, name)
+		return removeNamedContainer(ctx, sm, name, stdout, stderr)
+	}
+}
+
+// forgetStaleLocator reports probeErr as the reason a --down locator is
+// being dropped and removes the locator file, for the cases where the
+// container it named is confirmed gone (or could never be addressed at
+// all).
+func forgetStaleLocator(sm seam, probeErr error, stderr io.Writer) int {
+	logf(stderr, "testpg: the shared server is already unreachable (%v); removing the stale locator\n", probeErr)
+	if err := sm.forget(); err != nil {
+		logf(stderr, "testpg: removing the locator file: %v\n", err)
+		return exitFailure
+	}
+	return 0
+}
+
+// disableReaper sets the environment variable that keeps testcontainers-go
+// from creating a reaper container, reporting and returning false if the
+// write itself fails. It exists so every call site that must disable the
+// reaper before its first container-runtime client is built shares one
+// Setenv-and-report instead of duplicating it.
+func disableReaper(stderr io.Writer) bool {
+	if err := os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true"); err != nil {
+		logf(stderr, "testpg: disabling the reaper: %v\n", err)
+		return false
+	}
+	return true
+}
+
+// removeNamedContainer reattaches to the container named name, stops it
+// (which also removes the anonymous volume its image's VOLUME directive
+// created), and forgets the locator. It disables the reaper first for the
+// same reason --up does, and one more: this invocation only reaches an
+// existing container in order to remove it, so a reaper started here would
+// supervise nothing and outlive the thing it was started for. Shared by
+// --down's reachable path and its unreachable-but-present path, which
+// differ only in how they learn the container still needs removing; on the
+// unreachable-but-present path the reaper is already disabled by the time
+// this runs, and setting it again is a harmless no-op.
+func removeNamedContainer(ctx context.Context, sm seam, name string, stdout, stderr io.Writer) int {
+	if !disableReaper(stderr) {
+		return exitFailure
+	}
+
+	_, stop, err := sm.provision(ctx, testdb.ServerOptions{ContainerName: name})
 	if err != nil {
 		logf(stderr, "testpg: could not reach the shared server to remove it: %v\n", err)
 		return exitFailure

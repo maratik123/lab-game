@@ -701,3 +701,50 @@ the call shape itself rather than the memory of having read about it.
 
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — the owner-facing surface is Russian, and a wordless invocation does not suspend that
+
+**What happened:** Invoked as `/bugfix 96`, I ran the whole investigation and reported every interim
+finding to the owner in English — several turns of it — before switching to Russian at the first
+question. The rule is not ambiguous: English for every durable artefact, Russian for exactly two
+surfaces, one of which is conversation with the product owner. Nothing in the session licensed the
+drift; the trigger was simply that the invocation carried no natural-language text to mirror, so I
+defaulted to the language of the material I was reading (issue body, Go source, the instruction files
+themselves — all correctly English) and let that choose the language of my own replies.
+
+**Rule:** Language is chosen by the SURFACE being written, never by the language of the material being
+read or by the language the user's last message happened to be in — a slash-command argument, a pasted
+log, or an English issue body is not a language signal. Before the first reply of a session, settle
+which surface the reply is: owner-facing conversation and the design corpus are Russian; code,
+comments, commit messages, PR bodies, specs, designs and the learning logs are English. A session that
+opens with a bare slash-command is the case most likely to go wrong, because the surrounding context
+is overwhelmingly English artefacts.
+
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-12 — testing — a delegate's code-read prediction about runtime behaviour is a hypothesis; the measurement is the finding
+
+**What happened:** Investigating the orphaned-volume issue, the trace subagent returned a detailed,
+well-cited trace concluding that a SIGKILLed test run leaks its anonymous volume, reasoning that the
+reaper matches by label filter and an implicitly-created anonymous volume carries no labels. The
+reasoning was sound and the citations were real. It was also wrong: three measured trials all
+reclaimed the volume, and the engine's event log showed that exact volume created and removed thirteen
+seconds apart. The reaper's *container* removal carries the remove-volumes flag on its own, which is a
+separate mechanism from its label-filtered volume prune. Had I written the trace from the delegate's
+conclusion, the fix would have been aimed at a route that does not leak, and the route that does leak
+— a teardown that exits 0 while leaving a stopped container and its volume behind — would have been
+missed entirely, because neither the issue nor the code read pointed at it.
+
+**Rule:** For any claim about what a RUNTIME does — a reaper, a container engine, a scheduler, a
+database under concurrency — a code read produces a hypothesis and only execution produces a finding,
+however many correct file:line citations accompany the read. Run the thing, and run it with an
+instrument already seen to go red: here the same probe that reported "reclaimed" for the project's own
+routes reported "SURVIVED" for a hand removal without the volume flag, and that red result is what
+made the clean verdicts worth believing. The issue text is under the same rule — two of this issue's
+own stated inferences (a volume-layout split that supposedly dated the volumes to a named commit, and
+"these containers never reached teardown") were refuted by one volume inspection and one event-log
+lookup.
+
+**Kind:** validation
+**Escalated?** no
