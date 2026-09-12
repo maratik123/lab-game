@@ -27,12 +27,15 @@ import (
 // goroutine issues them — not any single query.
 //
 // That distinction matters when choosing a value: the deadline branch of
-// executeOne's select hijacks the connection without rolling back, so
-// the row's lock is released by one of two things — whichever comes
-// first — idle_in_transaction_session_timeout expiring server-side, or
-// the watchdog goroutine closing the hijacked connection once the
-// orphaned handler returns. The timeout is load-bearing for lock-release
-// timing on that first path, not only for classifying the failure as
+// executeOne's select hijacks the connection without rolling back. The
+// row's lock is normally released promptly by the synchronous terminate
+// that branch issues from another pooled connection; if that terminate
+// itself fails or finds the pid already gone, the row falls back to
+// whichever of the pre-existing layers reaches it first —
+// idle_in_transaction_session_timeout expiring server-side, or the
+// watchdog goroutine closing the hijacked connection once the orphaned
+// handler returns. The timeout is load-bearing for that fallback
+// lock-release timing, not only for classifying the failure as
 // FailureDeadline.
 const setTimeoutsSQL = `SELECT set_config('statement_timeout', $1, true), set_config('idle_in_transaction_session_timeout', $1, true)`
 
@@ -43,6 +46,26 @@ const setTimeoutsSQL = `SELECT set_config('statement_timeout', $1, true), set_co
 // Close within this long is one the goroutine must stop waiting on
 // rather than block forever.
 const detachedCloseTimeout = 5 * time.Second
+
+// terminateTimeout bounds the deadline branch's own synchronous
+// pg_terminate_backend call, issued on a context derived via
+// context.WithoutCancel so the terminate still runs once the caller's
+// ctx (and deadlineCtx) are already done. A named constant, not a
+// configuration key, for the same reason detachedCloseTimeout is one:
+// the call is a local cleanup, not a tunable balance value. The
+// statement itself carries no server-side wait — it is the signalling,
+// one-argument form of pg_terminate_backend — so this bound is the only
+// one that applies to it.
+const terminateTimeout = 5 * time.Second
+
+// terminateBackendSQL is the signalling (one-argument) form of
+// pg_terminate_backend: it returns once the signal has been sent,
+// reporting true when the pid was a live backend and false when it was
+// not — never whether the backend has actually died, which the caller
+// must not wait to confirm (measured: the waiting two-argument form
+// buys no earlier row release, only a hundred-millisecond floor on this
+// call's own return).
+const terminateBackendSQL = `SELECT pg_terminate_backend($1)`
 
 // handlerResult is what the handler goroutine reports back to executeOne.
 type handlerResult struct {
@@ -137,6 +160,17 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 	// selects on either its result or the deadline (layer 3).
 	deadlineCtx, cancel := context.WithTimeout(ctx, w.cfg.TaskTimeout)
 	defer cancel()
+
+	// The backend pid this attempt's connection holds, read here — after
+	// the deadline context exists but before the handler goroutine
+	// launches — because this is the last point at which conn is
+	// provably idle: pgx documents PgConn's escape hatch as safe only on
+	// an idle connection, and once the handler goroutine starts it may
+	// be mid-statement. A connection's backend pid cannot change while
+	// the connection stays open, so the value read here is still the
+	// breach branch's own victim if the deadline is later breached.
+	pid := conn.Conn().PgConn().PID()
+
 	resultCh := make(chan handlerResult, 1)
 	go func() {
 		outcome, handlerErr, releaseErr, panicked := runHandlerWithSavepoint(deadlineCtx, tx, decl.Handler, task, w.logger)
@@ -149,19 +183,52 @@ func (w *Worker) executeOne(ctx context.Context, id TaskID, batchSize int) error
 		return w.settleAndAfter(ctx, tx, conn, task, decl, r, obs)
 	case <-deadlineCtx.Done():
 		// The deadline was breached: this task's transaction is
-		// abandoned, not committed or rolled back — the row is still
-		// locked until the server terminates the backend (layer 2) or the
-		// watchdog below closes the hijacked connection once the orphaned
-		// handler goroutine returns. The deferred settlement
-		// closes the "attempt never counted" hole this would otherwise
-		// leave.
+		// abandoned, not committed or rolled back. The terminate issued
+		// synchronously below is layer 2 of the deadline defence: it
+		// reclaims the row's lock directly, without waiting for the
+		// orphaned handler goroutine to notice or return. The pre-existing
+		// layers — idle_in_transaction_session_timeout expiring
+		// server-side, and the watchdog below closing the hijacked
+		// connection once the orphaned handler returns — remain as the
+		// fallback for a terminate that itself fails or finds the pid
+		// already gone. The deferred settlement closes the "attempt never
+		// counted" hole this would otherwise leave.
 		pconn := conn.Hijack()
 		handled = true
 		w.enqueuePending(pendingSettlement{
 			id: id, runAt: task.RunAt, consecutiveFailures: task.ConsecutiveFailures,
 			recurrence: decl.Recurrence, reason: "deadline exceeded",
 		})
-		go func() { //nolint:gosec,contextcheck // G118/contextcheck: context.Background() is deliberate here — ctx (and deadlineCtx) may already be done by the time this fires, and closing the connection must still happen, since that is what finally releases the row's lock for a handler that ignores its own ctx
+
+		// Layer 2: terminate this attempt's own breached backend from
+		// another pooled connection, synchronously — the signalling
+		// (one-argument) form, which returns once the signal is sent
+		// rather than waiting to confirm the death that waiting buys no
+		// earlier row release for. Two non-success shapes are told apart
+		// and logged at different levels: a Go error is a fault (a
+		// permission failure, or a pool that cannot hand out a
+		// connection) and is unexpected in ordinary operation; a false
+		// return with a nil error means the pid was not a live backend —
+		// benign by construction, since whatever ended that backend
+		// already released its locks with it, and reachable in ordinary
+		// operation because this branch's own
+		// idle_in_transaction_session_timeout is armed against the same
+		// TaskTimeout and can reach the backend first.
+		// context.WithoutCancel is deliberate: the terminate must still
+		// run once ctx (and deadlineCtx) are already done, since that is
+		// exactly the case this branch handles.
+		termCtx, termCancel := context.WithTimeout(context.WithoutCancel(ctx), terminateTimeout)
+		var terminated bool
+		if err := w.pool.QueryRow(termCtx, terminateBackendSQL, int64(pid)).Scan(&terminated); err != nil {
+			w.logger.LogAttrs(ctx, slog.LevelError, "scheduler: terminate breached backend",
+				slog.Int64("task_id", int64(id)), slog.Uint64("pid", uint64(pid)), slog.String("error", err.Error()))
+		} else if !terminated {
+			w.logger.LogAttrs(ctx, slog.LevelDebug, "scheduler: terminate found no live backend for breached task",
+				slog.Int64("task_id", int64(id)), slog.Uint64("pid", uint64(pid)))
+		}
+		termCancel()
+
+		go func() { //nolint:gosec,contextcheck // G118/contextcheck: context.Background() is deliberate here — ctx (and deadlineCtx) may already be done by the time this fires, and closing the connection must still happen: the row's own lock is normally already released by the terminate above, but the connection itself still needs closing to free pooled resources and to unblock a handler still writing on it
 			<-resultCh                                                                          // wait for the orphaned handler goroutine to return
 			closeCtx, cancel := context.WithTimeout(context.Background(), detachedCloseTimeout) //nolint:forbidigo // this is the watchdog's detached close: no shutdown path joins this goroutine, so it owns its own bounded root
 			defer cancel()

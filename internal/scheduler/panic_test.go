@@ -109,19 +109,31 @@ func (h *recordingLogHandler) Entries() []recordedLogEntry {
 	return out
 }
 
-// waitForLogEntries polls logs until it holds at least n entries or
-// timeout elapses, failing the test on timeout — the log record is
-// emitted from a goroutine the test does not otherwise synchronise with.
-func waitForLogEntries(t *testing.T, logs *recordingLogHandler, n int, timeout time.Duration) {
+// findLogEntry returns the first entry in logs whose message matches,
+// and whether one was found.
+func findLogEntry(logs *recordingLogHandler, message string) (recordedLogEntry, bool) {
+	for _, e := range logs.Entries() {
+		if e.message == message {
+			return e, true
+		}
+	}
+	return recordedLogEntry{}, false
+}
+
+// waitForPanicLogEntry polls logs until it holds a "scheduler: recovered
+// handler panic" entry or timeout elapses, failing the test on timeout —
+// the log record is emitted from a goroutine the test does not otherwise
+// synchronise with.
+func waitForPanicLogEntry(t *testing.T, logs *recordingLogHandler, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if len(logs.Entries()) >= n {
+		if _, found := findLogEntry(logs, "scheduler: recovered handler panic"); found {
 			return
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("log entries = %d after %v, want >= %d", len(logs.Entries()), timeout, n)
+	t.Fatalf("log entries = %+v after %v, want a recovered-handler-panic record", logs.Entries(), timeout)
 }
 
 // TestPanic_AC1_workerSurvivesAndNextCycleRunsNormally asserts that a
@@ -337,14 +349,22 @@ func TestPanic_AC6_logOnlySurface_blockedPastDeadlineThenPanics(t *testing.T) {
 
 	close(h.release)
 	waitLockFree(t, pool, id, 2*cfg.TaskTimeout+10*time.Second)
-	waitForLogEntries(t, logs, 1, 10*time.Second)
+	waitForPanicLogEntry(t, logs, 10*time.Second)
 
-	entries := logs.Entries()
-	if len(entries) != 1 {
-		t.Fatalf("log entries = %d, want exactly 1", len(entries))
+	// The breach branch's own terminate may or may not itself log,
+	// depending on which of the two clocks armed against the same
+	// TaskTimeout reaches this backend first — this handler never
+	// touches tx, so it is idle in transaction from right after the
+	// savepoint statement, and the server's own
+	// idle_in_transaction_session_timeout can beat the terminate to it.
+	// Either ordering is benign and expected; the assertion below is on
+	// the panic's own record, not on the total count.
+	entry, found := findLogEntry(logs, "scheduler: recovered handler panic")
+	if !found {
+		t.Fatalf("log entries = %+v, want a recovered-handler-panic record", logs.Entries())
 	}
-	if !strings.Contains(entries[0].attrs["stack"], "blockThenPanicHandler") {
-		t.Errorf("log stack attribute = %q, want it to name blockThenPanicHandler", entries[0].attrs["stack"])
+	if !strings.Contains(entry.attrs["stack"], "blockThenPanicHandler") {
+		t.Errorf("log stack attribute = %q, want it to name blockThenPanicHandler", entry.attrs["stack"])
 	}
 
 	if err := w.RunOnce(ctx); err != nil {

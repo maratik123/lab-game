@@ -67,9 +67,10 @@ func (h *ctxIgnoringHandler) Execute(_ context.Context, tx pgx.Tx, _ Task) (Outc
 
 // waitLockFree polls, without depending on any scheduler internals,
 // until id's row can be locked FOR NO KEY UPDATE SKIP LOCKED — i.e. the
-// abandoned transaction's connection has been closed and the server has
-// released its locks (the deadline defence's second layer, or the
-// watchdog's close). timeout is an instrument, a patience budget for the
+// abandoned transaction's backend has released its locks, normally
+// because the deadline branch's own terminate ended it, or otherwise
+// because idle_in_transaction_session_timeout or the watchdog's close of
+// the hijacked connection did. timeout is an instrument, a patience budget for the
 // poll — never the deadline defence itself, which every caller here
 // already asserts separately — so callers give it slack well past
 // anything cross-package load can add to how long the drain takes.
@@ -701,20 +702,26 @@ func findObservationByType(tasks []Observation, typ Type) (Observation, bool) {
 	return Observation{}, false
 }
 
-// TestDeadline_ctxIgnoringHandler_negativeCase covers the deadline
-// defence's residue: a handler that never sees the deadline's
-// cancellation and issues short
+// TestDeadline_ctxIgnoringHandler_rowReclaimedDespiteIgnoredCtx covers a
+// handler that never sees the deadline's cancellation and issues short
 // statements on a context of its own. The worker still reports the
-// deadline failure kind and proceeds within the deadline; the row stays
-// locked while the handler keeps running, and becomes claimable once it
-// returns and the watchdog closes the hijacked connection.
-func TestDeadline_ctxIgnoringHandler_negativeCase(t *testing.T) {
+// deadline failure kind and proceeds within the deadline; its backend is
+// terminated regardless of whether the handler ever notices, so the row
+// becomes claimable within the existing lock-free poll helper's own
+// patience budget even while the handler keeps running.
+func TestDeadline_ctxIgnoringHandler_rowReclaimedDespiteIgnoredCtx(t *testing.T) {
 	t.Parallel()
 
 	pool := newScheduler(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	h := &ctxIgnoringHandler{release: make(chan struct{})}
+	// Deferred, not called inline: once the backend is terminated, every
+	// further Exec inside the handler's loop returns instantly, turning
+	// it from pg_sleep(0.02)-paced into a hot spin for as long as the
+	// test takes to reach this deferred close — so no slow work belongs
+	// between the claim assertion below and here.
+	defer close(h.release)
 
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
 	if err != nil {
@@ -741,24 +748,5 @@ func TestDeadline_ctxIgnoringHandler_negativeCase(t *testing.T) {
 		t.Fatalf("observations = %+v, want one FailureDeadline observation", tasks)
 	}
 
-	// The row is still locked — the boundary this test asserts rather
-	// than assumes.
-	locked := true
-	func() {
-		tx, err := pool.Begin(ctx)
-		if err != nil {
-			t.Fatalf("begin probe: %v", err)
-		}
-		defer func() { _ = tx.Rollback(ctx) }()
-		var got int64
-		if err := tx.QueryRow(ctx, `SELECT id FROM scheduled_task WHERE id = $1 FOR NO KEY UPDATE SKIP LOCKED`, int64(id)).Scan(&got); err == nil {
-			locked = false
-		}
-	}()
-	if !locked {
-		t.Fatalf("row became claimable while the ctx-ignoring handler was still running, want it to stay locked")
-	}
-
-	close(h.release)
 	waitLockFree(t, pool, id, 10*time.Second)
 }
