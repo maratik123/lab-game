@@ -13,9 +13,17 @@ two machines still agree.
 ### A note on evidence
 
 `[measured <commit>:<path>:<lines> · <cmd> → <output>]` cites this tree at the commit the read was
-taken at — `155bbc8` for round 1, `4098f7b` for anything read in round 2. `[derived → …]` names the
-acceptance criterion, subtask or test that will establish a claim about something **this task
-creates**.
+taken at — `155bbc8` for round 1, `4098f7b` for anything read in round 2, and `d4e0271` for
+anything read in round 4. `[derived → …]` names the acceptance criterion, subtask or test that will
+establish a claim about something **this task creates**.
+
+**Round 4 is an amendment made mid-implementation, after Group A returned.** Subtasks 1–5 are
+shipped, committed and pushed, so two classes of claim change standing: what those subtasks were
+going to create is now code that can be read, and it is cited `[measured d4e0271:…]` where this
+round read it. Everything round 4 *adds* — subtask 7 and its tests — is still `[derived → …]`. Two
+deviations drove it: `item_capacity_divergence` shipped in a better shape than D6 sketched (folded
+into D6, no decision open), and `Move`'s phase order broke D4's sentinel promise for a lost race
+(the owner ruled the direction; the mechanism is argued in D4).
 
 **Round 2 corrects a tag error.** Round 1 used a third form, `[measured probe · …]`, for behaviour
 that this task's own schema will have — `item_movement`'s constraints, the `capacity_role` index,
@@ -264,10 +272,13 @@ writes one document.
 `[measured 155bbc8:AGENTS.md:179 · sed -n '179p' AGENTS.md → "Every change to stamina, resources, money, or items is a set of postings written by store.Post under exactly one basis document"]`.
 `Move` honours that literally: every posting a move writes — derived or caller-supplied — goes
 through the same body `Post` itself uses, with no second write path to a balance. Since the
-movement rows need the `journal_entry` id that `Post` currently discards, `Post`'s body moves into
-an unexported `post` returning it, and `Post` becomes the thin wrapper that drops it — no exported
-signature changes, no call site moves, and the phase order, capture-order discipline and every
-sentinel stay exactly where they are
+movement rows need the `journal_entry` id that `Post` currently discards, and since they must be
+written **before** that body moves any balance (round 4, below), `Post`'s body moves into an
+unexported `post` that takes a hook — `beforeBalances func(journalEntryID int64) error`, run after
+the journal entry exists and before the first balance `UPDATE`. `Post` passes `nil` and is
+otherwise the same call, so no exported signature changes, no call site moves, and `Post`'s own
+phase order, capture-order discipline and sentinels — including the transaction state each one
+leaves — stay exactly where they are
 `[measured 155bbc8:internal/store/post.go:44-193 · cat -n internal/store/post.go → the documented phases a–f, ending "INSERT INTO posting (journal_entry_id, account_id, amount) VALUES ($1, $2, $3)"]`
 `[derived → AC3, and the unchanged-`Post`-behaviour assertions of § Test Design subtask 4]`.
 
@@ -328,19 +339,123 @@ indices were mints in order to read its own result.
   `post` sums per account before touching a balance, so the two sets compose (D2's grant-and-fill
   paragraph), and a caller batch that is not itself zero-sum per kind fails `post`'s existing
   check as `ErrUnbalanced`.
-- **d. `post(...)`** — one basis document, one journal entry, the balance `UPDATE`s in capture
-  order, then every posting. `ErrOverdraft` here is AC4's refusal.
-- **e. mint** — one `item` row per `NewItem` movement.
-- **f. movements** — the `item_movement` rows, in ascending instance id, so two batches touching
-  the same instances take the index entries in one order. A chain refusal that only a concurrent
-  transaction could produce (`23503` on `item_movement_chain_fk`, or `23505` on
+- **d. `post(...)` up to the journal entry** — one basis document, one journal entry. `post` then
+  calls `Move`'s `beforeBalances` hook, which is phases e and f, before it touches any balance.
+- **e. mint** (inside the hook) — one `item` row per `NewItem` movement.
+- **f. movements** (inside the hook) — the `item_movement` rows, in ascending instance id, so two
+  batches touching the same instances take the index entries in one order. After round 4 that
+  ascending order is the **first leg of a two-level lock order** — instance entries ascending, then
+  account rows ascending inside `post`'s capture order — which is what keeps two concurrent `Move`s
+  free of a cycle. A chain refusal that
+  only a concurrent transaction could produce (`23503` on `item_movement_chain_fk`, or `23505` on
   `item_movement_successor_key`) surfaces as `ErrMoveConflict` with the transaction aborted.
+- **g. `post` resumes** — the balance `UPDATE`s in capture order, then every posting.
+  `ErrOverdraft` here is AC4's refusal, and by g every movement in the batch has already taken its
+  successor slot, so an overdraft is a capacity refusal rather than a lost race.
 
 **One document, both machines, structurally.** `post` is called exactly once, so exactly one basis
 document and one `journal_entry` exist; `item_movement.journal_entry_id` points at that entry
 (D3); and both posting sets hang off it. A mechanic can therefore write §11's worked examples as
 one call each, and #26's framework has one document to check both signatures against
 `[derived → AC3, and the one-document test of § Test Design subtask 4]`.
+
+**Round 4 — the chain is serialised before the capacity legs, so `ErrOverdraft` goes back to
+meaning "full".** What Group A shipped runs `post` to completion — balance `UPDATE`s included —
+before the chain insert
+`[measured d4e0271:internal/store/move.go:201-249 · cat -n internal/store/move.go → "// Phase d." calling post(ctx, tx, basis, batch...) at line 202, then "// Phase f: movements" at line 221 with the INSERT INTO item_movement]`,
+and the `UPDATE` that trips `CHECK (balance >= 0)` lives inside `post`
+`[measured d4e0271:internal/store/post.go:168-190 · cat -n internal/store/post.go → phase e, "UPDATE account_balance SET balance = balance + $2 WHERE account_id = $1", with account_balance_nonnegative mapped to ErrOverdraft]`.
+Two transactions racing the same instance off one holder therefore both reach that source `UPDATE`
+before either reaches the chain: under the server's default isolation the second blocks on the
+first's row lock, resumes against the newly committed balance, and drives the source's `slots_used`
+below zero
+`[measured probe · psql on docker.io/library/postgres:18 → "SHOW default_transaction_isolation" answered "read committed" on server_version 18.6, the same image the suite provisions]`.
+Where the source's `slots_used`
+equals the number of racers — the single-item backpack two players are looting, which is §11's own
+worked case — the loser is refused with `ErrOverdraft` on every attempt, and never reaches the
+chain insert that was supposed to refuse it with `ErrMoveConflict`. That is precisely the confusion
+the sentinel table exists to prevent: the mechanic renders "your backpack is full" for "someone
+looted it first". The shipped race test does not exercise the case, because it was widened to avoid
+it
+`[measured d4e0271:internal/store/move_race_test.go:53-67 · cat -n internal/store/move_race_test.go → the seed Move minting a second instance into the shared holder, commented "A second, unraced \"anchor\" instance shares start with the raced one … so the race is decided where it is meant to be: the chain insert"]`.
+
+The owner ruled the direction, verbatim: *"Fix it — keep the promise (Recommended): design-writer
+picks the mechanism (serialise the chain before the capacity legs, e.g. lock the head movement in
+phase b), and the race test asserts `ErrMoveConflict` on the single-item fixture the delegate
+removed. Costs a design round and code rework in `Move`."* The parenthesised mechanism is the
+owner's illustration; the mechanism below is chosen on its merits and the illustration is among the
+alternatives it is argued against.
+
+**The mechanism: the chain insert moves ahead of the balance `UPDATE`s, through a hook in `post`.**
+`post` gains `beforeBalances func(journalEntryID int64) error`, called once the basis document and
+the journal entry exist and before the first balance `UPDATE`; `Post` passes `nil`, `Move` passes
+its mint-and-movements phases. Nothing else moves: `post`'s phases keep their order, their
+sentinels and their documented transaction states, the capture-order discipline stays inside the
+balance loop, and the hook's error is returned unwrapped so `errors.Is` still finds
+`ErrMoveConflict`. What changes is only *where the serialisation happens first*, and that is enough,
+because the successor index already refuses the second racer: a probe in which one session held an
+uncommitted successor entry while a second inserted the same key showed the second waiting and then
+being refused
+`[measured probe · psql on docker.io/library/postgres:18 (server 18.6), two sessions inserting the same (item_id, prev_movement_id, from_holder_id) → the second appeared in pg_stat_activity as wait_event_type "Lock", wait_event "transactionid", and on the first's COMMIT answered "ERROR: duplicate key value violates unique constraint \"mv_successor_key\""]`.
+
+```go
+// post is Post's body. beforeBalances, when non-nil, runs once the basis
+// document and the journal entry exist and before the first balance
+// UPDATE — the seam Move needs so its chain rows take their successor
+// slots ahead of the capacity legs. Post passes nil.
+func post(
+    ctx context.Context, tx pgx.Tx, basis PostingBasis,
+    beforeBalances func(journalEntryID int64) error, postings ...Posting,
+) error
+```
+
+The journal-entry id reaches `Move` through the hook's parameter, so `post` stops returning it and
+goes back to returning an error alone — the round-2 shape is not kept beside the hook, because two
+ways for one caller to learn the same id is one more than the ledger core needs.
+
+Why this beats adding a lock: it introduces **no second serialisation object** for an
+event the successor index already serialises; it keeps the sentinel table's stated transaction
+state (`ErrMoveConflict` — aborted) true, because the refusal is still the database's; it leaves
+the `ErrNotCurrentHolder` / `ErrMoveConflict` boundary exactly where it is; it costs **no extra
+round trip** on the hot path; and it makes AC4 structural — after phase f every movement in the
+batch owns its successor slot, so an `ErrOverdraft` in phase g is a capacity refusal and nothing
+else.
+
+Rejected alternatives:
+
+- **Lock the head movement row in phase b** (the owner's illustration). A row lock protects a row
+  from concurrent modification; the *head-ness* of a movement row is the **absence** of a
+  successor, which no row lock covers. Measured: with one session holding a `FOR UPDATE` on the
+  head and then inserting a successor, a second session's identical locking read blocked, and on
+  release still returned the **stale** head — only its next statement, in a fresh snapshot, saw the
+  new one
+  `[measured probe · psql on docker.io/library/postgres:18 (server 18.6), a head view written as the anti-join of D6 → the blocked "SELECT … FROM head WHERE item_id=1 FOR UPDATE" returned the pre-race head (to_holder 2, movement 1) after the winner committed, and the plain SELECT immediately after it in the same transaction returned the post-race head (to_holder 3, movement 2)]`.
+  So the lock must be paired with a re-read: one extra statement on every move, a second
+  transaction state for `ErrMoveConflict` ("usable, nothing written") that its table row does not
+  have, and a third comparison to keep the re-read's mismatch apart from `ErrNotCurrentHolder`.
+- **A transaction-scoped advisory lock keyed on the instance.** Serialises correctly and needs the
+  same post-lock re-read, while being a lock on a number rather than on the data: every future
+  writer of `item_movement` has to remember to take it, and nothing refuses one that does not.
+- **Splitting `post` into a `postPrepare` / `postApply` pair** instead of a hook. Same ordering,
+  but it makes "wrote the document, never moved the balances" representable by a caller that
+  forgets the second half — a journal entry that balances vacuously, and a failure that looks like
+  success. The hook makes that unrepresentable and keeps one body owning every balance write, which
+  is what the ledger AXIOM asks for.
+- **Leaving the order and keeping the widened fixture** (what Group A shipped). The case the widened
+  fixture avoids is §11's own worked case, and a test that avoids it is what let this ship.
+
+**What each sentinel means after the reorder**, since two of them describe losing:
+`ErrNotCurrentHolder` is phase b's own read already showing the instance elsewhere — nothing
+written, transaction usable; `ErrMoveConflict` is the chain row being refused because another
+transaction took the successor slot — transaction aborted; `ErrOverdraft` is capacity, on the
+destination's `free` leg, or — on a source's `used` leg — the two machines having already disagreed
+before this move, which `item_capacity_divergence` reports at rest. The two losing sentinels differ
+by whether this transaction wrote anything, which is what a mechanic needs in order to choose
+between retrying inside the same transaction and starting a new one. Which of the two a given
+racer sees depends on whether its phase-b read ran before or after the winner committed; that
+window is a property of the read-then-write shape rather than of this reorder, and it is why
+§ Test Design pins the promise with an **ordered** test rather than with a symmetric one
+`[derived → subtask 7 and its deterministic conflict test]`.
 
 **One sentinel per refusal condition — no two conditions collapse into one error.** `Move` refuses
 more conditions than `Post` does, and a mechanic renders them differently, so each gets its own
@@ -356,7 +471,7 @@ leaves:
 | an `ItemID` with no `item` row | `ErrUnknownItem` | usable, nothing written |
 | `From` is not the instance's current holder | `ErrNotCurrentHolder` | usable, nothing written |
 | a holder with no capacity account of the posted kind | `ErrNoCapacityAccount` | usable, nothing written |
-| a concurrent transaction moved the instance first | `ErrMoveConflict` | aborted |
+| a concurrent transaction took the instance's successor slot first | `ErrMoveConflict` | aborted |
 
 The pair that must **not** share a sentinel is `ErrUnknownItem` and `ErrNotCurrentHolder`: the
 first is a caller bug and the second is a lost race against another player, and a mechanic that
@@ -453,14 +568,20 @@ Three views land, each named for what it answers:
   all one query. This is §11's «Сверка — по цепочкам», literally.
 - **`item_capacity_divergence`** — AC5's second question. Non-empty exactly when a controlled
   `slots_used` balance disagrees with the instance count at that holder, or when a holder holding
-  instances has no `slots_used` account at all. World is absent from both branches because it has
-  no materialised balance, which is the same reason its money balance is not reconciled either.
+  instances has no `slots_used` account at all. A holder whose `slots_used` account exists but is
+  **uncontrolled** is in neither branch, because it has no materialised balance to compare — the
+  same reason World's money balance is not reconciled either. That exclusion is written against the
+  resolved `controlled` flag rather than against a named World holder id, so it generalises to
+  every uncontrolled holder kind instead of naming the one the MVP has
+  `[measured d4e0271:internal/store/migrations/00007_item_machine.sql:196-211 · cat -n internal/store/migrations/00007_item_machine.sql → the slots_used CTE selecting d.controlled, and the predicate "WHERE su.holder_id IS NULL OR (su.controlled AND su.balance IS DISTINCT FROM COALESCE(hc.item_count, 0))"]`.
 
 Sketch of the reconciliations `[derived → AC5, the view definitions of subtask 1 and the tests of
 subtask 3]` — the walk below was run against a planted chain on a throwaway container and reported
 the instance with no movement, and, with the chain constraints dropped, an orphaned segment and a
 fork; that is why the shape is written this way, and subtask 3 is what will show it on the shipped
-views:
+views. **Round 4 note:** `item_holder` and `item_chain_break` shipped as written below;
+`item_capacity_divergence` did not, and the paragraph after this block is the shipped shape and why
+`[measured d4e0271:internal/store/migrations/00007_item_machine.sql:136-176 · cat -n internal/store/migrations/00007_item_machine.sql → the two views as created, matching the block below]`:
 
 ```sql
 CREATE VIEW item_holder AS
@@ -506,9 +627,32 @@ planted "genesis whose `from` is not World" scenario is exactly the discriminato
 so that scenario going red is what pins the join — not the implementor's join style
 `[derived → AC5, and subtask 3's off-World-genesis scenario]`.
 
-`item_capacity_divergence` joins `item_holder`'s per-holder count against the `account_balance` of
-each `slots` / `used` account, and adds a second branch for a holder holding instances with no such
-account, each row carrying the reason.
+**`item_capacity_divergence` is a `FULL JOIN`, and that is load-bearing in the same way the
+`item_chain_break` join above it is.** Round 3 sketched it as a join *driven from* `item_holder`'s
+per-holder count, with a second branch for a holder holding instances that has no `slots`/`used`
+account. Subtask 3 showed that shape reporting an anomaly as healthy, so the shipped view is the
+corrected one: the per-holder count and the set of every `slots`/`used` account are the two sides of
+a `FULL JOIN`, and each row carries its reason
+`[measured d4e0271:internal/store/migrations/00007_item_machine.sql:189-211 · cat -n internal/store/migrations/00007_item_machine.sql → "FROM holder_counts hc FULL JOIN slots_used su ON su.holder_id = hc.holder_id", with the reason column CASE-ing on su.holder_id IS NULL]`.
+
+The defect the `FULL JOIN` closes is the **absent row**, one shape along from the NULL-blind
+predicate that drove the `item_chain_break` join: a holder whose controlled `slots_used` balance has
+drifted away from the truth but which currently holds **nothing** never appears in `item_holder` at
+all, so a view driven from `item_holder` has no row to report it on and answers "clean" — the
+divergence that most needs reporting is exactly the one it cannot see. Driving neither side, and
+defaulting the missing count to zero, is what closes it; the `su.holder_id IS NULL` side is then the
+second branch, unchanged in meaning.
+
+**The discriminator is subtask 3's `count_mismatch` scenario**, and it pins this join the way the
+off-World-genesis scenario pins `item_chain_break`'s `COALESCE`: it grants a backpack a budget,
+posts a `slots_used` leg with **no matching movement**, moves nothing into the holder, and asserts
+the holder is reported with `item_count` zero, its drifted balance, and the `count_mismatch` reason
+`[measured d4e0271:internal/store/item_views_test.go:318-351 · sed -n '318,351p' internal/store/item_views_test.go → the count_mismatch subtest planting a slots_used posting against a holder holding nothing and asserting "0/1/count_mismatch"]`.
+The test and the view's correction landed in one commit
+`[measured d4e0271 · git show --stat --oneline 67cab15 → "test(store): item machine reconciliation views, each anomaly shown red first" touching internal/store/item_views_test.go and internal/store/migrations/00007_item_machine.sql]`,
+which is the record that the scenario was red against round 3's sketch before it was green against
+the shipped view — so what makes the shape trustworthy is the test having been seen red, not the
+implementor's join style.
 
 ### D7 — The migration, as a forward migration, and its rollback
 
@@ -634,7 +778,15 @@ The `AGENTS.md` and `.claude/**` edits are legal in this group: Learning-Log Bou
 | 3 | The reconciliation views' tests: both views empty on a healthy tree, `item_holder` naming the right holder after a hand-built chain, and each anomaly class of `item_chain_break` and `item_capacity_divergence` planted and seen reported — the plant made inside a transaction that drops the chain constraints and is rolled back, so the instrument is shown going red before its green is believed. Serves Scope 4, AC5. | `internal/store/item_views_test.go` | 1 |
 | 4 | `Move` (D4): extract `Post`'s body into the unexported `post` returning the journal-entry id, add `Movement`, `Move` — taking the movements **and** the mechanic's own postings, so one document reaches both machines — the sentinels, and the package comment's second write path; add `move.go` to the append-only scan's non-vacuity list (D3). Tests first: the happy path and the postings it writes, a §11-shaped document carrying movements and the caller's own legs together under one journal entry, each sentinel with the transaction state its doc comment claims, the capacity `CHECK` path returning `ErrOverdraft`, the grant-and-fill document whose net keeps the `CHECK` satisfied, the neither-or-both property, a mint, and the planted-holder-kind case that shows a holder the MVP does not use needs no code. Serves Scope 2, Scope 3, Scope 5, AC2, AC3, AC4, AC6, AC7. | `internal/store/move.go`, `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/move_test.go`, `internal/store/append_only_test.go` | 1 |
 | 5 | The tests that need a shape of their own: a `rapid` property test driving random move sequences against a Go model of holder-per-instance and per-holder occupancy, asserting `item_holder`, both reconciliation views and both capacity balances after every accepted move and no write after every rejected one; and a `-race` concurrency test in which two transactions move one instance at once, asserting exactly one commit, `ErrMoveConflict` for the loser, and a continuous chain afterwards. Serves AC2, AC8. | `internal/store/move_property_test.go`, `internal/store/move_race_test.go` | 4 |
-| 6 | Sweep every live surface for a claim this diff falsifies and fix each (D9). The class is every live site naming the item machine's tables or describing its holder address space, re-derived by a case-insensitive sweep at implementation time — not the illustrative list in D9. Serves Scope 6. | `AGENTS.md`, `ai-docs/domain-invariants.md`, `ai-docs/context.md`, `.claude/skills/task/reference.md`, `docs/DESIGN.md`, plus whatever the sweep finds | 1–5 |
+| 6 | Sweep every live surface for a claim this diff falsifies and fix each (D9). The class is every live site naming the item machine's tables or describing its holder address space, re-derived by a case-insensitive sweep at implementation time — not the illustrative list in D9. Serves Scope 6. | `AGENTS.md`, `ai-docs/domain-invariants.md`, `ai-docs/context.md`, `.claude/skills/task/reference.md`, `docs/DESIGN.md`, plus whatever the sweep finds | 1–5, 7 |
+| 7 | Serialise the chain ahead of the capacity legs (D4, round 4), so a lost race reports `ErrMoveConflict` and `ErrOverdraft` goes back to meaning "the destination is full". `post` gains the `beforeBalances` hook and stops returning the journal-entry id; `Post` passes `nil` and its behaviour, sentinels and transaction states are unchanged; `Move` moves its mint and movement phases into the hook, and its doc-comment phase list moves with them. Tests first: the deterministic ordered conflict test that is the discriminator, and the symmetric race test with its single-item fixture restored — the fixture whose removal hid the defect. Serves Scope 2, AC2, AC3, AC4, AC8. | `internal/store/post.go`, `internal/store/move.go`, `internal/store/move_test.go`, `internal/store/move_race_test.go` | 4, 5 |
+
+**The numbering is a listing, not an order.** What binds inside a group is the `Depends on` column;
+the subtask numbers are labels, and this design states no numeric order and needs none. Group A ran
+subtask 4 before subtask 3, which the table permits — subtask 3 depends on subtask 1 alone — and
+which subtask 3's own § Test Design in fact prefers, since it wants its fixtures minted through the
+real `Move` rather than through raw SQL. Both orders satisfy the dependencies; neither is a
+deviation.
 
 ## Handoff plan
 
@@ -648,18 +800,30 @@ change-type split and the dependency order allow.
 - **Group A** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
   window — subtasks 1–5 (code change-type: `*.go` and the migrations). Every same-change-type
   subtask is clustered into this one group rather than interleaved with the prose work; the group
-  is within the `≤ 10` size cap, and the dependency order inside it (2→1, 3→1, 4→1, 5→4) is
-  respected by the numbering.
+  is within the `≤ 10` size cap, and the dependency edges inside it (2→1, 3→1, 4→1, 5→4) admit more
+  than one execution order — any topological order of those edges satisfies the group. **Returned:
+  Group A is complete**, and round 4 was written against what it shipped.
 - **Handoff after Group A:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
   § Compaction recovery (re-entry). Parent `/task` resumes in Group B with fresh context.
-- **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
+- **Group B** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
+  window — subtask 7 (code change-type: `*.go`). Round 4's rework; a group of its own because
+  Group A has already returned and because it is code, which the prose group may not carry.
+  Within the `≤ 10` size cap — a non-terminal group of one is legal, since the boundary rules are
+  the size cap, change-type homogeneity and minimization, and the former exact-pack rule for a
+  non-terminal group is retired.
+- **Handoff after Group B:** spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md`
+  § Compaction recovery (re-entry). Parent `/task` resumes in Group C with fresh context.
+- **Group C** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
   (typically xHigh) — **not** pinned — via the `general-purpose` subagent with no inline `model=`
   override, 1M-token window — subtask 6 (instructions/harness change-type: `AGENTS.md`,
-  `.claude/**`, `ai-docs/**`, `docs/**`). Terminal group, sized 1, within the `1..=10` range.
+  `.claude/**`, `ai-docs/**`, `docs/**`). Terminal group, sized 1, within the `1..=10` range. It
+  runs **after** Group B so the sweep is derived from the final diff rather than from a diff the
+  rework then changes.
 
-Group-count check: the change-type switch between subtask 5 and subtask 6 forces the boundary, and
-subtask 6 depends on the whole code group, so no reordering collapses the two groups into one. The
-total is within the default maximum of 4 design-defined groups, so no user approval is needed.
+Group-count check: the change-type switch between the code work and subtask 6 forces a boundary,
+and subtask 6 depends on every code subtask, so no reordering collapses the prose group into a code
+group. Subtask 7 cannot join Group A, which has returned. The total is within the default maximum
+of 4 design-defined groups, so no user approval is needed.
 
 **Where the subtlety concentrates inside Group A**, since the contract gives a code group no
 reroute: D3's self-referential composite FK under `MATCH SIMPLE` with `NULLS NOT DISTINCT`, and
@@ -668,6 +832,12 @@ mitigated by design rather than by care — subtask 2 asserts every D3 refusal b
 constraint name, and subtask 3 plants each anomaly class inside a constraint-dropping rolled-back
 transaction so each view is seen red before its green is believed — and both are named here so
 Step 9 reads those two artefacts rather than sampling them.
+
+**Where the subtlety concentrates inside Group B:** the hook's placement inside `post` — it must sit
+after the journal entry and before the first balance `UPDATE`, and nothing else in `post` may move —
+and the deterministic conflict test's synchronisation, which waits on an observable database
+condition rather than on a sleep. Both are named here for the same reason: Step 9 reads them rather
+than sampling them.
 
 ## Risks
 
@@ -738,6 +908,36 @@ Step 9 reads those two artefacts rather than sampling them.
   contradiction with the same
   section's own naming decision rather than introducing one; § Open questions surfaces it for the
   owner regardless.
+- **Round 4's reorder changes `Move`'s lock order, so a transaction that calls `Post` and then
+  `Move` can deadlock where it could not before.** A reordered `Move` takes its `item_movement`
+  index entries before its `account_balance` rows, while a `Post` takes account rows only; a
+  transaction holding an account row from a first document and then entering `Move` for a second
+  can wait on an item entry held by a transaction waiting on that account row. Postgres breaks the
+  cycle by aborting one side with `40P01`, which surfaces as a wrapped error rather than as a
+  sentinel. The property belongs to the **direction** the owner chose — every mechanism that
+  serialises the chain before the capacity legs has it, the head-lock alternative included — not to
+  the hook. Mitigations: `Move` takes the mechanic's own legs precisely so one document is one call
+  (D4); no non-test caller of either function exists yet, so the first mechanic to want both in one
+  transaction is the one that reads the doc comment
+  `[measured d4e0271 · rg -n --type go '\b(store\.)?(Post|Move)\(' --glob '!*_test.go' → only the two declarations, "internal/store/post.go:75:func Post(" and "internal/store/move.go:71:func Move("]`;
+  and subtask 7 states the order in `Move`'s doc comment.
+- **After the reorder, a document that fails at the balance stage has already consumed `item`
+  identity values, so instance ids can have gaps.** Identity sequences do not roll back. Whether
+  any assertion depended on contiguity is settled by subtask 7's own gate run, not by this
+  paragraph; the two that plausibly could have do not. The suite's identity-sequence assertions are
+  taken at migration time and name the seeded tables only
+  `[measured d4e0271:internal/store/migrate_test.go:105-125 · sed -n '105,125p' internal/store/migrate_test.go → the table {"owner", 2}, {"scope", 2}, {"account", 7}]`,
+  and the existing overdraft test asserts row counts rather than ids
+  `[measured d4e0271:internal/store/move_test.go:690-705 · sed -n '690,705p' internal/store/move_test.go → the posting and item_movement count comparison after the rejected Move]`.
+  Recorded so a gap is not read as a defect.
+- **The symmetric race test cannot assert `ErrMoveConflict` on its own, and asserting it anyway
+  would be flaky.** Which of the two losing sentinels a racer sees depends on whether its phase-b
+  read ran before or after the winner committed (D4, round 4). Mitigation: the owner's instruction
+  is discharged by the **deterministic** ordered test of § Test Design subtask 7, which controls
+  that ordering; the symmetric test asserts the weaker invariant that holds under either ordering —
+  the loser's error is one of the two refusals and never `ErrOverdraft` — and names which one each
+  round produced, so a run that quietly stopped reaching the conflict path is visible instead of
+  green `[derived → subtask 7's two race tests]`.
 
 ## Test Design
 
@@ -860,7 +1060,10 @@ Fixtures: a helper that creates a player, grants its backpack a slot budget thro
 - *AC3, one document or neither.* Induce a failure at the movement insert (a concurrent transaction
   that takes the successor index entry first) and assert that, after the required rollback, the
   basis document, the journal entry and the postings are all absent — neither machine is durable
-  without the other.
+  without the other. **Round 4 moves this scenario to subtask 7**, where the ordered conflict test
+  induces exactly that failure deterministically; inducing it here would have needed the same
+  synchronisation, and Group A shipped no test of this shape
+  `[measured d4e0271:internal/store/move_test.go · grep -n '^func Test' internal/store/move_test.go → TestMove_happyPath, TestMove_oneDocumentBothMachines, TestMove_grantAndFillUnderOneDocument, TestMove_multiMintAndReturnedSlice, TestMove_sentinels, TestMove_capacityOverdraft, TestMove_holderKindTheMVPDoesNotUse]`.
 - *AC6 and AC7, a holder kind the MVP does not use.* Inside a rolled-back transaction, plant a
   `scope_definition` row for a non-MVP holder kind together with its capacity account definitions,
   create two owners so the kind has two distinct instances, grant each holder a budget, and move an
@@ -898,7 +1101,68 @@ Fixtures: a helper that creates a player, grants its backpack a slot budget thro
   "item_movement_successor_key"`, which is why the design expects a block-then-refuse rather than a
   lost update; this test is what establishes it on the shipped index. Repeat the race enough times
   that an all-green run is not one Bernoulli trial, and report which goroutine lost rather than
-  only that one did.
+  only that one did. **Round 4 supersedes this bullet's fixture.** As shipped, the test seeds a
+  second unraced instance at the shared holder so the loser's capacity legs cannot go negative —
+  which removes the one case §11 works through, and is what let the phase-order defect ship.
+  Subtask 7 restores the single-item fixture and adds the ordered test that pins `ErrMoveConflict`;
+  every assertion above survives, minus the widening.
+
+**Subtask 7 — `internal/store/move_race_test.go`, `internal/store/move_test.go`.** Entry point:
+`Move`. Written test-first, like subtask 4: each test below is red against the shipped phase order
+before the rework makes it green.
+
+- *The discriminator — a lost race is refused at the chain, not at the balance.* An **ordered**
+  conflict test, deterministic by construction rather than by luck.
+  - *Fixture:* the **single-item holder**. One player backpack, granted a budget, holding exactly
+    the instance being raced, so its `slots_used` is exactly one and one racer's derived source leg
+    alone drives it negative if it runs before the chain is decided. This is the fixture subtask 5
+    removed; restoring it is what makes the test discriminate at all.
+  - *Ordering:* the winner's transaction calls `Move` and does **not** commit; the loser's `Move`
+    runs on a second transaction in a goroutine and blocks. The test then waits on an **observable
+    database condition**, never a sleep: a third connection polls `pg_stat_activity` for the loser's
+    own backend pid — taken from its connection with `pg_backend_pid()` before the call — until that
+    row reports `wait_event_type = 'Lock'`. Only then does the winner commit. The pools are sized
+    for the winner, the loser and the poller. The wait condition is a synchroniser, not an
+    assertion: the loser blocks under the shipped order too, just at a different lock, which is
+    exactly why the assertions below and not the wait are what discriminate
+    `[measured probe · psql on docker.io/library/postgres:18 (server 18.6) → the blocked inserter appeared in pg_stat_activity as wait_event_type "Lock", wait_event "transactionid", queryable by pid from a third session as the same database user]`.
+  - *Assert:* the loser's error satisfies `errors.Is(err, ErrMoveConflict)` **and** explicitly not
+    `errors.Is(err, ErrOverdraft)` — the second half names the defect, so the test cannot pass by
+    the sentinels having been collapsed; after the loser's required rollback its basis document, its
+    journal entry, its postings and its movement are all absent, which is also § Test Design
+    subtask 4's "AC3, one document or neither" scenario, landing here because the ordered race is
+    how that failure is induced; and after the winner commits, `item_holder` names the winner's
+    destination while `item_chain_break` and `item_capacity_divergence` are both empty.
+  - *The mechanism, not only the sentinel.* The loser must never have issued a balance `UPDATE`.
+    Build the two transactions on **two pools over one schema** — `testdb.Schema(t)` once, then a
+    `Copy()` of that config per pool, each with its own `queryRecorder` — so statements are
+    attributable to one racer instead of interleaved in a pool-wide log, and assert the loser's
+    recorder holds no `UPDATE account_balance` between its `Reset()` and its refusal. `Copy()` is a
+    deep copy including `ConnConfig`, and deriving a second config from one schema this way is
+    `testdb`'s own idiom
+    `[measured d4e0271:internal/testdb/testdb.go:100 · sed -n '100p' internal/testdb/testdb.go → "admin, err := pgxpool.NewWithConfig(ctx, cfg.Copy())"]`
+    `[measured d4e0271 · go doc github.com/jackc/pgx/v5/pgxpool.Config.Copy → "Copy returns a deep copy of the config that is safe to use and modify"]`.
+  - *What red looks like:* against the shipped order the loser blocks at the source's balance
+    `UPDATE` instead, and on the winner's commit is refused by `CHECK (balance >= 0)` — so the
+    sentinel assertion fails with `ErrOverdraft` and the recorder assertion fails with the `UPDATE`
+    it recorded. Two independent failures, which is the point
+    `[derived → AC8, AC3, AC4, and this test]`.
+- *The symmetric race keeps its shape and loses its widening.* Same N-round `-race` test, single-item
+  fixture: exactly one commit; the loser's error is `ErrMoveConflict` or `ErrNotCurrentHolder` and
+  **never** `ErrOverdraft` nor anything unnamed; which of the two it was is logged per round, so a
+  run that quietly stopped reaching the conflict path is visible rather than green; `item_holder`
+  names the winner's destination and both reconciliation views are empty afterwards. Why the weaker
+  disjunction here rather than `ErrMoveConflict` alone: § Risks' timing-window row
+  `[derived → AC8, AC2]`.
+- *`Post` is unchanged, again.* `Post` passes a nil hook, so the existing `Post` tests — including
+  the recorder-based phase and capture-order assertions and every sentinel's transaction-state
+  assertion — are the assertion that the extraction is still a refactor
+  `[derived → the unchanged-`Post` assertions this subtask must leave green]`.
+- *`Move`'s other tests must stay green unchanged*, and two of them are load-bearing here: the
+  overdraft test still reaches the balance phase and still names the destination's `slots_free`
+  account, which is what keeps AC4 reporting `ErrOverdraft`; and the pre-write sentinel tests still
+  assert that no statement was issued, which is what keeps phases a and b in front of the document
+  `[derived → AC4, and subtask 4's existing scenarios]`.
 
 **Subtask 6.** No test. Its gate is `make comment-refs`, the markdown link check, and the
 re-derived sweep coming back empty on a pattern shown to match a constructed positive first.
@@ -919,6 +1183,13 @@ re-derived sweep coming back empty on a pattern shown to match a constructed pos
   chain FK stands (D3); `docs/DESIGN.md` §11's plural table names **are** corrected in this PR, by
   subtask 6 (D9). Both answers confirmed the design as written, so no decision moved — the words
   are in those two sections.
+- **Round 4's owner-facing row is closed too, and it opened nothing.** The phase-order defect was
+  put to the owner as a question about **direction**, not mechanism; the answer — *"Fix it — keep
+  the promise"* — is recorded verbatim in D4 beside the mechanism it authorised. No acceptance
+  criterion moved and no spec row changed: AC2, AC4 and AC8 are what the reorder makes true, not
+  what it redefines, and the rework is a subtask with a group of its own. The other Group-A
+  deviation, `item_capacity_divergence`'s `FULL JOIN`, needed no decision at all — the shipped shape
+  is strictly the better one and D6 now describes it.
 - **One instance, one slot — for how long?** AC5's identity fixes it, and D5 builds on it. A future
   item definition that wants a two-slot greatsword (#32's territory) would break the identity, and
   the reconciliation would have to compare against a summed per-definition cost instead. Not
