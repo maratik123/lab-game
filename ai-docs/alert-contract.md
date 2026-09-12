@@ -109,11 +109,15 @@ its own observer, so these families describe production traffic only.
 | `labgame_scheduler_loop_errors_total` | counter | — |
 
 `outcome`: `done`, `noop`, `failed`, `unknown`. `failure`: `none`,
-`handler`, `unregistered`, `deadline`, `rolled_back`, `unknown`. Task lag is
-a gameplay-visible quantity — a wave promised in five minutes arriving in
-seven — and the `type` cut is what shows whether notifications are delaying
-gameplay edges. No scheduler alert is required by this contract; the series
-are here so the pass can add one against its own operating experience.
+`handler`, `unregistered`, `deadline`, `rolled_back`, `panic`, `unknown`.
+`handler` and `panic` are the two shapes a handler's own failure takes and
+they are told apart deliberately: `handler` is a returned error, `panic` is a
+panic recovered at the handler boundary and settled as the same one attempt
+under the same failure policy. Task lag is a gameplay-visible quantity — a
+wave promised in five minutes arriving in seven — and the `type` cut is what
+shows whether notifications are delaying gameplay edges. No scheduler alert
+is required by this contract; the series are here so the pass can add one
+against its own operating experience.
 
 ### Update ingestion
 

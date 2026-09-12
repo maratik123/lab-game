@@ -330,8 +330,14 @@ deadline watchdog: after a breach it waits for the orphaned handler and then
 closes the hijacked connection under its own bounded context, so a drain that
 ends while such a handler still runs leaves that goroutine behind, ended by the
 process exit rather than by an owner. It is the module's one deliberately
-detached launch and is recorded as such in the launch allow list; reclaiming the
-handler under it is #81.
+detached launch and is recorded as such in the launch allow list. Its wait is
+bounded for the case that used to strand it: before launching the watchdog the
+breach branch terminates that attempt's own backend from another pooled
+connection, so a handler blocked **in** the database has its statement fail,
+returns, and lets the watchdog close and exit behind it. What is left is a
+handler blocked **outside** the database — parked on a channel, a sleep, or a
+network call on a context of its own — which nothing in this process can
+reclaim, and that residual case is why the launch stays detached.
 
 **What the budget does and does not cover.** `30s` is the bound on the whole
 drain, sized to the ingest side, where a cycle in flight is one already-
