@@ -538,6 +538,28 @@ wrong-surface text by message twelve.
 **Kind:** validation
 **Escalated?** no
 
+### 2026-09-12 — process — recording a string comparison as a fact without running the comparison
+
+**What happened:** Twice in one `/bugfix` run I wrote a comparison onto a durable surface without
+executing it. The commit message claimed the induced regression reproduced issue #92's failure "on
+the reported failure line, byte for byte" — the message matched, but the line number did not (162
+against 202, because the induction helper is inserted above the assertion), and a line includes its
+number. Separately the trace's Root Cause asserted that a third runner "would additionally widen the
+window it is not in"; `wantPrefix` was a hand-written two-element literal, so `len(wantPrefix)` is 2
+whatever `a.runners` holds and a third runner widens nothing. Self-review caught the second; the
+first I caught only on re-reading my own commit, after it was already written.
+
+**Rule:** A comparison is a command, not an impression. Before writing "identical", "byte for byte",
+"matches", or a consequence of the form "adding X would also do Y" onto any durable surface — commit
+message, PR body, trace, design — run the `diff` (or the mutant) that decides it, and then state the
+claim at the granularity the run actually licenses: "the message matches, the line number differs" is
+what a `diff` establishes; "byte for byte" is not. The pull is that the stronger phrasing is the more
+satisfying summary of work that genuinely did succeed, so the overclaim rides in on a true result.
+
+**at:** 7e2210528f0c51ce3042509508613bcdc72c3c9b
+**Kind:** correction
+**Escalated?** no
+
 ### 2026-09-12 — process — re-authored the Spec Amendment recipe's option set instead of offering it
 **What happened:** Routing `design-review`'s `SPEC-REMIT` on AC4 to the owner during Step 7 of the per-checkout container-name task, I built the `AskUserQuestion` from the reviewer's suggestion ("restate the row as the outcome it protects, or strike it") rather than from the recipe. The owner saw "Перефолмулировать / Вычеркнуть / Оставить". The Spec Amendment recipe fixes the set at exactly three: (1) amend the spec, (2) fix the design only, (3) leave it. I had split (1) into two of its instances and dropped (2) entirely. The owner picked a strike, which is a form of (1), so the route taken was legal — but (2) was never on the table, and the recipe says the owner picks among those three, not among the ones the orchestrator finds applicable.
 **Rule:** When a recipe fixes an option set, the options are copied from the recipe, not composed from the finding that triggered it. A reviewer's suggested resolutions belong in the question's prose, where they inform the choice; they never replace the routes. Judging an option inapplicable and omitting it is the orchestrator deciding the thing the owner was asked to decide.

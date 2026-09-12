@@ -71,6 +71,46 @@ func stoppingRunner(mu *sync.Mutex, log *[]string, name string) runner {
 	}
 }
 
+// joinOnStopRunner returns a runner that records the same two entries
+// as stoppingRunner, but whose stop does not return until its own run
+// has recorded the return.
+//
+// It exists to place a run-returned entry between two stop entries on
+// every run rather than on a lucky one. drain releases each runner's
+// run inside a stop loop, and nothing orders that goroutine's record
+// against the loop's next iteration, so on a loaded machine the
+// interleaving arrives by chance; inducing it deterministically is what
+// keeps an ordering assertion over the log honest without waiting for
+// load to produce it. Every exit of run closes the join channel, so a
+// run that leaves on ctx cancellation instead cannot strand stop.
+func joinOnStopRunner(mu *sync.Mutex, log *[]string, name string) runner {
+	stopCh := make(chan struct{})
+	returned := make(chan struct{})
+	var once sync.Once
+	return runner{
+		name: name,
+		run: func(ctx context.Context) error {
+			defer close(returned)
+			select {
+			case <-stopCh:
+				mu.Lock()
+				*log = append(*log, "run-returned:"+name)
+				mu.Unlock()
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
+		stop: func() {
+			mu.Lock()
+			*log = append(*log, "stop:"+name)
+			mu.Unlock()
+			once.Do(func() { close(stopCh) })
+			<-returned
+		},
+	}
+}
+
 // stubbornRunner returns a runner whose stop is a no-op: it only
 // returns on ctx cancellation.
 func stubbornRunner(name string) runner {
@@ -120,7 +160,7 @@ func TestServe_SignalCleanStopExitZero(t *testing.T) {
 		readiness: newReadiness(nil),
 		signals:   make(chan os.Signal, 2),
 		runners: []runner{
-			stoppingRunner(&mu, &log, "ingest loop"),
+			joinOnStopRunner(&mu, &log, "ingest loop"),
 			stoppingRunner(&mu, &log, "scheduler worker"),
 		},
 		closers: []closer{
@@ -149,17 +189,31 @@ func TestServe_SignalCleanStopExitZero(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	wantPrefix := []string{"stop:ingest loop", "stop:scheduler worker"}
-	if len(log) < len(wantPrefix) {
-		t.Fatalf("log = %v, too short", log)
+	// Every runner's stop must be recorded before the first close — the
+	// only barrier drain establishes between the sequential stop loop and
+	// the closer walk (g.Wait() sits between them). It does NOT order a
+	// runner's own run-returned record against another runner's stop, so
+	// the window is bounded by the first "close:" record rather than by a
+	// fixed count, and the expected set is derived from a.runners rather
+	// than hand-written — the same style wantTail below uses for closers.
+	wantStops := make([]string, len(a.runners))
+	for i, r := range a.runners {
+		wantStops[i] = "stop:" + r.name
+	}
+	firstClose := len(log)
+	for i, l := range log {
+		if strings.HasPrefix(l, "close:") {
+			firstClose = i
+			break
+		}
 	}
 	seen := map[string]bool{}
-	for _, l := range log[:len(wantPrefix)] {
+	for _, l := range log[:firstClose] {
 		seen[l] = true
 	}
-	for _, w := range wantPrefix {
+	for _, w := range wantStops {
 		if !seen[w] {
-			t.Errorf("log %v missing %q among the first stops", log, w)
+			t.Errorf("log %v missing %q before the first close", log, w)
 		}
 	}
 	// The closers must run AFTER both runners have stopped, and in
