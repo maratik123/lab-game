@@ -10,8 +10,8 @@ _Updated: 2026-09-12 21:32_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 8 — progress file created, Group A not yet handed off
-**last_passed_gate:** `go build ./...` | 2026-09-12T21:32:49Z | 4315aef
+**current_step:** Step 8 — Group A subtask 2 of 10 complete
+**last_passed_gate:** `go build ./... && go test ./... && go vet ./... && golangci-lint run` (internal/hexgrid + internal/detguard) | 2026-09-13
 **entry_args:** 27
 
 ## Next action
@@ -20,8 +20,8 @@ _Updated: 2026-09-12 21:32_
 
 ## Subtasks
 
-- [ ] 1. `internal/detguard` — the shared determinism predicates, each paired with a scratch red case carrying the blind shape  ← CURRENT
-- [ ] 2. `internal/hexgrid` — axial coordinate, six directions, `Opposite`, canonical `Face`/`FaceOf`, `Dims`, `ChunkOf`, `ChunkDistance`
+- [x] 1. `internal/detguard` — the shared determinism predicates, each paired with a scratch red case carrying the blind shape
+- [x] 2. `internal/hexgrid` — axial coordinate, six directions, `Opposite`, canonical `Face`/`FaceOf`, `Dims`, `ChunkOf`, `ChunkDistance`  ← CURRENT (3 next)
 - [ ] 3. `internal/maze` derivation core — fixed-width preimage helpers with their G115 suppressions, the domain-tagged keys, the ChaCha8 stream behind an unexported one-method interface
 - [ ] 4. `Params` and its validation — decimal shares, bias, the enum-indexed weight array, the rounding
 - [ ] 5. The chunk cell graph — index mapping, six-neighbour adjacency, border-cell predicate, interior-face enumeration
@@ -42,6 +42,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: design-review round 4 returned GO with five minors and four recommendations; all nine were classified `design-internal` against the four triggers of the AXIOM *the orchestrator originates no spec row* — none matched, so no owner question was raised, `design-writer` folded all nine, and design-review did not run again.
 - **Step 7**: two facts were disputed between the reviewer and the designer (whether `internal/srcguard` may host lifted predicates; where `exhaustive` sits in `.golangci.yml`); the orchestrator resolved both from source rather than choosing a delegate, and both went to the designer — `srcguard`'s own package comment reserves predicates to the owning package, and `exhaustive` is at lines 20 and 44-45 as the designer pinned it.
 - **Step 8**: progress file created at `base_commit` 4315aef with `go build ./...` green; no code exists yet, so `Last build: PASS` describes the pre-existing tree.
+- **Step 8 (subtask 1)**: `internal/detguard` implements the five bans (clock/rand-v1/hash-maphash/crypto-rand/math imports, unpinned `math/rand/v2` identifiers, floating-point types, `math` import, decimal float accessors) and a best-effort map-range detector via a file-local assignment scan (no `go/types` dependency added). Each predicate has a scratch red case; the float-accessor case carries the blind shape (method-result only, no bare declaration).
+- **Step 8 (subtask 2)**: `internal/hexgrid` — `Direction` is `int8`, canonical order `DirE,DirNE,DirNW,DirW,DirSW,DirSE`; `Opposite` pairs (E,W),(NE,SW),(NW,SE); `FaceOf` canonicalises to the earlier direction of the opposite pair. `ChunkOf` floor-divides; `ChunkDistance` uses the standard axial hex-distance formula widened to `int64` before subtracting.
 
 ## GO notes
 
