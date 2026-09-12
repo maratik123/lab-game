@@ -8,8 +8,8 @@ _Updated: 2026-09-12 14:42_
 **Last build:** not run
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 8 — Group A handoff, subtask 1 of 6
-**last_passed_gate:** check-spec-anchors.sh + check-spec-shape.sh + check-ac-shape.sh | 2026-09-12T13:05Z | 155bbc8
+**current_step:** Step 8 — Group A handoff, subtask 1 of 6 complete
+**last_passed_gate:** go build ./... + go test ./... + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | 6df87d3
 **entry_args:** 25
 
 ## Next action
@@ -18,8 +18,8 @@ _Updated: 2026-09-12 14:42_
 
 ## Subtasks
 
-- [ ] 1. Forward migration + Go mirrors + the assertions the schema change moves  ← CURRENT
-- [ ] 2. The schema's own refusals, by SQLSTATE and constraint name
+- [x] 1. Forward migration + Go mirrors + the assertions the schema change moves
+- [ ] 2. The schema's own refusals, by SQLSTATE and constraint name  ← CURRENT
 - [ ] 3. The reconciliation views' tests, each anomaly class planted and seen red
 - [ ] 4. `Move`: extract `post`, add `Movement` / `Move` / the sentinels
 - [ ] 5. The `rapid` property test and the `-race` concurrency test
@@ -33,6 +33,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: owner ruled KD-17's «No composite FKs» **scoped**, so D3's composite chain FK stands; recorded in the design with the owner's words, not in the spec.
 - **Step 7**: owner ruled `docs/DESIGN.md` §11's plural table names **are** corrected in this PR, so subtask 6 edits `docs/**`.
 - **Step 7**: the `[measured probe · …]` fourth claim-tag form is kept in the design and the underlying gap parked as a harness diagnosis; editing `.claude/agents/design-writer.md` is out of this task's scope and hook-blocked for the interview window.
+- **Step 8, subtask 1**: `item_capacity_divergence`'s "no such account" branch is gated on the resolved `account_definition.controlled` flag rather than on a named holder id — a holder whose slots/used account_definition exists but is uncontrolled (World, or any future holder kind seeded the same way) is excluded from both branches by that flag, not by `holder_id <> WorldHolder`, so the exclusion generalises to every uncontrolled holder kind the design's own subtask-3 test plants.
+- **Step 8, subtask 1**: `make comment-refs` flagged decision-anchor/AC-id/issue/section references the design's own prose habit had carried into source comments (`D1`–`D6`, `AC10`, `#32`, `§11`); all were rewritten to state the fact directly per `AGENTS.md` § DOC-4, with no loss of the underlying claim.
 
 ## GO notes
 
@@ -77,4 +79,4 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## Files touched
 
-- _(none yet — Group A has not returned)_
+- Subtask 1: `internal/store/migrations/00006_capacity_kinds.sql` (new), `internal/store/migrations/00007_item_machine.sql` (new), `internal/store/ids.go`, `internal/store/enums.go`, `internal/store/catalog.go`, `internal/store/migrate_test.go`, `internal/store/migrate_process_test.go`, `internal/store/enums_test.go`, `internal/store/views_test.go`, `internal/store/owner_test.go`, `internal/store/post_test.go`, `internal/store/append_only_test.go` — commit 6df87d3.
