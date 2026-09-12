@@ -578,3 +578,22 @@ believing you satisfied a contract you never opened.
 
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-12 — process — the hand-back token is written in the turn that hands off, not recalled later
+
+**What happened:** During `/task` Step 8 I spawned the Group A implementor and closed the turn with a
+status report to the owner. Handing control out to a background delegate is one of the conditions the
+in-flight marker's contract names as a legitimate hand-back, so the stop itself was fine — but the
+contract requires the `handback:` line to be appended *in that same turn*, and I appended nothing. The
+`Stop` hook blocked the turn and recorded a `blocked:` line in the marker's ledger, which is now part
+of the count Step 12 item 13 obliges the closing report to cite.
+
+**Rule:** A turn inside an active `/task` ends in exactly one of two shapes, and the shape is chosen
+*before* writing the reply: it advances the flow with tool calls, or it hands back — and handing back
+is two actions, the surfaced message **and** the `handback:` append, never just the first. The trap is
+that a turn which genuinely hands off *feels* complete once the delegate is spawned and the owner is
+told, so the token reads as bookkeeping about a decision already made rather than as the second half
+of making it. Waiting on a delegate is a legitimate stop and still costs a token.
+
+**Kind:** correction
+**Escalated?** no
