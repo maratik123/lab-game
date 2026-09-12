@@ -53,16 +53,20 @@ func TestCell_RepeatEvaluationIsIdentical(t *testing.T) {
 // coordinate table twice — once in sorted order, once in an order
 // shuffled by a test-local fixed key — and asserts every coordinate
 // yields the identical Cell either way: generation is a pure function
-// of the coordinate alone, never of evaluation order. The repeat
-// evaluation and the -race multi-goroutine tests above and below cover
-// the other two order-independence shapes; this one is the third the
-// design's own Determinism section names.
+// of the coordinate alone, never of evaluation order.
+//
+// The two passes each get their OWN freshly-constructed Generator, over
+// the same seed and params, rather than sharing one. This is
+// load-bearing, not a style choice: a cross-call memo on Generator that
+// reused an earlier chunk's build for a later chunk (the failure mode
+// this scenario exists to catch, per the design's own Determinism
+// section — "also what would catch a memo added later") would still
+// agree with itself if both passes read through the same warm memo, so
+// the two passes must not be able to share any state that outlives a
+// single Cell call. The repeat-evaluation and the -race multi-goroutine
+// tests above and below cover the other two order-independence shapes.
 func TestCell_ShuffledEvaluationOrderMatchesSortedOrder(t *testing.T) {
 	t.Parallel()
-	gen, err := New(20260912, refParams(), nil)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
 
 	var coords []hexgrid.Coord // built in sorted (Q,R) order
 	for q := int32(-5); q <= 5; q++ {
@@ -71,19 +75,27 @@ func TestCell_ShuffledEvaluationOrderMatchesSortedOrder(t *testing.T) {
 		}
 	}
 
-	sortedResults := make(map[hexgrid.Coord]Cell, len(coords))
-	for _, c := range coords {
-		sortedResults[c] = gen.Cell(c)
-	}
-
 	shuffled := append([]hexgrid.Coord(nil), coords...)
 	shuffle(newStream([32]byte{0xab, 0xcd, 0xef}), shuffled)
 	if fmt.Sprint(shuffled) == fmt.Sprint(coords) {
 		t.Fatal("test setup: the shuffle produced the same order as sorted, so this run would not discriminate")
 	}
 
+	sortedGen, err := New(20260912, refParams(), nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	sortedResults := make(map[hexgrid.Coord]Cell, len(coords))
+	for _, c := range coords {
+		sortedResults[c] = sortedGen.Cell(c)
+	}
+
+	shuffledGen, err := New(20260912, refParams(), nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	for _, c := range shuffled {
-		got := gen.Cell(c)
+		got := shuffledGen.Cell(c)
 		want := sortedResults[c]
 		if got != want {
 			t.Fatalf("shuffled-order evaluation of %v = %+v, want %+v (the sorted-order value)", c, got, want)
