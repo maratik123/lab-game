@@ -8,8 +8,8 @@ _Updated: 2026-09-12 14:42_
 **Last build:** not run
 **Issue:** #25
 **Spec:** ai-docs/plans/2026-09-12-item-machine-holder-address-space.spec.md
-**current_step:** Step 8 — Group A handoff, subtask 2 of 6 complete
-**last_passed_gate:** go build ./... + go test ./... + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs, all green | 2026-09-12 | 0625a73
+**current_step:** Step 8 — Group A handoff, subtasks 1/2/4 of 6 complete
+**last_passed_gate:** go build ./... + go test ./... (whole module) + golangci-lint fmt -d + golangci-lint run + go vet ./... + make comment-refs + make import-guard, all green | 2026-09-12 | 28c7c50
 **entry_args:** 25
 
 ## Next action
@@ -20,8 +20,8 @@ _Updated: 2026-09-12 14:42_
 
 - [x] 1. Forward migration + Go mirrors + the assertions the schema change moves
 - [x] 2. The schema's own refusals, by SQLSTATE and constraint name
-- [ ] 3. The reconciliation views' tests, each anomaly class planted and seen red  ← CURRENT
-- [ ] 4. `Move`: extract `post`, add `Movement` / `Move` / the sentinels
+- [ ] 3. The reconciliation views' tests, each anomaly class planted and seen red  ← CURRENT (done out of numeric order, after subtask 4 — the dependency table only requires subtask 1, and subtask 3's fixture wants instances actually moved through `Move`)
+- [x] 4. `Move`: extract `post`, add `Movement` / `Move` / the sentinels
 - [ ] 5. The `rapid` property test and the `-race` concurrency test
 - [ ] 6. Propagation sweep over every live surface the diff falsifies
 
@@ -34,7 +34,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: owner ruled `docs/DESIGN.md` §11's plural table names **are** corrected in this PR, so subtask 6 edits `docs/**`.
 - **Step 7**: the `[measured probe · …]` fourth claim-tag form is kept in the design and the underlying gap parked as a harness diagnosis; editing `.claude/agents/design-writer.md` is out of this task's scope and hook-blocked for the interview window.
 - **Step 8, subtask 1**: `item_capacity_divergence`'s "no such account" branch is gated on the resolved `account_definition.controlled` flag rather than on a named holder id — a holder whose slots/used account_definition exists but is uncontrolled (World, or any future holder kind seeded the same way) is excluded from both branches by that flag, not by `holder_id <> WorldHolder`, so the exclusion generalises to every uncontrolled holder kind the design's own subtask-3 test plants.
-- **Step 8, subtask 1**: `make comment-refs` flagged decision-anchor/AC-id/issue/section references the design's own prose habit had carried into source comments (`D1`–`D6`, `AC10`, `#32`, `§11`); all were rewritten to state the fact directly per `AGENTS.md` § DOC-4, with no loss of the underlying claim.
+- **Step 8, subtask 1**: `make comment-refs` flagged decision-anchor/AC-id/issue/section references the design's own prose habit had carried into source comments (`D1`–`D6`, `AC10`, `#32`, `§11`); all were rewritten to state the fact directly per `AGENTS.md` § DOC-4, with no loss of the underlying claim. The same class recurred in subtask 4's `move.go` (a `D2` reference and a cross-file `event.go` pointer) and was fixed the same way — `make comment-refs` is now run before every subtask's commit, not just subtask 1's.
+- **Step 8, order deviation**: subtask 4 (`Move`) was implemented before subtask 3 (the reconciliation-view tests), reversing the progress file's original numeric listing. The design's Handoff plan dependency table (`2→1, 3→1, 4→1, 5→4`) only requires subtask 3 on subtask 1, and subtask 3's own Test Design section describes its fixture as instances "actually moved through `Move`" — which only exists after subtask 4. Both orders satisfy the stated dependencies; this one lets subtask 3 mint its fixtures through the real API instead of raw SQL.
 
 ## GO notes
 
@@ -81,3 +82,4 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 - Subtask 1: `internal/store/migrations/00006_capacity_kinds.sql` (new), `internal/store/migrations/00007_item_machine.sql` (new), `internal/store/ids.go`, `internal/store/enums.go`, `internal/store/catalog.go`, `internal/store/migrate_test.go`, `internal/store/migrate_process_test.go`, `internal/store/enums_test.go`, `internal/store/views_test.go`, `internal/store/owner_test.go`, `internal/store/post_test.go`, `internal/store/append_only_test.go` — commit 6df87d3.
 - Subtask 2: `internal/store/schema_test.go` (`TestSchema_itemMachineConstraints`) — commit 0625a73.
+- Subtask 4: `internal/store/move.go` (new), `internal/store/move_test.go` (new), `internal/store/errors.go`, `internal/store/post.go`, `internal/store/store.go`, `internal/store/append_only_test.go` — commit 28c7c50.
