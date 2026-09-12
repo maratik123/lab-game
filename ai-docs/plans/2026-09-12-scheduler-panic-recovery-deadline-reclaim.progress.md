@@ -10,13 +10,13 @@ _Updated: 2026-09-12 19:20_
 **Issue:** #81
 **Spec:** ai-docs/plans/2026-09-12-scheduler-panic-recovery-deadline-reclaim.spec.md
 
-**current_step:** Step 9 — Verify (ALL PASS) — Group B DONE, every Step-8 subtask complete
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** make verify | 2026-09-12T16:30Z | 8c12392
 **entry_args:** 81
 
 ## Next action
 
-**Do this immediately:** push the branch per Step 8's visibility rule, then run Step 9 (Verify) — the full verify list, including `go test ./...` and `go test -race ./...`, which the scheduler and ingest changes require, plus the per-AC coverage table that turns the nine `NOT_TESTED` rows below into verdicts. Both groups are complete: Group A (subtasks 1–9) at `e69270b`, Group B (subtask 10) at `c9bec73`.
+**Do this immediately:** run Step 10 — spawn `self-review` over the branch diff with the closed-list prompt (invocation line, Spec, Design, Progress, commit range). Steps 9 and 9.5 are complete; the PR does not exist yet.
 
 ## Subtasks
 
@@ -123,3 +123,5 @@ Verified at Step 9 against `8c12392`. The command in each row is the orchestrato
 - **Step 9**: panic-index sync — no `panic(`, `log.Fatal`/`log.Panic` or `Must…` helper was added to any of the ten changed production files (scan controlled against a constructed matching line); `ai-docs/panic-index.md` needs no row and stays empty.
 - **Step 9**: domain-invariant sweep — no balance mutation, no posting or item-movement write in production code, no balance constant in Go, no secret. Two classes of hit are legitimate and recorded here rather than fixed: `store.Post` appears only in `internal/ingest`'s test fixtures, which seed ledger state for the panic tests; and every `time.Now()` hit is either an observability duration measurement on an already-existing pattern (`worker.go`, `loop.go`, `attempt.go`) or a test's polling deadline — this diff touches no generation, combat or replay path, which is what the determinism rule governs. All five sweep patterns were controlled against constructed matching lines.
 - **Step 9**: no telemetry obligation beyond AC4/AC5 — the change adds a value to an existing `failure` label, no metric family and no event; the issue's own Telemetry obligation states "Events: none", and the design records that in D9.
+- **Step 9.5**: appended this task's entry to `ai-docs/context-status.md` with the literal `#TBD-at-Step-12` locator (exactly one occurrence in the file, to be substituted at Step 12 sub-step 10a), and bumped `ai-docs/context.md`'s `internal/scheduler` clause in § *Layout so far* with the handler-boundary recovery and the deadline reclaim. No open question in `context.md` was resolved by this task — its § Status open questions are `docs/DESIGN.md` §16's, untouched here. `README.md` names neither the scheduler nor handler panics, so nothing there is contradicted; `docs/DESIGN.md` §13.2's telemetry line asking for handler panics is satisfied by this change, not falsified, and the design corpus is not edited.
+- **Step 9.5**: removal sweep for claims the diff falsifies — no live surface still says the scheduler or ingest has no logger, still points at #81 as unfinished, or still says a breached row stays locked until its handler returns. Every remaining hit is either this task's own spec/design/progress (which describe the change) or `ai-docs/plans/done/**`, a history surface. `ai-docs/context-status.md`'s PR #105 entry keeps its then-true sentence: that file declares itself the append-only per-task log, so a superseded entry is superseded by the new one rather than edited.
