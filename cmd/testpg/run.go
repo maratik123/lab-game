@@ -48,8 +48,8 @@ type seam struct {
 	provision       func(ctx context.Context, opts testdb.ServerOptions) (dsn string, stop func(context.Context) error, err error)
 	probe           func(ctx context.Context, dsn string) (maxConns int, err error)
 	containerExists func(ctx context.Context, name string) (bool, error)
-	locate          func() (dsn string, ok bool)
-	persist         func(dsn string) error
+	locate          func() (dsn string, clients int, ok bool)
+	persist         func(dsn string, clients int) error
 	forget          func() error
 	workDir         func() (dir string, err error)
 }
@@ -161,8 +161,8 @@ func runChild(ctx context.Context, childArgv []string, lookup envLookup, sm seam
 		return execChild(ctx, childArgv, dsn, stdout, stderr)
 	}
 
-	if dsn, ok := sm.locate(); ok {
-		if admits(ctx, sm, dsn, clients, parallel, "the long-lived server", stderr) {
+	if dsn, sizedFor, ok := sm.locate(); ok {
+		if admits(ctx, sm, dsn, sizedFor, clients, parallel, "the long-lived server", stderr) {
 			// Found, not started: no stop is registered for this server.
 			return execChild(ctx, childArgv, dsn, stdout, stderr)
 		}
@@ -193,10 +193,19 @@ func runChild(ctx context.Context, childArgv []string, lookup envLookup, sm seam
 	return execChild(ctx, childArgv, dsn, stdout, stderr)
 }
 
-// admits reports whether dsn's server answers and its max_connections
-// admits the computed need for clients/parallel, printing a message
-// naming label when it does not (unreachable or undersized alike).
-func admits(ctx context.Context, sm seam, dsn string, clients, parallel int, label string, stderr io.Writer) bool {
+// admits reports whether dsn's server can serve this run: its recorded
+// sizedFor client count must cover this run's clients (the PGDATA mount is
+// bounded by the count the server was provisioned for and cannot be
+// discovered by probing a live connection), and its max_connections must
+// admit the computed need for clients/parallel. It prints a message naming
+// label when either check fails — unreachable, undersized mount, or
+// undersized connection cap alike.
+func admits(ctx context.Context, sm seam, dsn string, sizedFor, clients, parallel int, label string, stderr io.Writer) bool {
+	if clients > sizedFor {
+		logf(stderr, "testpg: %s was sized for %d client(s), this run needs %d; its PGDATA mount is bounded by that count; falling through\n", label, sizedFor, clients)
+		return false
+	}
+
 	needed, needErr := testdb.Ceiling(clients, parallel)
 	maxConns, probeErr := sm.probe(ctx, dsn)
 	switch {
@@ -279,6 +288,12 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 		return exitFailure
 	}
 
+	// Read before persist below overwrites it: a server already running
+	// under this name keeps the PGDATA mount it was created with, so the
+	// count a PRIOR invocation recorded is what that mount is actually
+	// bounded by, not the count this invocation is about to write.
+	_, prevSizedFor, hadPrev := sm.locate()
+
 	// The reaper is controlled process-wide, read once at first use; this
 	// process must disable it before provisioning so the container it
 	// creates carries no reap label and outlives this process.
@@ -297,7 +312,7 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 		return exitFailure
 	}
 
-	if err := sm.persist(dsn); err != nil {
+	if err := sm.persist(dsn, clients); err != nil {
 		logf(stderr, "testpg: writing the locator file: %v\n", err)
 		return exitFailure
 	}
@@ -305,30 +320,28 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 	logf(stdout, "%s\n", dsn)
 
 	// Report the capacity the server HAS, not the one this invocation asked
-	// for: an existing container is reused under its name and keeps both the
-	// ceiling and the PGDATA mount it was created with, so a larger client
-	// count asked for here would otherwise be reported as granted while the
-	// server stayed the size it was. Reading capacity back is one round
-	// trip on a connection the probe opens anyway; the mount is not probed
-	// separately, and this check does not always catch a mount too small
-	// for this invocation's client count: the ceiling is floored at a
-	// minimum, so above that floor a bigger client count always computes a
-	// bigger ceiling and this same capacity check catches a short mount
-	// along with it, but at a small enough parallel count several client
-	// counts floor to the identical ceiling while the mount keeps growing,
-	// and there this check passes a server whose mount is short — a known
-	// gap, not one this code measures or closes. The floored region is also
-	// where far fewer schemas exist on the mount at once, which is worth
-	// weighing when judging the risk, but that alone is not a measurement
-	// of it.
+	// for: an existing container is reused under its name and keeps the
+	// ceiling it was created with, so a larger client count asked for here
+	// would otherwise be reported as granted while the server stayed the
+	// size it was. Reading capacity back is one round trip on a connection
+	// the probe opens anyway. The PGDATA mount is not probed at all — it
+	// cannot be discovered from a live connection — so it is bounded
+	// instead by the client count recorded for this container the LAST time
+	// it was brought up, checked below against the count this invocation
+	// asks for.
 	actual, err := sm.probe(ctx, dsn)
 	switch {
 	case err != nil:
 		logf(stderr, "testpg: shared server up, but its capacity could not be read: %v\n", err)
 	case actual < ceiling:
 		logf(stderr, "testpg: the shared server's capacity is %d, below the %d needed for clients=%d "+
-			"parallel=%d; a server already running under this name keeps the ceiling and the PGDATA "+
-			"mount it was created with, so take it down and bring it up again to resize either\n", actual, ceiling, clients, parallel)
+			"parallel=%d; a server already running under this name keeps the ceiling it was created with, "+
+			"so take it down and bring it up again to resize it\n", actual, ceiling, clients, parallel)
+		return exitFailure
+	case hadPrev && clients > prevSizedFor:
+		logf(stderr, "testpg: the shared server's PGDATA mount was sized for %d client(s), this invocation asks "+
+			"for %d; a server already running under this name keeps the mount it was created with, so take it "+
+			"down and bring it up again to resize it\n", prevSizedFor, clients)
 		return exitFailure
 	default:
 		logf(stderr, "testpg: shared server %q up, capacity %d admits the %d needed (clients=%d, parallel=%d)\n",
@@ -348,7 +361,7 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 // with its volume when it is confirmed present, and kept when the runtime
 // could not even be asked.
 func runDown(ctx context.Context, sm seam, stdout, stderr io.Writer) int {
-	dsn, ok := sm.locate()
+	dsn, _, ok := sm.locate()
 	if !ok {
 		logf(stdout, "testpg: no shared server locator found; nothing to remove\n")
 		return 0
