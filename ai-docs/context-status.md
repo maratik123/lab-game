@@ -316,3 +316,29 @@ Entry shape:
   - Every caller invokes the wrapper from the repository root, which is what makes the working directory the checkout. A caller that changed directory first would derive a different name from the one the locator resolves against.
   - A checkout is entered by one path. The same checkout reached through a symlink and through its real path derives two names while the locator resolves to one directory, so it would own two servers and leak one.
   - The anonymous fallback container stays anonymous, so that only a server an invocation started may be removed by it.
+
+## Goroutine-leak prevention — the ownership rules written down, and the gates that hold them (PR #TBD-at-Step-12, 2026-09-12)
+
+- **What landed:** the lint gate gained `containedctx`, `fatcontext`, `forbidigo` (a forbidden pattern each for `context.Background`, `context.TODO`, `time.Tick` and `time.After`), `gocritic`'s `deferInLoop` and `govet`'s `nilness`, with `run.relative-path-mode` pinned to `gomod` and every report-suppressing default in the `issues:` block switched off. A new `internal/gateguard` carries two structural guards: the launch allow list, keyed by package directory plus enclosing function symbol, each row stating how the launch stops, who waits for it, where its error goes and where its panic goes; and the lint-configuration guard over exclusion reach, exclusion scoping, the enabled set and the pinned settings. `internal/srcguard` gained the exported compiled-directory predicate and the leak guard's private copy was deleted. `internal/ingest`'s retry loop traded its unstoppable `time.After` for a wait-or-cancel helper holding a stopped timer; `internal/scheduler`'s watchdog bounds its detached connection close with a named constant; `cmd/bot`'s composition root builds or accepts its own HTTP client, threads it into the Telegram client and both canary legs, and appends a closer that releases its idle connections. `ai-docs/code-style.md` § *Concurrency* gained the ownership AXIOM, the ownership rules and the reviewer's checklist, and every surviving fresh-root-context site carries a stated reason and a named owner.
+
+- **Decisions worth keeping:**
+  - **The bare-`go` gate is a guard test, not a linter.** `forbidigo` visits identifiers and selector expressions; `go` is a statement keyword it cannot see. No linter of golangci-lint 2.13.1 can express the launch rule, so the allow list is a Go table over the module's own source.
+  - **The allow list is keyed by package directory plus enclosing function symbol, never by `file:line`.** A line number is invalidated by any edit above it, and the durable-reference rule forbids one in a table meant to be read on a later tree.
+  - **`time.After` is forbidden outright, not only inside a loop** — the owner confirmed the widening. Nothing in the lint gate expresses the loop condition, and the `ruleguard` alternative costs a rule file, an experimental checker and a module not reachable from this one.
+  - **Both `forbidigo` carve-outs carry `linters: [forbidigo]`.** A rule with a `path` and no `linters` list switches *every* linter off for that path; `cmd/` is clean today, so such a mistake would go red nowhere.
+  - **The test-helper packages are gated as production code** (the owner's decision), while test *source* is not: the written `t.Cleanup` rule is the gate for test source, and the table is the gate for compiled source.
+  - **`ai-docs/code-style.md` alone carries the rules and the checklist** (the owner's decision). No prohibition on the other review surfaces was written into the spec — a file prohibition is the shape that once blocked a design's own fix.
+  - **The detached-close bound is an operational constant in Go, not a balance value in configuration**, following the precedent the composition root already sets.
+
+- **Traps found:**
+  - **`forbidigo`'s settings key is `forbid`, not `patterns`.** Spelled `patterns`, `golangci-lint run` accepts the file silently — no warning, no findings — so the gate reads as enabled while doing nothing. `golangci-lint config verify` rejects it; nothing in `make verify` or CI runs that command today.
+  - **The truncation caps are not the only report-suppressing default.** Beside them, `issues.uniq-by-line` keeps one finding per source line *across linters*. It hid a `deferInLoop` behind an `errcheck` finding on the same line, and the suppression is transient — silencing the competing finding makes the hidden one surface — so the reported set was contingent on what some other linter happened to claim.
+  - **A guard predicate for `uniq-by-line` cannot reuse the caps' zero-value predicate.** That key's own default is `true`, so *absence* is the unsafe state, and a guard rejecting only an explicit `true` would pass the configuration it exists to prevent.
+  - **`path: ^cmd/` means nothing without `run.relative-path-mode: gomod`** — run from a configuration outside the module root the anchor misses and every `cmd/` site is reported.
+  - **`nolintlint` runs with `allow-unused` unset**, so a directive with no finding under it fails the gate. Annotate what a re-run reports, never what a design row predicts.
+
+- **Invariants this now relies on:**
+  - Every bare `go` in compiled non-test source has an allow-list row with all four answers filled in. The guard fails on an unkeyed launch, on an empty answer, and on a launch whose outermost enclosing declaration is not a `FuncDecl`.
+  - Every exclusion rule in the lint configuration names its `linters`.
+  - The pinned settings stay pinned — the relative-path mode, both truncation caps and the line dedup — and the configuration guard asserts each one rather than trusting a one-time probe.
+  - The scheduler's deadline watchdog is the one goroutine no shutdown path joins. The allow list records that honestly instead of hiding it, and the reclamation belongs to its own issue.
