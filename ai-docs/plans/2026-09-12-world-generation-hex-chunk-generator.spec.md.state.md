@@ -61,9 +61,9 @@ gh_issue:
   linked_issues: ["#18", "#28", "#29", "#34", "#47"]
   issue_body_status: current
   linked_prs: []
-round_cap: 5
+round_cap: 6
 questions_per_round_cap: 3
-round: 5
+round: 6
 agent_id: ac11c6eef428a2106
 prior_qa:
   - round: 1
@@ -101,4 +101,14 @@ prior_qa:
         Approve the spec and post the cross-link comment on issue #27?
     answer: |
         давай уберем AC20, откуда оно взялось? пусть будут разные имплементации, даже если при кравевых условиях дают похожий результат
+  - round: 5
+    question: |
+        Step 8 implementation deviated from the design: the architecture gate landed as a fifth sibling CI job instead of a step inside the existing Test job, as subtask 11 prescribed. The deviation is reasoned (a step inside Test would let a red `make test` mask the determinism gate, against that job group's own stated rule) and I verified the gate works and discriminates — but the rule says a Step-8 deviation stops the step and asks you, and re-review of an amended design is unconditional unless you exempt it. Design-review is at 4 of 4 rounds.
+    answer: |
+        Ч пока не планирую запускать игру где-то кроме linux amd64, думаю, что пока лишнее думать о том, как сервер будет работать где-то еще
+  - round: 5
+    question: |
+        Вы говорите, что про другие архитектуры думать пока лишнее. Это затрагивает AC2, чья архитектурная половина заякорена на тексте issue #27. Что делаем с гейтом?
+    answer: |
+        Убрать совсем
 ```
