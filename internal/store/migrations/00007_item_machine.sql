@@ -183,7 +183,9 @@ WHERE COALESCE(reached.n, 0) <> COALESCE(recorded.n, 0)
 -- excluded from both branches: it has no materialised balance to compare,
 -- which is the same reason World's money balance is not reconciled
 -- either, and is why that exclusion is a controlled flag, not a
--- named holder id.
+-- named holder id. The two sides are FULL JOINed, not driven from
+-- item_holder alone, so a controlled slots/used balance that has drifted
+-- away from zero at a holder currently holding NOTHING is still reported.
 CREATE VIEW item_capacity_divergence AS
 WITH holder_counts AS (
     SELECT holder_id, count(*) AS item_count
@@ -199,11 +201,11 @@ slots_used AS (
     WHERE d.kind = 'slots' AND d.capacity_role = 'used'
 )
 SELECT
-    hc.holder_id,
-    hc.item_count,
-    su.balance AS slots_used_balance,
+    COALESCE(hc.holder_id, su.holder_id) AS holder_id,
+    COALESCE(hc.item_count, 0)           AS item_count,
+    su.balance                           AS slots_used_balance,
     CASE WHEN su.holder_id IS NULL THEN 'no_slots_used_account' ELSE 'count_mismatch' END AS reason
 FROM holder_counts hc
-LEFT JOIN slots_used su ON su.holder_id = hc.holder_id
+FULL JOIN slots_used su ON su.holder_id = hc.holder_id
 WHERE su.holder_id IS NULL
-   OR (su.controlled AND su.balance IS DISTINCT FROM hc.item_count);
+   OR (su.controlled AND su.balance IS DISTINCT FROM COALESCE(hc.item_count, 0));
