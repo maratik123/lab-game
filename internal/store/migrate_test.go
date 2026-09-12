@@ -42,6 +42,7 @@ func TestMigrate_shape_and_seeds(t *testing.T) {
 		"account", "account_balance", "account_definition",
 		"deferred_task", "event", "event_type_definition", "goose_db_version",
 		"ingest_dead_update", "ingest_offset",
+		"item", "item_movement",
 		"journal_entry", "manual_correction",
 		"owner", "player_operation", "posting", "process_liveness", "recurrent_task", "scheduled_task",
 		"scope", "scope_definition",
@@ -54,10 +55,11 @@ func TestMigrate_shape_and_seeds(t *testing.T) {
 	// Enums.
 	for enum, wantMembers := range map[string][]string{
 		"owner_kind":           {"world", "player", "chat"},
-		"ledger_kind":          {"money", "experience"},
+		"ledger_kind":          {"money", "experience", "slots", "weight"},
 		"operation_source":     {"telegram"},
 		"scheduled_task_state": {"pending", "dead"},
 		"event_volume_class":   {"low_volume", "high_volume"},
+		"capacity_role":        {"free", "used"},
 	} {
 		var members []string
 		if err := pool.QueryRow(ctx, `SELECT enum_range(NULL::`+enum+`)::text[]`).Scan(&members); err != nil {
@@ -86,8 +88,8 @@ func TestMigrate_shape_and_seeds(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM account_balance`).Scan(&balanceCount); err != nil {
 		t.Fatalf("count account_balance: %v", err)
 	}
-	if ownerCount != 1 || scopeCount != 1 || accountCount != 2 || balanceCount != 0 {
-		t.Fatalf("seed counts = owner:%d scope:%d account:%d balance:%d, want 1/1/2/0",
+	if ownerCount != 1 || scopeCount != 1 || accountCount != 6 || balanceCount != 0 {
+		t.Fatalf("seed counts = owner:%d scope:%d account:%d balance:%d, want 1/1/6/0",
 			ownerCount, scopeCount, accountCount, balanceCount)
 	}
 
@@ -106,7 +108,7 @@ func TestMigrate_shape_and_seeds(t *testing.T) {
 		table string
 		want  int64
 	}{
-		{"owner", 2}, {"scope", 2}, {"account", 3},
+		{"owner", 2}, {"scope", 2}, {"account", 7},
 	} {
 		var lastValue int64
 		if err := pool.QueryRow(ctx,
@@ -137,8 +139,8 @@ func TestMigrate_noop_reapply(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM goose_db_version`).Scan(&count); err != nil {
 		t.Fatalf("count goose_db_version: %v", err)
 	}
-	if count != 6 {
-		t.Fatalf("goose_db_version rows = %d, want 6", count)
+	if count != 8 {
+		t.Fatalf("goose_db_version rows = %d, want 8", count)
 	}
 }
 
@@ -240,6 +242,9 @@ func TestMigrate_indexes_constraints_and_column_types(t *testing.T) {
 		"journal_entry_deferred_task_key", "journal_entry_recurrent_task_key",
 		"event_type_ts_idx", "event_player_idx", "event_chat_idx", "event_ts_idx",
 		"journal_entry_event_key",
+		"account_definition_capacity_role_key",
+		"item_movement_successor_key", "item_movement_journal_entry_idx",
+		"item_movement_from_holder_idx", "item_movement_to_holder_idx",
 	} {
 		if !found[want] {
 			t.Errorf("index %s is missing (have %v)", want, found)
@@ -256,6 +261,8 @@ func TestMigrate_indexes_constraints_and_column_types(t *testing.T) {
 		"journal_entry_exactly_one_basis":     "num_nonnullsplayer_operation_id, manual_correction_id, deferred_task_id, recurrent_task_id, event_id",
 		"scheduled_task_type_nonempty":        "type <> ''",
 		"scheduled_task_failures_nonnegative": "consecutive_failures >= 0",
+		"item_movement_holders_differ":        "from_holder_id <> to_holder_id",
+		"item_movement_genesis_from_world":    "prev_movement_id is not null or from_holder_id = 1",
 	} {
 		var def string
 		err := pool.QueryRow(ctx,

@@ -150,7 +150,7 @@ Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-
 > | Keep both old and new APIs side-by-side temporarily | Pick one — old is gone |
 > | Add an interface solely to preserve an old signature | Remove the old signature |
 
-> **CARVE-OUT — data contracts are the opposite, and the asymmetry is the point.** The Postgres schema, the append-only `posting` / `item_movements` ledgers, the basis-document tables, the scheduler's `scheduled_task` payloads, and any persisted enum value are **live data that outlives every deploy**. They change by **forward migration**, never by redefinition: a posting written last season must still parse and still balance. A renamed state string, a re-numbered enum, or a repurposed column is a data-corruption bug wearing a refactor's clothes. Combat is the designed exception the other way (`docs/DESIGN.md` §4): `combat()` is a pure function whose internals may be rewritten wholesale — the **version of the combat system is part of every stored log and PvP-trail snapshot** precisely so that freedom stays safe.
+> **CARVE-OUT — data contracts are the opposite, and the asymmetry is the point.** The Postgres schema, the append-only `posting` / `item_movement` ledgers, the basis-document tables, the scheduler's `scheduled_task` payloads, and any persisted enum value are **live data that outlives every deploy**. They change by **forward migration**, never by redefinition: a posting written last season must still parse and still balance. A renamed state string, a re-numbered enum, or a repurposed column is a data-corruption bug wearing a refactor's clothes. Combat is the designed exception the other way (`docs/DESIGN.md` §4): `combat()` is a pure function whose internals may be rewritten wholesale — the **version of the combat system is part of every stored log and PvP-trail snapshot** precisely so that freedom stays safe.
 
 ## API Naming
 
@@ -176,7 +176,7 @@ See [`ai-docs/code-style.md`](ai-docs/code-style.md) for the canonical (growing)
 Project invariants that outrank convenience. Full detail: [`ai-docs/domain-invariants.md`](ai-docs/domain-invariants.md).
 
 > **AXIOM — Balances move only through the ledger, never by an ad-hoc UPDATE.**
-> Every change to stamina, resources, money, or items is a set of postings written by `store.Post` under exactly one basis document, and the postings in one transaction sum to zero per kind. Item instances move through `item_movements` with an unbroken holder chain. A handler that mutates a balance column directly is rejected in review, however small the change.
+> Every change to stamina, resources, money, or items is a set of postings written by `store.Post` or `store.Move` under exactly one basis document, and the postings in one transaction sum to zero per kind. Item instances move through `item_movement` with an unbroken holder chain, and `store.Move` is the one call that writes that chain and the capacity postings it implies together, under a single document. A handler that mutates a balance column directly is rejected in review, however small the change.
 >
 > The action table — what to do instead of each ad-hoc write — lives with the mechanics: [`ai-docs/domain-invariants.md` § 1 — The ledger](ai-docs/domain-invariants.md).
 

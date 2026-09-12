@@ -60,3 +60,48 @@ var (
 // kind is OwnerWorld (seeded by migration, never created here), or kind is
 // OwnerPlayer/OwnerChat with a nil telegramID. No statement is issued.
 var ErrInvalidOwner = errors.New("store: invalid owner")
+
+// Move's own sentinels — every other error Move can return is post's,
+// propagated unchanged so errors.Is still finds it. Compare with
+// errors.Is; each doc comment states the transaction state it leaves.
+var (
+	// ErrNoMovements is returned when movements is empty. The transaction
+	// is untouched.
+	ErrNoMovements = errors.New("store: movement batch is empty")
+
+	// ErrSelfMove is returned when a movement's From equals its To. The
+	// transaction is untouched.
+	ErrSelfMove = errors.New("store: movement holders are identical")
+
+	// ErrDuplicateItem is returned when an existing instance (an ItemID
+	// other than NewItem) appears more than once in one batch. A NewItem
+	// movement is exempt: a document may mint more than one instance. The
+	// transaction is untouched.
+	ErrDuplicateItem = errors.New("store: instance named twice in one move")
+
+	// ErrMintNotFromWorld is returned when a NewItem movement's From is not
+	// WorldHolder. The transaction is untouched.
+	ErrMintNotFromWorld = errors.New("store: a minted instance must move from World")
+
+	// ErrUnknownItem is returned when a movement names an existing
+	// ItemID with no item_holder row — a caller bug, distinct from
+	// ErrNotCurrentHolder. The transaction is usable; nothing was written.
+	ErrUnknownItem = errors.New("store: unknown item instance")
+
+	// ErrNotCurrentHolder is returned when a movement's From is not the
+	// instance's current holder — a lost race against another mover,
+	// distinct from ErrUnknownItem. The transaction is usable; nothing
+	// was written.
+	ErrNotCurrentHolder = errors.New("store: from is not the instance's current holder")
+
+	// ErrNoCapacityAccount is returned when a touched holder has no slots
+	// free/used account pair — a holder kind seeded without its capacity
+	// accounts. The transaction is usable; nothing was written.
+	ErrNoCapacityAccount = errors.New("store: holder has no capacity account")
+
+	// ErrMoveConflict is returned when a concurrent transaction advanced an
+	// instance's chain first (the database's chain-FK or successor-index
+	// refusal, surfaced as a domain rejection). The transaction is
+	// aborted; the caller must roll back.
+	ErrMoveConflict = errors.New("store: concurrent move lost the chain race")
+)
