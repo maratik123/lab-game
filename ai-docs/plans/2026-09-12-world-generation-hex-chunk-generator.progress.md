@@ -10,7 +10,7 @@ _Updated: 2026-09-13 04:10_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 11 — Design Amendment applied (Round 4); design-review re-run pending, then Group D (subtasks 15-16)
+**current_step:** Step 7 — design-review round 8 on the amended design; then Group D (15-16), Step 9, self-review round 5
 **last_passed_gate:** `go build` + `go vet` + `golangci-lint fmt -d` + `golangci-lint run` + `go test -count=1 ./...` + `go test -race` + `make comment-refs` + `make import-guard` | 2026-09-13T02:20Z | 3146b55
 **entry_args:** 27
 
@@ -109,6 +109,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 11 (round 4) — Design Amendment, owner-approved.** Four rounds each found a different shape the map-range predicate cannot see (parameter, then its missing red case, then named type, now call result and selector), and the orchestrator measured five more open. Deciding map-ness from an identifier's name approximates a type question, and the design excludes `go/types`, so the claim was the defect rather than the code: the owner ruled "Сузить заявление" (`answer 6.1`). The design now states three mitigations in order of strength — the weight array removes the question, the guard is an approximation and a pre-check, and the goldens are the proof, since map order reaching a drawn value would move `cells.golden` and split the order-independence scenario. No live defect exists: all thirty-six production `range` statements were checked and the five with map-ish operands range over slice results.
 - **Step 11 (round 4)**: `design-writer` flagged that Step 12's inbox propagation reads only the spec's `## Deferred`, so the blind-shape row would need a spec row — and asked the orchestrator to decide it, since originating a spec row is the orchestrator's. The flag is refuted: `inbox-propagation.md` says the parser "walks one or more spec/design files" and derives a `source_label` suffix of ` spec` or ` design` per source, with a `.design.md` worked example. The design row will be raised; no spec amendment was opened.
 - **Step 11 (round 4)**: `grep` in this environment is `ugrep 7.8.4`, which refuses a sufficiently complex pattern with an error rather than matching — a refusal reads as zero hits wherever stderr is not watched. One of the orchestrator's own verification patterns hit it while checking this amendment. Step 9's two load-bearing sweeps (AC18's conjunction and the DOC-4 outward-pointer sweep) were therefore re-run with the tool's stderr surfaced and their controls re-fired: zero tool errors, so both clean verdicts stand as measurements rather than as refusals.
+
+- **Step 11 (round 4) — both caps raised by the owner in one answer, echoed here because a raise recorded only in conversation is what round 4 found wrong.** `design-review cap: 8 (was 7)` and `self-review cap: 5 (was 4)`, chosen over the two cheaper routes offered (a per-instance exemption from the amendment's re-review, or lifting subtasks 15-16 out of the design into the deferred row). The route is: design-review round 8 on the amended design, then Group D via `code-writer`, then a refreshed Step 9 per-AC sweep, then self-review round 5.
 
 ## GO notes
 
