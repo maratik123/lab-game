@@ -10,7 +10,7 @@ _Updated: 2026-09-13 04:10_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** `go build` + `go vet` + `golangci-lint fmt -d` + `golangci-lint run` + `go test -count=1 ./...` + `go test -race ./...` + `make comment-refs` + `make import-guard` + `actionlint` | 2026-09-13T01:05Z | b332715
 **entry_args:** 27
 
@@ -89,6 +89,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 - **Step 9**: all nine gates green — build, vet, `fmt -d` at zero diff lines, lint, test, race, comment-refs, import-guard, actionlint. `go.mod` and `go.sum` are unchanged across the branch, so the tidy gate is not engaged, and no `*.sh` changed, so shellcheck is not engaged. The panic index is unchanged: the only panic sites are two in a `_test.go` helper, which the recipe skips. The domain-invariant sweep is clean on all five probes with all five controls firing — no balance mutation, no posting, no balance constant compiled into Go, no `time.Now()`, no secret; the `math/rand` hits are the designed ChaCha8 stream and `internal/detguard`'s own ban machinery.
 - **Step 9**: the per-AC sweep ran the orchestrator's own command per criterion rather than reading a delegate's table. AC18's first attempt produced a clean verdict from an EMPTY file list — the pattern carried only the Latin spelling against a Russian corpus — and was caught only because the section-16 site had been read separately; the corrected instrument is a conjunction with two controls, one that must fire and one that must not.
+
+- **Step 9.5**: `ai-docs/context-status.md` gained this run's entry with the PR locator as the literal placeholder the CI guard greps for, and `ai-docs/context.md` gained the three packages in its layout paragraph and its status bullet, with the status date bumped. No open question needed resolving on the orientation page — the intra-chunk-algorithm question was never listed there; it lives in the design corpus's own section, which subtask 12 struck.
+- **Step 9.5**: the removal-surface sweep found the orientation page's "each test gate — the suite, the race gate, the coverage ratchet, the fallback path" sentence still TRUE, because the revert restored `ci.yml`'s four-sibling cluster; had the architecture gate stayed, that sentence would have been false and unnoticed. Three tallies of repository artefacts were caught in the orchestrator's own draft prose and removed rather than re-measured — a package count and a golden count; `two commits` survives only as a statement about `git diff`'s semantics, not as a count of anything here.
 
 ## GO notes
 
