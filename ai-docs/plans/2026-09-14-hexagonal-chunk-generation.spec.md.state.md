@@ -83,4 +83,7 @@ prior_qa:
   - round: 3
     question: "Что поправить в спеке? (the orchestrator's note shown to the owner just before, verbatim: «Обратите внимание: AC20 — это расширение задачи, которое вы выбрали. Задача заметно вырастает: сериализация карты с проверкой «записали, прочитали, получили то же».»)"
     answer: "Давай откатим расширение скоупа?"
+  - round: 4
+    question: "Approve and post cross-link comment?"
+    answer: "Approve"
 ```
