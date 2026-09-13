@@ -217,3 +217,67 @@ func TestCheck_MapStructFieldRangeFlagged(t *testing.T) {
 	dir := scratchDir(t, src)
 	wantMapRangeMessage(t, detguard.Check(t, dir))
 }
+
+// TestCheck_NamedMapTypeParameterRangeFlagged carries the parameter
+// shape for a map that arrives under a declared name — "type edgeSet
+// map[edgeKey]bool" — rather than a literal "map[...]..." spelling.
+func TestCheck_NamedMapTypeParameterRangeFlagged(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\ntype edgeSet map[string]bool\n\nfunc f(m edgeSet) {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	dir := scratchDir(t, src)
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_NamedMapTypeReceiverRangeFlagged carries the receiver shape
+// for a named map type.
+func TestCheck_NamedMapTypeReceiverRangeFlagged(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\ntype edgeSet map[string]bool\n\nfunc (m edgeSet) f() {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	dir := scratchDir(t, src)
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_NamedMapTypeNamedResultRangeFlagged carries the named-result
+// shape for a named map type.
+func TestCheck_NamedMapTypeNamedResultRangeFlagged(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\ntype edgeSet map[string]bool\n\nfunc f() (m edgeSet) {\n\tfor k := range m {\n\t\t_ = k\n\t}\n\treturn m\n}\n"
+	dir := scratchDir(t, src)
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_NamedMapTypeStructFieldRangeFlagged carries the struct-field
+// shape for a named map type: the only declaration that types "m" is a
+// struct field whose field type is the named map type, not a literal
+// "map[...]...".
+func TestCheck_NamedMapTypeStructFieldRangeFlagged(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\ntype edgeSet map[string]bool\n\ntype T struct {\n\tm edgeSet\n}\n\nfunc f() {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	dir := scratchDir(t, src)
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_NamedMapTypeVarAssignRangeFlagged carries the var/assign
+// shape for a named map type: a make(edgeSet) call assigned to a plain
+// (":=") variable, with no literal "map[...]..." spelled anywhere in the
+// fixture.
+func TestCheck_NamedMapTypeVarAssignRangeFlagged(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\ntype edgeSet map[string]bool\n\nfunc f() {\n\tm := make(edgeSet)\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	dir := scratchDir(t, src)
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_NamedMapTypeCrossFileRangeFlagged carries the shape that
+// forced Check to collect named map types across the whole package
+// before running any per-file predicate: the "type edgeSet
+// map[...]..." declaration lives in one file of the scratch package,
+// and the parameter that is ranged over lives in a second file of that
+// same package.
+func TestCheck_NamedMapTypeCrossFileRangeFlagged(t *testing.T) {
+	t.Parallel()
+	root, _ := srcguard.WriteScratchFile(t, "pkg/types.go", "package pkg\n\ntype edgeSet map[string]bool\n")
+	srcguard.WriteScratchFileIn(t, root, "pkg/use.go", "package pkg\n\nfunc f(m edgeSet) {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n")
+	dir := filepath.Join(root, "pkg")
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}

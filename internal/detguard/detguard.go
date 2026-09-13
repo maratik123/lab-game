@@ -2,6 +2,7 @@ package detguard
 
 import (
 	"go/ast"
+	"go/token"
 	"sort"
 	"strconv"
 	"testing"
@@ -41,16 +42,29 @@ var bannedDecimalSelectors = map[string]bool{
 // package holds.
 func Check(tb testing.TB, dir string) []string {
 	tb.Helper()
+	paths := srcguard.PackageFiles(tb, dir)
+	files := make([]*ast.File, len(paths))
+	for i, path := range paths {
+		files[i] = srcguard.ParseFile(tb, path)
+	}
+	// A named map type ("type edgeSet map[edgeKey]bool") can be declared
+	// in one file of the package and ranged over in another, so the
+	// named-type set is collected across every file before any per-file
+	// predicate runs.
+	namedMapTypes := collectNamedMapTypes(files)
+
 	var problems []string
-	for _, path := range srcguard.PackageFiles(tb, dir) {
-		problems = append(problems, checkFile(tb, path, srcguard.ParseFile(tb, path))...)
+	for i, path := range paths {
+		problems = append(problems, checkFile(tb, path, files[i], namedMapTypes)...)
 	}
 	sort.Strings(problems)
 	return problems
 }
 
 // checkFile applies every predicate to one already-parsed file.
-func checkFile(tb testing.TB, path string, f *ast.File) []string {
+// namedMapTypes is the package-wide set of type names declared as a map,
+// collected by collectNamedMapTypes.
+func checkFile(tb testing.TB, path string, f *ast.File, namedMapTypes map[string]bool) []string {
 	tb.Helper()
 	var problems []string
 
@@ -75,7 +89,7 @@ func checkFile(tb testing.TB, path string, f *ast.File) []string {
 	}
 
 	mapTyped := map[string]bool{}
-	collectMapTypedIdents(f, mapTyped)
+	collectMapTypedIdents(f, mapTyped, namedMapTypes)
 
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
@@ -93,7 +107,7 @@ func checkFile(tb testing.TB, path string, f *ast.File) []string {
 				problems = append(problems, path+": references float-valued decimal member "+node.Sel.Name)
 			}
 		case *ast.RangeStmt:
-			if isMapRange(node.X, mapTyped) {
+			if isMapRange(node.X, mapTyped, namedMapTypes) {
 				problems = append(problems, path+": ranges over a map")
 			}
 		}
@@ -102,26 +116,89 @@ func checkFile(tb testing.TB, path string, f *ast.File) []string {
 	return problems
 }
 
+// collectNamedMapTypes scans every file's top-level type declarations
+// and returns the set of type names whose underlying type is a map —
+// either directly ("type edgeSet map[edgeKey]bool") or, through one
+// level of naming, via another name already known to be a map ("type
+// edgeAlias edgeSet"). It is package-wide and file-order independent:
+// the fixpoint loop resolves a name defined after the name it aliases
+// just as it resolves one defined before it.
+func collectNamedMapTypes(files []*ast.File) map[string]bool {
+	// A slice, not a map: this package's own determinism guard forbids
+	// ranging over a map, and the fixpoint loop below ranges over
+	// whatever holds the declared types.
+	type namedType struct {
+		name string
+		typ  ast.Expr
+	}
+	var decls []namedType
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				if ts, ok := spec.(*ast.TypeSpec); ok {
+					decls = append(decls, namedType{name: ts.Name.Name, typ: ts.Type})
+				}
+			}
+		}
+	}
+
+	named := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for _, d := range decls {
+			if named[d.name] {
+				continue
+			}
+			if isMapTypeExpr(d.typ, named) {
+				named[d.name] = true
+				changed = true
+			}
+		}
+	}
+	return named
+}
+
+// isMapTypeExpr reports whether typ is recognisably a map type: a
+// literal "map[...]..." type, or an identifier naming a type namedMaps
+// already carries.
+func isMapTypeExpr(typ ast.Expr, namedMaps map[string]bool) bool {
+	switch t := typ.(type) {
+	case *ast.MapType:
+		return true
+	case *ast.Ident:
+		return namedMaps[t.Name]
+	default:
+		return false
+	}
+}
+
 // collectMapTypedIdents does a best-effort, file-local scan for
 // identifiers that carry a map value, so a later range over one is
 // recognised as a map range even though the range statement itself only
 // ever names the identifier. Four shapes reach an identifier: a
-// make(map[...]...) call or a map composite literal assigned to it, an
-// explicit "var x map[...]..." declaration, a map-typed function
-// parameter, receiver or named result, and a map-typed struct field.
-// The parameter shape is the one a map most often arrives in, so a scan
-// that stopped at declarations and assignments would miss the common
-// case while reporting clean.
-func collectMapTypedIdents(f *ast.File, out map[string]bool) {
+// make(...) call or a composite literal assigned to it, an explicit
+// "var x ..." declaration, a map-typed function parameter, receiver or
+// named result, and a map-typed struct field. In each shape the type
+// may be spelled as a literal "map[...]..." or as the name of a type
+// namedMapTypes already carries — a "type edgeSet map[edgeKey]bool"
+// declared anywhere in the package, possibly in a different file than
+// this one. The parameter shape is the one a map most often arrives in,
+// so a scan that stopped at declarations and assignments would miss the
+// common case while reporting clean.
+func collectMapTypedIdents(f *ast.File, out, namedMapTypes map[string]bool) {
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.ValueSpec:
 			for i, name := range node.Names {
 				if node.Type != nil {
-					noteIfMapType(out, name.Name, node.Type)
+					noteIfMapType(out, name.Name, node.Type, namedMapTypes)
 				}
 				if i < len(node.Values) {
-					noteIfMapExpr(out, name.Name, node.Values[i])
+					noteIfMapExpr(out, name.Name, node.Values[i], namedMapTypes)
 				}
 			}
 		case *ast.AssignStmt:
@@ -130,15 +207,15 @@ func collectMapTypedIdents(f *ast.File, out map[string]bool) {
 				if !ok || i >= len(node.Rhs) {
 					continue
 				}
-				noteIfMapExpr(out, ident.Name, node.Rhs[i])
+				noteIfMapExpr(out, ident.Name, node.Rhs[i], namedMapTypes)
 			}
 		case *ast.FuncDecl:
-			noteMapFields(out, node.Recv)
+			noteMapFields(out, node.Recv, namedMapTypes)
 		case *ast.FuncType:
-			noteMapFields(out, node.Params)
-			noteMapFields(out, node.Results)
+			noteMapFields(out, node.Params, namedMapTypes)
+			noteMapFields(out, node.Results, namedMapTypes)
 		case *ast.StructType:
-			noteMapFields(out, node.Fields)
+			noteMapFields(out, node.Fields, namedMapTypes)
 		}
 		return true
 	})
@@ -146,32 +223,32 @@ func collectMapTypedIdents(f *ast.File, out map[string]bool) {
 
 // noteMapFields records every named field of list whose type is a map.
 // A nil list and an unnamed field are both no-ops.
-func noteMapFields(out map[string]bool, list *ast.FieldList) {
+func noteMapFields(out map[string]bool, list *ast.FieldList, namedMapTypes map[string]bool) {
 	if list == nil {
 		return
 	}
 	for _, field := range list.List {
 		for _, name := range field.Names {
-			noteIfMapType(out, name.Name, field.Type)
+			noteIfMapType(out, name.Name, field.Type, namedMapTypes)
 		}
 	}
 }
 
-func noteIfMapType(out map[string]bool, name string, typ ast.Expr) {
-	if _, ok := typ.(*ast.MapType); ok {
+func noteIfMapType(out map[string]bool, name string, typ ast.Expr, namedMapTypes map[string]bool) {
+	if isMapTypeExpr(typ, namedMapTypes) {
 		out[name] = true
 	}
 }
 
-func noteIfMapExpr(out map[string]bool, name string, rhs ast.Expr) {
+func noteIfMapExpr(out map[string]bool, name string, rhs ast.Expr, namedMapTypes map[string]bool) {
 	switch e := rhs.(type) {
 	case *ast.CompositeLit:
-		if _, ok := e.Type.(*ast.MapType); ok {
+		if isMapTypeExpr(e.Type, namedMapTypes) {
 			out[name] = true
 		}
 	case *ast.CallExpr:
 		if ident, ok := e.Fun.(*ast.Ident); ok && ident.Name == "make" && len(e.Args) > 0 {
-			if _, ok := e.Args[0].(*ast.MapType); ok {
+			if isMapTypeExpr(e.Args[0], namedMapTypes) {
 				out[name] = true
 			}
 		}
@@ -180,8 +257,10 @@ func noteIfMapExpr(out map[string]bool, name string, rhs ast.Expr) {
 
 // isMapRange reports whether x — a range statement's ranged expression —
 // is recognisably a map: a map composite literal, a make(map[...]...)
-// call, or an identifier collectMapTypedIdents already flagged.
-func isMapRange(x ast.Expr, mapTyped map[string]bool) bool {
+// call (either spelled as a literal map type or as a name
+// namedMapTypes carries), or an identifier collectMapTypedIdents
+// already flagged.
+func isMapRange(x ast.Expr, mapTyped, namedMapTypes map[string]bool) bool {
 	for {
 		paren, ok := x.(*ast.ParenExpr)
 		if !ok {
@@ -191,15 +270,13 @@ func isMapRange(x ast.Expr, mapTyped map[string]bool) bool {
 	}
 	switch e := x.(type) {
 	case *ast.CompositeLit:
-		_, ok := e.Type.(*ast.MapType)
-		return ok
+		return isMapTypeExpr(e.Type, namedMapTypes)
 	case *ast.CallExpr:
 		ident, ok := e.Fun.(*ast.Ident)
 		if !ok || ident.Name != "make" || len(e.Args) == 0 {
 			return false
 		}
-		_, ok = e.Args[0].(*ast.MapType)
-		return ok
+		return isMapTypeExpr(e.Args[0], namedMapTypes)
 	case *ast.Ident:
 		return mapTyped[e.Name]
 	default:
