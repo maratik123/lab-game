@@ -204,18 +204,34 @@ func TestCheck_MapNamedResultRangeFlagged(t *testing.T) {
 }
 
 // TestCheck_MapStructFieldRangeFlagged carries the struct-field shape:
-// the only declaration that types "m" as a map is a struct field; the
-// range statement itself names a bare, otherwise-undeclared identifier
-// of that same name. The collector is a best-effort, file-scope name
-// match rather than a real scope resolution, so this is enough to
-// register "m" as map-typed — and enough to isolate the struct-field
-// arm, since neither a var declaration nor a parameter, receiver, or
-// result contributes it here.
+// a same-file struct field types the name "m" as a map, and a function
+// elsewhere in the file assigns that same name from an ordinary call —
+// not a recognised make(...) construction — before ranging over it. The
+// collector is a best-effort, file-scope name match rather than a real
+// scope resolution, so the struct field's declaration is what makes
+// this occurrable spelling flagged at all: the paired control below,
+// identical but for the struct declaration, is clean, which is what
+// isolates the struct-field arm as the one doing the work here.
 func TestCheck_MapStructFieldRangeFlagged(t *testing.T) {
 	t.Parallel()
-	src := "package pkg\n\ntype T struct {\n\tm map[string]int\n}\n\nfunc f() {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	src := "package pkg\n\ntype T struct {\n\tm map[string]int\n}\n\nfunc newMap() map[string]int { return nil }\n\nfunc f() {\n\tm := newMap()\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
 	dir := scratchDir(t, src)
 	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_MapStructFieldRangeFlagged_ControlWithoutStructField is the
+// control for the case above: the identical fixture with the struct
+// field declaration removed. newMap's return value is an ordinary call
+// result, which the collector's best-effort scan does not recognise as
+// a map source (only a make(...) call is), so with no struct field to
+// type the name "m" as a map anywhere in the file, the range is clean.
+func TestCheck_MapStructFieldRangeFlagged_ControlWithoutStructField(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\nfunc newMap() map[string]int { return nil }\n\nfunc f() {\n\tm := newMap()\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	dir := scratchDir(t, src)
+	if got := detguard.Check(t, dir); len(got) != 0 {
+		t.Fatalf("Check = %v, want no problems", got)
+	}
 }
 
 // TestCheck_NamedMapTypeParameterRangeFlagged carries the parameter
@@ -247,14 +263,30 @@ func TestCheck_NamedMapTypeNamedResultRangeFlagged(t *testing.T) {
 }
 
 // TestCheck_NamedMapTypeStructFieldRangeFlagged carries the struct-field
-// shape for a named map type: the only declaration that types "m" is a
-// struct field whose field type is the named map type, not a literal
-// "map[...]...".
+// shape for a named map type: a same-file struct field types the name
+// "m" as edgeSet, not as a literal "map[...]...", and a function
+// elsewhere in the file assigns that same name from an ordinary call
+// before ranging over it. As with the literal-type case above, the
+// struct field's declaration is what makes this occurrable spelling
+// flagged; the paired control, identical but for the struct
+// declaration, is clean.
 func TestCheck_NamedMapTypeStructFieldRangeFlagged(t *testing.T) {
 	t.Parallel()
-	src := "package pkg\n\ntype edgeSet map[string]bool\n\ntype T struct {\n\tm edgeSet\n}\n\nfunc f() {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	src := "package pkg\n\ntype edgeSet map[string]bool\n\ntype T struct {\n\tm edgeSet\n}\n\nfunc newSet() edgeSet { return nil }\n\nfunc f() {\n\tm := newSet()\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
 	dir := scratchDir(t, src)
 	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_NamedMapTypeStructFieldRangeFlagged_ControlWithoutStructField
+// is the control for the case above: the identical fixture with the
+// struct field declaration removed, leaving the range clean.
+func TestCheck_NamedMapTypeStructFieldRangeFlagged_ControlWithoutStructField(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\ntype edgeSet map[string]bool\n\nfunc newSet() edgeSet { return nil }\n\nfunc f() {\n\tm := newSet()\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	dir := scratchDir(t, src)
+	if got := detguard.Check(t, dir); len(got) != 0 {
+		t.Fatalf("Check = %v, want no problems", got)
+	}
 }
 
 // TestCheck_NamedMapTypeVarAssignRangeFlagged carries the var/assign
@@ -264,6 +296,21 @@ func TestCheck_NamedMapTypeStructFieldRangeFlagged(t *testing.T) {
 func TestCheck_NamedMapTypeVarAssignRangeFlagged(t *testing.T) {
 	t.Parallel()
 	src := "package pkg\n\ntype edgeSet map[string]bool\n\nfunc f() {\n\tm := make(edgeSet)\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	dir := scratchDir(t, src)
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_NamedMapTypeMultiHopChainRangeFlagged carries the shape the
+// fixpoint loop exists for: a chain of type names three deep, each
+// aliasing the next ("type c b", "type b a", "type a map[...]...") and
+// declared in that same, worst-case order — the alias appearing before
+// the name it depends on, at every link. A single pass over the
+// declarations in source order resolves only "a" and "b" and never
+// reaches "c"; only repeating the pass until nothing new is found
+// resolves the whole chain, which is what this case is for.
+func TestCheck_NamedMapTypeMultiHopChainRangeFlagged(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\ntype c b\n\ntype b a\n\ntype a map[string]bool\n\nfunc f(m c) {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
 	dir := scratchDir(t, src)
 	wantMapRangeMessage(t, detguard.Check(t, dir))
 }

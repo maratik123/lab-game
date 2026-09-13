@@ -118,11 +118,14 @@ func checkFile(tb testing.TB, path string, f *ast.File, namedMapTypes map[string
 
 // collectNamedMapTypes scans every file's top-level type declarations
 // and returns the set of type names whose underlying type is a map —
-// either directly ("type edgeSet map[edgeKey]bool") or, through one
-// level of naming, via another name already known to be a map ("type
-// edgeAlias edgeSet"). It is package-wide and file-order independent:
-// the fixpoint loop resolves a name defined after the name it aliases
-// just as it resolves one defined before it.
+// either directly ("type edgeSet map[edgeKey]bool") or through a chain
+// of naming of any length, via another name already known to be a map
+// ("type edgeAlias edgeSet", "type edgeAlias2 edgeAlias", and so on).
+// It is package-wide and file-order independent: the fixpoint loop
+// resolves a name defined after the name it aliases just as it resolves
+// one defined before it, and keeps iterating until a full pass adds
+// nothing new, so a chain of any length resolves regardless of which
+// name in it was declared first.
 func collectNamedMapTypes(files []*ast.File) map[string]bool {
 	// A slice, not a map: this package's own determinism guard forbids
 	// ranging over a map, and the fixpoint loop below ranges over
@@ -179,16 +182,20 @@ func isMapTypeExpr(typ ast.Expr, namedMaps map[string]bool) bool {
 // collectMapTypedIdents does a best-effort, file-local scan for
 // identifiers that carry a map value, so a later range over one is
 // recognised as a map range even though the range statement itself only
-// ever names the identifier. Four shapes reach an identifier: a
-// make(...) call or a composite literal assigned to it, an explicit
-// "var x ..." declaration, a map-typed function parameter, receiver or
-// named result, and a map-typed struct field. In each shape the type
-// may be spelled as a literal "map[...]..." or as the name of a type
-// namedMapTypes already carries — a "type edgeSet map[edgeKey]bool"
-// declared anywhere in the package, possibly in a different file than
-// this one. The parameter shape is the one a map most often arrives in,
-// so a scan that stopped at declarations and assignments would miss the
-// common case while reporting clean.
+// ever names the identifier. The scan looks at these shapes: a
+// make(...) call or a composite literal assigned to an identifier, an
+// explicit "var x ..." declaration, a map-typed function parameter,
+// receiver or named result, and a map-typed struct field. In each shape
+// the type may be spelled as a literal "map[...]..." or as the name of
+// a type namedMapTypes already carries — a "type edgeSet
+// map[edgeKey]bool" declared anywhere in the package, possibly in a
+// different file than this one. The match is by identifier name alone,
+// with no real scope resolution: an identifier named the same as a
+// map-typed struct field is recognised as map-typed everywhere else in
+// the file too, even where the two are unrelated. Any shape this scan
+// does not look at — an identifier reassigned from an arbitrary
+// function call's result, for one — is outside what it can see, so the
+// guard is a name-based approximation and a pre-check, not a proof.
 func collectMapTypedIdents(f *ast.File, out, namedMapTypes map[string]bool) {
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
