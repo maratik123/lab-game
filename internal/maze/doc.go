@@ -6,6 +6,6 @@
 // coordinate is a pure function of the world seed, the generation
 // inputs, and the coordinate itself — no clock, no unseeded random
 // source, and no floating-point arithmetic anywhere on the path, so the
-// same three inputs yield the same result across processes, Go
-// versions, and CPU architectures.
+// same three inputs yield the same result across processes and Go
+// versions.
 package maze
