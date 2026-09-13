@@ -10,7 +10,7 @@ _Updated: 2026-09-13 02:05_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 8 — spec and design amended on the owner's architecture ruling; design-review round 5 pending, then subtask 11 is re-executed as removal work
+**current_step:** Step 7 — design-review round 6 pending on the twice-amended design; then Step 8 resumes with subtasks 11, 13 and Group C's 14
 **last_passed_gate:** `make fmt-check && make build && make vet && make lint && make file-limits && make shellcheck && make actionlint && make comment-refs && make test-arch`, plus the citation guard, the harness checkers and the relative-link check | 2026-09-13
 **entry_args:** 27
 
@@ -69,6 +69,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8 (amendment)**: `spec-writer` narrowed AC2 to the toolchain clause and added a Key decisions row recording the ruling with the owner's words as its anchor; `design-writer` removed the § Test Design *Architecture* block, inverted subtask 11 from building the gate to removing it, and re-anchored KD-37's encoding rationale from "same bytes on 32- and 64-bit" to "specified rather than inherited from the host". The determinism mechanisms themselves were explicitly kept — the amendment removes a gate, not a property.
 - **Step 8 (amendment)**: the orchestrator's own sweep found subtask 11's removal enumeration incomplete by one file (`ai-docs/key-decisions.md`), and found that the narrow pattern `test-arch|ARCH_GOARCH` under-reports this class because `.claude/skills/dependabot-pr/reference.md` names only the failure class `arch`. Corrected; the row's file set and a wide-pattern sweep are now 9-for-9 with the symmetric difference empty in both directions, and all 19 ACs of the amended spec are still referenced by the design (both checks run with a control that reports a difference when one is introduced).
 - **Step 8 (amendment)**: the design-review round cap was exhausted at 4 and the Spec Amendment recipe requires a re-review; the owner raised it to an explicit 5 — `cap: 5 (was 4)` — choosing the re-review over the per-instance exemption the orchestrator recommended. The orchestrator did not raise it and invented no bypass.
+
+- **Step 7 (amendment re-review)**: design-review round 5 returned ITERATE with two majors — subtask 11's removal set enumerated at file but not site granularity, with the design's own verification pattern control-verified blind to the count-word residue the gate commit left; and `internal/maze/doc.go` still asserting the struck architecture axis in a shipped package comment, which no earlier round or orchestrator sweep had looked for because every sweep was written for the gate rather than for the claim. Acceptance for the removal is now the git delta `git diff e216d5d^..HEAD` over the gate commit's eight non-plans paths, with `ai-docs/key-decisions.md` explicitly outside that rule because KD-37 postdates the gate commit — the designer caught that defect in the reviewer's own proposed fix, and the orchestrator confirmed it from git history before accepting it. Subtasks 13 and 14 and a third group (Group C, code, for `doc.go`) were added; a third group is forced by the change-type and size-cap rules together, not chosen.
+- **Step 7 (amendment re-review)**: the cap was exhausted at 5 and the owner raised it to an explicit 6 — `cap: 6 (was 5)` — choosing the re-review again. The orchestrator recommended the re-review this time, against its own earlier recommendation to skip one, on the record that five rounds produced five real defects and that both post-amendment rounds found a previously unexamined surface.
 
 ## GO notes
 
