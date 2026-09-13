@@ -300,12 +300,28 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 	prevDSN, prevSizedFor, hadPrev := sm.locate()
 
 	// The reaper is controlled process-wide, read once at first use; this
-	// process must disable it before provisioning so the container it
+	// process must disable it before building any container-runtime client —
+	// including the existence check below — so a container this invocation
 	// creates carries no reap label and outlives this process.
-	if err := os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true"); err != nil {
-		logf(stderr, "testpg: disabling the reaper: %v\n", err)
+	if !disableReaper(stderr) {
 		return exitFailure
 	}
+
+	// createdByThisInvocation records whether the named container already
+	// existed BEFORE this call, asked ahead of provisioning so the answer
+	// describes the state this invocation found rather than the one it
+	// caused. Only a confirmed-absent container is trustworthy as correctly
+	// sized by construction (provisioning below passes this invocation's own
+	// client count): reattaching to one that was already there means its
+	// mount keeps whatever size it was created with, which this invocation
+	// cannot see through the connection it is about to open. An existence
+	// check that itself fails leaves the answer unknown, treated the same
+	// as "already existed" — the conservative direction.
+	existed, existsErr := sm.containerExists(ctx, containerName)
+	if existsErr != nil {
+		logf(stderr, "testpg: whether container %q already existed could not be determined: %v\n", containerName, existsErr)
+	}
+	createdByThisInvocation := existsErr == nil && !existed
 
 	dsn, _, err := sm.provision(ctx, testdb.ServerOptions{
 		ContainerName: containerName,
@@ -335,7 +351,25 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 	// it was brought up, checked below against the count this invocation
 	// asks for.
 	actual, probeErr := sm.probe(ctx, dsn)
-	var earned, failed bool
+
+	// knownSizedFor is the largest client count something has actually
+	// vouched for this server's PGDATA mount: the conservative one-client
+	// floor an absent count already reads as, raised to a same-server
+	// prior locator's recorded count when one vouches, and raised again to
+	// this invocation's own count when this invocation created the
+	// container fresh (correctly sized by construction, since provisioning
+	// above passed that same count). A larger vouched count is never
+	// lowered by a smaller ask — it stays true of the mount regardless of
+	// what this run happens to need.
+	knownSizedFor := legacyLocatorClients
+	if sameServer && prevSizedFor > knownSizedFor {
+		knownSizedFor = prevSizedFor
+	}
+	if createdByThisInvocation && clients > knownSizedFor {
+		knownSizedFor = clients
+	}
+
+	var failed bool
 	switch {
 	case probeErr != nil:
 		logf(stderr, "testpg: shared server up, but its capacity could not be read: %v\n", probeErr)
@@ -344,35 +378,26 @@ func runUp(ctx context.Context, clients, parallel int, sm seam, stdout, stderr i
 			"parallel=%d; a server already running under this name keeps the ceiling it was created with, "+
 			"so take it down and bring it up again to resize it\n", actual, ceiling, clients, parallel)
 		failed = true
-	case sameServer && clients > prevSizedFor:
+	case !createdByThisInvocation && clients > knownSizedFor:
 		logf(stderr, "testpg: the shared server's PGDATA mount was sized for %d client(s), this invocation asks "+
 			"for %d; a server already running under this name keeps the mount it was created with, so take it "+
-			"down and bring it up again to resize it\n", prevSizedFor, clients)
+			"down and bring it up again to resize it\n", knownSizedFor, clients)
 		failed = true
 	default:
-		earned = true
 		logf(stderr, "testpg: shared server %q up, capacity %d admits the %d needed (clients=%d, parallel=%d)\n",
 			containerName, actual, ceiling, clients, parallel)
 	}
 
 	// The recorded count must mean "a count this server is actually known to
-	// satisfy", never "a count someone asked for": earned records this
-	// invocation's own count, a refusal against a server the prior locator
-	// already vouches for leaves that server's truthful count standing, and
-	// a refusal with no such prior vouching (a fresh server, or a stale
-	// locator naming a different one) falls back to the conservative
-	// one-client count an absent count already reads as. The DSN is
-	// recorded on every path regardless, so --down can still find whatever
-	// this invocation reached or created.
-	toRecord := clients
-	if !earned {
-		if sameServer {
-			toRecord = prevSizedFor
-		} else {
-			toRecord = legacyLocatorClients
-		}
-	}
-	if err := sm.persist(dsn, toRecord); err != nil {
+	// satisfy", never "a count someone asked for" — knownSizedFor already is
+	// exactly that, on every path: this invocation's own count when it
+	// created the container, a same-server prior locator's count when one
+	// vouches (never downgraded by a smaller ask), and the conservative
+	// one-client floor otherwise — including a reattach this invocation
+	// neither created nor anything vouches for. The DSN is recorded on
+	// every path regardless, so --down can still find whatever this
+	// invocation reached or created.
+	if err := sm.persist(dsn, knownSizedFor); err != nil {
 		logf(stderr, "testpg: writing the locator file: %v\n", err)
 		return exitFailure
 	}
