@@ -134,7 +134,7 @@ Two different rules, and conflating them is the common mistake:
 | Kind of value | Where it belongs |
 |---|---|
 | A structural constant (the number of edges of a hex, a protocol limit) | A named Go constant next to the code that owns it |
-| A **balance** value (stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice) — and **chunk size**, which `docs/DESIGN.md` §2.2.2 calls «размер — конфиг» (*ориентир* attaches to its 16×16 reference number, not to the size) and which ships in `config/balance.yaml` as `world.chunk.cols`/`rows` | **Configuration**, per `docs/DESIGN.md` §16.5 — never a Go literal, never a Go constant |
+| A **balance** value (stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice) — and **chunk size**, which `docs/DESIGN.md` §2.2.2 makes configuration (the radius R of a hexagonal chunk; *ориентир* attaches to its reference value R = 9, not to R being configurable) and which ships in `config/balance.yaml` as `world.chunk.cols`/`rows` until the generation core moves to hexagonal chunks | **Configuration**, per `docs/DESIGN.md` §16.5 — never a Go literal, never a Go constant |
 | A test fixture value | Inline in the test, named only when it aids reading |
 
 ## Determinism

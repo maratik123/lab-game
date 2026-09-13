@@ -33,7 +33,7 @@ Generation, combat and trail replay take an explicit seed and are pure (`docs/DE
 
 - Assert exact output, not "roughly". A fuzzy assertion on a deterministic function hides the regression it was written to catch.
 - Keep a **golden combat log** in the repository. `combat()` is a pure function precisely so the log can be snapshotted; the freedom to rewrite the combat system later depends on that snapshot existing now.
-- A generation test pins `(world_seed, coord) → cell` for a fixed table of coordinates. Connectivity is a property test: from any materialised cell, every other reachable cell is reachable.
+- A generation test pins `(world_seed, coord) → cell` for a fixed table of coordinates. Connectivity is a property test: over a generated multi-chunk region, every non-island cell is reachable from every other.
 
 ## Postgres is tested against Postgres
 

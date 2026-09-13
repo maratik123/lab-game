@@ -14,9 +14,9 @@ The mechanics are deliberately conventional (stamina, auto-combat, seasons, an e
 
 ## Load-bearing invariants worth knowing before touching a block
 
-- **The maze is a pure function of its seed.** Cell content and its edges are `f(world_seed, coord)`; a cell materialises in the database on first visit; connectivity is guaranteed *by construction* (per-chunk spanning structure + 1–2 generated portals per chunk border), never repaired after the fact. Rotation of a season = a new `world_seed` (`docs/DESIGN.md` §2.2.2).
-- **Edges are not stored.** Passages and walls are derived from `f()`; the canonical face representation makes both sides of a border agree by construction (§2.2.4).
-- **Danger is a property of space, not of the observer.** Depth = distance to the nearest *chat entrance* (crafted doors do not count). PvP tier, monster budget, wave multiplier and newcomer XP all hang off that one axis (§2.2).
+- **The world is generated lazily, a whole chunk at a time.** A hexagonal chunk of radius R is generated when first needed — an explorer crosses into it or looks into one of its cells — and its map is stored with its generation version; its fabric is a pure function of `(world_seed, chunk coordinate, chunk type)`, and every chunk creation runs under a per-world lock in a short transaction of its own. Connectivity is guaranteed *by construction* (per-chunk spanning structure + guaranteed portals on each of a chunk's six borders), never repaired after the fact. Rotation of a season = a new `world_seed` (`docs/DESIGN.md` §2.2.2).
+- **Cells are not stored row by row.** Passages and walls live in the stored chunk map, and a new chunk takes its shared border from an existing neighbour's map, so both sides agree; only cell state — a door, a corpse, a respawn timer — gets a row of its own (§2.2.2, §2.2.4).
+- **Danger is a property of space, not of the observer.** Depth = the distance in cells, by the hex formula, to the nearest *chat gate* (crafted doors do not count); a chat's gate is placed on a spiral from the world's centre when the chat first raids that world. PvP tier, monster budget, wave multiplier and newcomer XP all hang off that one axis (§2.2).
 - **A raid session is a row, not a process.** An explicit FSM in Postgres: player actions and timers are edges of the same kind, every transition is a guarded transaction plus a basis document, and timer edges are one-shot scheduler tasks that die on a stale guard. Bot restarts are invisible to sessions (§3.5).
 - **Combat is a pure function** `combat(seed, party, monsters) → outcome + log`. Nothing outside sees its internals; the combat-system version is part of every stored log and PvP-trail snapshot, which is what buys the freedom to rewrite it wholesale (§4).
 - **Every balance change is a ledger posting.** Double-entry with a global "World" account, zero-sum per kind inside each transaction, checked at write time in `store.Post` and in `store.Move`, which composes it; instance-carrying items live in a second machine (`item` + append-only `item_movement`) whose holders are addresses in the ledger's own `scope` space. All game logistics — death, looting, contributions, corpse evaporation — are one "move under a document" operation over those machines (§11, and [`domain-invariants.md`](domain-invariants.md)).
@@ -29,7 +29,7 @@ The design document defines the blocks; the Go package layout lands one implemen
 | Block | Responsibility | Design ref |
 |---|---|---|
 | Transport | Bot API client over a self-hosted `telegram-bot-api`, retries, 429/`retry_after`, rate limits, idempotency of updates | §11, §12.2 |
-| World | Deterministic chunked generation, prefabs, materialisation, discovery/knowledge | §2.2 |
+| World | Deterministic chunked generation, stored chunk maps, spiral gate placement, discovery/knowledge | §2.2 |
 | Raid | Session FSM, leader screen (one edited message), stamina, standing-timer escalation | §3, §5 |
 | Combat | Pure simulator + narrative rendering from the world's vocabulary | §4 |
 | Economy | Double-entry ledger (`internal/store`), item machine, logistics addresses, shop/craft | §6, §11 |
