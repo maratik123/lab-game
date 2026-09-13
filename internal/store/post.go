@@ -60,7 +60,9 @@ const (
 //	d. insert the basis document, then the journal_entry
 //	   (ErrAlreadyPosted on a player-operation replay, untouched;
 //	   ErrUnknownEventType on an event basis naming an unregistered type,
-//	   aborted; any other error: aborted).
+//	   aborted; any other error: aborted). Post's own beforeBalances hook
+//	   is nil; Move's runs here, once the journal entry exists and before
+//	   phase e touches a balance.
 //	e. one plain UPDATE per controlled account with a non-zero delta, in
 //	   ascending account_id (ErrOverdraft or ErrBalanceRowMissing, or any
 //	   other wrapped database error — all leave the transaction aborted,
@@ -73,6 +75,21 @@ const (
 //	   through the accumulated balance.
 //	f. insert the postings, in the caller's order (aborted on error).
 func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Posting) error {
+	return post(ctx, tx, basis, nil, postings...)
+}
+
+// post is Post's body, and the one function here whose own body writes a
+// balance: Post and Move are separate entry points that each reach a
+// balance through it. beforeBalances, when non-nil, runs once the basis
+// document and the journal entry exist and before the first balance
+// UPDATE — the seam Move needs so its chain rows (item_movement) take
+// their successor slots ahead of the capacity legs, which is what lets a
+// lost chain race surface as ErrMoveConflict rather than as a spurious
+// ErrOverdraft on a balance that another transaction has not yet
+// committed. beforeBalances's error is returned unwrapped, so errors.Is
+// still finds a sentinel it names (for example ErrMoveConflict). Post
+// passes nil.
+func post(ctx context.Context, tx pgx.Tx, basis PostingBasis, beforeBalances func(journalEntryID int64) error, postings ...Posting) error {
 	// Phase a.
 	if basis == nil {
 		return ErrNoBasis
@@ -153,6 +170,11 @@ func Post(ctx context.Context, tx pgx.Tx, basis PostingBasis, postings ...Postin
 	var entryID int64
 	if err := tx.QueryRow(ctx, entrySQL, docID).Scan(&entryID); err != nil {
 		return fmt.Errorf("post: insert journal_entry: %w", err)
+	}
+	if beforeBalances != nil {
+		if err := beforeBalances(entryID); err != nil {
+			return err
+		}
 	}
 
 	// Phase e.

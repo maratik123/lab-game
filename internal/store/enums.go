@@ -30,9 +30,26 @@ type Kind string
 const (
 	KindMoney      Kind = "money"
 	KindExperience Kind = "experience"
+	KindSlots      Kind = "slots"
+	KindWeight     Kind = "weight"
 )
 
-var kinds = []Kind{KindMoney, KindExperience}
+var kinds = []Kind{KindMoney, KindExperience, KindSlots, KindWeight}
+
+// CapacityRole mirrors the database enum capacity_role: which half of a
+// capacity kind's free/used pair an account_definition row represents.
+// The empty string is a Go-side stand-in for SQL NULL — the money and
+// experience rows carry no capacity_role — and has no database member of
+// its own, so it is deliberately absent from capacityRoles.
+type CapacityRole string
+
+// CapacityRole members, in the database's declaration order.
+const (
+	CapacityFree CapacityRole = "free"
+	CapacityUsed CapacityRole = "used"
+)
+
+var capacityRoles = []CapacityRole{CapacityFree, CapacityUsed}
 
 // OperationSource mirrors the database enum operation_source: the client
 // that originated a player_operation.

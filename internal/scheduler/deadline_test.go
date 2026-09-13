@@ -182,7 +182,7 @@ func TestDeadline_breachIsSettledNotMerelyAbandoned(t *testing.T) {
 		t.Fatalf("consecutive_failures = %d, want 1", failures)
 	}
 	if lastError == nil || !strings.Contains(*lastError, "deadline") {
-		t.Fatalf("last_error = %v, want it to mention the deadline", lastError)
+		t.Fatalf("last_error = %s, want it to mention the deadline", errText(lastError))
 	}
 	if !runAt.After(drainInstant) {
 		t.Fatalf("run_at = %v, want strictly after the drain instant %v (not merely t + backoff, which can already be past)", runAt, drainInstant)

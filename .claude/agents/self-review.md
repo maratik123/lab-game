@@ -122,7 +122,7 @@ Read [`ai-docs/domain-invariants.md`](../../ai-docs/domain-invariants.md) before
 
 | Check | Trigger | Severity |
 |---|---|---|
-| **Ledger bypass** | Any `UPDATE` of a balance column, or any insert into an inventory/holding table, outside `store.Post` / the item machine | `major` |
+| **Ledger bypass** | Any `UPDATE` of a balance column outside `store.Post` / `store.Move`, or any insert into an inventory/holding table (`item_movement` today) outside `store.Move` | `major` |
 | **Posting without a basis** | A posting group not tied to exactly one basis document, or a document type added without the `CHECK (num_nonnulls(...) = 1)` update | `major` |
 | **Unbalanced group** | A transaction whose postings do not sum to zero per kind, or a hand-rolled capture order instead of `store.Post`'s | `major` |
 | **Telemetry lag** (`docs/DESIGN.md` §13.4) | A new mechanic in this diff that declares no event; a balance-moving mechanic that declares no posting signature, or ships without the contract test | `major` |

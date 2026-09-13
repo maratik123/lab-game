@@ -45,6 +45,10 @@ func createPlayer(t *testing.T, ctx context.Context, tx pgx.Tx) (money, experien
 			money = a.ID
 		case KindExperience:
 			experience = a.ID
+		default:
+			// Capacity accounts (KindSlots, KindWeight) are not this
+			// helper's concern — item-machine tests build their own
+			// fixtures for those.
 		}
 	}
 	return money, experience
@@ -60,6 +64,8 @@ func fund(t *testing.T, ctx context.Context, tx pgx.Tx, accountID AccountID, kin
 		worldID = WorldMoney
 	case KindExperience:
 		worldID = WorldExperience
+	default:
+		t.Fatalf("fund: unsupported kind %s", kind)
 	}
 	err := Post(ctx, tx, &ManualCorrection{Actor: "test", Reason: "fund"},
 		Posting{AccountID: accountID, Amount: amount},

@@ -176,7 +176,7 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 				t.Fatalf("attempt %d: run_at = %v, want within [%v, %v] (before=%v after=%v backoff=%v)", attempt, runAt, lo, hi, before, after, want)
 			}
 			if lastError == nil || !strings.Contains(*lastError, "boom") {
-				t.Fatalf("attempt %d: last_error = %v, want it to mention the handler error", attempt, lastError)
+				t.Fatalf("attempt %d: last_error = %s, want it to mention the handler error", attempt, errText(lastError))
 			}
 		} else {
 			if !found || state != "dead" {
@@ -305,7 +305,7 @@ func TestFailurePolicy_decodeFailure(t *testing.T) {
 		t.Fatalf("row after cap decode failures = state:%v failures:%d (found=%v), want dead/%d", state, failures, found, cfg.RetryMaxAttempts)
 	}
 	if lastError == nil || !strings.Contains(*lastError, "json") && !strings.Contains(*lastError, "cannot unmarshal") {
-		t.Fatalf("last_error = %v, want it to record the decode failure", lastError)
+		t.Fatalf("last_error = %s, want it to record the decode failure", errText(lastError))
 	}
 
 	tx, err := pool.Begin(ctx)
@@ -452,7 +452,7 @@ func TestFailurePolicy_counterRisesAndResets(t *testing.T) {
 		t.Fatalf("RunOnce (recurrent no-op): %v", err)
 	}
 	if _, failures, lastError, _, found := schedulerTaskRow(t, pool, id2); !found || failures != 0 || lastError != nil {
-		t.Fatalf("recurrent row after a no-op: failures=%d lastError=%v found=%v, want 0/nil/true", failures, lastError, found)
+		t.Fatalf("recurrent row after a no-op: failures=%d lastError=%s found=%v, want 0/nil/true", failures, errText(lastError), found)
 	}
 }
 
@@ -501,7 +501,7 @@ func TestFailurePolicy_undeclaredType_keepsComingDue(t *testing.T) {
 			t.Fatalf("attempt %d: consecutive_failures = %d, want 0 (untouched)", i, failures)
 		}
 		if lastError != nil {
-			t.Fatalf("attempt %d: last_error = %v, want nil (untouched)", i, *lastError)
+			t.Fatalf("attempt %d: last_error = %s, want nil (untouched)", i, errText(lastError))
 		}
 		if !prevRunAt.IsZero() && !runAt.After(prevRunAt) {
 			t.Fatalf("attempt %d: run_at %v did not advance past the previous %v", i, runAt, prevRunAt)

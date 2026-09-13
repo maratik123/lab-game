@@ -4,12 +4,14 @@
 
 ## 1. The ledger — every balance moves by posting
 
-**Rule.** Stamina, resources, money and item capacity change **only** through postings written by `store.Post`, under exactly one basis document, and the postings of one transaction sum to zero per kind. Emission and burning are postings against the global **World** account, which alone may go negative (`docs/DESIGN.md` §11).
+**Rule.** Stamina, resources, money and item capacity change **only** through postings written by `store.Post` or `store.Move`, under exactly one basis document, and the postings of one transaction sum to zero per kind. Emission and burning are postings against the global **World** account, which alone may go negative (`docs/DESIGN.md` §11).
+
+`store.Move` is the second write path and composes the first: it takes the caller's own postings alongside the instance movements, derives the capacity legs from those movements, and hands the whole batch to the same body `store.Post` uses — so the zero-sum check, the capture order and the deadlock discipline described below govern a move exactly as they govern a plain posting group.
 
 | If you are about to... | Do this instead |
 |---|---|
 | `UPDATE players SET stamina = stamina - 3` | Post `player → World` for kind `stamina`, under the basis document for the move |
-| Grant a reward by inserting a row into an inventory table | Move the instance in the item machine + post the capacity kind, both under one document |
+| Grant a reward by inserting a row into an inventory table | Call `store.Move`: it writes the instance's movement and the capacity postings it implies under one document, in one transaction |
 | "Fix" a wrong balance with an `UPDATE` | Append a compensating posting under a `manual correction` document — history is append-only |
 | Write a posting with no basis | There is no such thing. A posting in mid-air is a modelling error, and `store.Post` refuses it |
 
@@ -21,9 +23,11 @@
 
 ## 2. The item machine — identity is not a kind
 
-Items with identity (durability, enchantment) are **never** modelled as ledger kinds. They live in `items` + append-only `item_movements`, and the invariant is **chain continuity**: each movement's `from` equals the previous movement's `to`, so an instance has exactly one holder at any moment (§11).
+Items with identity (durability, enchantment) are **never** modelled as ledger kinds. They live in `item` + append-only `item_movement`, and the invariant is **chain continuity**: each movement's `from` equals the previous movement's `to`, so an instance has exactly one holder at any moment (§11). Continuity is a database property rather than a code convention: a self-referential composite foreign key ties a movement's `(predecessor, instance, from)` to the predecessor's `(id, instance, to)`, a `NULLS NOT DISTINCT` unique index gives each movement at most one successor and each instance at most one genesis, and a `CHECK` pins a genesis's `from` to World.
 
-Holders of the item machine and accounts of the quantitative machine share **one address space** — player backpack, player chest, corpse 123, construction site, World. Death, looting, contribution and evaporation are the *same* "move under a document" operation with a different holder; there is no bespoke corpse code to write. A movement also posts the capacity kind (slots/weight) in the main ledger under the same document, and a cross-machine reconciliation ("instances held == slots consumed") catches drift.
+Holders of the item machine and accounts of the quantitative machine share **one address space**, and the shared address is a `scope` row — player backpack, player chest, corpse 123, construction site, World are all addresses of that one kind, so a holder the MVP does not use costs a catalog row, never a schema change or a branch on holder kind. Death, looting, contribution and evaporation are the *same* "move under a document" operation with a different holder; there is no bespoke corpse code to write. A movement also posts the capacity kind (slots/weight) in the main ledger under the same document, against a `free`/`used` account pair held per holder per kind — which is what makes an over-stuffed backpack unrepresentable rather than validated: the destination's `free` leg is debited, and `CHECK (balance >= 0)` refuses the move.
+
+Cross-machine reconciliation ships as two views, so drift is answerable by a query over the shipped data rather than by new code. `item_chain_break` reports any instance whose movements are not one unbroken path from a World genesis to exactly one head. `item_capacity_divergence` reports any holder whose instance count disagrees with its controlled `slots`/`used` balance, or that holds instances with no such account at all.
 
 **Free consequence:** the movement chain is an item's provenance — "crafted by Вася, lost on node 12, picked up by the fishermen's chat" — which notifications and season stories can read without any extra code.
 

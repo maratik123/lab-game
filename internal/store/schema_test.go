@@ -321,3 +321,254 @@ func TestSchema_constraints(t *testing.T) {
 		sqlstate(t, err, "23514", "ingest_dead_update_kind_nonempty")
 	})
 }
+
+// newJournalEntry inserts a throwaway ManualCorrection-basis journal_entry
+// and returns its id, for a test that needs a valid journal_entry_id
+// without exercising Post itself.
+func newJournalEntry(t *testing.T, ctx context.Context, tx pgx.Tx) int64 {
+	t.Helper()
+	var mcID, jeID int64
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO manual_correction (actor, reason) VALUES ('test', 'item schema') RETURNING id`,
+	).Scan(&mcID); err != nil {
+		t.Fatalf("insert manual_correction: %v", err)
+	}
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO journal_entry (manual_correction_id) VALUES ($1) RETURNING id`, mcID,
+	).Scan(&jeID); err != nil {
+		t.Fatalf("insert journal_entry: %v", err)
+	}
+	return jeID
+}
+
+// backpackHolder returns the given owner's backpack scope id.
+func backpackHolder(t *testing.T, ctx context.Context, tx pgx.Tx, owner OwnerID) HolderID {
+	t.Helper()
+	var id int64
+	if err := tx.QueryRow(ctx,
+		`SELECT id FROM scope WHERE owner_id = $1 AND scope_definition_id = 3`, owner,
+	).Scan(&id); err != nil {
+		t.Fatalf("select backpack scope for owner %d: %v", owner, err)
+	}
+	return HolderID(id)
+}
+
+// newBareItem inserts a fresh item row with no movement, for a test that
+// builds an item_movement fixture by raw SQL.
+func newBareItem(t *testing.T, ctx context.Context, tx pgx.Tx) ItemID {
+	t.Helper()
+	var id int64
+	if err := tx.QueryRow(ctx, `INSERT INTO item DEFAULT VALUES RETURNING id`).Scan(&id); err != nil {
+		t.Fatalf("insert item: %v", err)
+	}
+	return ItemID(id)
+}
+
+// insertMovement issues a raw item_movement INSERT and returns its id on
+// success — the low-level entry point subtask 2's refusal scenarios drive
+// directly, bypassing Move so each constraint is exercised in isolation.
+func insertMovement(ctx context.Context, tx pgx.Tx, itemID ItemID, prev *int64, from, to HolderID, journalEntryID int64) (int64, error) {
+	var id int64
+	err := tx.QueryRow(ctx,
+		`INSERT INTO item_movement (item_id, prev_movement_id, from_holder_id, to_holder_id, journal_entry_id)
+		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		itemID, prev, from, to, journalEntryID,
+	).Scan(&id)
+	return id, err
+}
+
+// TestSchema_itemMachineConstraints asserts item_movement's declarative
+// chain refusals by SQLSTATE and constraint name, and the capacity
+// catalog's own uniqueness rule.
+func TestSchema_itemMachineConstraints(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+
+	t.Run("same_holder_move_refused", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		item := newBareItem(t, ctx, tx)
+		je := newJournalEntry(t, ctx, tx)
+
+		_, err = insertMovement(ctx, tx, item, nil, WorldHolder, WorldHolder, je)
+		sqlstate(t, err, "23514", "item_movement_holders_differ")
+	})
+
+	t.Run("genesis_not_from_world_refused", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		tg := nextTelegramID.Add(1)
+		owner, err := CreateOwner(ctx, tx, OwnerPlayer, &tg)
+		if err != nil {
+			t.Fatalf("CreateOwner: %v", err)
+		}
+		backpack := backpackHolder(t, ctx, tx, owner.ID)
+
+		item := newBareItem(t, ctx, tx)
+		je := newJournalEntry(t, ctx, tx)
+
+		_, err = insertMovement(ctx, tx, item, nil, backpack, WorldHolder, je)
+		sqlstate(t, err, "23514", "item_movement_genesis_from_world")
+	})
+
+	t.Run("successor_from_disagrees_with_predecessor_to", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		tg := nextTelegramID.Add(1)
+		ownerA, err := CreateOwner(ctx, tx, OwnerPlayer, &tg)
+		if err != nil {
+			t.Fatalf("CreateOwner: %v", err)
+		}
+		backpackA := backpackHolder(t, ctx, tx, ownerA.ID)
+
+		item := newBareItem(t, ctx, tx)
+		je := newJournalEntry(t, ctx, tx)
+		genesisID, err := insertMovement(ctx, tx, item, nil, WorldHolder, backpackA, je)
+		if err != nil {
+			t.Fatalf("insert genesis movement: %v", err)
+		}
+
+		je2 := newJournalEntry(t, ctx, tx)
+		// from is WorldHolder, but the predecessor's to was backpackA — the
+		// chain FK has nothing to reference.
+		_, err = insertMovement(ctx, tx, item, &genesisID, WorldHolder, backpackA, je2)
+		sqlstate(t, err, "23503", "item_movement_chain_fk")
+	})
+
+	t.Run("successor_names_predecessor_of_a_different_instance", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		tg := nextTelegramID.Add(1)
+		ownerA, err := CreateOwner(ctx, tx, OwnerPlayer, &tg)
+		if err != nil {
+			t.Fatalf("CreateOwner: %v", err)
+		}
+		backpackA := backpackHolder(t, ctx, tx, ownerA.ID)
+
+		item1 := newBareItem(t, ctx, tx)
+		item2 := newBareItem(t, ctx, tx)
+		je1 := newJournalEntry(t, ctx, tx)
+		genesis1ID, err := insertMovement(ctx, tx, item1, nil, WorldHolder, backpackA, je1)
+		if err != nil {
+			t.Fatalf("insert genesis movement for item1: %v", err)
+		}
+
+		je2 := newJournalEntry(t, ctx, tx)
+		// genesis1ID belongs to item1, not item2 — no referenced row exists
+		// with (id=genesis1ID, item_id=item2, to_holder_id=backpackA).
+		_, err = insertMovement(ctx, tx, item2, &genesis1ID, backpackA, WorldHolder, je2)
+		sqlstate(t, err, "23503", "item_movement_chain_fk")
+	})
+
+	t.Run("fork_second_successor_refused", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		tg := nextTelegramID.Add(1)
+		ownerA, err := CreateOwner(ctx, tx, OwnerPlayer, &tg)
+		if err != nil {
+			t.Fatalf("CreateOwner: %v", err)
+		}
+		backpackA := backpackHolder(t, ctx, tx, ownerA.ID)
+		tg2 := nextTelegramID.Add(1)
+		ownerB, err := CreateOwner(ctx, tx, OwnerPlayer, &tg2)
+		if err != nil {
+			t.Fatalf("CreateOwner: %v", err)
+		}
+		backpackB := backpackHolder(t, ctx, tx, ownerB.ID)
+
+		item := newBareItem(t, ctx, tx)
+		je := newJournalEntry(t, ctx, tx)
+		genesisID, err := insertMovement(ctx, tx, item, nil, WorldHolder, backpackA, je)
+		if err != nil {
+			t.Fatalf("insert genesis movement: %v", err)
+		}
+
+		je2 := newJournalEntry(t, ctx, tx)
+		if _, err := insertMovement(ctx, tx, item, &genesisID, backpackA, backpackB, je2); err != nil {
+			t.Fatalf("insert first successor: %v", err)
+		}
+
+		je3 := newJournalEntry(t, ctx, tx)
+		_, err = insertMovement(ctx, tx, item, &genesisID, backpackA, WorldHolder, je3)
+		sqlstate(t, err, "23505", "item_movement_successor_key")
+	})
+
+	t.Run("second_genesis_for_one_instance_refused", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		tg := nextTelegramID.Add(1)
+		ownerA, err := CreateOwner(ctx, tx, OwnerPlayer, &tg)
+		if err != nil {
+			t.Fatalf("CreateOwner: %v", err)
+		}
+		backpackA := backpackHolder(t, ctx, tx, ownerA.ID)
+
+		item := newBareItem(t, ctx, tx)
+		je := newJournalEntry(t, ctx, tx)
+		if _, err := insertMovement(ctx, tx, item, nil, WorldHolder, backpackA, je); err != nil {
+			t.Fatalf("insert first genesis: %v", err)
+		}
+
+		je2 := newJournalEntry(t, ctx, tx)
+		_, err = insertMovement(ctx, tx, item, nil, WorldHolder, backpackA, je2)
+		sqlstate(t, err, "23505", "item_movement_successor_key")
+	})
+
+	t.Run("duplicate_capacity_role_refused", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		_, err = tx.Exec(ctx,
+			`INSERT INTO account_definition (id, scope_definition_id, code, kind, controlled, capacity_role)
+			 VALUES (999, 1, 'slots_free_dup', 'slots', false, 'free')`)
+		sqlstate(t, err, "23505", "account_definition_capacity_role_key")
+	})
+
+	t.Run("explicit_id_into_item_refused", func(t *testing.T) {
+		t.Parallel()
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer rollback(t, ctx, tx)
+
+		_, err = tx.Exec(ctx, `INSERT INTO item (id) VALUES (999)`)
+		sqlstate(t, err, "428C9", "")
+	})
+}
