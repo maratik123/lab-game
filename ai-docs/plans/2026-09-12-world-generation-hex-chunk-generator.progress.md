@@ -10,8 +10,8 @@ _Updated: 2026-09-13 04:10_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 9 — Verify; the design gate is closed (round 7 GO, all items folded and confirmed) and all 14 subtasks are implemented
-**last_passed_gate:** `go build ./... && go vet ./... && golangci-lint fmt -d && golangci-lint run && go test ./internal/maze/... && make comment-refs`, all green on `internal/maze/doc.go` | 2026-09-13
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** `go build` + `go vet` + `golangci-lint fmt -d` + `golangci-lint run` + `go test -count=1 ./...` + `go test -race ./...` + `make comment-refs` + `make import-guard` + `actionlint` | 2026-09-13T01:05Z | b332715
 **entry_args:** 27
 
 ## Next action
@@ -87,6 +87,9 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8**: all 14 subtasks are complete; the gate removal's acceptance re-verified at HEAD by the orchestrator — seven paths at zero diff lines, `.github/workflows/ci.yml` carrying only the kept `'**/*.golden'` entry and its rewritten comment, with `docs/DESIGN.md` as a control reporting 21 lines.
 - **Step 7 (third amendment)**: the cap was exhausted at 6 and the owner raised it to an explicit 7 — `cap: 7 (was 6)` — choosing the re-review over the orchestrator's recommended exemption for the second time, on the ground that the defective instruction originated in a review recommendation and so the gate's own advice is owed the gate.
 
+- **Step 9**: all nine gates green — build, vet, `fmt -d` at zero diff lines, lint, test, race, comment-refs, import-guard, actionlint. `go.mod` and `go.sum` are unchanged across the branch, so the tidy gate is not engaged, and no `*.sh` changed, so shellcheck is not engaged. The panic index is unchanged: the only panic sites are two in a `_test.go` helper, which the recipe skips. The domain-invariant sweep is clean on all five probes with all five controls firing — no balance mutation, no posting, no balance constant compiled into Go, no `time.Now()`, no secret; the `math/rand` hits are the designed ChaCha8 stream and `internal/detguard`'s own ban machinery.
+- **Step 9**: the per-AC sweep ran the orchestrator's own command per criterion rather than reading a delegate's table. AC18's first attempt produced a clean verdict from an EMPTY file list — the pattern carried only the Latin spelling against a Russian corpus — and was caught only because the section-16 site had been read separately; the corrected instrument is a conjunction with two controls, one that must fire and one that must not.
+
 ## GO notes
 
 | # | round | note | kind | route | resolution |
@@ -127,27 +130,33 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | TESTED — per design § Test Design → *Determinism*: the golden's own mint/check split discharges the separate-process clause (minted by one process, checked by another; a re-exec test here "would add nothing to it"); the no-dependence-on-evaluation-order clause is discharged by three shapes named alongside the golden, all present — repeat evaluation in one process (`TestCell_RepeatEvaluationIsIdentical`), a coordinate table evaluated in an order shuffled by a test-local fixed key vs. sorted order (`TestCell_ShuffledEvaluationOrderMatchesSortedOrder`), and a `-race` case driving one `Generator` from several goroutines (`TestCell_RaceSafeAcrossGoroutines`) |
-| AC2 | TESTED — the amendment narrowed AC2 to one clause: "unchanged by the Go toolchain version that built the binary". That clause is discharged by the two goldens, which re-run at whatever Go version `go.mod` names on every route that runs the suite, backed upstream by the stability goldens inside `math/rand/v2` and `crypto/sha256`. There is no architecture axis left in AC2 and no residue for a mechanism argument to carry. All three reconciliations are now done — subtask 11 removed the gate and its whole propagation, subtask 13 reconciled KD-37, subtask 14 struck the clause from `internal/maze/doc.go`'s package comment |
-| AC3 | TESTED (face-agreement sweep, nil hook and whole-chunk claim) |
-| AC4 | TESTED (hexgrid coord/face rapid + table tests) |
-| AC5 | TESTED (ChunkOf partition + straddle-zero table) |
-| AC6 | TESTED (ChunkDistance table + rapid triangle inequality + overflow) |
-| AC7 | TESTED (per-chunk + multi-chunk connectivity, no repair-stage guard test) |
-| AC8 | TESTED (borderCandidates/selectPortals: 1-2 count, diagonal-border-always-1) |
-| AC9 | TESTED (multi-chunk connectivity sweep over several seeds) |
-| AC10 | TESTED (addExtraPassages: zero share, positive share, capped) |
-| AC11 | TESTED (island-walled both halves + share-tolerance) |
-| AC12 | TESTED (chunksConsulted size/membership) |
-| AC13 | TESTED (prefab hook: no-hook, claimed-interior, claimed-border, claim-suppresses-fabric, asked-every-coordinate) |
-| AC14 | TESTED (drawAlgorithm: stable/zero-weight-never/spread/weight-change) |
-| AC15 | TESTED (growing-tree bias extremes differ) |
-| AC16 | TESTED (cellSeed: coord-alone, pairwise-distinct, golden) |
-| AC17 | TESTED (BenchmarkCell + BenchmarkCellPerAlgorithm exist, no threshold asserted, per design) |
-| AC18 | PASS — no Go test by design (per design § Test Design → *The closed open question*: a documentation criterion checked in review against the diff). `docs/DESIGN.md` §16.2 item 2 now records the intra-chunk algorithm choice as closed and §2.2.2 carries the decision; the case-insensitive, multi-encoding sweep over every tracked live document found that site and no other |
-| AC19 | TESTED (single-weight sweep, all five algorithms) |
+| AC | Status | Verifying command |
+|----|--------|-------------------|
+| AC1 | PASS | `go test -count=1 -run '^TestCell_(RepeatEvaluationIsIdentical|ShuffledEvaluationOrderMatchesSortedOrder|RaceSafeAcrossGoroutines)$' ./internal/maze/` — all three pass; the shuffled-order case was mutation-tested by the orchestrator (a cross-call memo on Generator: builds, vets, test RED; removed: green). The separate-process clause is discharged by the golden's mint/check split, per the design. |
+| AC2 | PASS | `go test -count=1 -run '^Test(CellsGolden|Derive_Golden)$' ./internal/maze/` — both goldens compare at the Go version `go.mod` names, and CI pins it by `go-version-file: go.mod` in every Go job. The architecture clause was struck by the owner's ruling, so AC2 now has one clause. |
+| AC3 | PASS | `go test -count=1 -run '^TestCell_(FaceAgreementOverAMultiChunkRegion|ClaimedBorderCoordinateCarriesPortalRuleBorderFaces)$' ./internal/maze/` — agreement asserted over a multi-chunk region and, separately, across a claimed chunk's border ring. |
+| AC4 | PASS | `go test -count=1 ./internal/hexgrid/` — 0 FAIL, 0 SKIP over the topology suite: neighbour symmetry, `Opposite`, and one canonical face per pair computed by `FaceOf` from either side. |
+| AC5 | PASS | `go test -count=1 -run '^TestChunkGraph_IndexMappingRoundTrips$|^TestParams_' ./internal/maze/` plus the `./internal/hexgrid/` chunk tests — `ChunkOf` floor-divides and the dimensions are a `Params` input. |
+| AC6 | PASS | `go test -count=1 -run 'ChunkDistance|Distance' ./internal/hexgrid/` — zero exactly when both coordinates lie in one chunk, and counted on the chunk grid rather than in hexes. |
+| AC7 | PASS | `go test -count=1 -run '^TestAlgorithms_EachBuildsASpanningTree$|^TestSelectIslands_NonIslandCellsStayConnectedOverInducedSubgraph$' ./internal/maze/` — connectivity over the chunk-induced subgraph, with no repair stage anywhere on the path that produced it. |
+| AC8 | PASS | `go test -count=1 -run '^TestSelectPortals_' ./internal/maze/` — one-or-two capped by the candidate count, the two diagonal borders always exactly one, and candidate agreement from either side. |
+| AC9 | PASS | `go test -count=1 -run '^TestConnectivity_MultiChunkRegionOverASeedSweep$|^TestCell_ConnectivityOverAMultiChunkRegionNilHook$' ./internal/maze/`. |
+| AC10 | PASS | `go test -count=1 -run '^TestAddExtraPassages_' ./internal/maze/` — a zero share yields exactly a tree, a positive share adds a cycle, the count is capped by availability, and the pass never opens a border face. |
+| AC11 | PASS | `go test -count=1 -run '^TestIslandsAreWalled_|^TestIslandShare_|^TestSelectIslands_' ./internal/maze/` — every island face reads Wall from both sides and the passage-reachable component equals the non-island set exactly; the tolerance is pinned at 0.01 in the test rather than chosen after measuring. The orchestrator's own mint review found 13 all-wall cells in every full chunk, which is round(0.05 of 256), and zero of them on a chunk border, across all seven chunks the golden covers. |
+| AC12 | PASS | `go test -count=1 -run '^TestChunksConsulted_' ./internal/maze/` — the consulted set's size is invariant with distance from the origin, and every member is the cell's own chunk or a face-neighbour's. |
+| AC13 | PASS | `go test -count=1 -run '^TestCell_(NoHookNoCoordinateIsMarkedAsPrefab|ClaimedInteriorCoordinateDefersAllSixFacesAndHasNoSeed|ClaimSuppressesFabricComparedToNoHook|ClaimerIsAskedAboutEveryCoordinate)$' ./internal/maze/`. |
+| AC14 | PASS | `go test -count=1 -run '^TestDrawAlgorithm_' ./internal/maze/` — the same algorithm on repeat evaluation, a zero-weight algorithm never drawn, and a weight change changing which algorithm a chunk draws. |
+| AC15 | PASS | `go test -count=1 -run '^TestGrowingTree_TwoBiasesProduceDifferentStructures$|^TestBiasThreshold_' ./internal/maze/` — a drawn algorithm's further parameter arrives as a generation input, and changing it changes the structures that algorithm builds. |
+| AC16 | PASS | `go test -count=1 -run '^TestCellSeed_' ./internal/maze/` — the per-cell value is settled by the world seed and the coordinate alone, independent of the chunk dimensions, and pairwise distinct over a coordinate table. |
+| AC17 | PASS | `go test -run '^$' -bench 'BenchmarkCell$' -benchtime=10x ./internal/maze/` reports 732572 ns/op, so one cell's cost is measurable on demand. The no-threshold half was measured as a negative with a control: a recursive search for `-bench` and `benchtime` across `Makefile`, `.github/workflows/ci.yml`, `.githooks/` and `ai-docs/scripts/` exits 1 while the same pattern fires on a constructed gate line, and `go help testflag` states "By default, no benchmarks are run." |
+| AC18 | PASS | The orchestrator's own conjunction sweep, since this criterion's verification is entirely a command: over every tracked `*.md` outside this run's plan files and the history logs, no line both names the class (maze-algorithm in either script, or algorithm near chunk) and frames it as open (открыт, не решен, не выбран, TBD, open question, undecided). BOTH controls behaved: a constructed open line matches, a constructed decided line does not. `docs/DESIGN.md:482` carries the clause struck through and marked закрыт. A first attempt returned a clean verdict from an EMPTY file list, because the pattern held only the Latin spelling against a Russian corpus. |
+| AC19 | PASS | `go test -count=1 -run '^TestAlgorithmDraw_SingleWeightSweep$|^TestAlgorithms_' ./internal/maze/`, plus the orchestrator's mint review: the golden carries one single-weight section per algorithm, and each reports its own algorithm in the per-chunk column — backtracker, kruskal, prim, growing_tree and wilson_walk all present. |
+
+
+### Step 9 observations routed to self-review
+
+- `internal/maze/golden_test.go:104,136` — `panic(err)` inside `cellsGoldenLines()`, a helper that takes no `testing.TB` and so cannot call `t.Fatal`. Not a panic-index matter (the recipe skips `_test.go` files, and `ai-docs/panic-index.md` stays the single empty row) and no gate objects; whether the helper should take a `tb testing.TB` instead is self-review's call.
+- Two outward-pointer comments of the DOC-4 review-judged narration kind, both passing `make comment-refs` because neither carries a path: `internal/maze/prefab.go:7-8` "per the design's own ordering" (raised by design-review round 7) and `internal/maze/generate_test.go:62` "per the design's own Determinism" (found by the orchestrator; the reviewer named only the first).
 
 ## Review register
 
