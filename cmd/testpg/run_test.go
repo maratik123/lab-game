@@ -609,6 +609,35 @@ func TestRun_upReattachesWithoutVouching_refusesAndDoesNotRecordAskedCount(t *te
 	}
 }
 
+// An existence check that itself fails must be treated exactly like
+// "already existed" — the conservative, fail-closed direction: nothing
+// vouches for the mount, so a request for more than one client must be
+// refused, and the recorded count must stay at the conservative floor, not
+// the count this invocation merely asked for. This pins the
+// createdByThisInvocation conjunct against existsErr: dropping it would
+// read an unanswerable existence question as "this invocation created it",
+// which would then record the asked-for count on an unvouched reattach.
+func TestRun_upContainerExistsCheckFails_treatedAsAlreadyExisted_doesNotRecordAskedCount(t *testing.T) {
+	stub := &stubSeam{
+		provisionDSN:       "postgres://shared/db",
+		probeMaxConns:      100000, // ample connection capacity: only the mount-sizing check must decline this
+		containerExistsErr: errStub("container runtime client: no socket"),
+		// no locator at all: locateOK stays false.
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up --clients 2) = 0, want non-zero: an unanswerable existence check must not be read as this invocation created the container; stderr: %s", stderr.String())
+	}
+	if !stub.persistCalled {
+		t.Fatalf("persist was not called; a refused --up must still record the DSN so --down can find the server")
+	}
+	if stub.persistClients != legacyLocatorClients {
+		t.Errorf("persist was called with clients=%d, want the conservative floor %d, not the %d this invocation merely asked for",
+			stub.persistClients, legacyLocatorClients, 2)
+	}
+}
+
 // The stale-locator counter-case for the mount refusal itself: a locator
 // vouching a LARGE count for a DIFFERENT, unrelated server must not let a
 // reattach to the CURRENT (unvouched) server through on the strength of
