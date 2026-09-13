@@ -55,14 +55,24 @@ func TestCheck_BannedImportsFlagged(t *testing.T) {
 
 func TestCheck_RandV2NonConstructorFlagged(t *testing.T) {
 	t.Parallel()
-	src := "package pkg\n\nimport \"math/rand/v2\"\n\nvar _ = rand.Float64()\n"
+	// Uint64 rather than Float64: Float64 is also a banned decimal
+	// selector, and that predicate matches on selector name alone, so
+	// it would satisfy this assertion while the rand/v2 predicate did
+	// nothing.
+	src := "package pkg\n\nimport \"math/rand/v2\"\n\nvar _ = rand.Uint64()\n"
 	dir := scratchDir(t, src)
 	problems := detguard.Check(t, dir)
 	if len(problems) == 0 {
 		t.Fatal("want a problem for a math/rand/v2 identifier other than NewChaCha8, got none")
 	}
-	if !strings.Contains(problems[0], "Float64") {
-		t.Errorf("problems = %v, want one naming Float64", problems)
+	var found bool
+	for _, p := range problems {
+		if strings.Contains(p, "math/rand/v2 identifier Uint64") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("problems = %v, want one naming the math/rand/v2 identifier Uint64", problems)
 	}
 }
 
@@ -98,12 +108,14 @@ func TestCheck_MathImportFlagged(t *testing.T) {
 }
 
 // TestCheck_DecimalFloatAccessorBlindShapeFlagged carries the blind
-// shape the design calls for: no bare float64 declaration anywhere in
-// the fixture, only a decimal float-valued method result — the shape a
-// declaration-only or import-only guard would walk straight past.
+// shape: no float64 spelled anywhere in the fixture, only a decimal
+// float-valued method result — the shape a declaration-only or
+// import-only guard walks straight past. The fixture must stay free of
+// a bare float64 declaration, or the float-type predicate satisfies the
+// assertion and this case stops discriminating.
 func TestCheck_DecimalFloatAccessorBlindShapeFlagged(t *testing.T) {
 	t.Parallel()
-	src := "package pkg\n\nimport \"github.com/shopspring/decimal\"\n\nfunc f(d decimal.Decimal) float64 {\n\treturn d.Float64AsSomethingElse()\n}\n\nfunc g(d decimal.Decimal) {\n\t_, _ = d.Float64()\n}\n"
+	src := "package pkg\n\nimport \"github.com/shopspring/decimal\"\n\nfunc g(d decimal.Decimal) {\n\t_, _ = d.Float64()\n}\n"
 	dir := scratchDir(t, src)
 	problems := detguard.Check(t, dir)
 	if len(problems) == 0 {

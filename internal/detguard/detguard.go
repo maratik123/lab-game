@@ -103,11 +103,15 @@ func checkFile(tb testing.TB, path string, f *ast.File) []string {
 }
 
 // collectMapTypedIdents does a best-effort, file-local scan for
-// identifiers assigned a map value — via make(map[...]...), a map
-// composite literal, or an explicit "var x map[...]..." declaration —
-// so a later range over that identifier is recognised as a map range
-// even though the range statement itself only ever names the
-// identifier.
+// identifiers that carry a map value, so a later range over one is
+// recognised as a map range even though the range statement itself only
+// ever names the identifier. Four shapes reach an identifier: a
+// make(map[...]...) call or a map composite literal assigned to it, an
+// explicit "var x map[...]..." declaration, a map-typed function
+// parameter, receiver or named result, and a map-typed struct field.
+// The parameter shape is the one a map most often arrives in, so a scan
+// that stopped at declarations and assignments would miss the common
+// case while reporting clean.
 func collectMapTypedIdents(f *ast.File, out map[string]bool) {
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
@@ -128,9 +132,29 @@ func collectMapTypedIdents(f *ast.File, out map[string]bool) {
 				}
 				noteIfMapExpr(out, ident.Name, node.Rhs[i])
 			}
+		case *ast.FuncDecl:
+			noteMapFields(out, node.Recv)
+		case *ast.FuncType:
+			noteMapFields(out, node.Params)
+			noteMapFields(out, node.Results)
+		case *ast.StructType:
+			noteMapFields(out, node.Fields)
 		}
 		return true
 	})
+}
+
+// noteMapFields records every named field of list whose type is a map.
+// A nil list and an unnamed field are both no-ops.
+func noteMapFields(out map[string]bool, list *ast.FieldList) {
+	if list == nil {
+		return
+	}
+	for _, field := range list.List {
+		for _, name := range field.Names {
+			noteIfMapType(out, name.Name, field.Type)
+		}
+	}
 }
 
 func noteIfMapType(out map[string]bool, name string, typ ast.Expr) {
