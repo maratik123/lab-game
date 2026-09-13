@@ -1027,3 +1027,9 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **What happened:** The plan's § 1 row for DESIGN §10 said "Чаты в новом сезоне добавляются по мере активации (D10)". D10 quotes the owner: "добавляем чаты по мере активации в начале сезона. как это будет в дальнейших сезонах - пока вне скоупа мвп". My row dropped the out-of-scope half and turned the first season's rule into a rule for every season. The design amendment for #118 copied it into §10 as «спираль строится заново». Self-review round 3 flagged the inconsistency with §2.2.3, and only then was the text brought back to D10, in the design, the plan, #117 and #118.
 **Rule:** A row that cites a decision says what the quote says and no more. Before writing it, reread the quote for its limiting clause ("пока", "вне скоупа", "в начале") and carry that clause into the row. A generalisation the owner did not make goes back to the owner as a question.
 **Escalated?** no
+
+### 2026-09-14 — process — gate spawn prompt used the interview's field labels instead of the gate contract's line shapes
+**What happened:** At `/task` Step 7 of the #119 run, the first `design-review` spawn carried the permitted set of inputs (invocation line, spec path, design path, round) but spelled them `spec_path:` / `design_path:` / `round:`, the field vocabulary of the `spec-writer` prompts the orchestrator had just been sending in the interview. The `PreToolUse` spawn hook refused it: the design-review spawn contract permits only `Spec:` / `Design:` / `Progress:` / `Round:` lines. The re-spawn in those shapes passed.
+**Rule:** Before spawning a gate agent (`design-review`, `self-review`), write the prompt in that agent's own spawn-prompt contract line shapes, not in the field vocabulary of the flow just left — the closed list binds the spelling of each line, not only which items appear.
+**Kind:** correction
+**Escalated?** no
