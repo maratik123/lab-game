@@ -156,3 +156,64 @@ func TestCheck_DirectMapCompositeLitRangeFlagged(t *testing.T) {
 		t.Fatal("want a problem for ranging over an inline map composite literal, got none")
 	}
 }
+
+// wantMapRangeMessage fails t unless problems carries the map-range
+// predicate's exact message, so a fixture that happens to also trip a
+// different predicate does not satisfy the assertion.
+func wantMapRangeMessage(t *testing.T, problems []string) {
+	t.Helper()
+	if len(problems) == 0 {
+		t.Fatal("want a problem for ranging over a map, got none")
+	}
+	for _, p := range problems {
+		if strings.Contains(p, "ranges over a map") {
+			return
+		}
+	}
+	t.Errorf("problems = %v, want one naming a map range", problems)
+}
+
+// TestCheck_MapParameterRangeFlagged carries the parameter shape: the
+// map arrives as a function parameter, never assigned or declared
+// inside the function body, so a scan that only tracked make(map...)
+// calls and var declarations would walk straight past it.
+func TestCheck_MapParameterRangeFlagged(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\nfunc f(m map[string]int) {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	dir := scratchDir(t, src)
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_MapReceiverRangeFlagged carries the receiver shape: the map
+// arrives as a method's receiver identifier.
+func TestCheck_MapReceiverRangeFlagged(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\nfunc (m map[string]int) f() {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	dir := scratchDir(t, src)
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_MapNamedResultRangeFlagged carries the named-result shape:
+// the map arrives as a function's named return value, ranged over
+// before being returned.
+func TestCheck_MapNamedResultRangeFlagged(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\nfunc f() (m map[string]int) {\n\tfor k := range m {\n\t\t_ = k\n\t}\n\treturn m\n}\n"
+	dir := scratchDir(t, src)
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}
+
+// TestCheck_MapStructFieldRangeFlagged carries the struct-field shape:
+// the only declaration that types "m" as a map is a struct field; the
+// range statement itself names a bare, otherwise-undeclared identifier
+// of that same name. The collector is a best-effort, file-scope name
+// match rather than a real scope resolution, so this is enough to
+// register "m" as map-typed — and enough to isolate the struct-field
+// arm, since neither a var declaration nor a parameter, receiver, or
+// result contributes it here.
+func TestCheck_MapStructFieldRangeFlagged(t *testing.T) {
+	t.Parallel()
+	src := "package pkg\n\ntype T struct {\n\tm map[string]int\n}\n\nfunc f() {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"
+	dir := scratchDir(t, src)
+	wantMapRangeMessage(t, detguard.Check(t, dir))
+}

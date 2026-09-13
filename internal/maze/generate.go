@@ -31,8 +31,7 @@ func New(seed int64, params Params, claimer PrefabClaimer) (*Generator, error) {
 
 // Cell is one hex cell's generated content: its prefab marker, its six
 // face states in canonical direction order, and its per-cell seed. A
-// prefab-claimed cell defers every interior face and carries no seed —
-// see PrefabClaimer.
+// prefab-claimed cell defers every interior face and carries no seed.
 type Cell struct {
 	Prefab bool
 	Faces  [6]FaceState
