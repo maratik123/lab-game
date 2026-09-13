@@ -950,3 +950,24 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** b567a7a
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-13 — testing — a guard went tautological without being edited, because the code it guards changed shape
+**What happened:** The failing test I wrote before the fix asserted `walCheckpointFactor*walSize + clients*clusterPeakMB <= mountCapMB(...)`. Against the pre-fix FIXED mount it was genuinely red at two clients — 768 MB needed of 512 — and that red is what licensed the fix. The fix then made the mount scale per client, and the same inequality became `128 + 320c <= 512c`, i.e. `128 <= 192c`: true for every count, the `clients` term cancelling. So the guard could no longer fail on the axis its own name and my *Expected behaviour* text advertised, and nothing edited the test to make that happen. Confirmed both ways in round 7 — symbolically, and by raising the build file's only literal to 9 and watching it still pass. It was still load-bearing on a different axis (removing per-client sizing from the mount fails it), which is exactly why four rounds of reviewers, and I, kept reading it as sound.
+**Rule:** A test's discriminating power is a property of the test AND the code it asserts over, so changing the code can silently remove it. When a fix alters the shape of an expression a guard asserts over — a constant becoming a function of the same variable the guard ranges over is the signal — re-run the guard's own falsifying mutation afterwards, not just before. The cheap check is algebraic: if both sides of an inequality scale with the loop variable, the variable cancels and the guard cannot fail on it. And when that happens, the honest repair is usually not to force the old axis but to find what is actually unguarded and assert THAT: here the figure's measured basis, since 320 MB per client was measured at two clients and nothing established it at nine.
+**at:** 2bd9c38
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-13 — documentation — a comment pointed outside itself with a bare document name, which the lexical gate cannot see
+**What happened:** A test fixture carried `// one cleaned per go-test-conventions' remedy`. `make comment-refs` passed it, correctly — there is no path, no extension and no URL for the lexical half of the reference ban to match — and `self-review` raised it as the review-judged half. The comment pointed at a document instead of stating the thing it described, which is the rot the ban exists to prevent: the remedy it gestured at can be reworded or removed and the comment would keep asserting it.
+**Rule:** The reference ban is not "what the gate matches". A bare document name used as a pointer is still a pointer, and the gate's green is only about the lexical half — so when writing a comment that explains WHY a fixture is shaped the way it is, state the reason itself rather than the place the reason is written down. Tell: any comment where the justification is a proper noun plus a possessive rather than a sentence about the code.
+**at:** 2bd9c38
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-13 — documentation — reported a count without establishing what the command counted
+**What happened:** I recorded the contention target's load loop as completing "15 iterations", across four surfaces, from `grep -c '^ok'` on its log. That command counts **package results**, and the loop runs four package trees per iteration — measured, the recorded run has ingest 4, scheduler 4, store 4, testdb 3, so it completed three whole iterations plus part of a fourth. Every earlier figure I carried (11, 12, 13, 14) has the same unit error. `self-review` round 8 caught it. Unlike an earlier entry in this log about asserting a count from reading rather than counting, here I DID run a command — and then assumed its unit from the shape of the thing being measured instead of from the command.
+**Rule:** A count has a unit, and the unit belongs to the command, not to the subject. Before recording a number, say out loud what one unit of the counted thing produces in the output — if one loop iteration prints four lines, then a line count is not an iteration count — and prefer counting something with a one-to-one relationship to the quantity claimed, or state the quantity in the command's own units ("15 package results") rather than translating. The load-bearing figure in the same log was the discriminator, which is a genuine occurrence count and was right; the decorative figure was the one that drifted, which is the usual way round.
+**at:** 2bd9c38
+**Kind:** correction
+**Escalated?** no
