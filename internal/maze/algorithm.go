@@ -16,9 +16,8 @@ const (
 	AlgorithmWilson
 )
 
-// String renders a using the spec's own lower_snake_case names — the
-// same spelling a biome file's weight-set keys use — for logging and
-// test failure messages.
+// String renders a in lower_snake_case — the same spelling a biome
+// file's weight-set keys use — for logging and test failure messages.
 func (a Algorithm) String() string {
 	switch a {
 	case AlgorithmBacktracker:

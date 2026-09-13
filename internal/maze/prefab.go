@@ -4,8 +4,8 @@ import "github.com/maratik123/lab-game/internal/hexgrid"
 
 // PrefabClaimer decides whether coord belongs to a prefab a later layer
 // authors. This package owns no prefab identity — Claims answers a bare
-// yes/no — and asks it before generating any fabric for coord, per the
-// design's own ordering.
+// yes/no — and asks it before generating any fabric for coord, so a
+// claimed coordinate never has fabric built for it.
 //
 // Precondition (unchecked here, and this package's own Cell is not the
 // guarantor of it): a claimer must answer identically for every cell of

@@ -119,9 +119,8 @@ func buildBacktracker(g chunkGraph, islands map[int]bool, s stream) edgeSet {
 
 // buildKruskal shuffles every non-island interior face and accepts each
 // one that joins two still-separate components, tracked by a
-// component-label array with relabel-on-merge — this design's one call
-// site for that bookkeeping, so no shared disjoint-set helper is
-// introduced.
+// component-label array with relabel-on-merge. It is the only call site
+// for that bookkeeping, so no shared disjoint-set helper is introduced.
 func buildKruskal(g chunkGraph, islands map[int]bool, s stream) edgeSet {
 	open := edgeSet{}
 	faces := nonIslandInteriorFaces(g, islands)

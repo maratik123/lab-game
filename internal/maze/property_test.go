@@ -124,8 +124,8 @@ func TestIslandsAreWalled_EveryIslandFaceIsAWallFromBothSides(t *testing.T) {
 	}
 }
 
-// TestIslandShare_AchievedShareWithinTolerance pins the instrument the
-// design fixes: dims 16x16, island share 0.05, the chunk block
+// TestIslandShare_AchievedShareWithinTolerance pins every part of its
+// instrument: dims 16x16, island share 0.05, the chunk block
 // (-2,-2)..(1,1), an absolute tolerance of ±0.01 on the achieved share.
 func TestIslandShare_AchievedShareWithinTolerance(t *testing.T) {
 	t.Parallel()

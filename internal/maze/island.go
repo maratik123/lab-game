@@ -61,9 +61,9 @@ func selectIslands(g chunkGraph, s stream, p Params) map[int]bool {
 
 // connectedOverInduced reports whether every cell of g not in islands
 // is reachable from start through interior adjacency alone, ignoring
-// any cell in islands — the chunk-induced subgraph the design requires
-// the connectivity guard to be scoped to, since a neighbouring chunk
-// would always reconnect the set over the global lattice.
+// any cell in islands. The scope is the chunk-induced subgraph and not
+// the whole lattice: over the lattice a neighbouring chunk always
+// reconnects the set, so the guard would accept every candidate.
 func connectedOverInduced(g chunkGraph, islands map[int]bool, start int) bool {
 	visited := map[int]bool{start: true}
 	stack := []int{start}

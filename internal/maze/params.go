@@ -34,8 +34,8 @@ var (
 
 // validate checks p against every precondition New rejects a bad Params
 // for, naming the offending input. Rejecting beats clamping: a silently
-// clamped share would under-deliver against the very criterion that
-// asks the achieved share to match the input.
+// clamped share would go on to under-deliver against the achieved share
+// its caller asked for, and report success while doing it.
 func (p Params) validate() error {
 	if p.Dims.Cols <= 0 || p.Dims.Rows <= 0 {
 		return fmt.Errorf("maze: dims must be positive, got %+v", p.Dims)

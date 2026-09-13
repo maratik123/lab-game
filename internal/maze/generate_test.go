@@ -60,13 +60,12 @@ func TestCell_RepeatEvaluationIsIdentical(t *testing.T) {
 // The two passes each get their OWN freshly-constructed Generator, over
 // the same seed and params, rather than sharing one. This is
 // load-bearing, not a style choice: a cross-call memo on Generator that
-// reused an earlier chunk's build for a later chunk (the failure mode
-// this scenario exists to catch, per the design's own Determinism
-// section — "also what would catch a memo added later") would still
-// agree with itself if both passes read through the same warm memo, so
-// the two passes must not be able to share any state that outlives a
-// single Cell call. The repeat-evaluation and the -race multi-goroutine
-// tests above and below cover the other two order-independence shapes.
+// reused an earlier chunk's build for a later chunk is the failure mode
+// this scenario exists to catch, and it would still agree with itself if
+// both passes read through the same warm memo. So the two passes must
+// not be able to share any state that outlives a single Cell call. The
+// repeat-evaluation and the -race multi-goroutine tests above and below
+// cover the other two order-independence shapes.
 func TestCell_ShuffledEvaluationOrderMatchesSortedOrder(t *testing.T) {
 	t.Parallel()
 
