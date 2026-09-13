@@ -1012,3 +1012,8 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** f9f24ca
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-13 — process — treated an unanswered question as the owner's confirmation and dropped it from the open list
+**What happened:** The owner wrote "мне казалось, что нужно хранить карту чанка, чтобы не генерировать заново" — a tentative phrasing. I recorded it as decision D3 in `docs/world-topology-redesign-plan.md` and, in the next reply, flagged it separately as needing confirmation. The owner answered every other question in that round but not this one. When I rewrote the plan with their answers, I kept D3 as decided, left it out of the new open-question list, and did not raise it again — reasoning privately that their answer about per-cell storage implied it. The owner had to ask what happened to it.
+**Rule:** A question the owner has not answered stays open on every surface that carries it until they answer it. An adjacent answer is not an answer to it: an inference from one reply to another question is a guess, and the rule "when uncertain — ask, don't guess" covers it. When rewriting a list of decisions, carry every unconfirmed item forward explicitly as open, and re-raise it in the reply rather than letting silence close it.
+**Escalated?** no
