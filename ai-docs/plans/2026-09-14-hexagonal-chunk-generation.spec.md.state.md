@@ -65,7 +65,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 3
 agent_id: ae266ab21629f092a
 prior_qa:
   - round: 1
@@ -74,4 +74,7 @@ prior_qa:
   - round: 1
     question: "When #29 stores a chunk's map, which task defines the stored form? Once maps are written, that form changes only by forward migration."
     answer: "What is better?"
+  - round: 2
+    question: "Which task defines the form a chunk's map takes in storage? Once maps are written, that form changes only by forward migration. I recommend this task. The form mirrors the map this task builds and the version it names, and encoding it needs no database. The goldens would then lock the stored form, so any change to it shows up in the same diff as the generator change that caused it. #29 checks a stored map against what generation yields at its version, which is simplest when the generator produces that exact form. The cost: this task gets bigger, and #29 stores a layout it did not choose."
+    answer: "This task (Recommended)"
 ```

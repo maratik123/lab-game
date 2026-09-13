@@ -17,6 +17,7 @@ The world-generation core shipped by #27 builds the maze in rhombic chunks. `doc
 8. Configuration: the chunk radius replaces the rectangular chunk dimensions in the balance configuration and its schema, and the two portal shares are generation inputs. [task: "the chunk radius key replaces the rectangular dimensions in the balance configuration and its schema"] [task: "the portal shares are generation inputs"]
 9. The generation goldens are minted again from the reworked core. [task: "goldens re-minted"]
 10. The key decisions recording the shipped core are revised wherever this rework changes what they state. [task: "each is revised where this rework changes it (KD-39's one-or-two portals per border, KD-40's island capacity)"]
+11. The stored form of a chunk map: this task defines how a generated chunk map is written for storage, and a neighbour's border is read back out of that form. [answer 2.1: "This task"] [task: "the API through which a new chunk takes its shared border from an existing neighbour's stored map instead of recomputing it"]
 
 ## Out of scope
 - Storing chunks, creating them lazily, and the per-world lock: #29 owns these. [task: "Storing chunks, lazy creation and the per-world lock — #29."]
@@ -32,7 +33,7 @@ The world-generation core shipped by #27 builds the maze in rhombic chunks. `doc
 | Question | Decision |
 |---|---|
 | While prefabs are out of the MVP, does the reworked generator still offer a point where a prefab layer plugs in? | No. The rework drops the whole-chunk prefab hook the shipped core carries, and a later prefab layer brings its own entry point with it. [answer 1.1: "No hook"] |
-| Which task defines the form a chunk's map takes in storage, given that the stored form is a persisted data contract? | TBD |
+| Which task defines the form a chunk's map takes in storage, given that the stored form is a persisted data contract? | This task. The rework defines how a chunk map is stored and reads a neighbour's border back out of that form. #29 writes and reads the stored form it is handed and decides nothing about its layout. [answer 2.1: "This task"] |
 
 ## Acceptance Criteria
 | # | Criterion |
@@ -56,6 +57,7 @@ The world-generation core shipped by #27 builds the maze in rhombic chunks. `doc
 | AC17 | KD-37 through KD-40 in `ai-docs/key-decisions.md` describe the generation core as this task leaves it. Wherever one of them described the rhombic chunk (its dimensions, its one or two portals per border, its island capacity), it now describes the hexagonal one. [task: "each is revised where this rework changes it (KD-39's one-or-two portals per border, KD-40's island capacity)"] |
 | AC18 | No live document describes the world generator's chunks by columns and rows, or its borders as carrying one or two portals. The balance configuration's own comments are one such site, and they do not bound the class; the class is every site whose claim this change falsifies, per AGENTS.md § *Propagation Rule* step 4. [task: "the chunk radius key replaces the rectangular dimensions in the balance configuration and its schema"] [task: "each is revised where this rework changes it (KD-39's one-or-two portals per border, KD-40's island capacity)"] |
 | AC19 | Generation offers no point where a prefab layer plugs in, and it never withholds a cell or a chunk from fabric generation on the grounds that it belongs to a prefab. [answer 1.1: "No hook"] |
+| AC20 | Every chunk map that generation yields has a stored form this task defines. Reading that stored form back yields the same map, with every face, every island and the generation version it names. When a chunk is generated against a neighbour's map in its stored form, the shared border comes from that stored form. [answer 2.1: "This task"] [task: "the API through which a new chunk takes its shared border from an existing neighbour's stored map instead of recomputing it"] |
 
 ## Open questions
 - None.
