@@ -32,6 +32,8 @@ _Updated: 2026-09-13 02:05_
 - [x] 10. The benchmarks — one cell, and one per algorithm under a single-weight input
 - [ ] 11. **Re-opened by the amendment** — remove the architecture gate and revert the propagation its CI job required, across the nine paths the design enumerates  ← CURRENT
 - [x] 12. Close the open question in the design corpus and record the engineering decisions
+- [ ] 13. **Added by the amendment** — KD-37 edited in place (never reverted: it postdates the gate commit), striking the clause the removal falsifies and re-anchoring the encoding rationale
+- [ ] 14. **Added by the amendment** — strike the "and CPU architectures" clause from `internal/maze/doc.go`, the last durable surface still asserting the struck axis. Code change-type, so it is its own Group C
 
 ## Decisions log
 
