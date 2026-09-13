@@ -459,6 +459,8 @@ the determinism path"* is a cross-package proposition, and `detguard` is the pac
 | 12 | Close the open question in the design corpus and record the engineering decisions: strike the intra-chunk maze-algorithm choice from the open-question list (`docs/DESIGN.md` §16.2, item 2) and record — in §2.2.2, **confined to recording the owner's interview decision and nothing more**: the per-chunk weighted draw over the decided algorithm set, with the weights biome-level — both edits **in Russian**, since `docs/**` is Russian by the workspace's own rule and is not to be translated. Anything beyond recording that decision would be redesigning the corpus and is out of scope. Then add the key decisions (the derivation chain and its domain tag, the topology/generator package split, the island-and-border rule, and what each share input is a share *of*); then sweep every live document, case-insensitively, for the same open-question claim | `docs/DESIGN.md`, `ai-docs/key-decisions.md`, plus whatever the sweep finds | — |
 | 13 | **`ai-docs/key-decisions.md`, KD-37 — edited in place, because that entry mixes one sentence the removal falsifies with rationale that is merely mis-anchored.** (a) Strike the closing clause naming `make test-arch` as the gate that watches the architecture axis: subtask 11 makes it false as it executes. (b) Strike the recorded per-architecture ChaCha8 assembly fact — it was evidence that a second `GOARCH` genuinely crosses an implementation boundary, so it justifies nothing once the gate is gone, and a key decision carrying evidence for a removed instrument invites a reader to reconstruct it. **Its lead-in is re-worded to one fact, not struck:** it currently counts them ("Two facts about the primitive, both checked rather than assumed"), and striking it outright would leave the surviving clause opening with "and its stability **is** gated upstream", dangling. That upstream-stability fact stays and matters more than before, being the upstream half of AC2's discharge. (c) Re-anchor *"Why big-endian fixed-width and no floating point anywhere"*, which rests on "the chain must yield the same bytes on a 32-bit build and a 64-bit one" — the very property AC2 no longer asserts. The mechanisms stay, so the reason recorded for them must be the one that survives: the encoding is **specified rather than inherited from the host**, which is what makes the bytes a function of the inputs alone and therefore what lets a golden pin them at all; byte-identity across word sizes drops from the reason to an incidental consequence. Add one clause recording the ruling and whose it was, so a later reader meeting host-independent encoding with no gate learns why instead of concluding it is vestigial and simplifying it away — the sentence § Determinism → *Scope* carries: the amendment removed a gate, not a property. **Then re-read KD-37 whole, not the three edited clauses:** all three touch the same paragraph, and a claim-class fix re-scans its section rather than its lines. The struck strings are quoted from the entry as it stands `[measured 2d47454:ai-docs/key-decisions.md:101 · grep -n "KD-37" ai-docs/key-decisions.md → the entry carries "Two facts about the primitive, both checked rather than assumed", the per-architecture assembly sentence, the "same bytes on a 32-bit build and a 64-bit one" rationale, and the closing `make test-arch` clause]` | `ai-docs/key-decisions.md` | 11 |
 | 14 | **Reconcile the package comment to the amended AC2 — the last durable surface still asserting the struck axis.** `internal/maze/doc.go` ends its contract sentence with the architecture clause `[measured 2d47454:internal/maze/doc.go:8-10 · sed -n '8,10p' internal/maze/doc.go → "…so the same three inputs yield the same result across processes, Go versions, and CPU architectures."]`; strike that clause, leaving processes and Go versions, which is exactly what AC2 now says and what the goldens check. This is not cosmetic: a package comment is the contract #29 and every later reader will build against, so it is the *worst* place to keep a claim no instrument checks — the same reasoning subtask 13 applies to KD-37, with more force here. The mechanisms named in the same sentence (no clock, no unseeded source, no floating-point arithmetic) stay exactly as they are; they serve the clause that remains. **Code change-type, hence its own group** — see § Handoff plan | `internal/maze/doc.go` | 3 |
+| 15 | **Write the `rapid` face-agreement property case § Test Design specifies and the tree lacks.** `internal/maze` imports `rapid` nowhere today, so the clause is unmet rather than merely thin `[measured 7cb9a18 · grep -rln pgregory.net/rapid internal/ → internal/hexgrid/coord_test.go, internal/hexgrid/chunk_test.go, internal/store/*_property_test.go; no internal/maze file]`. The shipped exhaustive sweep covers one world seed over a region straddling zero, so the property case must vary **the world seed** and reach **coordinates far from the origin** — that is the coverage it adds. Hold it to the standard the rest of this suite meets: confirm it reddens under a mutant that breaks the border key's canonical ordering, since a property case that passes on the clean tree and never goes red is a claim about the generator it never tested | `internal/maze/property_test.go` | 8 |
+| 16 | **Reconcile `internal/detguard`'s own red cases to shapes that can occur.** Delete the struct-field red case and its named-type twin: their fixture ranges over a bare `m` no scope declares, so it does not compile, and `Check` only ever runs over compilable packages — a red on an impossible shape is not evidence of reach (§ Test Design → *A red fixture must compile*). Correct `collectNamedMapTypes`' comment, which says "one level of naming" where the loop composes arbitrary chains, and give that loop the red case it lacks — a chain needing more than one pass, declared so a single-pass reduction fails it. **Widen no predicate:** the owner's ruling narrows the claim, and the blind shapes are § Deferred's | `internal/detguard/detguard.go`, `internal/detguard/detguard_test.go` | 1 |
 
 ## Handoff plan
 
@@ -478,10 +480,17 @@ the determinism path"* is a cross-package proposition, and `detguard` is the pac
 - **Handoff after Group B:** spawn `/context-reset` per
   `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry).
 - **Group C** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
-  window — subtask 14 (code change-type: `*.go`). Terminal group (1 subtask; within the `1..=10`
-  range).
+  window — subtask 14 (code change-type: `*.go`). Non-terminal (1 subtask).
+- **Handoff after Group C:** spawn `/context-reset` per
+  `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry).
+- **Group D** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
+  window — subtasks 15–16 (code change-type: `*.go`). Terminal group (2 subtasks; within the
+  `1..=10` range).
 
-Three groups, within the default maximum of four; no user gate needed.
+Four groups — **at** the default maximum, so no user gate is needed and no fifth group may be added
+without one. Group D exists because the Step-11 amendment arrived after Group C had landed: its two
+subtasks are code, so homogeneity bars them from the harness group, and a landed group cannot take
+new work. The same constraint pair that forced Group C forces this one.
 
 **Why subtask 14 gets a group of its own rather than joining either existing one.** It edits
 `internal/maze/doc.go`, which is code, so the homogeneity rule forbids it in Group B; and Group A
@@ -516,14 +525,34 @@ of its own instead.
   raise. Mitigation: the total form returns zero and consumes nothing for a bound of one or zero,
   with the precondition and that answer stated in its doc comment, and a unit test pinning both the
   value and the untouched stream — `[derived → the draw-helper test in § Test Design]`.
-- **Map iteration order reaching a drawn value.** Any map on the generation path is a latent
-  order dependency; the weight set is the obvious candidate, since a keyed mapping is its natural
-  configuration shape. Mitigation in two layers, and the first removes the need to police the
-  second: the weight set is **an array indexed by the enum**, so the type has no iteration order and
-  no unrepresentable-key validation to write; and a structural guard forbids ranging over a map
-  anywhere in either package's non-test files, with no carve-out — which stays a whole-package
-  invariant now that no legitimate caller wants one — `[derived → AC14, and the `detguard`
-  predicate applied by each package's guard test]`.
+- **Map iteration order reaching a drawn value — and the guard against it is an approximation, which
+  this row now says outright.** Any map on the generation path is a latent order dependency; the
+  weight set is the obvious candidate, since a keyed mapping is its natural configuration shape.
+  **First mitigation, and the one that removes the question rather than policing it:** the weight
+  set is an array indexed by the enum, so that type has no iteration order and no
+  unrepresentable-key validation to write.
+  **Second, the structural guard — a fast pre-check on the mechanism, not a decision procedure.**
+  `internal/detguard` decides map-ness by *identifier name*, gathered from a file's declarations,
+  assignments, parameters, receivers, named results, struct fields and the package's named map
+  types. That is a name-based approximation of a **type** question, and this design deliberately
+  excludes `go/types`, so the approximation is the design, not a defect in it. Four consecutive
+  review rounds each found a further shape it cannot see, which is the signature of a predicate
+  whose question is undecidable in its chosen idiom — so **the claim is narrowed to what the guard
+  does, on the owner's ruling** (`answer 6.1`: "Сузить заявление"), rather than the guard being
+  widened a fifth time. Known blind shapes, each measured with a control that fires: a map arriving
+  as a **function call's result** — which is how the live `islands` map enters the per-coordinate
+  entry point — a **selector**, a **type conversion**, a **function-local type declaration**, and an
+  **index expression**. They are recorded in § Deferred, not fixed here.
+  **Third, and this is what actually proves the outcome: the goldens.** Map iteration order reaching
+  a drawn value would move `testdata/cells.golden` between runs and would split the
+  order-independence scenario's two generators. That is a proof about the *property*, where the
+  guard is a cheap check on the *mechanism* — and the property is what AC1 and AC2 ask for. The
+  guard going green is therefore never the evidence; the goldens staying green is.
+  **No live defect, measured rather than assumed:** every `range` statement in the three packages'
+  non-test files was checked, and the operands that carry a map-ish name range over the **slice**
+  results of the two non-island helpers; `islands` is passed to those helpers and ranged nowhere
+  `[measured 7cb9a18:internal/maze/island.go:22,internal/maze/algorithms.go:42,56 · grep -n over the three packages' non-test range statements → the only map-ish operand is the enum-indexed weight array in draw.go; selectIslands returns map[int]bool while nonIslandNeighbors returns []int and nonIslandInteriorFaces returns []interiorFace]`
+  — `[derived → the goldens and the order-independence scenario]`.
 - **AC2 is a single axis now, and it is instrumented end to end.** The criterion is the Go toolchain
   version and nothing else, the architecture clause having been struck from the spec on the owner's
   ruling (§ Determinism → *Scope*). What it rests on, plainly, in two parts that meet: **upstream**,
@@ -690,8 +719,8 @@ chunk **inside** the region, so the claimed chunk's own interior faces, its bord
 unclaimed neighbours, and the unclaimed neighbours' view of those same faces are all in the sweep.
 The second run is the load-bearing one: a nil-hook sweep cannot see the defect class where a claimed
 cell reports nothing for a border face its unclaimed neighbour reads as a passage, so a sweep run
-only with a nil hook is an instrument that is blind to the whole prefab boundary. Plus rapid over
-world seeds and coordinates, including coordinates far from the origin and negative in both axes.
+only with a nil hook is an instrument that is blind to the whole prefab boundary. Plus a `rapid` property case, which carries the two things the exhaustive
+sweep does not: **more than one world seed**, and **coordinates far from the origin** (the sweep is one seed over a region straddling zero). It is worth writing rather than dropping because it discriminates — the same assertion reddens under a mutant that breaks the border key's canonical ordering — and `rapid` is already a direct dependency, used by `internal/hexgrid`'s own topology cases.
 
 **Connectivity — AC7, AC9.** Entry point `Cell`, **with a nil hook** — a prefab's interior structure
 is authored by #28, so a region containing a claimed chunk has no fabric path across it for this
@@ -823,10 +852,19 @@ directory. Over both packages' non-test files: no `time` import and no clock cal
 ChaCha8 constructor** — zero occurrences permitted, which is what `internal/hexgrid` will have, so
 the predicate must not be written as "exactly one" or it reds on the package that touches the
 stream not at all and the cheapest exit becomes weakening the guard; the unexported stream
-interface is what keeps the permitted count at one in `internal/maze`. And no ranging over a map.
+interface is what keeps the permitted count at one in `internal/maze`. And no ranging over a map — **as far as a name-based predicate can see one**, which is the reach § Risks now states and whose blind shapes § Deferred carries.
 Plus, in `internal/maze`, the call-site confinements above: the connectivity helper reached only
 from island selection, and the chunk-key and border-key derivations reached only from the
 chunk-fabric builder and the portal builder.
+
+**A red fixture must compile, or it proves nothing.** `detguard.Check` only ever runs over
+compilable packages, so a fixture that does not build is not a harder case — it is a case the
+predicate will never meet, and its red says nothing about the predicate's reach. Measured: a
+struct-field fixture ranging over a bare `m` that no scope declares does not compile
+`[measured 7cb9a18 · a scratch package holding "type T struct { m map[string]int }" with "for k := range m" → go vet: "undefined: m"; the occurrable spelling "for k := range v.m" compiles]`,
+so the red cases built on that shape are **deleted** rather than repaired — the shape that can occur
+is the selector, which this predicate does not catch and § Deferred records. Every surviving red
+case ranges over an operand some scope actually declares.
 
 **The float ban needs three bans, not one, because a name-matching guard is blind to the shape that
 actually threatens the rounding.** An AST predicate can only see the identifiers `float32` and
@@ -841,6 +879,26 @@ pairs a bare `float64` declaration *with* a `decimal`-float-accessor call and a 
 because a red on the declaration alone is exactly the result a blind guard also produces — it would
 look healthy while missing the class it exists for. Each ban is paired with its own scratch red
 case, one shape per assertion.
+
+## Deferred
+
+Rows for Step 12's inbox propagation. Each leaves this task by the owner's ruling
+(`answer 6.1`: "Сузить заявление"), not by oversight.
+
+- **The determinism map-range guard is blind to a map it cannot name** | `internal/detguard` decides
+  map-ness from identifier names, so a map reaching a `range` as a function call's result, a
+  selector, a type conversion, a function-local type declaration or an index expression is not
+  seen; each shape is measured with a control that fires, and the live `islands` map enters the
+  per-coordinate entry point by the first of them. Closing the class means deciding a type
+  question, i.e. `go/types`, which this design excludes; four review rounds each found one more
+  shape, so the claim was narrowed instead of the guard widened a fifth time. No live defect: the
+  goldens and the order-independence scenario prove the property the guard approximates | separate
+  issue needed? yes
+- **`collectNamedMapTypes`' fixpoint loop composes arbitrary alias chains while its comment says one
+  level** | the loop is the more useful behaviour and stays; the comment is corrected and the loop
+  gains the red case it lacks — a two-hop chain a single pass would miss — under subtask 16. The
+  residue, if any, is that a name-based predicate's reach is inherently open-ended, which the row
+  above already carries | separate issue needed? no
 
 ## Open questions
 
