@@ -1,11 +1,11 @@
 ---
 name: main-ci-failed
-description: "Address a CI-failure round on the main branch (post-merge red build). Identifies the failing run on the current main commit (or an explicit run-id via $ARGUMENTS), fetches the failing-step log, classifies (fmt / build / tidy / import-guard / test / race / arch / lint / harness / comment-refs / actionlint / other), reproduces locally, applies the fix on a NEW feature branch (main is never modified directly), runs self-review, pushes the new branch, and opens a new PR. Re-invocable per round. Downstream of /pr-merged in v1 (manual invocation); auto-invoke is deferred."
+description: "Address a CI-failure round on the main branch (post-merge red build). Identifies the failing run on the current main commit (or an explicit run-id via $ARGUMENTS), fetches the failing-step log, classifies (fmt / build / tidy / import-guard / test / race / lint / harness / comment-refs / actionlint / other), reproduces locally, applies the fix on a NEW feature branch (main is never modified directly), runs self-review, pushes the new branch, and opens a new PR. Re-invocable per round. Downstream of /pr-merged in v1 (manual invocation); auto-invoke is deferred."
 disable-model-invocation: false
 allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git rev-parse *) Bash(git branch *) Bash(git checkout *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git fetch *) Bash(git merge-base *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr create *) Bash(gh pr edit *) Bash(gh pr comment *) Bash(gh issue create *) Bash(gh run view *) Bash(gh run list *) Bash(gh api *) Bash(make *)
 ---
 
-> **CI exists** (`.github/workflows/ci.yml`): Format · Build · Test · Race · Coverage ratchet · Test fallback · Architecture · Lint · Harness guards · Actionlint, each `paths-filter`-gated. This skill acts on a red run on `main`. Note that `origin` enforces **no** required checks (private repo on a free plan — `AGENTS.md` § Permissions), so a red main is caught by watching, not by a blocked merge.
+> **CI exists** (`.github/workflows/ci.yml`): Format · Build · Test · Race · Coverage ratchet · Test fallback · Lint · Harness guards · Actionlint, each `paths-filter`-gated. This skill acts on a red run on `main`. Note that `origin` enforces **no** required checks (private repo on a free plan — `AGENTS.md` § Permissions), so a red main is caught by watching, not by a blocked merge.
 
 > **Commit authorisation.** The default rule "only commit when the user explicitly asks" does **not** apply inside this workflow. The single Step-6 commit, the Step-7 `git push -u origin <branch>`, and the Step-7 `gh pr create` are pre-authorised by `/main-ci-failed` itself — perform them without an extra prompt. Pause to confirm only when Step 3 cannot reproduce the failure locally, when self-review hits its loop cap, or when a precondition fails.
 
@@ -19,7 +19,7 @@ This skill enforces the AGENTS.md `## Workflow` axiom **"CI-fix commits get self
 
 - Identifying the failing required check on the latest main commit (or an explicit commit SHA / run-id via `$ARGUMENTS`).
 - Fetching the failing-step log via `gh run view <run-id> --log-failed` (fallback `gh api repos/:owner/:repo/actions/runs/<run-id>/logs`).
-- Classifying the failure into one of the classes (same table as `/pr-ci-failed`).
+- Classifying the failure into one of the seven classes (same table as `/pr-ci-failed`).
 - Running the mapped local reproducer; bailing if it does not reproduce.
 - Creating a NEW feature branch from main HEAD; applying the fix on it; running gates; running `self-review` (loop cap 3); committing; pushing.
 - Opening a new PR via `gh pr create` whose body cites the failing main run URL.
@@ -157,7 +157,6 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 | `import-guard` | Build | `<package>: forbidden dependency <module>` — a rule-table package's non-test dependency graph reaches a module it may not |
 | `test` | Test, Race, Coverage ratchet or Test fallback — a test that simply fails emits this signal under every one of the four | `--- FAIL:` / `FAIL	github.com/...` |
 | `race` | Race | `WARNING: DATA RACE` |
-| `arch` | Architecture | a `test-arch:` verdict line — `DISAGREED` (the generation chain is not architecture-independent; the replayed package log follows it), `REFUSING` (the runner could not execute the second architecture's binaries), or a word-size refusal (the probe rebuilt at the host's width and would have compared nothing) |
 | `lint` | Lint | a `golangci-lint` finding with its linter name in brackets, or `<path>: N lines exceeds hard limit M` from the `file-limits` gate |
 | `harness` | Harness guards | shellcheck finding, RED citation, guard-suite failure, size-cap breach, broken link |
 | `comment-refs` | Comment references | `<file>:<line>: <class>: <text>` lines — a comment in a gated file points outward |
@@ -174,7 +173,6 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 | `import-guard` | `make import-guard`, or `go run ./cmd/importguard`. Move the offending import behind a `_test.go` file or out of the graph; never delete the rule — the gate reads the **non-test** graph, so a test-only helper stays legal |
 | `test` | `go test ./... -run <TestName>`, then the full suite |
 | `race` | `go test -race ./... -run <TestName>` |
-| `arch` | `make test-arch`. A local **SKIP** line is not a reproduction and not a pass — it says this machine cannot execute the second architecture's binaries, which is the one outcome CI refuses; treat it as NO-REPRODUCE and surface it. Never weaken the gate to make it green |
 | `lint` | `golangci-lint run`; if that is clean the failure is the file-size gate — `awk` over `*.go`, hard 1000 / 1500 for `_test.go` |
 | `harness` | the failing guard itself (`shellcheck`, `check-citations.sh`, a guard suite, `check-script-shape.sh`, `wc -c`) |
 | `comment-refs` | `make comment-refs`, or `go run ./cmd/commentrefs <file>...` for the reported files |

@@ -1,11 +1,11 @@
 ---
 name: pr-ci-failed
-description: "Address one CI-failure round on the current branch's open PR. Identifies the first failing required check, fetches the failing-step log, classifies the failure (fmt / build / tidy / import-guard / test / race / arch / lint / harness / comment-refs / actionlint / other), reproduces locally, applies the fix, runs self-review, commits, pushes, and runs the unconditional AXIOM-2 PR-body read. Re-invocable per round (one CI failure per invocation). Runs downstream of /task Step 12, in parallel with /pr-commented; does NOT replace /task."
+description: "Address one CI-failure round on the current branch's open PR. Identifies the first failing required check, fetches the failing-step log, classifies the failure (fmt / build / tidy / import-guard / test / race / lint / harness / comment-refs / actionlint / other), reproduces locally, applies the fix, runs self-review, commits, pushes, and runs the unconditional AXIOM-2 PR-body read. Re-invocable per round (one CI failure per invocation). Runs downstream of /task Step 12, in parallel with /pr-commented; does NOT replace /task."
 disable-model-invocation: false
 allowed-tools: Bash(go build *) Bash(go test *) Bash(go vet *) Bash(go mod *) Bash(gofmt *) Bash(golangci-lint *) Bash(actionlint *) Bash(shellcheck *) Bash(git diff *) Bash(git status *) Bash(git log *) Bash(git rev-parse *) Bash(git branch *) Bash(git checkout *) Bash(git add *) Bash(git commit *) Bash(git push *) Bash(git fetch *) Bash(git merge-base *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh pr create *) Bash(gh pr edit *) Bash(gh pr comment *) Bash(gh issue create *) Bash(gh run view *) Bash(gh run list *) Bash(gh api *) Bash(make *)
 ---
 
-> **CI exists** (`.github/workflows/ci.yml`): Format · Build · Test · Race · Coverage ratchet · Test fallback · Architecture · Lint · Harness guards · Actionlint, each `paths-filter`-gated. A job that is filtered out does not run and is **not** a failure. Note that `origin` enforces **no** required checks (private repo on a free plan — `AGENTS.md` § Permissions), so CI is advisory at the merge button and binding by discipline.
+> **CI exists** (`.github/workflows/ci.yml`): Format · Build · Test · Race · Coverage ratchet · Test fallback · Lint · Harness guards · Actionlint, each `paths-filter`-gated. A job that is filtered out does not run and is **not** a failure. Note that `origin` enforces **no** required checks (private repo on a free plan — `AGENTS.md` § Permissions), so CI is advisory at the merge button and binding by discipline.
 
 > **Commit authorisation.** The default rule "only commit when the user explicitly asks" does **not** apply inside this workflow. The single Step-6 commit, the Step-7 `git push`, and the Step-7 unconditional `gh pr view` read are pre-authorised by `/pr-ci-failed` itself — perform them without an extra prompt. Pause to confirm only when Step 3 cannot reproduce the failure locally, when self-review hits its loop cap, or when a precondition fails.
 
@@ -19,7 +19,7 @@ This skill enforces the AGENTS.md `## Workflow` axiom **"CI-fix commits get self
 
 - Identifying the first failing required check on the current branch's open PR via `gh pr checks <N>`.
 - Fetching the failing-step log via `gh run view <run-id> --log-failed` (fallback `gh api repos/:owner/:repo/actions/runs/<run-id>/logs`).
-- Classifying the failure into one of the classes in the per-class reproducer table.
+- Classifying the failure into one of the seven classes in the per-class reproducer table.
 - Running the mapped local reproducer; bailing if it does not reproduce.
 - Applying the fix; running gates; running `self-review` (loop cap 3); committing; pushing.
 - Running the unconditional AGENTS.md AXIOM-2 PR-body read after push.
@@ -164,7 +164,6 @@ Classify the failure into exactly one class:
 | `import-guard` | Build | `<package>: forbidden dependency <module>` from the transitive-import gate — a rule-table package's non-test dependency graph reaches a module it may not |
 | `test` | Test, Race, Coverage ratchet or Test fallback — a test that simply fails emits this signal under every one of the four | `--- FAIL:` / `FAIL	github.com/...` |
 | `race` | Race | `WARNING: DATA RACE` under `go test -race` |
-| `arch` | Architecture | a `test-arch:` verdict line — `DISAGREED` (the generation chain is not architecture-independent; the replayed package log follows it), `REFUSING` (the runner could not execute the second architecture's binaries), or a word-size refusal (the probe rebuilt at the host's width and would have compared nothing) |
 | `lint` | Lint | a `golangci-lint` finding with its linter name in brackets, or `<path>: N lines exceeds hard limit M` from the `file-limits` gate |
 | `harness` | Harness guards | a shellcheck finding, a RED citation, a guard-suite failure, a size-cap breach, or a broken link |
 | `comment-refs` | Comment references | `<file>:<line>: <class>: <text>` lines from the comment-reference gate — a comment in a gated file points outward |
@@ -181,7 +180,6 @@ Classify the failure into exactly one class:
 | `import-guard` | `make import-guard`, or `go run ./cmd/importguard`. The fix is to move the offending import behind a `_test.go` file or out of the graph — never to delete the rule from the table: a test-only helper may be imported from a `_test.go` file freely, since the gate reads the **non-test** graph |
 | `test` | `go test ./... -run <TestName>`, then the full `go test ./...` |
 | `race` | `go test -race ./... -run <TestName>` |
-| `arch` | `make test-arch`. A local **SKIP** line is not a reproduction and not a pass — it says this machine cannot execute the second architecture's binaries, which is the one outcome CI refuses; treat it as NO-REPRODUCE and surface it. Never weaken the gate to make it green |
 | `lint` | `golangci-lint run`; if that is clean the failure is the file-size gate — `awk` over `*.go`, hard 1000 / 1500 for `_test.go` |
 | `harness` | the failing guard itself: `shellcheck -s bash <script>`, `bash .claude/skills/ai-audit/scripts/check-citations.sh`, `bash .claude/skills/task/scripts/test-append-task-run.sh`, `bash ai-docs/scripts/test-piped-gate-guard.sh`, `bash ai-docs/scripts/check-script-shape.sh`, or `wc -c <file>` |
 | `comment-refs` | `make comment-refs` for the whole tracked set, or `go run ./cmd/commentrefs <file>...` for the reported files. The fix is to rewrite the sentence without the pointer, not to widen the gate — the rule and its exemptions are in `ai-docs/doc-convention.md` § DOC-4 |
@@ -323,7 +321,7 @@ Print a summary to the user:
 ```
 PR #<N> CI-fix round <M> complete (commit <sha>).
 Failing check: <name>
-Class: <fmt|build|tidy|import-guard|test|race|arch|lint|harness|comment-refs|actionlint|other>
+Class: <fmt|build|tidy|import-guard|test|race|lint|harness|comment-refs|actionlint|other>
 Run URL: https://github.com/<O>/<R>/actions/runs/<run-id>
 Self-review: APPROVE round <R>
 Push: <sha>

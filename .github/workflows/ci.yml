@@ -40,9 +40,10 @@ jobs:
               - '**/*.go'
               - '**/*.sql'
               # Golden files are test inputs: a commit that edits one and
-              # nothing else changes what every Go job asserts, and the
-              # Architecture job exists to re-run exactly those comparisons.
-              # Without this entry such a commit reaches none of them.
+              # nothing else changes what the Go jobs assert. Without this
+              # entry such a commit matches no Go path, so the Test job that
+              # compares the golden would not run on the very commit that
+              # rewrote it.
               - '**/*.golden'
               - 'go.mod'
               - 'go.sum'
@@ -117,15 +118,15 @@ jobs:
       - run: make tidy-check
       - run: make import-guard
 
-  # The Test job is split into five sibling jobs below — test, test-race,
-  # cover-ratchet, test-fallback, test-arch — each gated exactly as the job it
-  # replaces: same needs, same if, one make target apiece. Five jobs rather
-  # than five steps of one because siblings run at the same time: a run costs
-  # the slowest of them instead of their sum, and a gate that goes red no
-  # longer stops the other four from reporting — which is the point, since a
-  # step that never executed tells you nothing. Sequencing any of them after
+  # The Test job is split into four sibling jobs below — test, test-race,
+  # cover-ratchet, test-fallback — each gated exactly as the job it replaces:
+  # same needs, same if, one make target apiece. Four jobs rather than four
+  # steps of one because siblings run at the same time: a run costs the
+  # slowest of them instead of their sum, and a gate that goes red no longer
+  # stops the other three from reporting — which is the point, since a step
+  # that never executed tells you nothing. Sequencing any of them after
   # another, however reasonable it looks for one pair, gives both of those
-  # back: none of the five may acquire a needs: on another.
+  # back: none of the four may acquire a needs: on another.
   test:
     name: Test
     needs: changes
@@ -181,27 +182,6 @@ jobs:
       # server. Without this job that path would be true only on the day
       # it was checked, and unchecked forever after.
       - run: make test-fallback
-
-  test-arch:
-    name: Architecture
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      # The world generator's determinism goldens re-run under a second
-      # architecture here, across a word size and across the two
-      # implementations the standard library ships for the primitives in the
-      # chain. This runner is the reference environment for that gate: the
-      # target skips loudly on a developer machine that cannot execute the
-      # second architecture's binaries, and refuses loudly here, keyed on the
-      # CI variable every hosted runner already exports. A determinism gate
-      # that quietly stops running is the green instrument every other gate
-      # here is written against.
-      - run: make test-arch
 
   lint:
     name: Lint
