@@ -10,8 +10,8 @@ _Updated: 2026-09-13 04:10_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 8 — Group B (11-13) is COMPLETE; Group C (subtask 14, code) is the next handoff
-**last_passed_gate:** `make fmt-check && make build && make vet && make lint && make file-limits && make shellcheck && make actionlint && make comment-refs && make tidy-check && make import-guard`, plus `make -n verify`, the citation guard, the six harness checkers, all sixteen guard regression suites, the hook-body shellcheck and the relative-link check | 2026-09-13
+**current_step:** Step 8 — Group C (subtask 14) is COMPLETE; all 14 subtasks done, ready for Step 9 (Verify)
+**last_passed_gate:** `go build ./... && go vet ./... && golangci-lint fmt -d && golangci-lint run && go test ./internal/maze/... && make comment-refs`, all green on `internal/maze/doc.go` | 2026-09-13
 **entry_args:** 27
 
 ## Next action
@@ -33,7 +33,7 @@ _Updated: 2026-09-13 04:10_
 - [x] 11. **Re-opened by the amendment** — remove the architecture gate and revert the propagation its CI job required, across the nine paths the design enumerates
 - [x] 12. Close the open question in the design corpus and record the engineering decisions
 - [x] 13. **Added by the amendment** — KD-37 edited in place (never reverted: it postdates the gate commit), striking the clause the removal falsifies and re-anchoring the encoding rationale
-- [ ] 14. **Added by the amendment** — strike the "and CPU architectures" clause from `internal/maze/doc.go`, the last durable surface still asserting the struck axis. Code change-type, so it is its own Group C  ← CURRENT
+- [x] 14. **Added by the amendment** — strike the "and CPU architectures" clause from `internal/maze/doc.go`, the last durable surface still asserting the struck axis. Code change-type, so it is its own Group C
 
 ## Decisions log
 
@@ -81,6 +81,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 8 (subtask 13)**: KD-37's three clauses edited in place, since the entry postdates the gate commit and the delta rule would have deleted it whole. Struck: the closing `make test-arch` clause, and the per-architecture ChaCha8 assembly fact (evidence for a removed instrument, which invites a reader to rebuild it). The two-facts lead-in was re-worded to one fact rather than struck, so the surviving upstream-stability clause does not open on a dangling "and". Re-anchored: the encoding rationale now leads with *specified rather than inherited from the host* — what makes the bytes a function of the inputs alone, and therefore what lets a golden pin them at all — with byte-identity across word sizes demoted to an incidental consequence and the owner's ruling recorded beside it, carrying the design's own sentence that the amendment removed a gate, not a property.
 - **Step 8 (subtask 13, whole-section re-read)**: the mandated re-read was run over the whole `## World generation` section, not the three edited clauses. After the edit the section's only hits for `test-arch|GOARCH|architectur|word size|32-bit|64-bit|per-architecture|amd64|arm64|loong64|riscv64|CPU` are the three inside the sentence deliberately written to record the ruling; KD-38, KD-39 and KD-40 carry none. Shape counts held across the edit (11 `## ` sections, 40 `**KD-` lines, 107 lines), so no slice was truncated. Citation guard, `comment-refs` and the link check re-run green afterwards.
 - **Step 8 (Group B close, superseding an earlier directive)**: the "unmeasured half" entry above tells a future reader to read the Architecture job on this branch's first CI run before anything else. That directive is now void — there is no Architecture job, and the unmeasured question (whether a hosted runner can execute a 32-bit binary) is no longer asked by anything on this branch. The entry stays because this log is append-only; this line is what retires it. The two `## Key discoveries` measurements about `GOARCH=386` and arm64 remain true as measurements and are left alone — they record what this machine can do, not what any gate now requires.
+- **Step 8 (subtask 14, Group C)**: struck the `and CPU architectures` clause from `internal/maze/doc.go`'s package comment, leaving "the same result across processes and Go versions" — exactly AC2's amended scope. The mechanisms sentence (no clock, no unseeded source, no floating-point arithmetic) is untouched, since it serves the surviving clause. Gates run: `go build ./...`, `go vet ./...`, `golangci-lint fmt -d` (zero-line diff), `golangci-lint run`, `go test ./internal/maze/...`, `make comment-refs` — all green. This was the last durable surface asserting the struck axis (confirmed by subtask 11's bare-word `architectur` sweep, which named only KD-37 and this file); AC2 flips from PARTIAL to TESTED. Group C (subtask 14 alone) is now complete — all 14 subtasks done.
 
 ## GO notes
 
@@ -117,7 +118,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | AC | Status |
 |----|--------|
 | AC1 | TESTED — per design § Test Design → *Determinism*: the golden's own mint/check split discharges the separate-process clause (minted by one process, checked by another; a re-exec test here "would add nothing to it"); the no-dependence-on-evaluation-order clause is discharged by three shapes named alongside the golden, all present — repeat evaluation in one process (`TestCell_RepeatEvaluationIsIdentical`), a coordinate table evaluated in an order shuffled by a test-local fixed key vs. sorted order (`TestCell_ShuffledEvaluationOrderMatchesSortedOrder`), and a `-race` case driving one `Generator` from several goroutines (`TestCell_RaceSafeAcrossGoroutines`) |
-| AC2 | PARTIAL — the amendment narrowed AC2 to one clause: "unchanged by the Go toolchain version that built the binary". That clause is discharged by the two goldens, which re-run at whatever Go version `go.mod` names on every route that runs the suite, backed upstream by the stability goldens inside `math/rand/v2` and `crypto/sha256`. There is no architecture axis left in AC2 and no residue for a mechanism argument to carry. Two of the three reconciliations are now done — subtask 11 removed the gate and its whole propagation, subtask 13 reconciled KD-37 — so PARTIAL rather than TESTED for exactly one remaining reason: `internal/maze/doc.go` still asserts cross-architecture stability in its package comment, which is subtask 14 |
+| AC2 | TESTED — the amendment narrowed AC2 to one clause: "unchanged by the Go toolchain version that built the binary". That clause is discharged by the two goldens, which re-run at whatever Go version `go.mod` names on every route that runs the suite, backed upstream by the stability goldens inside `math/rand/v2` and `crypto/sha256`. There is no architecture axis left in AC2 and no residue for a mechanism argument to carry. All three reconciliations are now done — subtask 11 removed the gate and its whole propagation, subtask 13 reconciled KD-37, subtask 14 struck the clause from `internal/maze/doc.go`'s package comment |
 | AC3 | TESTED (face-agreement sweep, nil hook and whole-chunk claim) |
 | AC4 | TESTED (hexgrid coord/face rapid + table tests) |
 | AC5 | TESTED (ChunkOf partition + straddle-zero table) |
