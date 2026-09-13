@@ -65,7 +65,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 3
+round: 4
 agent_id: ae266ab21629f092a
 prior_qa:
   - round: 1
@@ -77,4 +77,10 @@ prior_qa:
   - round: 2
     question: "Which task defines the form a chunk's map takes in storage? Once maps are written, that form changes only by forward migration. I recommend this task. The form mirrors the map this task builds and the version it names, and encoding it needs no database. The goldens would then lock the stored form, so any change to it shows up in the same diff as the generator change that caused it. #29 checks a stored map against what generation yields at its version, which is simplest when the generator produces that exact form. The cost: this task gets bigger, and #29 stores a layout it did not choose."
     answer: "This task (Recommended)"
+  - round: 3
+    question: "Approve and post cross-link comment?"
+    answer: "Tweak first"
+  - round: 3
+    question: "Что поправить в спеке? (the orchestrator's note shown to the owner just before, verbatim: «Обратите внимание: AC20 — это расширение задачи, которое вы выбрали. Задача заметно вырастает: сериализация карты с проверкой «записали, прочитали, получили то же».»)"
+    answer: "Давай откатим расширение скоупа?"
 ```
