@@ -42,8 +42,13 @@ type stubSeam struct {
 	containerExistsName    string
 	containerExistsRyukEnv string
 
-	locateDSN string
-	locateOK  bool
+	locateDSN     string
+	locateClients int
+	locateOK      bool
+
+	persistCalled  bool
+	persistDSN     string
+	persistClients int
 
 	forgetCalled bool
 
@@ -81,8 +86,19 @@ func (s *stubSeam) seam() seam {
 			s.containerExistsRyukEnv = os.Getenv("TESTCONTAINERS_RYUK_DISABLED")
 			return s.containerPresent, s.containerExistsErr
 		},
-		locate:  func() (string, bool) { return s.locateDSN, s.locateOK },
-		persist: func(string) error { return nil },
+		locate: func() (string, int, bool) {
+			sizedFor := s.locateClients
+			if sizedFor == 0 {
+				sizedFor = 1 // mirrors readLocator's legacy-file fail-closed default
+			}
+			return s.locateDSN, sizedFor, s.locateOK
+		},
+		persist: func(dsn string, clients int) error {
+			s.persistCalled = true
+			s.persistDSN = dsn
+			s.persistClients = clients
+			return nil
+		},
 		forget: func() error {
 			s.forgetCalled = true
 			return nil
@@ -191,6 +207,19 @@ func TestRunChild_noDSNNoLocator_seamCalled_stopRunsOnPass(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "ceiling "+strconv.Itoa(want)) {
 		t.Errorf("stderr = %q, want the granted ceiling %d echoed", stderr.String(), want)
+	}
+	// The same log line also carries the mount option string this run's
+	// client count derives, and the client/parallel counts themselves —
+	// each has been dropped from the format string before and left the
+	// build and every other assertion green.
+	if wantMount := testdb.MountOptions(1); !strings.Contains(stderr.String(), wantMount) {
+		t.Errorf("stderr = %q, want the mount option string %q echoed", stderr.String(), wantMount)
+	}
+	if !strings.Contains(stderr.String(), "clients=1") {
+		t.Errorf("stderr = %q, want clients=1 echoed", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "parallel=1") {
+		t.Errorf("stderr = %q, want parallel=1 echoed", stderr.String())
 	}
 }
 
@@ -337,6 +366,64 @@ func TestRunChild_locatorAdmits_seamNotCalled_noStop(t *testing.T) {
 	}
 }
 
+// The mount is bound by the client count a server was provisioned for, not
+// by anything a live connection can reveal, so a run asking for more
+// clients than the long-lived server was sized for must decline it even
+// though the server otherwise answers fine.
+func TestRunChild_locatorSizedForFewerClients_declinedNamingBothCounts(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubSeam{
+		locateDSN:     "postgres://longlived/db",
+		locateOK:      true,
+		locateClients: 1,
+		probeMaxConns: 100000, // ample connection capacity: only the sizing check must decline this
+	}
+	var stdout, stderr bytes.Buffer
+
+	code := runChild(t.Context(), exitChild(0), noLookup, stub.seam(), 2, 1, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("runChild = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !stub.provisionCalled {
+		t.Errorf("provision was not called; a server sized for fewer clients than this run needs must fall through")
+	}
+	if !strings.Contains(stderr.String(), "sized for 1 client(s)") {
+		t.Errorf("stderr = %q, want the server's own sized-for count named", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "needs 2;") {
+		t.Errorf("stderr = %q, want this run's needed count named", stderr.String())
+	}
+}
+
+// The counter-case: a server sized for at least as many clients as this run
+// needs stays usable, so the reuse path is not dead code.
+func TestRunChild_locatorSizedForEnoughClients_stillUsed(t *testing.T) {
+	t.Parallel()
+	const dsn = "postgres://longlived/db"
+
+	stub := &stubSeam{
+		locateDSN:     dsn,
+		locateOK:      true,
+		locateClients: 4,
+		probeMaxConns: 100000,
+	}
+	var stdout, stderr bytes.Buffer
+
+	code := runChild(t.Context(), readDSNChild, noLookup, stub.seam(), 2, 1, &stdout, &stderr)
+
+	if code != 0 {
+		t.Fatalf("runChild = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if stub.provisionCalled {
+		t.Errorf("provision was called; a server sized for enough clients must be used as found")
+	}
+	if got := stdout.String(); got != dsn {
+		t.Errorf("child saw DSN %q, want %q", got, dsn)
+	}
+}
+
 func TestRunChild_ceilingMatchesTheFormula(t *testing.T) {
 	t.Parallel()
 	const clients, parallel = 2, 3
@@ -355,6 +442,26 @@ func TestRunChild_ceilingMatchesTheFormula(t *testing.T) {
 	}
 	if stub.provisionOpts.ConnCeiling != want {
 		t.Errorf("provision was called with ConnCeiling=%d, want %d", stub.provisionOpts.ConnCeiling, want)
+	}
+	if stub.provisionOpts.Clients != clients {
+		t.Errorf("provision was called with Clients=%d, want %d", stub.provisionOpts.Clients, clients)
+	}
+	// clients and parallel are distinct here (2 vs 3), and the mount string
+	// this run's own client count derives is distinct from a one-client
+	// mount, so a mutant substituting a zero/hard-coded count into the log
+	// call, or one swapping the clients/parallel format arguments, changes
+	// what gets logged even though every assertion above still passes.
+	if wantMount := testdb.MountOptions(clients); !strings.Contains(stderr.String(), wantMount) {
+		t.Errorf("stderr = %q, want the mount option string %q for this run's own client count", stderr.String(), wantMount)
+	}
+	if oneClientMount := testdb.MountOptions(1); strings.Contains(stderr.String(), oneClientMount) {
+		t.Errorf("stderr = %q, want the mount sized for %d clients, not a one-client mount %q", stderr.String(), clients, oneClientMount)
+	}
+	if !strings.Contains(stderr.String(), "clients=2") {
+		t.Errorf("stderr = %q, want clients=2 echoed", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "parallel=3") {
+		t.Errorf("stderr = %q, want parallel=3 echoed", stderr.String())
 	}
 }
 
@@ -408,7 +515,7 @@ func TestRun_upOnAnUndersizedExistingServer_failsNamingTheCapacity(t *testing.T)
 	// was created with, so provisioning "succeeds" while granting less than
 	// this invocation asked for. Reporting the requested number here would
 	// have the caller believe a larger client count was granted.
-	stub := &stubSeam{provisionDSN: "postgres://shared/db", probeMaxConns: 8}
+	stub := &stubSeam{provisionDSN: "postgres://shared/db", probeMaxConns: 8, containerPresent: true}
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code == 0 {
@@ -416,6 +523,292 @@ func TestRun_upOnAnUndersizedExistingServer_failsNamingTheCapacity(t *testing.T)
 	}
 	if !strings.Contains(stderr.String(), "capacity is 8") {
 		t.Errorf("stderr = %q, want the server's own capacity named", stderr.String())
+	}
+	if stub.provisionOpts.Clients != 2 {
+		t.Errorf("--up provisioned with Clients=%d, want 2", stub.provisionOpts.Clients)
+	}
+}
+
+// A container already running under the shared name keeps the PGDATA mount
+// it was created with, and the mount cannot be read back from a live
+// connection the way the connection ceiling can. runUp must therefore
+// compare against the client count the PRIOR --up recorded before this
+// call overwrites the locator, and refuse when this invocation asks for
+// more.
+func TestRun_upOnAServerSizedForFewerClients_failsNamingTheMount(t *testing.T) {
+	stub := &stubSeam{
+		provisionDSN:     "postgres://shared/db",
+		probeMaxConns:    100000, // ample connection capacity: only the mount-sizing check must decline this
+		locateDSN:        "postgres://shared/db",
+		locateOK:         true,
+		locateClients:    1,
+		containerPresent: true, // reattached, not created by this invocation: the mount check applies
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up --clients 2) = 0, want non-zero; stderr: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "sized for 1 client(s)") {
+		t.Errorf("stderr = %q, want the prior sized-for count named", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "asks for 2;") {
+		t.Errorf("stderr = %q, want this invocation's own client count named", stderr.String())
+	}
+}
+
+// The counter-case: a container this invocation actually CREATES (no prior
+// locator, and containerExists confirms it did not already exist) is
+// correctly sized by construction, so it must not be refused by the
+// mount-sizing check, and it must persist the client count this invocation
+// actually asked for.
+func TestRun_upCreatesContainer_persistsThisInvocationsClientCount(t *testing.T) {
+	stub := &stubSeam{
+		provisionDSN:     "postgres://shared/db",
+		probeMaxConns:    100000,
+		containerPresent: false, // did not exist before: this invocation created it
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "2", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--up --clients 2 --parallel 1) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !stub.persistCalled {
+		t.Fatalf("persist was not called")
+	}
+	if stub.persistClients != 2 {
+		t.Errorf("persist was called with clients=%d, want 2", stub.persistClients)
+	}
+}
+
+// The bug this branch closes: no prior locator exists (a fresh checkout, or
+// one whose locator file was deleted to clear a stale record), but the named
+// container was already there — provision reattaches to it by name — and
+// nothing vouches for its mount being big enough. This must be refused, and
+// must NOT record the count this invocation merely asked for: recording it
+// would let a later run trust a mount that was never confirmed to hold it,
+// exactly the defect a stale locator's absence let through before this fix.
+func TestRun_upReattachesWithoutVouching_refusesAndDoesNotRecordAskedCount(t *testing.T) {
+	stub := &stubSeam{
+		provisionDSN:     "postgres://shared/db",
+		probeMaxConns:    100000, // ample connection capacity: only the mount-sizing check must decline this
+		containerPresent: true,   // already existed: this invocation reattached, it did not create
+		// no locator at all: locateOK stays false.
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up --clients 2) = 0, want non-zero: a reattach nothing vouches for must be refused; stderr: %s", stderr.String())
+	}
+	if !stub.persistCalled {
+		t.Fatalf("persist was not called; a refused --up must still record the DSN so --down can find the server")
+	}
+	if stub.persistClients != legacyLocatorClients {
+		t.Errorf("persist was called with clients=%d, want the conservative floor %d, not the %d this invocation merely asked for",
+			stub.persistClients, legacyLocatorClients, 2)
+	}
+}
+
+// An existence check that itself fails must be treated exactly like
+// "already existed" — the conservative, fail-closed direction: nothing
+// vouches for the mount, so a request for more than one client must be
+// refused, and the recorded count must stay at the conservative floor, not
+// the count this invocation merely asked for. This pins the
+// createdByThisInvocation conjunct against existsErr: dropping it would
+// read an unanswerable existence question as "this invocation created it",
+// which would then record the asked-for count on an unvouched reattach.
+func TestRun_upContainerExistsCheckFails_treatedAsAlreadyExisted_doesNotRecordAskedCount(t *testing.T) {
+	stub := &stubSeam{
+		provisionDSN:       "postgres://shared/db",
+		probeMaxConns:      100000, // ample connection capacity: only the mount-sizing check must decline this
+		containerExistsErr: errStub("container runtime client: no socket"),
+		// no locator at all: locateOK stays false.
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up --clients 2) = 0, want non-zero: an unanswerable existence check must not be read as this invocation created the container; stderr: %s", stderr.String())
+	}
+	if !stub.persistCalled {
+		t.Fatalf("persist was not called; a refused --up must still record the DSN so --down can find the server")
+	}
+	if stub.persistClients != legacyLocatorClients {
+		t.Errorf("persist was called with clients=%d, want the conservative floor %d, not the %d this invocation merely asked for",
+			stub.persistClients, legacyLocatorClients, 2)
+	}
+}
+
+// The stale-locator counter-case for the mount refusal itself: a locator
+// vouching a LARGE count for a DIFFERENT, unrelated server must not let a
+// reattach to the CURRENT (unvouched) server through on the strength of
+// that unrelated count.
+func TestRun_upReattachesWithStaleLocatorForAnotherServer_refusesOnThatServersOwnMerit(t *testing.T) {
+	stub := &stubSeam{
+		provisionDSN:     "postgres://shared/db",
+		probeMaxConns:    100000, // ample connection capacity: only the mount-sizing check must decline this
+		locateDSN:        "postgres://a-previous-server-now-gone/db",
+		locateOK:         true,
+		locateClients:    10, // a large count, but for a server this invocation is not reattaching to
+		containerPresent: true,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "5", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up --clients 5 --parallel 1) = 0, want non-zero: a stale locator naming a DIFFERENT server must not vouch for this one; stderr: %s", stderr.String())
+	}
+	if stub.persistClients != legacyLocatorClients {
+		t.Errorf("persist was called with clients=%d, want the conservative floor %d", stub.persistClients, legacyLocatorClients)
+	}
+}
+
+// The no-downgrade case: a prior --up already vouched for this server at a
+// LARGER client count than this invocation asks for. A smaller ask must not
+// overwrite that larger, still-true count.
+func TestRun_upSmallerAskOnLargerVouchedServer_keepsTheLargerCount(t *testing.T) {
+	const dsn = "postgres://shared/db"
+	stub := &stubSeam{
+		provisionDSN:     dsn,
+		probeMaxConns:    100000,
+		locateDSN:        dsn,
+		locateOK:         true,
+		locateClients:    2,
+		containerPresent: true, // reattached to the same, already-vouched server
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--up --clients 1) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if stub.persistClients != 2 {
+		t.Errorf("persist was called with clients=%d, want the larger vouched count 2 kept, not downgraded to this invocation's ask", stub.persistClients)
+	}
+}
+
+// A refused --up (capacity too small for what this invocation asked) must
+// not upgrade the recorded client count, and must still record the DSN so
+// --down can find the server it just reattached to.
+func TestRun_upRefusedOnCapacity_doesNotRaiseRecordedClients_stillRecordsDSN(t *testing.T) {
+	const dsn = "postgres://shared/db"
+	stub := &stubSeam{
+		provisionDSN:     dsn,
+		probeMaxConns:    8, // far below any computed ceiling
+		locateDSN:        dsn,
+		locateOK:         true,
+		locateClients:    3,
+		containerPresent: true, // reattached to the same, already-vouched server
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "5", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up --clients 5 --parallel 1) = 0, want non-zero; stderr: %s", stderr.String())
+	}
+	if !stub.persistCalled {
+		t.Fatalf("persist was not called; a refused --up must still record the DSN so --down can find the server")
+	}
+	if stub.persistDSN != dsn {
+		t.Errorf("persist was called with DSN=%q, want %q", stub.persistDSN, dsn)
+	}
+	if stub.persistClients != 3 {
+		t.Errorf("persist was called with clients=%d, want the prior recorded count 3 left unchanged", stub.persistClients)
+	}
+}
+
+// The mount-sizing refusal is the same story: it must not upgrade the
+// recorded count either.
+func TestRun_upRefusedOnMount_doesNotRaiseRecordedClients(t *testing.T) {
+	const dsn = "postgres://shared/db"
+	stub := &stubSeam{
+		provisionDSN:     dsn,
+		probeMaxConns:    100000, // ample connection capacity: only the mount check must decline this
+		locateDSN:        dsn,
+		locateOK:         true,
+		locateClients:    1,
+		containerPresent: true, // reattached, not created by this invocation: the mount check applies
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("run(--up --clients 2) = 0, want non-zero; stderr: %s", stderr.String())
+	}
+	if !stub.persistCalled {
+		t.Fatalf("persist was not called")
+	}
+	if stub.persistClients != 1 {
+		t.Errorf("persist was called with clients=%d, want the prior recorded count 1 left unchanged", stub.persistClients)
+	}
+}
+
+// A probe error leaves the recorded count exactly where it was too: the
+// capacity (and by extension whether this invocation's own count is earned)
+// could not even be confirmed. The exit code stays 0 on this path: the
+// server IS up and usable (provisioning itself succeeded), only reading its
+// capacity back afterwards failed, which is weaker evidence than an actual
+// undersized answer and does not itself prove the server can't serve this
+// run.
+func TestRun_upProbeError_doesNotRaiseRecordedClients_exitsZero(t *testing.T) {
+	const dsn = "postgres://shared/db"
+	stub := &stubSeam{
+		provisionDSN:     dsn,
+		probeErr:         errUnreachable,
+		locateDSN:        dsn,
+		locateOK:         true,
+		locateClients:    3,
+		containerPresent: true, // reattached to the same, already-vouched server
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "5", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--up --clients 5 --parallel 1) = %d, want 0 when only the capacity probe failed; stderr: %s", code, stderr.String())
+	}
+	if !stub.persistCalled {
+		t.Fatalf("persist was not called; a probe error must still record the DSN")
+	}
+	if stub.persistDSN != dsn {
+		t.Errorf("persist was called with DSN=%q, want %q", stub.persistDSN, dsn)
+	}
+	if stub.persistClients != 3 {
+		t.Errorf("persist was called with clients=%d, want the prior recorded count 3 left unchanged", stub.persistClients)
+	}
+}
+
+// A successful --up does record this invocation's own client count.
+func TestRun_upSucceeds_recordsThisInvocationsClientCount(t *testing.T) {
+	const dsn = "postgres://shared/db"
+	stub := &stubSeam{
+		provisionDSN:  dsn,
+		probeMaxConns: 100000,
+		locateDSN:     dsn,
+		locateOK:      true,
+		locateClients: 1,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--up --clients 1) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if stub.persistClients != 1 {
+		t.Errorf("persist was called with clients=%d, want 1", stub.persistClients)
+	}
+}
+
+// A stale locator naming a DIFFERENT server than the one this invocation
+// just provisioned must not be trusted for the mount check, and a correctly
+// sized --up must not be refused because of it.
+func TestRun_upStaleLocatorNamesAnotherServer_notRefused_recordsThisCount(t *testing.T) {
+	stub := &stubSeam{
+		provisionDSN:  "postgres://shared/db",
+		probeMaxConns: 100000,
+		locateDSN:     "postgres://a-previous-server-now-gone/db",
+		locateOK:      true,
+		locateClients: 1, // would refuse a 2-client run if wrongly trusted
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--up --clients 2) = %d, want 0; a stale locator naming a different server must not refuse this: stderr: %s", code, stderr.String())
+	}
+	if stub.persistClients != 2 {
+		t.Errorf("persist was called with clients=%d, want this invocation's own count 2", stub.persistClients)
 	}
 }
 
@@ -796,6 +1189,42 @@ func TestRun_down_unreachablePresent_disablesReaperBeforeExistsCheck(t *testing.
 	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run(--down) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !stub.containerExistsCalled {
+		t.Fatalf("containerExists was never called")
+	}
+	if stub.containerExistsRyukEnv != "true" {
+		t.Errorf("TESTCONTAINERS_RYUK_DISABLED at containerExists time = %q, want %q", stub.containerExistsRyukEnv, "true")
+	}
+}
+
+// Not parallel: asserts on the process-wide reaper environment variable.
+// Pins the same ordering as the --down variant above, on the --up path:
+// the reaper must be disabled BEFORE the pre-provisioning existence check,
+// because that check already builds the container-runtime client the
+// reaper setting is read by.
+func TestRun_up_disablesReaperBeforeExistsCheck(t *testing.T) {
+	orig, hadOrig := os.LookupEnv("TESTCONTAINERS_RYUK_DISABLED")
+	t.Cleanup(func() {
+		if hadOrig {
+			_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", orig)
+		} else {
+			_ = os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED")
+		}
+	})
+	if err := os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED"); err != nil {
+		t.Fatalf("Unsetenv: %v", err)
+	}
+
+	stub := &stubSeam{
+		provisionDSN:     "postgres://shared/db",
+		probeMaxConns:    100000,
+		containerPresent: false,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "1", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--up) = %d, want 0; stderr: %s", code, stderr.String())
 	}
 	if !stub.containerExistsCalled {
 		t.Fatalf("containerExists was never called")
