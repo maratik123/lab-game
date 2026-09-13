@@ -39,6 +39,12 @@ jobs:
             go:
               - '**/*.go'
               - '**/*.sql'
+              # Golden files are test inputs: a commit that edits one and
+              # nothing else changes what the Go jobs assert. Without this
+              # entry such a commit matches no Go path, so the Test job that
+              # compares the golden would not run on the very commit that
+              # rewrote it.
+              - '**/*.golden'
               - 'go.mod'
               - 'go.sum'
               - '.golangci.yml'
