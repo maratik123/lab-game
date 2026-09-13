@@ -65,7 +65,13 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: ae266ab21629f092a
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "While prefabs are out of the MVP, does the reworked generator still offer a point where a prefab layer plugs in? DESIGN 2.2.3 only requires that MVP code not rule prefabs out."
+    answer: "No hook"
+  - round: 1
+    question: "When #29 stores a chunk's map, which task defines the stored form? Once maps are written, that form changes only by forward migration."
+    answer: "What is better?"
 ```

@@ -31,7 +31,7 @@ The world-generation core shipped by #27 builds the maze in rhombic chunks. `doc
 ## Key decisions
 | Question | Decision |
 |---|---|
-| While prefabs are out of the MVP, does the reworked generator still offer a point where a prefab layer plugs in? | TBD |
+| While prefabs are out of the MVP, does the reworked generator still offer a point where a prefab layer plugs in? | No. The rework drops the whole-chunk prefab hook the shipped core carries, and a later prefab layer brings its own entry point with it. [answer 1.1: "No hook"] |
 | Which task defines the form a chunk's map takes in storage, given that the stored form is a persisted data contract? | TBD |
 
 ## Acceptance Criteria
@@ -55,6 +55,7 @@ The world-generation core shipped by #27 builds the maze in rhombic chunks. `doc
 | AC16 | The generation goldens in the repository record what the reworked hexagonal-chunk generator yields. [task: "goldens re-minted"] |
 | AC17 | KD-37 through KD-40 in `ai-docs/key-decisions.md` describe the generation core as this task leaves it. Wherever one of them described the rhombic chunk (its dimensions, its one or two portals per border, its island capacity), it now describes the hexagonal one. [task: "each is revised where this rework changes it (KD-39's one-or-two portals per border, KD-40's island capacity)"] |
 | AC18 | No live document describes the world generator's chunks by columns and rows, or its borders as carrying one or two portals. The balance configuration's own comments are one such site, and they do not bound the class; the class is every site whose claim this change falsifies, per AGENTS.md § *Propagation Rule* step 4. [task: "the chunk radius key replaces the rectangular dimensions in the balance configuration and its schema"] [task: "each is revised where this rework changes it (KD-39's one-or-two portals per border, KD-40's island capacity)"] |
+| AC19 | Generation offers no point where a prefab layer plugs in, and it never withholds a cell or a chunk from fabric generation on the grounds that it belongs to a prefab. [answer 1.1: "No hook"] |
 
 ## Open questions
 - None.
