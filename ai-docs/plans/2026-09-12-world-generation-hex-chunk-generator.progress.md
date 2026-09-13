@@ -10,7 +10,7 @@ _Updated: 2026-09-13 04:10_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 7 — design-review round 7 pending; all 14 subtasks are implemented and Step 9 follows the verdict
+**current_step:** Step 9 — Verify; the design gate is closed (round 7 GO, all items folded and confirmed) and all 14 subtasks are implemented
 **last_passed_gate:** `go build ./... && go vet ./... && golangci-lint fmt -d && golangci-lint run && go test ./internal/maze/... && make comment-refs`, all green on `internal/maze/doc.go` | 2026-09-13
 **entry_args:** 27
 
@@ -108,6 +108,14 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | G15 | 6 | "`actionlint .github/workflows/ci.yml` before staging the workflow edit" | design-internal | folded | design § Decomposition row 11 @ bd6a52b — actionlint required; shellcheck explicitly not engaged, the recipe body going away with the target |
 | G16 | 6 | "After subtask 13, re-read KD-37 **whole** rather than the three edited clauses" | design-internal | folded | design § Decomposition row 13 @ bd6a52b — the whole-section re-read is stated as the obligation |
 | G17 | 6 | "**Round-trip required:** before Step 8, update the design doc to incorporate each note/recommendation above" | design-internal | folded | design round 7 @ bd6a52b — all seven verified landed by reading the diff, not by the delegate's return summary |
+| G18 | 7 | "The amendment's two decisive sentences assert external-tool behaviour untagged" | design-internal | folded | design § Decomposition row 11 @ 9647cf0 — both forms tagged `[measured git 2.55.0 · git help diff → …]`, classified as toolchain rather than commit-pinned facts |
+| G19 | 7 | "a `git ls-files` sweep" | design-internal | folded | design § Decomposition row 11 @ 9647cf0 — narrowed: `--cached` and the staged-set gate are blind to an unstaged edit, `ls-files` only to a file not in the index at all; verified in a throwaway repo |
+| G20 | 7 | "§ Test Design's sibling paragraph still says "The acceptance is the delta" with no moment-binding" | design-internal | folded | design § Test Design @ 9647cf0 — the twin now names no command form and points at row 11, so the qualifier travels with the form |
+| G21 | 7 | "The row's new control-pairing rule names `docs/DESIGN.md`, "which subtask 12 edited"" | design-internal | folded | design § Decomposition row 11 @ 9647cf0 — replaced by the property that makes a control discriminating: a path already changed between `e216d5d^` and the current HEAD |
+| G22 | 7 | "`Algorithm.String()` ships as exported production code whose only callers are tests" | design-internal | folded | design § API sketch @ 9647cf0 — recorded as production surface on merit: it satisfies `fmt.Stringer`, governs every formatted render, and carries the canonical spelling the golden's algorithm column uses; the maze-renders/#28-parses seam is recorded with it |
+| G23 | 7 | "Issues 1-4 all live in one paragraph-pair. Fold them together and re-read both surfaces whole" | design-internal | folded | design @ 9647cf0 — the whole-read caught a rotting tag the clause view hid: the sole-commit premise was pinned on the HEAD-relative `e216d5d..HEAD`, which had become non-empty; re-anchored on `4315aef..e216d5d^` and `e216d5d^..e216d5d`, verified 0 and 1 by the orchestrator |
+| G24 | 7 | "for Step 9/10 rather than the fold: `internal/maze/prefab.go`'s `PrefabClaimer` comment ends "per the design's own ordering"" | design-internal | deferred to Step 9 | deferred to Step 9 — DOC-4 review-judged narration; the orchestrator found a second site the reviewer did not name, `internal/maze/generate_test.go:62` |
+| G25 | 7 | "**Round-trip required:** before Step 8, update the design doc to incorporate each note/recommendation above" | design-internal | folded | design round 8 @ 9647cf0 — all five items verified landed by reading the diff, plus the rotting tag re-measured against git |
 
 ## Key discoveries (don't re-investigate)
 
