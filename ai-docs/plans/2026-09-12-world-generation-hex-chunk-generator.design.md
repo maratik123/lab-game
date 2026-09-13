@@ -61,6 +61,14 @@ SHA-256, the owned reductions and the absence of map ranging were never architec
 they are what makes the output a function of its inputs at all, which the toolchain clause and
 plain reproducibility both need. What the amendment removes is a **gate**, not a property.
 
+**Every durable surface that asserted the struck axis is reconciled, the deliverable's own package
+comment included.** `internal/maze/doc.go` shipped with the pre-amendment wording — "the same three
+inputs yield the same result across processes, Go versions, and CPU architectures" — and subtask 14
+strikes the architecture clause. Keeping it would leave the repository's *most* binding statement
+of the contract, the one #29 builds against, asserting a property that no instrument checks once
+the gate is gone. A doc comment is a weaker place to keep an unchecked claim than a design
+document, not a stronger one.
+
 1. **Every hashed input is encoded at a fixed width, big-endian, behind a domain tag.** The
    preimage is built by one helper per width, each reinterpreting a signed value's
    two's-complement bits. No `int`-width value and no reflection-driven encoder ever reaches a
@@ -435,8 +443,10 @@ the determinism path"* is a cross-package proposition, and `detguard` is the pac
 | 8 | `Generator`, `New`, `Cell`, the chunks-consulted function `Cell` itself uses, and the `PrefabClaimer` hook with the prefab boundary § Approach sets out — the claim checked before any chunk build, interior faces deferred, **border faces still carried from the portal rule**, no cell seed, and the whole-chunk granularity stated as the interface's precondition with its guarantor named | `internal/maze/generate.go`, `internal/maze/prefab.go`, `internal/maze/generate_test.go`, `internal/maze/prefab_test.go` | 7 |
 | 9 | The property suite (the agreement sweep run both with a nil hook and with a whole-chunk claim; the island-walled scenario asserting every island face reads as a wall from both sides and that the reachable component equals the non-island set exactly), the cell golden with its mint flag and its per-algorithm single-weight sections — **its mint read against the island rule and the algorithm column, not only the diff's shape** — and this package's `guards_test.go` — `detguard` applied to its own directory, plus the two call-site confinements it owns alone (the connectivity helper reached only from island selection, the key derivations only from the fabric and portal builders) | `internal/maze/property_test.go`, `internal/maze/golden_test.go`, `internal/maze/guards_test.go`, `internal/maze/testdata/cells.golden` | 8 |
 | 10 | The benchmarks: one cell, and one per algorithm under a single-weight input | `internal/maze/bench_test.go` | 8 |
-| 11 | **Remove the architecture gate and revert the propagation its CI job required.** This subtask landed as an *addition* before the owner's ruling arrived, so its artefacts are on the branch and the amendment makes their removal the work. Take out the `ARCH_GOARCH` variable, the `test-arch` target and its `.PHONY` and `verify` entries from the `Makefile`; take out the `Architecture` job and the `test-arch` mention in the job-list comment from `.github/workflows/ci.yml`. **Keep `'**/*.golden'` in the `go` paths filter** and rewrite its comment to the surviving reason (below). Then revert the propagation, which binds a removed job exactly as it bound an added one: the `arch` failure class and its `Architecture` row in `.claude/skills/pr-ci-failed/SKILL.md` and `.claude/skills/main-ci-failed/SKILL.md` (frontmatter description, the CI job list, the class table, the reproducer table, the `Class:` enumeration), the `arch` rows in `.claude/skills/dependabot-pr/reference.md`, the `Architecture` row in `ai-docs/claude-tools-hierarchy.md`, the `make test-arch` mention in `ai-docs/go-test-conventions.md`, and both sites in `AGENTS.md` (the command list and the CI job list). **And `ai-docs/key-decisions.md`, KD-37 — three edits, because that entry mixes one sentence the removal falsifies with rationale that is merely mis-anchored.** (a) Strike the closing clause naming `make test-arch` as the gate that watches the architecture axis: subtask 11 makes it false as it executes. (b) Strike the recorded per-architecture ChaCha8 assembly fact — it was evidence that a second `GOARCH` genuinely crosses an implementation boundary, so it justifies nothing once the gate is gone, and a KD carrying evidence for a removed instrument invites a reader to reconstruct it; the upstream-stability fact beside it **stays and matters more**, being the upstream half of AC2's discharge. (c) Re-anchor *"Why big-endian fixed-width and no floating point anywhere"*, which currently rests on "the chain must yield the same bytes on a 32-bit build and a 64-bit one" — the very property AC2 no longer asserts. The mechanisms stay, so the reason recorded for them must be the one that survives: the encoding is **specified rather than inherited from the host**, which is what makes the bytes a function of the inputs alone and therefore what lets a golden pin them at all; byte-identity across word sizes is demoted from the reason to an incidental consequence. Add one clause recording the ruling and whose it was, so a later reader meeting host-independent encoding with no gate learns why instead of concluding it is vestigial and simplifying it away — the same sentence § Determinism → *Scope* carries: the amendment removed a gate, not a property. `actionlint` before the workflow edit is staged | `Makefile`, `.github/workflows/ci.yml`, `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/SKILL.md`, `.claude/skills/dependabot-pr/reference.md`, `ai-docs/claude-tools-hierarchy.md`, `ai-docs/go-test-conventions.md`, `AGENTS.md`, `ai-docs/key-decisions.md` | 9 |
+| 11 | **Remove the architecture gate and revert the propagation its CI job required.** This subtask landed as an *addition* before the owner's ruling arrived, so its artefacts are on the branch and the amendment makes their removal the work. **The specification is the delta, not a word list:** the gate arrived in one commit, so restore each of that commit's eight non-plans paths to its state at that commit's parent — `git diff e216d5d^..HEAD -- <path>` is the ground truth, and it catches the sites a word search cannot, which is most of them. Removing the job is the small part; the gate's commit also bumped every count and cross-reference that *named* the cluster without naming the target — the sibling-job comment in `.github/workflows/ci.yml` ("five sibling jobs", "Five jobs rather than five steps", "the other four", "none of the five"), the Race row in `ai-docs/claude-tools-hierarchy.md` ("the only one of the five"), the class-count phrasing in `.claude/skills/pr-ci-failed/SKILL.md`, and in the `Makefile` three variables with a nine-line comment block rather than the one variable an earlier draft of this row named. **Two exceptions to the empty diff, both deliberate.** (i) `'**/*.golden'` stays in the `go` paths filter, with its comment rewritten to the surviving reason (§ Test Design). (ii) `ai-docs/key-decisions.md` is **outside** the delta rule entirely: KD-37 postdates the gate commit and must be *edited, never reverted* — three clauses, below. `actionlint` before the workflow edit is staged | the gate commit's eight non-plans paths — `Makefile`, `.github/workflows/ci.yml`, `.claude/skills/pr-ci-failed/SKILL.md`, `.claude/skills/main-ci-failed/SKILL.md`, `.claude/skills/dependabot-pr/reference.md`, `ai-docs/claude-tools-hierarchy.md`, `ai-docs/go-test-conventions.md`, `AGENTS.md` — plus `ai-docs/key-decisions.md` under its own rule | — |
 | 12 | Close the open question in the design corpus and record the engineering decisions: strike the intra-chunk maze-algorithm choice from the open-question list (`docs/DESIGN.md` §16.2, item 2) and record — in §2.2.2, **confined to recording the owner's interview decision and nothing more**: the per-chunk weighted draw over the decided algorithm set, with the weights biome-level — both edits **in Russian**, since `docs/**` is Russian by the workspace's own rule and is not to be translated. Anything beyond recording that decision would be redesigning the corpus and is out of scope. Then add the key decisions (the derivation chain and its domain tag, the topology/generator package split, the island-and-border rule, and what each share input is a share *of*); then sweep every live document, case-insensitively, for the same open-question claim | `docs/DESIGN.md`, `ai-docs/key-decisions.md`, plus whatever the sweep finds | — |
+| 13 | **`ai-docs/key-decisions.md`, KD-37 — edited in place, because that entry mixes one sentence the removal falsifies with rationale that is merely mis-anchored.** (a) Strike the closing clause naming `make test-arch` as the gate that watches the architecture axis: subtask 11 makes it false as it executes. (b) Strike the recorded per-architecture ChaCha8 assembly fact — it was evidence that a second `GOARCH` genuinely crosses an implementation boundary, so it justifies nothing once the gate is gone, and a key decision carrying evidence for a removed instrument invites a reader to reconstruct it; **the lead-in counts the facts, so it moves with them** — the upstream-stability fact beside it stays and matters more, being the upstream half of AC2's discharge. (c) Re-anchor *"Why big-endian fixed-width and no floating point anywhere"*, which rests on "the chain must yield the same bytes on a 32-bit build and a 64-bit one" — the very property AC2 no longer asserts. The mechanisms stay, so the reason recorded for them must be the one that survives: the encoding is **specified rather than inherited from the host**, which is what makes the bytes a function of the inputs alone and therefore what lets a golden pin them at all; byte-identity across word sizes drops from the reason to an incidental consequence. Add one clause recording the ruling and whose it was, so a later reader meeting host-independent encoding with no gate learns why instead of concluding it is vestigial and simplifying it away — the sentence § Determinism → *Scope* carries: the amendment removed a gate, not a property. The struck strings are quoted from the entry as it stands `[measured 3a2e077:ai-docs/key-decisions.md:101 · grep -n "KD-37" ai-docs/key-decisions.md → the entry carries "Two facts about the primitive, both checked rather than assumed", the per-architecture assembly sentence, the "same bytes on a 32-bit build and a 64-bit one" rationale, and the closing `make test-arch` clause]` | `ai-docs/key-decisions.md` | 11 |
+| 14 | **Reconcile the package comment to the amended AC2 — the last durable surface still asserting the struck axis.** `internal/maze/doc.go` ends its contract sentence with "the same three inputs yield the same result across processes, Go versions, and CPU architectures"; strike the architecture clause, leaving processes and Go versions, which is exactly what AC2 now says and what the goldens check. This is not cosmetic: a package comment is the contract #29 and every later reader will build against, so it is the *worst* place to keep a claim no instrument checks — the same reasoning subtask 13 applies to KD-37, with more force here. The mechanisms named in the same sentence (no clock, no unseeded source, no floating-point arithmetic) stay exactly as they are; they serve the clause that remains. **Code change-type, hence its own group** — see § Handoff plan | `internal/maze/doc.go` | — |
 
 ## Handoff plan
 
@@ -451,11 +461,22 @@ the determinism path"* is a cross-package proposition, and `detguard` is the pac
   in Group B with fresh context.
 - **Group B** — model `inherit` (the orchestrator's), effort inherited from the orchestrator
   (typically xHigh) — **not** pinned — via the `general-purpose` subagent, 1M-token window —
-  subtasks 11–12 (instructions/harness change-type: `Makefile`, `.github/workflows/ci.yml`,
-  `.claude/**`, `AGENTS.md`, `docs/**`, `ai-docs/**`). Terminal group (2 subtasks; within the
-  `1..=10` range).
+  subtasks 11–13 (instructions/harness change-type: `Makefile`, `.github/workflows/ci.yml`,
+  `.claude/**`, `AGENTS.md`, `docs/**`, `ai-docs/**`). Non-terminal (3 subtasks).
+- **Handoff after Group B:** spawn `/context-reset` per
+  `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry).
+- **Group C** — model `sonnet`, effort `medium` (pinned) via the `code-writer` subagent, 1M-token
+  window — subtask 14 (code change-type: `*.go`). Terminal group (1 subtask; within the `1..=10`
+  range).
 
-Two groups, within the default maximum of four; no user gate needed.
+Three groups, within the default maximum of four; no user gate needed.
+
+**Why subtask 14 gets a group of its own rather than joining either existing one.** It edits
+`internal/maze/doc.go`, which is code, so the homogeneity rule forbids it in Group B; and Group A
+is **at** the size cap, so it cannot take an eleventh subtask. A third group is therefore *forced*
+by the two rules together, not chosen — which is the only circumstance the minimisation rule
+permits one. It is ordered last because nothing depends on it and the amendment reconciliation
+reads more clearly with the harness reverts already in place.
 
 **Why subtask 11 is grouped as harness rather than code.** After the amendment the question barely
 arises: most of its file set is `.claude/**`, `AGENTS.md` and `ai-docs/**`, which the change-type
@@ -465,7 +486,9 @@ wiring is where the `actionlint`-before-staging AXIOM and the `paths-filter`-per
 bind, and reverting a propagation across six instruction files is instruction work by any reading.
 The alternative reading — harness executables get "the same treatment as `.go` files" per the build
 AXIOM — is about *which gates must pass*, not about which model writes them, so it does not decide
-this. The grouping also keeps the count minimal, Group A being at the cap already.
+this. Subtask 14 is the counter-case that confirms the rule is being applied rather than bent: it
+edits a `.go` file, so it cannot join Group B however convenient that would be, and it gets a group
+of its own instead.
 
 ## Risks
 
@@ -692,16 +715,22 @@ the draw is caught even where two algorithms happen to build the same structure.
 means:** the domain tag, the preimage encoding, the digest, the stream, a reduction, the island
 rule, an algorithm's traversal order, the cycle pass or the portal rule changed — every world
 already generated under that seed is now a different world, and the change is a season rotation
-rather than a refactor. **Verifying the gate's removal needs a pattern that catches the failure-class name, not only the
-target name — measured, because the narrow pattern is the one an implementor reaches for first.**
-The class propagated under two different spellings: most sites name `make test-arch`, but
-`.claude/skills/dependabot-pr/reference.md` names only the class `arch` and never the target. So a
-sweep on the target alone reports eight of the nine sites and calls the tree clean one file early
-`[measured 861408b · git ls-files | xargs grep -lEi over the tracked set, excluding this task's own plans directory → the pattern "test-arch|ARCH_GOARCH" returns eight paths, while "test-arch|ARCH_GOARCH|\barch\b.*failure|Architecture job|\| *arch *\|" returns nine; the difference is .claude/skills/dependabot-pr/reference.md]`.
-The wider pattern is what the removal is checked against, before and after — and the general form
-of the lesson is the one this design applies everywhere else: a clean sweep is evidence about the
-pattern before it is evidence about the tree, so the pattern is validated against a site it must
-match before its silence is believed.
+rather than a refactor. **Verifying the gate's removal is a diff against the pre-gate tree, never a word search.** A
+search can only find sites that *name* the thing removed, and most of this gate's footprint does
+not: the commit that added it bumped counts and cross-references that describe the job cluster
+without mentioning the target — a sibling-job comment that now says five where four will remain, a
+neighbouring row calling itself one of five, a class-count phrasing. A pattern built from the
+target and class names matches the job line and none of those, so it would report a clean tree that
+still asserts a five-job cluster with four jobs in it. Two consequences, both written into the
+removal subtask. **The acceptance is the delta:** `git diff e216d5d^..HEAD` over the gate commit's
+own non-plans paths is empty, save the two stated exceptions — which cannot be blind, because it
+compares against the tree as it stood before the gate rather than against a guess about how the
+gate is spelled. **And the pattern keeps one job only** — as a reason, not an instrument: the class
+propagated under two spellings, most sites naming `make test-arch` but
+`.claude/skills/dependabot-pr/reference.md` naming only the class `arch`, which is why a
+target-name search under-reports and why no search is the acceptance here. The general form is the
+rule this design applies throughout: a clean sweep is evidence about the instrument before it is
+evidence about the tree.
 
 **The `'**/*.golden'` paths-filter entry stays, and it is not part of the architecture gate.** It
 arrived in the same commit, which is the only thing tying the two together. Its reason stands on
