@@ -305,9 +305,9 @@ func TestCheck_NamedMapTypeVarAssignRangeFlagged(t *testing.T) {
 // aliasing the next ("type c b", "type b a", "type a map[...]...") and
 // declared in that same, worst-case order — the alias appearing before
 // the name it depends on, at every link. A single pass over the
-// declarations in source order resolves only "a" and "b" and never
-// reaches "c"; only repeating the pass until nothing new is found
-// resolves the whole chain, which is what this case is for.
+// declarations in source order resolves only "a" and never reaches "b"
+// or "c"; only repeating the pass until nothing new is found resolves
+// the whole chain, which is what this case is for.
 func TestCheck_NamedMapTypeMultiHopChainRangeFlagged(t *testing.T) {
 	t.Parallel()
 	src := "package pkg\n\ntype c b\n\ntype b a\n\ntype a map[string]bool\n\nfunc f(m c) {\n\tfor k := range m {\n\t\t_ = k\n\t}\n}\n"

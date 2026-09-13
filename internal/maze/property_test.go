@@ -9,9 +9,9 @@ import (
 	"github.com/maratik123/lab-game/internal/hexgrid"
 )
 
-// farCoordBases are the magnitudes the design names for "far from the
-// origin": well past the region the exhaustive face-agreement sweep
-// covers, up to the edge of the int32 domain Coord itself uses.
+// farCoordBases are the magnitudes exercised for "far from the origin":
+// well past the region the exhaustive face-agreement sweep covers, up
+// to the edge of the int32 domain Coord itself uses.
 var farCoordBases = []int32{1 << 20, 1 << 28, 2147483600}
 
 // drawFarCoord draws a coordinate whose Q and R each sit near one of

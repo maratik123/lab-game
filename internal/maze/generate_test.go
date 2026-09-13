@@ -104,9 +104,34 @@ func TestCell_ShuffledEvaluationOrderMatchesSortedOrder(t *testing.T) {
 	}
 }
 
+// TestCell_FaceAgreementOverAMultiChunkRegion runs the exhaustive
+// face-agreement sweep twice: once with a nil hook, and once with a
+// hook claiming one whole chunk inside the swept region. A sweep run
+// only with a nil hook is an instrument that is blind to the whole
+// prefab boundary — the claimed side of a border face takes a
+// different code path than the unclaimed side, so only a claimed chunk
+// inside the region crosses every one of that chunk's borders from
+// both sides.
 func TestCell_FaceAgreementOverAMultiChunkRegion(t *testing.T) {
 	t.Parallel()
-	gen, err := New(20260912, refParams(), nil)
+	t.Run("nil_hook", func(t *testing.T) {
+		t.Parallel()
+		faceAgreementSweep(t, nil)
+	})
+	t.Run("claimed_chunk_inside_region", func(t *testing.T) {
+		t.Parallel()
+		dims := hexgrid.Dims{Cols: 16, Rows: 16}
+		claimer := newWholeChunkClaimer(dims, hexgrid.Chunk{Q: 0, R: 0})
+		faceAgreementSweep(t, claimer)
+	})
+}
+
+// faceAgreementSweep asserts, over every coordinate of a multi-chunk
+// region straddling the origin, that a cell's face and its neighbour's
+// opposite face agree — for the generator built with hook.
+func faceAgreementSweep(t *testing.T, hook PrefabClaimer) {
+	t.Helper()
+	gen, err := New(20260912, refParams(), hook)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
