@@ -10,13 +10,13 @@ _Updated: 2026-09-13 02:05_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 7 — design-review round 6 pending on the twice-amended design; then Step 8 resumes with subtasks 11, 13 and Group C's 14
+**current_step:** Step 8 resumed — design-review round 6 returned GO and all 8 of its items are folded and verified; Group B (11-13) is the next handoff, then Group C (14)
 **last_passed_gate:** `make fmt-check && make build && make vet && make lint && make file-limits && make shellcheck && make actionlint && make comment-refs && make test-arch`, plus the citation guard, the harness checkers and the relative-link check | 2026-09-13
 **entry_args:** 27
 
 ## Next action
 
-**Do this immediately:** every subtask of both groups is complete (Group A 1–10, Group B 11–12), so Step 8 is closed and **Step 9 (Verify) is next** — the per-AC sweep against the table below, then Step 9.5, then the Step 10 self-review loop. Two things a verifier should read before starting: the `## AC Status` table's AC2 and AC18 rows changed in Group B, and the Group B entries in the decisions log name one stated deviation (the CI wiring is a fifth sibling job, not a step of the existing Test job) and one unmeasurable half (whether a hosted runner can execute a 32-bit binary — the first CI run on this branch answers it, loudly by design). The binding per-subtask specification remains `ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.design.md` § Decomposition, with the mechanisms in § Approach, § Determinism, § The per-chunk construction, § The prefab boundary, § Risks and § Test Design — the `## Subtasks` rows below are one-line summaries for orientation and are **not** the contract.
+**Do this immediately:** Group B is subtasks 11-13 (12 is already complete), then Group C is subtask 14. The binding per-subtask specification is `ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.design.md` § Decomposition — subtask 11's acceptance is a git delta run per path after `git add`, and `ai-docs/key-decisions.md` is deliberately outside that rule. The `## Subtasks` rows below are one-line summaries for orientation and are **not** the contract.
 
 ## Subtasks
 
@@ -86,6 +86,14 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | G7 | 4 | "`internal/config.ChunkBalance.Cols/Rows` are `int` while `hexgrid.Dims` is `int32`" | design-internal | folded | design § Approach @ 4315aef — the narrowing conversion and its G115 remedy handed to #28 |
 | G8 | 4 | "Group A carries ten determinism-critical subtasks at the mandated `sonnet`/`medium` tier" | design-internal | folded | design § Test Design + subtask 9 @ 4315aef — mint review named as an obligation, read against the island rule and the algorithm column |
 | G9 | 4 | "**Round-trip required:** before Step 8, update the design doc to incorporate each note/recommendation above" | design-internal | folded | design round 5 @ 4315aef — all nine items verified landed by reading the diff, not by the delegate's return summary |
+| G10 | 6 | "Subtask 11 carries three tallies about the repository" | design-internal | folded | design § Decomposition row 11 @ bd6a52b — both "eight"s dropped, the Makefile clause reduced to "the target, its variables and their comment block" |
+| G11 | 6 | "Two factual claims about existing state are load-bearing and untagged" | design-internal | folded | design rows 11, 13, 14 @ bd6a52b — three `[measured bd6a52b · …]` tags, each re-verified before it was written |
+| G12 | 6 | "Subtask 13(b) says "the lead-in counts the facts, so it moves with them"" | design-internal | folded | design § Decomposition row 13 @ bd6a52b — stated outright: the lead-in is re-worded to one fact, not struck, because the upstream-stability fact is AC2's upstream half |
+| G13 | 6 | "Subtask 14's `Depends on` column is `—`" | design-internal | folded | design § Decomposition row 14 @ bd6a52b — now `3`, the subtask that creates `doc.go` |
+| G14 | 6 | "Keep the delta acceptance literal when subtask 11 runs" | design-internal | folded | design § Decomposition row 11 @ bd6a52b — per path, after `git add`, with the index-walk reason stated |
+| G15 | 6 | "`actionlint .github/workflows/ci.yml` before staging the workflow edit" | design-internal | folded | design § Decomposition row 11 @ bd6a52b — actionlint required; shellcheck explicitly not engaged, the recipe body going away with the target |
+| G16 | 6 | "After subtask 13, re-read KD-37 **whole** rather than the three edited clauses" | design-internal | folded | design § Decomposition row 13 @ bd6a52b — the whole-section re-read is stated as the obligation |
+| G17 | 6 | "**Round-trip required:** before Step 8, update the design doc to incorporate each note/recommendation above" | design-internal | folded | design round 7 @ bd6a52b — all seven verified landed by reading the diff, not by the delegate's return summary |
 
 ## Key discoveries (don't re-investigate)
 
