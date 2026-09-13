@@ -150,6 +150,21 @@ func TestProbe_matchesOrdinaryQuery(t *testing.T) {
 const (
 	walCheckpointFactor = 2
 	clusterPeakMB       = 320
+
+	// clusterPeakMeasuredAtClients is the client count clusterPeakMB was
+	// measured at (step 3 of the recipe above ran the contention target,
+	// which at the time of measurement provisioned two clients). The figure
+	// is a per-client peak, but nothing establishes that a per-client peak
+	// holds at a higher count — more clients sharing one server contend for
+	// the same buffers, autovacuum workers and checkpoint I/O, so the peak
+	// each one reaches is not guaranteed to be independent of how many
+	// others are running beside it. A target that raises the provisioned
+	// count past this figure is running on an assumption the measurement
+	// never covered, and the budget inequality below cannot catch that: the
+	// per-client mount grant scales with the count exactly as the peak term
+	// does, so raising the count moves both sides together and the
+	// inequality holds regardless of how high it goes.
+	clusterPeakMeasuredAtClients = 2
 )
 
 // reClientsFlag matches a literal client count passed to the test-server
@@ -348,6 +363,16 @@ func TestMostClientsIn(t *testing.T) {
 // leaving the mount alone is how that mount gets overrun. The counts checked
 // are the ones this repository's own targets provision for, read from the
 // build file, so raising a count there without sizing the mount fails here.
+//
+// Two separate assertions cover two separate axes, and neither substitutes
+// for the other. The measured-basis check fails by name when a provisioned
+// count exceeds clusterPeakMeasuredAtClients, because that is the one axis
+// the budget inequality below is structurally unable to fail on: the
+// per-client mount grant scales with the client count exactly as the peak
+// term does, so the count cancels out of the inequality and no count, however
+// high, makes it fail. The budget inequality still catches every other axis
+// — a smaller per-client grant, a larger measured peak, or a larger WAL
+// allowance eating into the same headroom.
 func TestStartServer_PGDATAMountHoldsEveryClientCountProvisioned(t *testing.T) {
 	t.Parallel()
 
@@ -386,6 +411,11 @@ func TestStartServer_PGDATAMountHoldsEveryClientCountProvisioned(t *testing.T) {
 	// provisions. Both share this package's mount sizing, so both are budgets
 	// this assertion has to hold.
 	for _, clients := range []int{1, targetClients(t)} {
+		if clients > clusterPeakMeasuredAtClients {
+			t.Errorf("this repository provisions a server for %d client(s), but clusterPeakMB was only measured at %d — re-measure at the higher count (recipe recorded beside clusterPeakMB) before trusting it for %d",
+				clients, clusterPeakMeasuredAtClients, clients)
+		}
+
 		mountMB := mountCapMB(t, MountOptions(clients))
 		if peak := walCheckpointFactor*walSize + clients*clusterPeakMB; peak > mountMB {
 			t.Errorf("a server provisioned for %d client(s) needs %d MB — %d× max_wal_size %d MB between checkpoints, beside %d × %d MB of peak cluster — of a %d MB PGDATA mount",

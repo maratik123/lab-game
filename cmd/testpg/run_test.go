@@ -582,12 +582,12 @@ func TestRun_upCreatesContainer_persistsThisInvocationsClientCount(t *testing.T)
 }
 
 // The bug this branch closes: no prior locator exists (a fresh checkout, or
-// one cleaned per go-test-conventions' remedy), but the named container was
-// already there — provision reattaches to it by name — and nothing vouches
-// for its mount being big enough. This must be refused, and must NOT record
-// the count this invocation merely asked for: recording it would let a
-// later run trust a mount that was never confirmed to hold it, exactly the
-// defect a stale locator's absence let through before this fix.
+// one whose locator file was deleted to clear a stale record), but the named
+// container was already there — provision reattaches to it by name — and
+// nothing vouches for its mount being big enough. This must be refused, and
+// must NOT record the count this invocation merely asked for: recording it
+// would let a later run trust a mount that was never confirmed to hold it,
+// exactly the defect a stale locator's absence let through before this fix.
 func TestRun_upReattachesWithoutVouching_refusesAndDoesNotRecordAskedCount(t *testing.T) {
 	stub := &stubSeam{
 		provisionDSN:     "postgres://shared/db",
@@ -1189,6 +1189,42 @@ func TestRun_down_unreachablePresent_disablesReaperBeforeExistsCheck(t *testing.
 	code := run([]string{"--down"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run(--down) = %d, want 0; stderr: %s", code, stderr.String())
+	}
+	if !stub.containerExistsCalled {
+		t.Fatalf("containerExists was never called")
+	}
+	if stub.containerExistsRyukEnv != "true" {
+		t.Errorf("TESTCONTAINERS_RYUK_DISABLED at containerExists time = %q, want %q", stub.containerExistsRyukEnv, "true")
+	}
+}
+
+// Not parallel: asserts on the process-wide reaper environment variable.
+// Pins the same ordering as the --down variant above, on the --up path:
+// the reaper must be disabled BEFORE the pre-provisioning existence check,
+// because that check already builds the container-runtime client the
+// reaper setting is read by.
+func TestRun_up_disablesReaperBeforeExistsCheck(t *testing.T) {
+	orig, hadOrig := os.LookupEnv("TESTCONTAINERS_RYUK_DISABLED")
+	t.Cleanup(func() {
+		if hadOrig {
+			_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", orig)
+		} else {
+			_ = os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED")
+		}
+	})
+	if err := os.Unsetenv("TESTCONTAINERS_RYUK_DISABLED"); err != nil {
+		t.Fatalf("Unsetenv: %v", err)
+	}
+
+	stub := &stubSeam{
+		provisionDSN:     "postgres://shared/db",
+		probeMaxConns:    100000,
+		containerPresent: false,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--up", "--clients", "1", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(--up) = %d, want 0; stderr: %s", code, stderr.String())
 	}
 	if !stub.containerExistsCalled {
 		t.Fatalf("containerExists was never called")
