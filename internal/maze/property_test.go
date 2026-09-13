@@ -4,9 +4,30 @@ import (
 	"testing"
 
 	"github.com/shopspring/decimal"
+	"pgregory.net/rapid"
 
 	"github.com/maratik123/lab-game/internal/hexgrid"
 )
+
+// farCoordBases are the magnitudes the design names for "far from the
+// origin": well past the region the exhaustive face-agreement sweep
+// covers, up to the edge of the int32 domain Coord itself uses.
+var farCoordBases = []int32{1 << 20, 1 << 28, 2147483600}
+
+// drawFarCoord draws a coordinate whose Q and R each sit near one of
+// farCoordBases, on either side of zero and jittered by a few cells so
+// the case does not always land on the exact base value.
+func drawFarCoord(rt *rapid.T) hexgrid.Coord {
+	drawAxis := func(label string) int32 {
+		base := farCoordBases[rapid.IntRange(0, len(farCoordBases)-1).Draw(rt, label+"_base")]
+		if rapid.Bool().Draw(rt, label+"_neg") {
+			base = -base
+		}
+		jitter := int32(rapid.IntRange(-3, 3).Draw(rt, label+"_jitter"))
+		return base + jitter
+	}
+	return hexgrid.Coord{Q: drawAxis("q"), R: drawAxis("r")}
+}
 
 // islandRegionCells returns, for a rectangular block of chunks under
 // dims spanning loChunk..hiChunk inclusive (both axes), the coordinate
@@ -221,4 +242,34 @@ func TestConnectivity_MultiChunkRegionOverASeedSweep(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestCell_FaceAgreementFarFromOriginAcrossWorldSeeds is the rapid
+// property case the exhaustive face-agreement sweep does not cover: it
+// varies the world seed and reaches coordinates far from the origin,
+// where that sweep exercises one seed over a region straddling zero.
+// The property checked is the same one the sweep checks — a shared
+// border between two cells reads the same wall-or-passage state from
+// both sides.
+func TestCell_FaceAgreementFarFromOriginAcrossWorldSeeds(t *testing.T) {
+	t.Parallel()
+	params := refParams()
+	rapid.Check(t, func(rt *rapid.T) {
+		seed := rapid.Int64().Draw(rt, "seed")
+		c := drawFarCoord(rt)
+		gen, err := New(seed, params, nil)
+		if err != nil {
+			rt.Fatalf("New: %v", err)
+		}
+		cell := gen.Cell(c)
+		for _, d := range sixDirections {
+			n := c.Neighbor(d)
+			nCell := gen.Cell(n)
+			got := cell.Faces[d]
+			want := nCell.Faces[d.Opposite()]
+			if got != want {
+				rt.Fatalf("face agreement fails at %v dir %v: %v vs %v (from %v dir %v)", c, d, got, want, n, d.Opposite())
+			}
+		}
+	})
 }
