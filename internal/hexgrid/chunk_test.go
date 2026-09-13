@@ -32,6 +32,34 @@ func TestChunkOf_FloorDivisionStraddlesZeroCorrectly(t *testing.T) {
 	}
 }
 
+// TestContains_RejectsAChunkThatDoesNotHoldTheCell is the half without
+// which Contains has no discriminating test at all: asserting
+// Contains(ChunkOf(c), c) is asserting ChunkOf(c) == ChunkOf(c), which a
+// body of "return true" also satisfies.
+func TestContains_RejectsAChunkThatDoesNotHoldTheCell(t *testing.T) {
+	t.Parallel()
+	for _, c := range []hexgrid.Coord{
+		{Q: 0, R: 0},
+		{Q: 15, R: 15},
+		{Q: -1, R: -1},
+		{Q: 33, R: -7},
+	} {
+		own := refDims.ChunkOf(c)
+		for _, other := range []hexgrid.Chunk{
+			{Q: own.Q + 1, R: own.R},
+			{Q: own.Q, R: own.R + 1},
+			{Q: own.Q - 1, R: own.R - 1},
+		} {
+			if refDims.Contains(other, c) {
+				t.Errorf("Contains(%v, %v) = true, want false — %v lies in %v", other, c, c, own)
+			}
+		}
+		if !refDims.Contains(own, c) {
+			t.Errorf("Contains(%v, %v) = false, want true", own, c)
+		}
+	}
+}
+
 func TestChunkOf_PartitionsTheRegionExactly(t *testing.T) {
 	t.Parallel()
 	// A region straddling zero in both axes.

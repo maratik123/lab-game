@@ -2,6 +2,8 @@ package maze
 
 import (
 	"fmt"
+	"slices"
+	"sort"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -205,6 +207,76 @@ func TestCell_ConnectivityOverAMultiChunkRegionNilHook(t *testing.T) {
 		if hasPassage && !visited[k] {
 			t.Errorf("cell %v has a passage but is not reachable from the flood-fill start %v", k, start)
 		}
+	}
+}
+
+// TestCell_SeedIsIndependentOfChunkDimensions asserts the sharp form:
+// two generators differing only in chunk dimensions yield the same cell
+// seed for a coordinate, while the faces they yield for it differ. The
+// second half is not decoration — without it the first would hold just
+// as well for two generators that were effectively the same, and a cell
+// seed secretly folding the dimensions in would pass.
+func TestCell_SeedIsIndependentOfChunkDimensions(t *testing.T) {
+	t.Parallel()
+	a := refParams()
+	b := refParams()
+	b.Dims = hexgrid.Dims{Cols: 12, Rows: 12}
+
+	genA, err := New(20260912, a, nil)
+	if err != nil {
+		t.Fatalf("New under %v: %v", a.Dims, err)
+	}
+	genB, err := New(20260912, b, nil)
+	if err != nil {
+		t.Fatalf("New under %v: %v", b.Dims, err)
+	}
+
+	var facesDiffer bool
+	for q := int32(-3); q <= 3; q++ {
+		for r := int32(-3); r <= 3; r++ {
+			c := hexgrid.Coord{Q: q, R: r}
+			ca, cb := genA.Cell(c), genB.Cell(c)
+			if ca.Seed != cb.Seed {
+				t.Fatalf("cell seed for %v is %d under %v and %d under %v; it must be settled by the world seed and the coordinate alone",
+					c, ca.Seed, a.Dims, cb.Seed, b.Dims)
+			}
+			if ca.Faces != cb.Faces {
+				facesDiffer = true
+			}
+		}
+	}
+	if !facesDiffer {
+		t.Fatal("test setup: the two dimension sets yielded identical faces at every sampled coordinate, so the seed assertion above would not discriminate")
+	}
+}
+
+func TestChunksConsulted_RelativeOffsetsAgreeAtTheSamePositionInAChunk(t *testing.T) {
+	t.Parallel()
+	dims := hexgrid.Dims{Cols: 16, Rows: 16}
+
+	offsets := func(c hexgrid.Coord) []hexgrid.Chunk {
+		own := dims.ChunkOf(c)
+		set := chunksConsulted(dims, c)
+		out := make([]hexgrid.Chunk, 0, len(set))
+		for _, ch := range set {
+			out = append(out, hexgrid.Chunk{Q: ch.Q - own.Q, R: ch.R - own.R})
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Q != out[j].Q {
+				return out[i].Q < out[j].Q
+			}
+			return out[i].R < out[j].R
+		})
+		return out
+	}
+
+	// Two coordinates at the same position within their own chunks: the
+	// absolute chunk coordinates necessarily differ, so the invariant is
+	// the set of offsets relative to each coordinate's own chunk.
+	near := offsets(hexgrid.Coord{Q: 0, R: 5})
+	far := offsets(hexgrid.Coord{Q: 1_000_000 * 16, R: 1_000_000*16 + 5})
+	if !slices.Equal(near, far) {
+		t.Errorf("relative chunk offsets = %v near the origin and %v far from it, want equal", near, far)
 	}
 }
 

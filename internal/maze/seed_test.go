@@ -101,20 +101,6 @@ func TestDerive_Golden(t *testing.T) {
 	}
 }
 
-func TestCellSeed_FunctionOfWorldSeedAndCoordAloneNotChunkDimensions(t *testing.T) {
-	t.Parallel()
-	c := hexgrid.Coord{Q: 42, R: -7}
-	const seed int64 = 555
-	// The chunk dimensions play no role in cellSeed's own signature —
-	// this test documents that cellSeed(seed, c) is stable regardless
-	// of whatever Dims a caller later uses to place c in a chunk.
-	a := cellSeed(seed, c)
-	b := cellSeed(seed, c)
-	if a != b {
-		t.Fatalf("cellSeed not repeatable: %d != %d", a, b)
-	}
-}
-
 func TestCellSeed_PairwiseDistinctOverACoordinateTable(t *testing.T) {
 	t.Parallel()
 	const seed int64 = 777
