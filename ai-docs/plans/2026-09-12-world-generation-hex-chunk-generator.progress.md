@@ -10,13 +10,13 @@ _Updated: 2026-09-13 04:10_
 **Issue:** #27
 **Spec:** ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.spec.md
 
-**current_step:** Step 7 — design-review round 8 on the amended design; then Group D (15-16), Step 9, self-review round 5
+**current_step:** Step 8 — Group D (subtasks 15-16) is the next handoff; the design gate is closed
 **last_passed_gate:** `go build` + `go vet` + `golangci-lint fmt -d` + `golangci-lint run` + `go test -count=1 ./...` + `go test -race` + `make comment-refs` + `make import-guard` | 2026-09-13T02:20Z | 3146b55
 **entry_args:** 27
 
 ## Next action
 
-**Do this immediately:** every subtask of all three groups is complete and self-review round 3 closed. The next action is self-review round 4 (the owner raised the cap to 4), then Step 12. The binding per-subtask specification remains `ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.design.md` § Decomposition; the `## Subtasks` rows below are one-line summaries for orientation and are **not** the contract. Two standing facts a re-entering agent needs: `origin/main` is merged in, so the review range is `c07f8c1..HEAD` and not `base_commit..HEAD`, and the register ids are the canonical `R<round>-<finding>` after round 3 re-labelled a global sequence the gate could not parse.
+**Do this immediately:** Group D is subtasks 15-16, the last group. The binding per-subtask specification is `ai-docs/plans/2026-09-12-world-generation-hex-chunk-generator.design.md` § Decomposition. Then Step 9's per-AC sweep refreshed, then self-review round 5 (cap already raised to 5), then Step 12. Two standing facts: the review range is `c07f8c1..HEAD` because `origin/main` is merged in, and `tmp/` is inside the module — scratch Go files there break `go build ./...` while `git status` stays clean, so sweep it before believing either.
 
 ## Subtasks
 
@@ -34,6 +34,8 @@ _Updated: 2026-09-13 04:10_
 - [x] 12. Close the open question in the design corpus and record the engineering decisions
 - [x] 13. **Added by the amendment** — KD-37 edited in place (never reverted: it postdates the gate commit), striking the clause the removal falsifies and re-anchoring the encoding rationale
 - [x] 14. **Added by the amendment** — strike the "and CPU architectures" clause from `internal/maze/doc.go`, the last durable surface still asserting the struck axis. Code change-type, so it is its own Group C
+- [ ] 15. **Added by the round-4 amendment** — the `rapid` face-agreement property case the design names: more than one drawn world seed and coordinates far from the origin, with the acceptance stating which checks establish non-vacuity and which the added coverage  ← CURRENT
+- [ ] 16. **Added by the round-4 amendment** — reconcile `internal/detguard`'s own surfaces: re-spell the two struct-field red cases to the occurrable shape with their control, correct the package comment's two completeness claims and the predicate comment's four-shapes claim, and give the fixpoint loop the red case it lacks
 
 ## Decisions log
 
