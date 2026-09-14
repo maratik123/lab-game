@@ -11,8 +11,8 @@ _Updated: 2026-09-14 00:33_
 **Spec:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.spec.md
 **Design:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.design.md
 
-**current_step:** Step 8 — subtask 5 of 9 complete
-**last_passed_gate:** go test ./... (full module, race incl. for maze) | 2026-09-14 | (subtask 5 commit)
+**current_step:** Step 8 — subtask 6 of 9 complete
+**last_passed_gate:** go test ./... (full module, race incl. for maze) | 2026-09-14 | (subtask 6 commit)
 
 **entry_args:** 119
 
@@ -29,8 +29,8 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - [x] 3. `maze` onto hexagonal chunks, portal count still one-or-two; `Params.Radius` with `MinRadius`; delete the rhombic `hexgrid` API. (Group A)
 - [x] 4. `maze`: the portal rule — shares, count range, non-touching placement; AC6, AC7, AC8's pair-level clause. (Group A)
 - [x] 5. `maze`: the chunk-level core — `ChunkType`, `Version`, `Map`, `Generate(ch, typ)`, `CellSeed`; AC8's type clause. (Group A)
-- [ ] 6. `maze`: stored neighbours — `NewMap` and `neighbors`; AC14; AC8's stored-neighbour clause. (Group A) ← CURRENT
-- [ ] 7. `maze`: goldens in their final shape — `chunks.golden`; `derive.golden` byte-identical or stop and report. (Group A)
+- [x] 6. `maze`: stored neighbours — `NewMap` and `neighbors`; AC14; AC8's stored-neighbour clause. (Group A)
+- [ ] 7. `maze`: goldens in their final shape — `chunks.golden`; `derive.golden` byte-identical or stop and report. (Group A) ← CURRENT
 - [ ] 8. Configuration — `world.chunk.radius`; `want` formatted from `maze.MinRadius`; drop `bindInt`'s `//nolint:unparam`. (Group A)
 - [ ] 9. The code-surface sweep (AC18) — closes Group A. (Group A)
 - [ ] 10. Revise KD-37…KD-40 (AC17). (Group B)
@@ -46,6 +46,7 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - **Step 8, subtask 1**: `hexgrid.Lattice` implements the hexagon-of-hexagons mapping via the inverse super-basis in D3, checked against a bounded four-candidate search. `Border`'s path order was derived analytically for the three canonical directions (a "lone" direction's face at the range's minimum, then the secondary-then-lone pair for every following index) and verified by an independent vertex-sharing predicate in the test, not by re-deriving the order from the enumeration itself.
 - **Step 8, subtask 3**: `chunkGraph` now carries a `hexgrid.Lattice` and indexes `LocalCells()` directly, keyed by a `map[hexgrid.Coord]int`, rather than a row-major rectangle. `borderCandidates` derives from `Lattice.Border(dir)` translated by the lesser chunk's own centre — translation is uniform for canonical and opposite directions alike (both reduce to `Center(lesser) + local`), which was verified rather than assumed. The rhombic hex-chunk "diagonal border has exactly one candidate" test category no longer applies: every one of a hex chunk's six neighbours now has the same `2R+1`-face border, so `portal_test.go` was rewritten without it. The golden was re-minted at `MinRadius` (interim shape; subtask 7 moves it to the design's reference radius). One test-only defect found and fixed during this subtask: a flood-fill connectivity test built its region from an arbitrary square coordinate range rather than whole chunks, which is not internally connected at the region's own edge — fixed to build the region from whole chunks via `Lattice.LocalCells`/`At`, matching the pattern the original rhombic test already used. Also observed: `TestCellsGolden` and its cross-check test race on the golden file when both run with `-update-cells` and `t.Parallel()` in the same invocation (pre-existing test-design property, not introduced here) — minting and verifying were run as two separate invocations to avoid it.
 - **Step 8, subtask 5**: `Generate` computes a border face's true neighbour chunk via `Lattice.Locate` on the actual global neighbour cell, never via `ch.Neighbor(d)` — a corner cell's face in direction `d` can lead to a DIFFERENT neighbour chunk than the one `d` alone would suggest (verified during subtask 1's `Border` derivation: e.g. a `DirNE`-direction face from a cell on the `DirE` border still crosses into the `DirE` neighbour, not the `DirNE` one). `gateCapacity` (`3R²-3R`) replaces the plain non-border count as the binding capacity check in `Params.validate`, since a gate chunk's capacity is always the smaller one. Every existing dims-shaped test that read faces through the deleted `Cell`/`chunksConsulted` was rewritten against `Generate`/`Map.Faces`, using a per-test `mapCache` helper (`generate_test.go`) that memoizes `Generate` calls per chunk so a multi-coordinate sweep does not rebuild the same chunk repeatedly.
+- **Step 8, subtask 6**: `NewMap`'s radius-from-length inference (`radiusForCellCount`) solves `3r²+3r+1=n` via an integer-only Newton's-method square root (`isqrt`), since `internal/detguard` bans the `math` import and floats on this path — no float, no external dependency. Verified live (not merely asserted) that generating a patch of chunks sequentially, each against its already-generated neighbours rebuilt through `NewMap`, yields byte-identical maps to generating the same patch with no neighbour maps at all (`TestGenerate_SequentialAgainstStoredNeighboursMatchesIndependentGeneration`) — this is the load-bearing property #29's later consumer depends on.
 
 ## GO notes
 
@@ -77,13 +78,13 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 | AC5 | PASS (subtask 1) |
 | AC6 | PASS (subtask 4, `TestPortals_CountWithinRoundedUpShares`) |
 | AC7 | PASS (subtask 4, `TestPortals_NoTwoPortalsOfABorderShareAVertex`) |
-| AC8 | PARTIAL — pair-level and type clauses done (subtasks 4-5, `TestBorder_IndependentOfChunkTypeAndThirdChunks`); stored-neighbour clause lands in subtask 6 |
+| AC8 | PASS — all three clauses (subtasks 4-6, `TestBorder_IndependentOfChunkTypeAndThirdChunks`) |
 | AC9 | PASS (subtask 5, `TestSelectIslands_GateChunkNeverSelectsTheCentre`) |
 | AC10 | PASS (subtask 5, `TestGenerate_NonIslandCellsConnectedInsideEveryChunk`) |
-| AC11 | PARTIAL — no-neighbour-maps layout only (subtask 5); stored-against-neighbours layout lands in subtask 6 |
+| AC11 | PASS (subtasks 5-6, `TestCell_ConnectivityOverAMultiChunkRegion` + `TestGenerate_SequentialAgainstStoredNeighboursMatchesIndependentGeneration`) |
 | AC12 | PASS (subtask 5, `TestGenerate_SettledByItsInputsAlone` + `TestGuard_ImportsAllowlist`) |
 | AC13 | PASS (subtask 5, `TestGenerate_MapNamesGenerationVersion`) |
-| AC14 | NOT_TESTED |
+| AC14 | PASS (subtask 6, `TestGenerate_TakesSharedBorderFromStoredNeighbour`) |
 | AC15 | NOT_TESTED |
 | AC16 | NOT_TESTED |
 | AC17 | NOT_TESTED |
@@ -115,3 +116,7 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - internal/maze/generate.go (subtask 5: Cell/chunksConsulted deleted; Generate(ch,typ) and CellSeed added)
 - internal/maze/island.go, params.go (subtask 5: selectIslands takes ChunkType; gateCapacity binds Params.validate)
 - internal/maze/{generate,island,property,golden,bench,portal,guards}_test.go (subtask 5: rewritten against Generate/Map.Faces; TestGuard_ImportsAllowlist added)
+- internal/maze/map.go (subtask 6: NewMap, radiusForCellCount, isqrt)
+- internal/maze/map_test.go (new, subtask 6: NewMap round-trip, refusal rows, copy check)
+- internal/maze/generate.go (subtask 6: Generate gains variadic neighbors, resolveNeighborMaps)
+- internal/maze/generate_test.go, portal_test.go (subtask 6: AC14, refusal rows, order-independence, AC8's stored-neighbour clause)

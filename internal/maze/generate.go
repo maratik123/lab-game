@@ -33,13 +33,23 @@ func (gen *Generator) CellSeed(c hexgrid.Coord) uint64 {
 
 // Generate builds ch's whole map under typ, in a pinned pass order:
 // islands (island stream) → algorithm draw → spanning structure → extra
-// passages → the six borders in canonical direction order. It refuses
-// the zero ChunkType and any value this package does not know, naming
-// it.
-func (gen *Generator) Generate(ch hexgrid.Chunk, typ ChunkType) (Map, error) {
+// passages → the six borders in canonical direction order. A border
+// with a chunk whose Map appears in neighbors is taken from that map
+// directly; every other border comes from the portal rule. It refuses
+// the zero ChunkType and any value this package does not know; a
+// neighbor map for ch itself; a neighbor map not adjacent to ch; a
+// neighbor map at a different radius; and two neighbor maps for the
+// same chunk — each naming the offending map. The result does not
+// depend on the order of neighbors.
+func (gen *Generator) Generate(ch hexgrid.Chunk, typ ChunkType, neighbors ...Map) (Map, error) {
 	if !typ.valid() {
 		return Map{}, fmt.Errorf("maze.Generate: unknown chunk type %v", typ)
 	}
+	neighborMaps, err := resolveNeighborMaps(ch, gen.params.Radius, neighbors)
+	if err != nil {
+		return Map{}, err
+	}
+
 	lattice := gen.params.lattice()
 	g := newChunkGraph(lattice)
 
@@ -48,18 +58,18 @@ func (gen *Generator) Generate(ch hexgrid.Chunk, typ ChunkType) (Map, error) {
 	open := buildSpanningStructure(g, islands, algo, newStream(chunkKey(gen.seed, purposeStructure, ch)), biasThreshold(gen.params.GrowingTreeBias))
 	addExtraPassages(g, islands, open, newStream(chunkKey(gen.seed, purposeCycle, ch)), gen.params.ExtraPassageShare)
 
-	// A per-neighbour-chunk cache of this chunk's own borders: each
-	// border's portal set depends only on the seed, the two chunks and
-	// the portal shares, so it is computed once per neighbour rather
+	// A per-neighbour-chunk cache of this chunk's own derived borders:
+	// each border's portal set depends only on the seed, the two chunks
+	// and the portal shares, so it is computed once per neighbour rather
 	// than once per face.
-	borders := map[hexgrid.Chunk]map[hexgrid.Face]bool{}
-	borderPortals := func(neighborChunk hexgrid.Chunk) map[hexgrid.Face]bool {
-		if p, ok := borders[neighborChunk]; ok {
+	derivedBorders := map[hexgrid.Chunk]map[hexgrid.Face]bool{}
+	derivedBorderPortals := func(neighborChunk hexgrid.Chunk) map[hexgrid.Face]bool {
+		if p, ok := derivedBorders[neighborChunk]; ok {
 			return p
 		}
 		candidates := borderCandidates(lattice, ch, neighborChunk)
 		p := selectPortals(candidates, newStream(borderKey(gen.seed, ch, neighborChunk)), gen.params.PortalShareLower, gen.params.PortalShareUpper)
-		borders[neighborChunk] = p
+		derivedBorders[neighborChunk] = p
 		return p
 	}
 
@@ -77,9 +87,20 @@ func (gen *Generator) Generate(ch hexgrid.Chunk, typ ChunkType) (Map, error) {
 			}
 			c := lattice.At(ch, local)
 			globalNeighbor := c.Neighbor(d)
-			neighborChunk, _ := lattice.Locate(globalNeighbor)
-			portals := borderPortals(neighborChunk)
-			if portals[hexgrid.FaceOf(c, d)] {
+			neighborChunk, neighborLocal := lattice.Locate(globalNeighbor)
+
+			var passage bool
+			if nm, ok := neighborMaps[neighborChunk]; ok {
+				nFaces, ok := nm.Faces(neighborLocal)
+				if ok {
+					passage = nFaces[d.Opposite()] == FacePassage
+				} else {
+					passage = derivedBorderPortals(neighborChunk)[hexgrid.FaceOf(c, d)]
+				}
+			} else {
+				passage = derivedBorderPortals(neighborChunk)[hexgrid.FaceOf(c, d)]
+			}
+			if passage {
 				faces[idx][d] = FacePassage
 			} else {
 				faces[idx][d] = FaceWall
@@ -88,4 +109,37 @@ func (gen *Generator) Generate(ch hexgrid.Chunk, typ ChunkType) (Map, error) {
 	}
 
 	return Map{chunk: ch, typ: typ, version: Version, graph: g, faces: faces}, nil
+}
+
+// resolveNeighborMaps validates neighbors against ch and radius, and
+// returns them keyed by their own chunk. It refuses a map for ch
+// itself, a map not adjacent to ch, a map at a radius other than
+// radius, and two maps for the same neighbour — each naming the
+// offending map.
+func resolveNeighborMaps(ch hexgrid.Chunk, radius int32, neighbors []Map) (map[hexgrid.Chunk]Map, error) {
+	out := make(map[hexgrid.Chunk]Map, len(neighbors))
+	for _, nm := range neighbors {
+		nc := nm.Chunk()
+		if nc == ch {
+			return nil, fmt.Errorf("maze.Generate: a supplied neighbour map is for ch itself (%v)", ch)
+		}
+		if nm.Radius() != radius {
+			return nil, fmt.Errorf("maze.Generate: supplied neighbour map for %v has radius %d, want %d", nc, nm.Radius(), radius)
+		}
+		adjacent := false
+		for _, d := range sixDirections {
+			if ch.Neighbor(d) == nc {
+				adjacent = true
+				break
+			}
+		}
+		if !adjacent {
+			return nil, fmt.Errorf("maze.Generate: supplied neighbour map for %v is not adjacent to %v", nc, ch)
+		}
+		if _, exists := out[nc]; exists {
+			return nil, fmt.Errorf("maze.Generate: two supplied neighbour maps for the same chunk %v", nc)
+		}
+		out[nc] = nm
+	}
+	return out, nil
 }

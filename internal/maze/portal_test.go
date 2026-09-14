@@ -245,4 +245,37 @@ func TestBorder_IndependentOfChunkTypeAndThirdChunks(t *testing.T) {
 			}
 		}
 	}
+
+	// Stored-neighbour clause: A's border with B is identical with and
+	// without NewMap-built maps supplied for A's OTHER neighbours.
+	var otherNeighborMaps []Map
+	for _, d := range sixDirections {
+		nc := a.Neighbor(d)
+		if nc == b {
+			continue
+		}
+		m, err := gen.Generate(nc, ChunkTypeFabric)
+		if err != nil {
+			t.Fatalf("Generate(%v,fabric): %v", nc, err)
+		}
+		otherNeighborMaps = append(otherNeighborMaps, storedCopyOf(t, m))
+	}
+	withOthers, err := gen.Generate(a, ChunkTypeFabric, otherNeighborMaps...)
+	if err != nil {
+		t.Fatalf("Generate(a,fabric,others...): %v", err)
+	}
+	for _, f := range candidatesFromA {
+		_, aLocal := lattice.Locate(f.Cell)
+		want := direct[f]
+		got := func() bool {
+			faces, ok := withOthers.Faces(aLocal)
+			if !ok {
+				t.Fatalf("Faces(%v): ok=false", aLocal)
+			}
+			return faces[f.Dir] == FacePassage
+		}()
+		if got != want {
+			t.Errorf("A's border with B changed when unrelated neighbour maps were supplied: face %v got %v, want %v", f, got, want)
+		}
+	}
 }
