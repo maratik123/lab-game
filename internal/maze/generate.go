@@ -95,7 +95,7 @@ func (gen *Generator) Cell(coord hexgrid.Coord) Cell {
 
 		// A border face: the portal rule.
 		candidates := borderCandidates(lattice, own, neighborChunk)
-		portals := selectPortals(candidates, newStream(borderKey(gen.seed, own, neighborChunk)))
+		portals := selectPortals(candidates, newStream(borderKey(gen.seed, own, neighborChunk)), gen.params.PortalShareLower, gen.params.PortalShareUpper)
 		if portals[hexgrid.FaceOf(coord, d)] {
 			faces[d] = FacePassage
 		} else {

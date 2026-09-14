@@ -17,15 +17,18 @@ const MinRadius = 6
 
 // Params carries every input a Generator's chunk build reads: the
 // chunk's radius, the per-algorithm weights, the island share, the
-// extra-passage share, and the growing-tree bias. It carries no seed —
-// the seed is New's own argument — and fixes no configuration key name;
-// mapping a biome file onto Params is the composition root's concern.
+// extra-passage share, the growing-tree bias, and the portal share
+// bounds. It carries no seed — the seed is New's own argument — and
+// fixes no configuration key name; mapping a biome file onto Params is
+// the composition root's concern.
 type Params struct {
 	Radius            int32
 	Weights           AlgorithmWeights
 	IslandShare       decimal.Decimal
 	ExtraPassageShare decimal.Decimal
 	GrowingTreeBias   decimal.Decimal
+	PortalShareLower  decimal.Decimal
+	PortalShareUpper  decimal.Decimal
 }
 
 // zeroShare and oneShare bound every share and the bias to [0,1],
@@ -57,6 +60,23 @@ func (p Params) validate() error {
 	}
 	if err := validateShare("growing-tree bias", p.GrowingTreeBias); err != nil {
 		return err
+	}
+	if err := validateShare("portal share lower bound", p.PortalShareLower); err != nil {
+		return err
+	}
+	if err := validateShare("portal share upper bound", p.PortalShareUpper); err != nil {
+		return err
+	}
+	if p.PortalShareLower.GreaterThan(p.PortalShareUpper) {
+		return fmt.Errorf("maze: portal share lower bound %s is above the upper bound %s", p.PortalShareLower, p.PortalShareUpper)
+	}
+	borderLength := 2*int(p.Radius) + 1
+	lo, hi := portalBounds(p.PortalShareLower, p.PortalShareUpper, borderLength)
+	if lo < 1 {
+		return fmt.Errorf("maze: portal share lower bound %s rounds to %d guaranteed portals on a border of %d faces, but a border needs at least one", p.PortalShareLower, lo, borderLength)
+	}
+	if hi > int(p.Radius)+1 {
+		return fmt.Errorf("maze: portal share upper bound %s rounds to %d guaranteed portals on a border of %d faces, more non-touching positions than a path of that length has (%d)", p.PortalShareUpper, hi, borderLength, int(p.Radius)+1)
 	}
 	capacity := nonBorderCellCount(p.Radius)
 	if capacity == 0 && p.IslandShare.IsPositive() {

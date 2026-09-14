@@ -13,6 +13,8 @@ func validParams() Params {
 		IslandShare:       decimal.New(5, -2),
 		ExtraPassageShare: decimal.New(15, -2),
 		GrowingTreeBias:   half,
+		PortalShareLower:  decimal.New(1, -1),
+		PortalShareUpper:  decimal.New(2, -1),
 	}
 }
 
@@ -68,6 +70,62 @@ func TestParams_ValidateRejectsShareOutOfRange(t *testing.T) {
 		if err := p3.validate(); err == nil {
 			t.Errorf("validate() with growing-tree bias %s = nil, want an error", share)
 		}
+	}
+}
+
+func TestParams_ValidateRejectsPortalShareOutOfRange(t *testing.T) {
+	t.Parallel()
+	for _, share := range []decimal.Decimal{decimal.NewFromInt(-1), decimal.NewFromInt(2)} {
+		p := validParams()
+		p.PortalShareLower = share
+		if err := p.validate(); err == nil {
+			t.Errorf("validate() with portal share lower bound %s = nil, want an error", share)
+		}
+		p2 := validParams()
+		p2.PortalShareUpper = share
+		if err := p2.validate(); err == nil {
+			t.Errorf("validate() with portal share upper bound %s = nil, want an error", share)
+		}
+	}
+}
+
+func TestParams_ValidateRejectsPortalShareLowerAboveUpper(t *testing.T) {
+	t.Parallel()
+	p := validParams()
+	p.PortalShareLower = decimal.New(3, -1)
+	p.PortalShareUpper = decimal.New(2, -1)
+	if err := p.validate(); err == nil {
+		t.Error("validate() with lower portal share above upper = nil, want an error")
+	}
+}
+
+func TestParams_ValidateRejectsPortalShareLowerRoundingToZero(t *testing.T) {
+	t.Parallel()
+	p := validParams()
+	p.Radius = MinRadius // border length 13
+	p.PortalShareLower = decimal.Zero
+	p.PortalShareUpper = decimal.New(2, -1)
+	if err := p.validate(); err == nil {
+		t.Error("validate() with a zero lower portal share (rounds to 0 guaranteed portals) = nil, want an error")
+	}
+}
+
+func TestParams_ValidateRejectsPortalShareUpperPastRPlusOne(t *testing.T) {
+	t.Parallel()
+	p := validParams()
+	p.Radius = MinRadius                       // border length 13, R+1 = 7 non-touching positions max
+	p.PortalShareUpper = decimal.NewFromInt(1) // rounds to 13, far past 7
+	if err := p.validate(); err == nil {
+		t.Error("validate() with an upper portal share rounding past R+1 = nil, want an error")
+	}
+}
+
+func TestPortalBounds_RoundsUpWithCeiling(t *testing.T) {
+	t.Parallel()
+	// L=13 (radius 6): lower 0.1 -> ceil(1.3)=2, upper 0.2 -> ceil(2.6)=3.
+	lo, hi := portalBounds(decimal.New(1, -1), decimal.New(2, -1), 13)
+	if lo != 2 || hi != 3 {
+		t.Errorf("portalBounds(0.1,0.2,13) = (%d,%d), want (2,3)", lo, hi)
 	}
 }
 

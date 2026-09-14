@@ -32,6 +32,8 @@ func goldenParams() Params {
 		IslandShare:       decimal.New(5, -2),
 		ExtraPassageShare: decimal.New(15, -2),
 		GrowingTreeBias:   half,
+		PortalShareLower:  decimal.New(1, -1),
+		PortalShareUpper:  decimal.New(2, -1),
 	}
 }
 

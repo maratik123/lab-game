@@ -3,7 +3,14 @@ package maze
 import (
 	"testing"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/maratik123/lab-game/internal/hexgrid"
+)
+
+var (
+	refLowerShare = decimal.New(1, -1)
+	refUpperShare = decimal.New(2, -1)
 )
 
 func TestBorderCandidates_AgreeFromEitherSide(t *testing.T) {
@@ -39,46 +46,122 @@ func TestBorderCandidates_HasTwoRPlusOneEntriesForEveryNeighbourDirection(t *tes
 	}
 }
 
-func TestSelectPortals_OneOrTwoCappedByCandidates(t *testing.T) {
-	t.Parallel()
-	lattice := refLattice()
-	origin := hexgrid.Chunk{Q: 0, R: 0}
-	east := hexgrid.Chunk{Q: 1, R: 0}
-	candidates := borderCandidates(lattice, origin, east)
-
-	sawOne, sawTwo := false, false
-	for seedByte := range 50 {
-		s := newStream([32]byte{byte(seedByte), 9})
-		portals := selectPortals(candidates, s)
-		if len(portals) < 1 || len(portals) > 2 {
-			t.Fatalf("seed %d: portal count = %d, want 1 or 2", seedByte, len(portals))
-		}
-		for f := range portals {
-			found := false
-			for _, c := range candidates {
-				if c == f {
-					found = true
+// nonConsecutiveInPositionList reports whether none of the chosen
+// positions (indices into candidates) are consecutive integers — the
+// vertex-touching predicate for two portals of one border, since
+// consecutive entries in candidates' own path order share a vertex
+// (Lattice.Border's own contract).
+func nonConsecutiveInPositionList(positions []int) bool {
+	for i := range positions {
+		for j := range positions {
+			if i != j {
+				diff := positions[i] - positions[j]
+				if diff == 1 || diff == -1 {
+					return false
 				}
 			}
-			if !found {
-				t.Errorf("seed %d: portal %v is not among the candidates", seedByte, f)
-			}
-		}
-		if len(portals) == 1 {
-			sawOne = true
-		}
-		if len(portals) == 2 {
-			sawTwo = true
 		}
 	}
-	if !sawOne || !sawTwo {
-		t.Errorf("over 50 seeds, sawOne=%v sawTwo=%v, want both to occur", sawOne, sawTwo)
+	return true
+}
+
+func positionsOf(candidates []hexgrid.Face, portals map[hexgrid.Face]bool) []int {
+	var out []int
+	for i, c := range candidates {
+		if portals[c] {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// TestPortals_CountWithinRoundedUpShares checks that over a sweep of
+// radii, seeds and share pairs, the portal count lies within
+// [⌈lower×L⌉, ⌈upper×L⌉], and the sweep observes both ends for the
+// 0.1/0.2 pair.
+func TestPortals_CountWithinRoundedUpShares(t *testing.T) {
+	t.Parallel()
+	radii := []int32{6, 7, 9, 12}
+	sawLo, sawHi := false, false
+	for _, r := range radii {
+		lattice := hexgrid.Lattice{Radius: r}
+		origin := hexgrid.Chunk{Q: 0, R: 0}
+		east := origin.Neighbor(hexgrid.DirE)
+		candidates := borderCandidates(lattice, origin, east)
+		lo, hi := portalBounds(refLowerShare, refUpperShare, len(candidates))
+		for seedByte := range 60 {
+			s := newStream([32]byte{byte(r), byte(seedByte)})
+			portals := selectPortals(candidates, s, refLowerShare, refUpperShare)
+			if len(portals) < lo || len(portals) > hi {
+				t.Fatalf("radius %d seed %d: portal count = %d, want within [%d,%d]", r, seedByte, len(portals), lo, hi)
+			}
+			if r == MinRadius {
+				if len(portals) == lo {
+					sawLo = true
+				}
+				if len(portals) == hi {
+					sawHi = true
+				}
+			}
+		}
+	}
+	if !sawLo || !sawHi {
+		t.Errorf("over the sweep at radius %d, sawLo=%v sawHi=%v, want both ends observed", MinRadius, sawLo, sawHi)
+	}
+}
+
+// TestPortals_NoTwoPortalsOfABorderShareAVertex checks a border's
+// portals against the independent nonConsecutiveInPositionList
+// predicate, and confirms the predicate itself is seen RED against an
+// adjacent-positions mutant.
+func TestPortals_NoTwoPortalsOfABorderShareAVertex(t *testing.T) {
+	t.Parallel()
+	radii := []int32{6, 7, 9, 12}
+	for _, r := range radii {
+		lattice := hexgrid.Lattice{Radius: r}
+		origin := hexgrid.Chunk{Q: 0, R: 0}
+		east := origin.Neighbor(hexgrid.DirE)
+		candidates := borderCandidates(lattice, origin, east)
+		for seedByte := range 30 {
+			s := newStream([32]byte{byte(r), byte(seedByte), 1})
+			portals := selectPortals(candidates, s, refLowerShare, refUpperShare)
+			positions := positionsOf(candidates, portals)
+			if !nonConsecutiveInPositionList(positions) {
+				t.Fatalf("radius %d seed %d: portal positions %v are not pairwise non-consecutive", r, seedByte, positions)
+			}
+		}
+	}
+	// The predicate itself must be discriminating: an adjacent-positions
+	// mutant is seen RED.
+	if nonConsecutiveInPositionList([]int{2, 3}) {
+		t.Fatal("test setup: nonConsecutiveInPositionList did not flag adjacent positions 2,3")
+	}
+}
+
+func TestNonConsecutivePositions_NeverAdjacent(t *testing.T) {
+	t.Parallel()
+	for l := 3; l <= 25; l++ {
+		for count := 1; count <= (l+1)/2; count++ {
+			s := newStream([32]byte{byte(l), byte(count)})
+			positions := nonConsecutivePositions(s, l, count)
+			if len(positions) != count {
+				t.Fatalf("l=%d count=%d: got %d positions, want %d", l, count, len(positions), count)
+			}
+			for _, p := range positions {
+				if p < 0 || p >= l {
+					t.Fatalf("l=%d count=%d: position %d out of range", l, count, p)
+				}
+			}
+			if !nonConsecutiveInPositionList(positions) {
+				t.Fatalf("l=%d count=%d: positions %v are not pairwise non-consecutive", l, count, positions)
+			}
+		}
 	}
 }
 
 func TestSelectPortals_EmptyCandidatesYieldsNoPortal(t *testing.T) {
 	t.Parallel()
-	if portals := selectPortals(nil, newStream([32]byte{1})); len(portals) != 0 {
+	if portals := selectPortals(nil, newStream([32]byte{1}), refLowerShare, refUpperShare); len(portals) != 0 {
 		t.Errorf("selectPortals(nil, _) = %v, want none", portals)
 	}
 }
@@ -90,8 +173,8 @@ func TestSelectPortals_ReproducibleFromTheSameKey(t *testing.T) {
 	east := hexgrid.Chunk{Q: 1, R: 0}
 	candidates := borderCandidates(lattice, origin, east)
 	key := [32]byte{4, 4, 4}
-	a := selectPortals(candidates, newStream(key))
-	b := selectPortals(candidates, newStream(key))
+	a := selectPortals(candidates, newStream(key), refLowerShare, refUpperShare)
+	b := selectPortals(candidates, newStream(key), refLowerShare, refUpperShare)
 	if len(a) != len(b) {
 		t.Fatalf("portal count differs across identical keys: %d vs %d", len(a), len(b))
 	}
@@ -119,7 +202,7 @@ func TestBorder_IndependentOfChunkTypeAndThirdChunks(t *testing.T) {
 		}
 	}
 	seed := int64(20260912)
-	direct := selectPortals(candidatesFromA, newStream(borderKey(seed, a, b)))
+	direct := selectPortals(candidatesFromA, newStream(borderKey(seed, a, b)), refLowerShare, refUpperShare)
 	viaCell, err := New(seed, refParams())
 	if err != nil {
 		t.Fatalf("New: %v", err)

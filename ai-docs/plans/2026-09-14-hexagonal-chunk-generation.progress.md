@@ -11,8 +11,8 @@ _Updated: 2026-09-14 00:33_
 **Spec:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.spec.md
 **Design:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.design.md
 
-**current_step:** Step 8 — subtask 3 of 9 complete
-**last_passed_gate:** go test ./... (full module, race incl. for maze/hexgrid) | 2026-09-14 | (subtask 3 commit)
+**current_step:** Step 8 — subtask 4 of 9 complete
+**last_passed_gate:** go test ./... (full module, race incl. for maze) | 2026-09-14 | (subtask 4 commit)
 
 **entry_args:** 119
 
@@ -27,8 +27,8 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - [x] 1. `hexgrid`: add the super-lattice beside the rhombic API — `Lattice` and its methods, `Chunk.Neighbor`, cell `Distance`; tests for AC1, AC2, AC3, AC5. (Group A) — 3c119a2
 - [x] 2. `maze`: remove the prefab hook on the shipped core; the no-plug-in guard; re-mint `cells.golden`. (Group A)
 - [x] 3. `maze` onto hexagonal chunks, portal count still one-or-two; `Params.Radius` with `MinRadius`; delete the rhombic `hexgrid` API. (Group A)
-- [ ] 4. `maze`: the portal rule — shares, count range, non-touching placement; AC6, AC7, AC8's pair-level clause. (Group A) ← CURRENT
-- [ ] 5. `maze`: the chunk-level core — `ChunkType`, `Version`, `Map`, `Generate(ch, typ)`, `CellSeed`; AC8's type clause. (Group A)
+- [x] 4. `maze`: the portal rule — shares, count range, non-touching placement; AC6, AC7, AC8's pair-level clause. (Group A)
+- [ ] 5. `maze`: the chunk-level core — `ChunkType`, `Version`, `Map`, `Generate(ch, typ)`, `CellSeed`; AC8's type clause. (Group A) ← CURRENT
 - [ ] 6. `maze`: stored neighbours — `NewMap` and `neighbors`; AC14; AC8's stored-neighbour clause. (Group A)
 - [ ] 7. `maze`: goldens in their final shape — `chunks.golden`; `derive.golden` byte-identical or stop and report. (Group A)
 - [ ] 8. Configuration — `world.chunk.radius`; `want` formatted from `maze.MinRadius`; drop `bindInt`'s `//nolint:unparam`. (Group A)
@@ -74,9 +74,9 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 | AC3 | PASS (subtask 1) |
 | AC4 | PASS (subtask 3, `TestParams_ValidateRadiusBound`) |
 | AC5 | PASS (subtask 1) |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
+| AC6 | PASS (subtask 4, `TestPortals_CountWithinRoundedUpShares`) |
+| AC7 | PASS (subtask 4, `TestPortals_NoTwoPortalsOfABorderShareAVertex`) |
+| AC8 | PARTIAL — pair-level clause only (subtask 4, `TestBorder_IndependentOfChunkTypeAndThirdChunks`); type and stored-neighbour clauses land in subtasks 5–6 |
 | AC9 | NOT_TESTED |
 | AC10 | NOT_TESTED |
 | AC11 | NOT_TESTED |
@@ -108,3 +108,5 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - internal/hexgrid/chunk.go, chunk_test.go (rhombic Dims/ChunkOf/Origin/Contains deleted)
 - internal/maze/chunkgraph.go, params.go, island.go, portal.go, generate.go (rewritten over hexgrid.Lattice; Params.Radius replaces Params.Dims)
 - internal/maze/{chunkgraph,params,island,portal,property,golden,generate,algorithms,cycles}_test.go (adapted to the hex lattice)
+- internal/maze/params.go, portal.go, generate.go (subtask 4: PortalShareLower/Upper, portalBounds, ceilShare, nonConsecutivePositions bijection)
+- internal/maze/params_test.go, portal_test.go, generate_test.go, golden_test.go (subtask 4: portal share fixtures and refusal rows)
