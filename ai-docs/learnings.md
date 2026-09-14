@@ -73,7 +73,7 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **What happened:** Reviewing an `/ai-audit` commit as `self-review`, I ran `wc -c` on the extracted `task/` skill files and quoted the before/after byte counts under "What was checked", with the parenthetical that size talk was legal because the commit under review was `/ai-audit`'s own. The AXIOM in AGENTS.md § Build & Test carves the exemption by **flow**, not by whose diff is on the table: `/ai-audit` is the sole owner, and "both reviewers" are named among the flows FORBIDDEN to measure or report instruction-file size. The permissive reading was the one that let me do the check I wanted to do.
 **Rule:** A carve-out names the actor it exempts; being *adjacent* to that actor (reviewing its work, running inside its PR) does not transfer the exemption. When a rule sorts flows into owner vs everyone-else, locate *your own flow* in the table before acting, and verify a permissive reading harder than a restrictive one (AGENTS.md § Communication). A reviewer verifies an `/ai-audit` size claim by checking that `/ai-audit` measured it, not by measuring again; its verdict names no byte figure.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** hook, skill:ai-audit
 
 ### 2026-09-02 — process — spawned design-review with framing its closed-list contract forbids
 **What happened:** The Step 7 spawn prompt carried a "Context:" paragraph beyond the five permitted items — the amendment history plus "verify the design matches the spec as it stands on disk now, including KD-15, AC15 and AC16". The reviewer raised it as finding #1 (`PROMPT-CONTAMINATION`, major) and ignored the content. I had spawned "per `design-review.md`" without opening the file; the only spawn example I had read that turn — the Spec Amendment recipe's template in `task/reference.md:62` — itself carries a `Context:` line, which made the shape feel sanctioned.
@@ -161,7 +161,7 @@ Entries are appended at the END, newest last. Never edit, reorder or delete an e
 **Rule:** Before reading a large instruction file, the question "how big is it?" is not mine to ask in `/improve`, `/task`, `/interview`, `/bugfix`, either reviewer, or CI — `.claude/skills/ai-audit/checklist-m.md` § Sub-check 9 gives that measurement to `/ai-audit` alone, at any threshold, and a `wc -c` run only to plan my own reading is still the measurement. Use `sed -n` ranges or `grep -n` for structure instead; a byte count answers a question the flow is not allowed to have. Second, and the reason both instances happened: the figures live in exactly one file, so a flow that has not opened `checklist-m.md` does not know the rule exists — reaching for a size is the tell that the covered-set page has not been read, not a licence granted by its absence from `AGENTS.md`.
 **at:** ab505d7
 **Kind:** correction
-**Escalated?** no
+**Escalated?** hook, skill:ai-audit
 
 ### 2026-09-04 — testing — a test named as an AC's verifier that never exercises the wiring it is named for
 **What happened:** Four self-review rounds on #19 each surfaced the same shape, and the fix for one instance produced the next. `TestLimiter_SteadyOrderedEmission` configured a single window where the ordered and unordered schedule kinds coincide, so it could not distinguish them; `TestSchedule_OrderedEmissionIsNonDecreasing` hand-built an `orderedSchedule` and so never exercised the code that chooses the kind; `TestLoadTransport_AllAbsentYieldsDefaults` compared `defaultTransport()` to itself; `TestRetry_DeadlineRefusalInsteadOfSleep` bounded elapsed time from below where the criterion was the absence of a sleep; and `TestSchedule_EvictBoundsMemoryAcrossManyAcquires` — written in an earlier fix round for exactly this property — hand-rolled the schedule instead of driving `Limiter.acquire`, so deleting both live `evict` call sites left the suite green. Every one passed on the shipped code and passed on the mutant.
@@ -309,7 +309,7 @@ wrong-surface text by message twelve.
 **Rule:** A restore point for a `.go` file never keeps the `.go` suffix: use `tmp/<name>.go.bak`, or `git show HEAD:<path>` and skip the copy entirely. Nothing written under `tmp/` may end in `.go`.
 **at:** 08f136d
 **Kind:** correction
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-07 — process — a rule quoted as `AGENTS.md` turned out to be a `Makefile` comment
 **What happened:** The entry above attributed to `AGENTS.md` § *Build & Test* the sentence "a stray `.go` file there breaks `go build ./...`, which is the cheap direction", and called it the sentence that authorises `tmp/` at all. `grep -rn "cheap direction"` returns one source line: `Makefile:25`. `AGENTS.md` authorises `tmp/` at line 67 and says nothing there about `.go` files. The consequence claim was inflated the same way: the copy did not break `go build ./...` — `go test ./...` merely listed `? github.com/maratik123/lab-game/tmp/dbperf [no test files]`. Raised as R2-1 by `self-review` round 2, inside the very branch whose subject is an unchecked claim becoming an argument. The wrong entry stays where it is: Boundary rule 1 admits no edit, and an unpushed commit is not a licence to rewrite one.
@@ -475,7 +475,7 @@ wrong-surface text by message twelve.
 **What happened:** On `/task 74` Group B — the docs subtask, which adds a bullet to `AGENTS.md` — I wanted to know whether any cap bound that bullet, and ran one command that both printed `.claude/skills/ai-audit/checklist-m.md` § Sub-check 9 and ran `wc -c AGENTS.md CLAUDE.md`. The page it printed names `/task` in its FORBIDDEN row, and forbids the measurement itself, not only reporting it. The figure reached no artefact, and the bullet was written as the design specified rather than fitted to it. Same shape as the `/improve` recurrence: the question "how big is it?" was asked before the rule that forbids asking it had been read — and batching the lookup of the rule with the command the rule might forbid guaranteed the command ran first.
 **Rule:** In `/task`, `/interview`, `/bugfix`, `/improve`, either reviewer or CI, never count the bytes or lines of a file in Sub-check 9's covered set, whatever the purpose. Wondering whether an edit fits a size limit is itself the tell: ship the edit as specified and leave size to `/ai-audit`. Never batch reading a rule with a command that rule might forbid — read the rule, then decide whether to run anything.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** hook, skill:ai-audit
 
 ### 2026-09-11 — testing — a mutant that `go build` accepts can still fail to build under `go test`
 **What happened:** On `/task 74` Step 11, the orchestrator checked a self-review row's mutant (every refusal message in `internal/leaktest`'s `check` replaced by `"x"`) with `go build ./internal/leaktest/` first, as the "confirm the mutant builds" step, then ran the test: exit 1. The log showed no failing subtest — `go test` runs a `go vet` subset before the binary, and the mutant left `fmt.Fprintf` calls with arguments and no directive, so the package never compiled into a test. The exit status looked like "the test caught it"; only the zero count of `--- FAIL:` lines under the named test showed otherwise. The mutant was rewritten to pass `go vet`, and then failed the five subtests on their own assertion.
@@ -523,13 +523,13 @@ wrong-surface text by message twelve.
 **What happened:** At `/task` Step 7 I built the design-review spawn prompt as `spec_path: …` / `design_path: …` / `round: 1`, copying the field style the spec-writer prompt uses. The content was exactly the five permitted things, but the shapes are not the ones the spawn-prompt contract fixes, and the `PreToolUse` hook refused the spawn. Re-spawning with `Spec:` / `Design:` / `Round:` lines went through.
 **Rule:** A gate subagent's spawn prompt is a fixed set of LINE SHAPES, not a set of facts to render in any style. Copy the permitted lines from the agent's spawn-prompt contract literally — `Read .claude/agents/<name>.md and follow it.`, `Spec:`, `Design:`, `Progress:`, `<sha>..HEAD`, `Round:` — and never carry a sibling flow's field style across to it.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** skill:task
 
 ### 2026-09-12 — tooling — a delegate left `.go` scratch files in `tmp/`, and `go build ./...` walks that directory
 **What happened:** The round-1 `self-review` agent wrote `tmp/caller_test_pre.go`, `tmp/probe_test_pre.go` and `tmp/fixed_test.go` as controls and mutant fixtures and did not remove them. The next `make verify` died at its first Go target with `found packages tg (caller_test_pre.go) and health (probe_test_pre.go) in /home/syt/lab-game/tmp` — a RED gate that said nothing about the change under test. The instruction file already says such scratch is the writer's to keep out; the failure mode it does not name is that a `.go` file there breaks the module build for everyone downstream, so the cost lands on the next agent, not on the one that wrote it.
 **Rule:** A scratch copy of a Go source file never keeps a `.go` extension under `tmp/`. Save it as `.go.txt` or `.bak`, or delete it in the same command that used it. Whoever finds a stray `*.go` under `tmp/` reads it before deleting — confirm it is a copy of a tracked state and not the only copy of something — and then removes it, because a gate cannot run until it is gone.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-12 — testing — measuring the instrument found the bug that both the report and the gate had misnamed
 **What happened:** Issue #85 reported `make test-contention` red as "cmd/bot migrations lose the advisory-lock connection under load", and the gate itself printed `test-contention: exhaustion scan clean` before handing back the race gate's exit status — both pointing at contention, one of them in the voice of a passed check. Sampling the provisioned container's PGDATA mount every 0.5 s during the run showed it going 47 MB to 445 MB in ten seconds, `pg_wal` alone 16 MB to 262 MB and still climbing, against a 512 MB tmpfs and an image-default `max_wal_size` of 1024 MB. The server was dying of `SQLSTATE 53100`, and `pg_try_advisory_lock` was merely the statement in flight when it did. The advisory lock, the connection ceiling and the goose retry loop were all innocent.
@@ -570,7 +570,7 @@ satisfying summary of work that genuinely did succeed, so the overclaim rides in
 **What happened:** Verifying a self-review finding, I ran `git show <sha>:cmd/testpg/run_test.go > tmp/pre.go` to compare the pre-change file. `tmp/` is gitignored but it is still inside the module, so the extraction became a package: the next `go build ./...` and `golangci-lint run` both went RED with `undefined: seam`, `undefined: runChild` in `tmp/pre.go`. I deleted the file and both gates went green. Nothing was committed, and `git status` never showed the file, because the ignore rule hides it.
 **Rule:** The repository's `tmp/` is for gate logs and non-source scratch only. Anything with a source extension a toolchain globs — `.go` above all — goes to the session scratchpad outside the repository, or the module grows a package nobody can see in `git status`. Redirecting a `git show` of a source file is the shape that produces one without ever looking like a write.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-12 — process — anchored an append-only insert on an existing entry's line and split it in two
 **What happened:** Adding an entry to `ai-docs/harness-gaps.md`, I used `Edit` with the previous entry's `**Proposed edit:**` line as the anchor, prefixing my new entry to it. `Edit` succeeded — the anchor was unique — so nothing complained, but the previous entry was then cut in half with my whole entry sitting between its `Gap:` and its own `Proposed edit:`. I noticed on the structure check (55 headings, 55 proposed-edit lines, and the last entry in the file was not mine), relocated my entry to the end with a script that asserted the moved block's first and last lines, and confirmed the repair by `git diff`: 7 insertions, 0 deletions against HEAD, so the existing log was byte-identical.
@@ -620,7 +620,7 @@ written against, which is exactly the half that decides whether the call goes th
 believing you satisfied a contract you never opened.
 
 **Kind:** correction
-**Escalated?** no
+**Escalated?** skill:task
 
 ### 2026-09-12 — process — the hand-back token is written in the turn that hands off, not recalled later
 
@@ -831,13 +831,13 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **What happened:** At `/task` Step 7 I built the design-review spawn prompt as `spec: …` / `design: …` / `round: 1`. The content was exactly the five permitted things and nothing else, but the spawn-prompt contract fixes the line SHAPES — `Spec:` / `Design:` / `Round:` — and the `PreToolUse` hook refused the spawn, naming all three lines as outside the closed list. Re-spawning with the capitalised shapes went through. A near-identical entry dated the same day already sits in this log from the sibling checkout, recording the `spec_path:` spelling of the same mistake; I had not read it, and reading it would have cost less than the refused spawn.
 **Rule:** A gate subagent's spawn prompt is a fixed set of line shapes, not a set of facts to render in whatever style the previous prompt used. Copy the permitted lines from the agent's own spawn-prompt contract literally before spawning, and never carry a sibling flow's field style across — the `spec-writer` prompt's `issue_ref:` / `round:` style is not the reviewer's.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** skill:task
 
 ### 2026-09-12 — tooling — read `$?` from the tail of a pipeline and nearly recorded an instrument error as a clean sweep
 **What happened:** Verifying AC13 at `/task` Step 9, I swept for falsified claims with `grep -rniE '…' README.md docs/*.md | head -10` and printed `$?`, which reported `0`. That was `head`'s status. Re-running the same sweep without the pipe returned grep's real status, **exit 2** — an error, not "no matches": this repository has no `README.md` at all, so the AC clause naming it has no target. Under the piped form I would have recorded "README and docs carry no falsified claim, verified" on an exit code produced by a program that had read nothing. The piped-gate hook does not reach this shape; it matches Go gates and `make`, not `grep`.
 **Rule:** The no-piping rule is about the load-bearing exit code, not about the Go toolchain: it binds any command whose status decides what I record, `grep` and `comm` included. And grep's exit 2 is an instrument failure, never a clean result — a sweep that names a path must establish the path exists before its silence counts as evidence.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** hook, AGENTS.md
 
 ### 2026-09-12 — process — recorded an acceptance criterion PASS from a sweep taken before the edit that falsified it
 **What happened:** At `/task` Step 9 I ran AC13's propagation sweep, then a design amendment added a third pinned lint setting, then I wrote `AC13 | PASS` into the progress file's AC table without re-running the sweep. Three live surfaces — `ai-docs/code-style.md`, `ai-docs/key-decisions.md` KD-16 and `ai-docs/context.md` — still said two settings were pinned. `self-review` round 1 found all three as one `major`. The sweep itself had been sound; what was unsound was recording its result after a later edit had moved what it measured, and the tell was available: `ai-docs/context-status.md`, written after the amendment, had it right, so the tree disagreed with itself.
@@ -849,19 +849,19 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **What happened:** Running a review-register row's verifying command at `/task` Step 11, I wrote `grep -n 'resultCh' <file> | cut -c1-150` and printed `$?`, which reported `cut`'s status. I had appended an entry about this exact shape roughly forty minutes earlier in the same session, after nearly recording a `grep` exit 2 as a clean sweep. Re-running without the pipe gave the real answer, and it was the interesting one: the literal symbol was absent, and the fix names the channel descriptively instead.
 **Rule:** Writing the rule down does not install it. When a command's exit status is going to be read, the pipe is decided before the command is typed — `cmd > tmp/x.log 2>&1; echo $?` is the default shape for any status-bearing invocation, and truncation with `cut`/`head` is applied to the SAVED file, never to the live pipeline.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** hook, AGENTS.md
 
 ### 2026-09-12 — process — spawning a gate reviewer without reading its own spawn-prompt contract
 **What happened:** Spawned `design-review` at `/task` Step 7 carrying exactly the five items that step enumerates, but written as `spec_path:` / `design_path:` / `round:` — the snake_case shape of the `spec-writer` and `design-writer` input contracts I had just used. The `PreToolUse` hook refused the spawn and printed the closed list: the permitted lines are `Spec:` / `Design:` / `Progress:` / `Round:`. The orchestrating skill describes the prompt's *content* in prose ("exactly these five things") and does not carry the line grammar, which lives in the callee's own agent file under its spawn-prompt contract.
 **Rule:** Before spawning an agent whose prompt is machine-checked, read that agent file's spawn-prompt contract and copy its line forms — a prose enumeration of what the prompt must *contain* is not a statement of the shape it must *take*, and a field name carried over from a sibling agent's contract is an assumption, not a form. The general form of this is already written down for design work (`design-writer.md`: read the callee's own instruction file whenever one harness component invokes another); it binds the orchestrator at a spawn exactly as it binds a designer at a specification.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** skill:task
 
 ### 2026-09-12 — process — spawned `design-review` with invented field names instead of the closed line list
 **What happened:** At `/task` Step 7 I built the spawn prompt from the SKILL body's prose — "the invocation line, the spec path, the design path, the progress-file path, and the round number" — and wrote it as `spec_path:` / `design_path:` / `round:`, the field names the `spec-writer` round prompt uses. The contract is a closed list of line SHAPES (`Spec:`, `Design:`, `Progress:`, `Round: <N>`), and it lives in the agent file, not in the SKILL body. A `PreToolUse` hook refused the spawn and printed the permitted forms; nothing reached the reviewer, so the cost was one blocked call rather than a `PROMPT-CONTAMINATION` finding and a wasted round.
 **Rule:** A prose enumeration of what a gate prompt carries is a count of its items, never their syntax. Before spawning a gate subagent, read the § *Spawn prompt contract* in that agent's own file and copy the line forms from there — the SKILL body says how many things and which, the agent file says how they are spelled. Carrying a sibling delegate's field names across is the specific way this goes wrong: the two prompts look alike and only one of them is shape-gated.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** skill:task
 
 ### 2026-09-12 — search — a grep over a wrapped prose document is a claim about the line break, not about the document
 **What happened:** Verifying that a `design-review` GO's notes had landed in the design, three of my `grep` probes came back empty on items that were present: `budget lever` (written `**budget** lever`), `Scoped — take the FK` (wrapped as `Scoped — take the\nFK`), and `phase order and sentinels` (wrapped inside a bold span as `**`post`'s own phase order and\nsentinels are unchanged**`). Each time I read the surrounding section instead of concluding absence, and each time the item was there. A fourth probe, over the progress file, went the other way: a delegate reported the file still listed six subtasks, I read it rather than acting, and the claim was stale.
@@ -873,7 +873,7 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **What happened:** At `/task` Step 9.5, checking whether the diff removed any exported symbol for the removal sweep, I wrote `git diff … | grep -E '^-func [A-Z]' | head; echo "exit=$?"` and displayed the `0` as though it answered the question. It was `head`'s status. Re-run without the pipe, `grep` returned exit 1 — no removed function at all — so the answer happened to be the same, and that is the whole danger: the shape produces a plausible number regardless. Two entries about this exact shape already stood in this file, one of them written by me roughly three hours earlier in this session, and the rule they state ("`cmd > tmp/x.log 2>&1; echo $?` is the default shape for any status-bearing invocation") is one I had been following correctly on every gate all run.
 **Rule:** The rule held wherever the command *looked* like a gate — `make verify`, `go test`, the ratchet — and failed on a one-line `grep` typed inside a checklist step, because the shape is recognised by ceremony rather than by the question being asked. The trigger is not "am I running a gate" but "am I about to read a number out of this". Redirect first, then read; and when the subject of a sweep turns out to be empty, say so as *vacuous by construction* rather than reporting the clean answer the instrument would have given for any input.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** hook, AGENTS.md
 
 ### 2026-09-12 — testing — ran a probabilistic reproduction without `-count=1` and nearly counted two cache replays as two green trials
 **What happened:** Diagnosing a CI test failure I could not reproduce, I ran `make test` twice to sample the whole-module condition and reported to the owner that I was measuring. Both runs came back `(cached)` for the two packages that mattered, so they executed nothing and were worth zero Bernoulli trials, not two. I caught it only because I printed the per-package lines to show the runs were real. Earlier in the same session I had done this correctly and deliberately — forcing `go test -race -count=1 ./internal/store/` precisely because `make verify` had reported `(cached)` for the package whose race behaviour was the point.
@@ -975,12 +975,12 @@ tool, treat that as a claim about the command before it is a claim about the tre
 ### 2026-09-12 — process — a delegate's spawn-prompt shape is read from its own contract, never inferred from a sibling's
 **What happened:** Spawned `design-review` using the field names that the `spec-writer` round prompt uses (`spec_path:` / `design_path:` / `round:`). The `PreToolUse` spawn-contract hook refused the call and named every offending line. `/task` Step 7 enumerates the five permitted items but not their lexical form; the form lives in the callee's own § Spawn prompt contract, which was not opened before the spawn.
 **Rule:** Before spawning any agent whose prompt is a closed list, open that agent's own spawn-prompt contract and copy the permitted line shapes from there. An enumeration of *what* a prompt may carry, read in the caller's file, says nothing about *how* each item is spelled — and a sibling agent's prompt is evidence about that sibling alone.
-**Escalated?** no
+**Escalated?** skill:task
 
 ### 2026-09-12 — tooling — a pipeline's exit status answers for its last stage, including when the pipe is only cosmetic
 **What happened:** Verified that a struck requirement survived nowhere in the spec with `grep -niE '<pattern>' <spec> | sed 's/^/hit: /'`, then reported the captured status as the grep's. It was `sed`'s, and `sed` succeeds on empty input, so a clean result was recorded before the grep's own exit code had been read at all. Re-running without the pipe reached the same conclusion by a route that could actually have contradicted it.
 **Rule:** Never place a pipe after a command whose exit code is the answer — not even a formatting one. Redirect to a file under `tmp/`, read the status, then read the file. The hook that blocks this shape matches test-gate pipes; a `grep | sed` used to prettify output is the same defect wearing a harmless-looking second stage.
-**Escalated?** no
+**Escalated?** hook, AGENTS.md
 
 ### 2026-09-12 — process — an acceptance row invoked as binding is a citation, and its anchor is what makes it one
 **What happened:** Reasoned from an acceptance criterion requiring the maze algorithms be provably distinguishable — describing it to the owner as a requirement and spending a measurement that supported it — without resolving the anchor that was supposed to source it. The owner asked where the row came from; resolving the anchor showed it quoted their own earlier *question about a fact*, which the drafting delegate had read as a remit. The measurement had made an unsourced requirement look better founded than the task ever made it.
@@ -1004,7 +1004,7 @@ tool, treat that as a claim about the command before it is a claim about the tre
 ### 2026-09-13 — tooling — a clean `git status` is not evidence that the module builds
 **What happened:** `go build ./...` failed on `tmp/dgprobe/impossible/p.go`, a probe a delegate wrote and did not remove, while `git status --porcelain` was empty — `tmp/` is gitignored, so every tree-clean probe the flow runs reported clean over a module that did not compile. A second scratch copy of the whole checkout sat under `tmp/base/` with its own `go.mod`, which is what had kept it out of the parent module and also what made deleting that `go.mod` alone dangerous: without it, two hundred Go files would have joined the module.
 **Rule:** `git status` answers whether the index and working tree agree with HEAD; it answers nothing about what `./...` resolves to, because Go walks ignored directories that are not `_`- or `.`-prefixed. After any turn in which a delegate ran mutation or scratch probes, run the build itself rather than reading tree-cleanliness as a proxy, and sweep `tmp/` for `*.go` and `go.mod` before believing either.
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-13 — process — put two test counts into a commit message before the measuring command had run
 **What happened:** The implementation commit `f9f24ca` carries the trailer `62 new tests; all 120 tests green`. Neither figure came from a measurement. The real count of added test and benchmark functions is **125** (`git diff origin/main...HEAD -- '*_test.go' | grep -cE '^\+func (Test|Benchmark|Fuzz)[A-Z_]'`, with 0 removed), and **120** is the top-level count of the three *new* packages alone while the module passes **881** — so the second number is a real measurement of a different population, presented as the total. I found it only at Step 12, writing the PR body, by running the counts the message had already claimed. Unlike the two adjacent entries in this log — one asserting a count from reading instead of counting, one mistaking a command's unit — this is the flat case: the sentence was composed first and the command was never run, on the one surface in the repository that cannot be corrected without rewriting history.
@@ -1032,7 +1032,7 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **What happened:** At `/task` Step 7 of the #119 run, the first `design-review` spawn carried the permitted set of inputs (invocation line, spec path, design path, round) but spelled them `spec_path:` / `design_path:` / `round:`, the field vocabulary of the `spec-writer` prompts the orchestrator had just been sending in the interview. The `PreToolUse` spawn hook refused it: the design-review spawn contract permits only `Spec:` / `Design:` / `Progress:` / `Round:` lines. The re-spawn in those shapes passed.
 **Rule:** Before spawning a gate agent (`design-review`, `self-review`), write the prompt in that agent's own spawn-prompt contract line shapes, not in the field vocabulary of the flow just left — the closed list binds the spelling of each line, not only which items appear.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** skill:task
 
 ### 2026-09-14 — process — surfaced unreachable numeric extremes to the owner as spec decisions
 **What happened:** In the #119 run, after design-review round 1 returned ITERATE, the orchestrator put two delegate-raised edge cases to the owner as spec-amendment questions — AC4's upper radius at the `int32` cell-count limit, and AC1–AC3 at the `int32` coordinate seam — recommending a spec amendment for each, without first weighing whether either state is reachable at the product's real scale. The owner answered: «Какой бред, это число буду задавать я, и я явно буду делать разумный выбор. Зачем я буду выбирать числа порядка 2^20? Чтобы что?» and «Может, оценивать реально? Зачем закладывать то, что никогда не будет достигнуто? Это телеграм игра, готовим мвп, ты реально считаешь, что к игре подключаться 100500 чатов на старте?»
