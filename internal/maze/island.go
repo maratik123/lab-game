@@ -47,11 +47,10 @@ func selectIslands(g chunkGraph, s stream, p Params, typ ChunkType) map[int]bool
 		candidates = append(candidates, idx)
 	}
 	if firstBorder < 0 {
-		// Every cell is a border cell (a 1x1, single-row, or
-		// single-column chunk) — Params.validate already refuses a
-		// positive island share at such dims, so target is 0 and this
-		// branch is unreachable in practice; kept total rather than
-		// assumed.
+		// Every cell is a border cell — only a radius of zero has no
+		// interior cell at all, and Params.validate already refuses any
+		// radius below MinRadius, so this branch is unreachable; kept
+		// total rather than assumed.
 		return islands
 	}
 	shuffle(s, candidates)

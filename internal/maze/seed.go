@@ -68,8 +68,8 @@ func derive(wk [32]byte, purpose byte, coords ...int32) [32]byte {
 }
 
 // cellKey is the digest for coordinate c under the given world seed —
-// a function of the world seed and the coordinate alone, never of any
-// chunk dimensions.
+// a function of the world seed and the coordinate alone, never of the
+// chunk radius.
 func cellKey(seed int64, c hexgrid.Coord) [32]byte {
 	return derive(worldKey(seed), purposeCell, c.Q, c.R)
 }

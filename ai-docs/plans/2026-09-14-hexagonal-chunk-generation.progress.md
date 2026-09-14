@@ -11,14 +11,14 @@ _Updated: 2026-09-14 00:33_
 **Spec:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.spec.md
 **Design:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.design.md
 
-**current_step:** Step 8 — subtask 8 of 9 complete
-**last_passed_gate:** go test ./... (full module) | 2026-09-14 | (subtask 8 commit)
+**current_step:** Step 8 — Group A complete (subtasks 1-9); handoff to Group B pending
+**last_passed_gate:** go test ./... (full module) + make import-guard | 2026-09-14 | (subtask 9 commit)
 
 **entry_args:** 119
 
 ## Next action
 
-**Do this immediately:** Group A — complete subtasks 1–9 of the design's `## Decomposition`, in order, one commit per subtask (design § Handoff plan: code group, `code-writer`).
+**Do this immediately:** Group A (subtasks 1-9) is complete, all nine commits landed on this branch, tree green. Per design § Handoff plan: spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry), then hand off to Group B (subtasks 10-11, instructions/harness change-type) via the `general-purpose` subagent. Group B edits no code file — a code-surface hit found there is a Group A defect to stop and report, not to fix in place.
 
 ## Subtasks
 
@@ -32,7 +32,7 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - [x] 6. `maze`: stored neighbours — `NewMap` and `neighbors`; AC14; AC8's stored-neighbour clause. (Group A)
 - [x] 7. `maze`: goldens in their final shape — `chunks.golden`; `derive.golden` byte-identical or stop and report. (Group A)
 - [x] 8. Configuration — `world.chunk.radius`; `want` formatted from `maze.MinRadius`; drop `bindInt`'s `//nolint:unparam`. (Group A)
-- [ ] 9. The code-surface sweep (AC18) — closes Group A. (Group A) ← CURRENT
+- [x] 9. The code-surface sweep (AC18) — closes Group A. (Group A)
 - [ ] 10. Revise KD-37…KD-40 (AC17). (Group B)
 - [ ] 11. The prose-surface sweep (AC18), including `docs/world-topology-redesign-plan.md`'s parallelogram-chunk sentence, rewritten in Russian. (Group B)
 
@@ -49,6 +49,7 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - **Step 8, subtask 6**: `NewMap`'s radius-from-length inference (`radiusForCellCount`) solves `3r²+3r+1=n` via an integer-only Newton's-method square root (`isqrt`), since `internal/detguard` bans the `math` import and floats on this path — no float, no external dependency. Verified live (not merely asserted) that generating a patch of chunks sequentially, each against its already-generated neighbours rebuilt through `NewMap`, yields byte-identical maps to generating the same patch with no neighbour maps at all (`TestGenerate_SequentialAgainstStoredNeighboursMatchesIndependentGeneration`) — this is the load-bearing property #29's later consumer depends on.
 - **Step 8, subtask 7**: `chunks.golden` moved to radius 9 (the design's reference value) and gained a version header, per-border sorted portal positions (as 0-based indices into `borderCandidates`' own path order, read back from each chunk's own `Map` via a `facePassageFromChunk` helper that resolves whichever of a border face's two endpoints belongs to the chunk being rendered), and a chunk generated against a stored (`NewMap`-rebuilt) neighbour. `derive.golden` was re-run and confirmed byte-identical — no diff — since nothing in this task changes the key chain itself. The mismatch message names `Version` as the bump target, per the design's own contract for what a diff means.
 - **Step 8, subtask 8**: since `ChunkBalance` now has only one int-typed field, the loader test fixtures that exercised a YAML alias and a duplicate key against `world.chunk.cols`/`rows` (a two-key pair) were repointed to `combat.hit_die_sides`/`base_defence` — a still-two-key section — rather than dropped, so both fixtures keep exercising the same document-shape edge case they always did. `go run ./cmd/importguard` was re-run after wiring `internal/config` to `internal/maze`; it stayed green, since the guard forbids only module-path prefixes and `internal/maze`/`internal/hexgrid` carry none that are forbidden (this brings both packages into `cmd/bot`'s dependency graph, an accepted consequence subtask 10 records against KD-38).
+- **Step 8, subtask 9**: ran the design's sweep recipe (narrow tier every-hit, broad tier filtered to a chunk/border-mentioning line) over every tracked file outside `*.md`, `docs/**`, `ai-docs/**` and `.claude/**`. Two real hits, both fixed: `internal/maze/island.go`'s unreachable-branch comment described a "1x1, single-row, or single-column chunk" (a rhombic-grid degenerate shape with no hex equivalent — rewritten to name the actual reason the branch is unreachable, `MinRadius` excluding radius 0); `internal/maze/seed.go`'s `cellKey` doc said "never of any chunk dimensions" (rewritten to "the chunk radius"). Every other hit (the current `floorDiv64` helper matching the `floor.?div` pattern; `guards_test.go`'s past-tense description of the deleted prefab hook) was read and judged accurate as a description of the CURRENT generator or of what was deliberately removed, per the recipe's own carve-out — left unchanged. The narrow tier's own literal `floorDiv32` control could not fire, because that identifier no longer exists anywhere in the tree after subtask 3 deleted it outright; the pattern's mechanism was instead confirmed live by its match against `floorDiv64` (a real, current identifier), which is the same regex firing correctly, not a different check.
 
 ## GO notes
 
@@ -90,7 +91,7 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 | AC15 | NOT_TESTED |
 | AC16 | NOT_TESTED |
 | AC17 | NOT_TESTED |
-| AC18 | NOT_TESTED |
+| AC18 | PARTIAL — code-surface sweep done (subtask 9); prose-surface sweep is Group B subtask 11 |
 | AC19 | PASS (subtask 2, `TestGuard_NoPlugInPoint`) |
 
 ## Review register
@@ -129,3 +130,5 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - internal/config/balance_load.go (world.chunk.radius entry with a v>=maze.MinRadius predicate; bindInt's now-unused //nolint:unparam removed)
 - internal/config/balance_load_test.go (fixture and every cols/rows-referencing case moved to radius; the alias and duplicate-key fixtures repointed to a still-two-key section)
 - config/balance.yaml (chunk.cols/rows replaced by chunk.radius: 9)
+- internal/maze/island.go (subtask 9 sweep: stale "1x1/single-row/single-column chunk" comment rewritten for the hex lattice)
+- internal/maze/seed.go (subtask 9 sweep: "chunk dimensions" → "the chunk radius")
