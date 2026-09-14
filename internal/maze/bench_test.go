@@ -8,12 +8,11 @@ import (
 
 // BenchmarkCell reports one cell's generation cost under the equal-weight
 // reference Params — a whole-chunk cost, not a per-face cost, since one
-// Cell call builds its coordinate's whole chunk fabric when the
-// coordinate is not claimed by a prefab. No threshold is asserted here:
+// Cell call builds its coordinate's whole chunk fabric. No threshold is asserted here:
 // whether a cache is required is a later decision this task defers: the
 // measurement is on demand only (go test -run=^$ -bench=. ./internal/maze/).
 func BenchmarkCell(b *testing.B) {
-	gen, err := New(goldenSeed, goldenParams(), nil)
+	gen, err := New(goldenSeed, goldenParams())
 	if err != nil {
 		b.Fatalf("New: %v", err)
 	}
@@ -46,7 +45,7 @@ func BenchmarkCellPerAlgorithm(b *testing.B) {
 			w[a.algo] = 1
 			p := goldenParams()
 			p.Weights = w
-			gen, err := New(goldenSeed, p, nil)
+			gen, err := New(goldenSeed, p)
 			if err != nil {
 				b.Fatalf("New: %v", err)
 			}

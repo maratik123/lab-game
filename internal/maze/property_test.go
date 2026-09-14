@@ -65,7 +65,7 @@ func islandRegionCells(dims hexgrid.Dims, seed int64, params Params, loChunk, hi
 func TestIslandsAreWalled_EveryIslandFaceIsAWallFromBothSides(t *testing.T) {
 	t.Parallel()
 	params := goldenParams()
-	gen, err := New(goldenSeed, params, nil)
+	gen, err := New(goldenSeed, params)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -187,15 +187,12 @@ func TestAlgorithmDraw_SingleWeightSweep(t *testing.T) {
 }
 
 // TestConnectivity_MultiChunkRegionOverASeedSweep checks multi-chunk
-// connectivity over a handful of world seeds, with a nil hook: a
-// prefab's own interior fabric is authored by a later, separate layer,
-// so a region containing a claimed chunk has no fabric path this
-// package can assert anything about.
+// connectivity over a handful of world seeds.
 func TestConnectivity_MultiChunkRegionOverASeedSweep(t *testing.T) {
 	t.Parallel()
 	params := goldenParams()
 	for _, seed := range []int64{1, 2, 3, 20260912} {
-		gen, err := New(seed, params, nil)
+		gen, err := New(seed, params)
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
@@ -257,7 +254,7 @@ func TestCell_FaceAgreementFarFromOriginAcrossWorldSeeds(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		seed := rapid.Int64().Draw(rt, "seed")
 		c := drawFarCoord(rt)
-		gen, err := New(seed, params, nil)
+		gen, err := New(seed, params)
 		if err != nil {
 			rt.Fatalf("New: %v", err)
 		}

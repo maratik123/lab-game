@@ -38,8 +38,6 @@ func faceStateString(f FaceState) string {
 		return "wall"
 	case FacePassage:
 		return "passage"
-	case FaceDeferred:
-		return "deferred"
 	default:
 		return "unknown"
 	}
@@ -50,7 +48,7 @@ func renderCellLine(coord hexgrid.Coord, c Cell) string {
 	for i, f := range c.Faces {
 		faces[i] = faceStateString(f)
 	}
-	return fmt.Sprintf("cell(%d,%d)=faces:%s seed:%016x prefab:%t", coord.Q, coord.R, strings.Join(faces, ","), c.Seed, c.Prefab)
+	return fmt.Sprintf("cell(%d,%d)=faces:%s seed:%016x", coord.Q, coord.R, strings.Join(faces, ","), c.Seed)
 }
 
 // dumpChunk renders every cell of chunk ch under dims, via gen, sorted
@@ -96,10 +94,10 @@ func algorithmLine(chunk hexgrid.Chunk, weights AlgorithmWeights) string {
 // named chunk.
 func cellsGoldenLines() []string {
 	var lines []string
-	lines = append(lines, "# domain-tag=lab-game/maze/v1 seed=20260912 dims=16x16 island_share=0.05 extra_passage_share=0.15 growing_tree_bias=0.5 weights=equal prefab=nil")
+	lines = append(lines, "# domain-tag=lab-game/maze/v1 seed=20260912 dims=16x16 island_share=0.05 extra_passage_share=0.15 growing_tree_bias=0.5 weights=equal")
 
 	params := goldenParams()
-	gen, err := New(goldenSeed, params, nil)
+	gen, err := New(goldenSeed, params)
 	if err != nil {
 		panic(err)
 	}
@@ -131,7 +129,7 @@ func cellsGoldenLines() []string {
 		w[a.algo] = 1
 		p := params
 		p.Weights = w
-		g, err := New(goldenSeed, p, nil)
+		g, err := New(goldenSeed, p)
 		if err != nil {
 			panic(err)
 		}

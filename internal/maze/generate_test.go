@@ -25,21 +25,21 @@ func TestNew_RejectsInvalidParams(t *testing.T) {
 	t.Parallel()
 	p := refParams()
 	p.Dims = hexgrid.Dims{Cols: 0, Rows: 16}
-	if _, err := New(1, p, nil); err == nil {
+	if _, err := New(1, p); err == nil {
 		t.Fatal("New with invalid dims = nil error, want an error")
 	}
 }
 
 func TestNew_ValidParamsSucceeds(t *testing.T) {
 	t.Parallel()
-	if _, err := New(1, refParams(), nil); err != nil {
+	if _, err := New(1, refParams()); err != nil {
 		t.Fatalf("New = %v, want nil", err)
 	}
 }
 
 func TestCell_RepeatEvaluationIsIdentical(t *testing.T) {
 	t.Parallel()
-	gen, err := New(20260912, refParams(), nil)
+	gen, err := New(20260912, refParams())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestCell_ShuffledEvaluationOrderMatchesSortedOrder(t *testing.T) {
 		t.Fatal("test setup: the shuffle produced the same order as sorted, so this run would not discriminate")
 	}
 
-	sortedGen, err := New(20260912, refParams(), nil)
+	sortedGen, err := New(20260912, refParams())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestCell_ShuffledEvaluationOrderMatchesSortedOrder(t *testing.T) {
 		sortedResults[c] = sortedGen.Cell(c)
 	}
 
-	shuffledGen, err := New(20260912, refParams(), nil)
+	shuffledGen, err := New(20260912, refParams())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -104,34 +104,12 @@ func TestCell_ShuffledEvaluationOrderMatchesSortedOrder(t *testing.T) {
 	}
 }
 
-// TestCell_FaceAgreementOverAMultiChunkRegion runs the exhaustive
-// face-agreement sweep twice: once with a nil hook, and once with a
-// hook claiming one whole chunk inside the swept region. A sweep run
-// only with a nil hook is an instrument that is blind to the whole
-// prefab boundary — the claimed side of a border face takes a
-// different code path than the unclaimed side, so only a claimed chunk
-// inside the region crosses every one of that chunk's borders from
-// both sides.
+// TestCell_FaceAgreementOverAMultiChunkRegion asserts, over every
+// coordinate of a multi-chunk region straddling the origin, that a
+// cell's face and its neighbour's opposite face agree.
 func TestCell_FaceAgreementOverAMultiChunkRegion(t *testing.T) {
 	t.Parallel()
-	t.Run("nil_hook", func(t *testing.T) {
-		t.Parallel()
-		faceAgreementSweep(t, nil)
-	})
-	t.Run("claimed_chunk_inside_region", func(t *testing.T) {
-		t.Parallel()
-		dims := hexgrid.Dims{Cols: 16, Rows: 16}
-		claimer := newWholeChunkClaimer(dims, hexgrid.Chunk{Q: 0, R: 0})
-		faceAgreementSweep(t, claimer)
-	})
-}
-
-// faceAgreementSweep asserts, over every coordinate of a multi-chunk
-// region straddling the origin, that a cell's face and its neighbour's
-// opposite face agree — for the generator built with hook.
-func faceAgreementSweep(t *testing.T, hook PrefabClaimer) {
-	t.Helper()
-	gen, err := New(20260912, refParams(), hook)
+	gen, err := New(20260912, refParams())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -152,10 +130,10 @@ func faceAgreementSweep(t *testing.T, hook PrefabClaimer) {
 	}
 }
 
-func TestCell_ConnectivityOverAMultiChunkRegionNilHook(t *testing.T) {
+func TestCell_ConnectivityOverAMultiChunkRegion(t *testing.T) {
 	t.Parallel()
 	p := refParams()
-	gen, err := New(777, p, nil)
+	gen, err := New(777, p)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -246,11 +224,11 @@ func TestCell_SeedIsIndependentOfChunkDimensions(t *testing.T) {
 	b := refParams()
 	b.Dims = hexgrid.Dims{Cols: 12, Rows: 12}
 
-	genA, err := New(20260912, a, nil)
+	genA, err := New(20260912, a)
 	if err != nil {
 		t.Fatalf("New under %v: %v", a.Dims, err)
 	}
-	genB, err := New(20260912, b, nil)
+	genB, err := New(20260912, b)
 	if err != nil {
 		t.Fatalf("New under %v: %v", b.Dims, err)
 	}
@@ -335,7 +313,7 @@ func TestChunksConsulted_EveryMemberIsOwnOrANeighboursChunk(t *testing.T) {
 }
 
 func TestCell_RaceSafeAcrossGoroutines(t *testing.T) {
-	gen, err := New(20260912, refParams(), nil)
+	gen, err := New(20260912, refParams())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

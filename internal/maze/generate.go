@@ -10,32 +10,26 @@ import (
 // generator: New validates every input once, and Cell can neither fail
 // nor panic afterwards. It holds no memo — the caching question is a
 // later decision this package defers — so one Cell call builds its
-// coordinate's whole chunk fabric (unless the coordinate is claimed by
-// a PrefabClaimer) and then reads six faces out of it.
+// coordinate's whole chunk fabric and then reads six faces out of it.
 type Generator struct {
-	seed    int64
-	params  Params
-	claimer PrefabClaimer
+	seed   int64
+	params Params
 }
 
-// New builds a Generator over seed and params, consulting claimer for
-// every future Cell call — claimer may be nil, meaning every coordinate
-// receives fabric. It rejects an invalid params, naming the offending
-// input.
-func New(seed int64, params Params, claimer PrefabClaimer) (*Generator, error) {
+// New builds a Generator over seed and params. It rejects an invalid
+// params, naming the offending input.
+func New(seed int64, params Params) (*Generator, error) {
 	if err := params.validate(); err != nil {
 		return nil, fmt.Errorf("maze.New: %w", err)
 	}
-	return &Generator{seed: seed, params: params, claimer: claimer}, nil
+	return &Generator{seed: seed, params: params}, nil
 }
 
-// Cell is one hex cell's generated content: its prefab marker, its six
-// face states in canonical direction order, and its per-cell seed. A
-// prefab-claimed cell defers every interior face and carries no seed.
+// Cell is one hex cell's generated content: its six face states in
+// canonical direction order, and its per-cell seed.
 type Cell struct {
-	Prefab bool
-	Faces  [6]FaceState
-	Seed   uint64
+	Faces [6]FaceState
+	Seed  uint64
 }
 
 // chunksConsulted returns the deduplicated set of chunks Cell(coord)
@@ -63,7 +57,6 @@ func chunksConsulted(dims hexgrid.Dims, coord hexgrid.Coord) []hexgrid.Chunk {
 func (gen *Generator) Cell(coord hexgrid.Coord) Cell {
 	dims := gen.params.Dims
 	own := chunksConsulted(dims, coord)[0]
-	claimed := gen.claimer != nil && gen.claimer.Claims(coord)
 
 	var (
 		fabricBuilt bool
@@ -90,10 +83,6 @@ func (gen *Generator) Cell(coord hexgrid.Coord) Cell {
 		neighborChunk := dims.ChunkOf(neighbor)
 
 		if neighborChunk == own {
-			if claimed {
-				faces[d] = FaceDeferred
-				continue
-			}
 			buildOwnFabric()
 			a := fabricGraph.localIndex(coord.Q-ownOrigin.Q, coord.R-ownOrigin.R)
 			b := fabricGraph.localIndex(neighbor.Q-ownOrigin.Q, neighbor.R-ownOrigin.R)
@@ -105,9 +94,7 @@ func (gen *Generator) Cell(coord hexgrid.Coord) Cell {
 			continue
 		}
 
-		// A border face: the portal rule, unchanged by any claim on
-		// either side — the very value the unclaimed cell across the
-		// border reads.
+		// A border face: the portal rule.
 		candidates := borderCandidates(dims, own, neighborChunk)
 		portals := selectPortals(candidates, newStream(borderKey(gen.seed, own, neighborChunk)))
 		if portals[hexgrid.FaceOf(coord, d)] {
@@ -117,9 +104,5 @@ func (gen *Generator) Cell(coord hexgrid.Coord) Cell {
 		}
 	}
 
-	var seed uint64
-	if !claimed {
-		seed = cellSeed(gen.seed, coord)
-	}
-	return Cell{Prefab: claimed, Faces: faces, Seed: seed}
+	return Cell{Faces: faces, Seed: cellSeed(gen.seed, coord)}
 }

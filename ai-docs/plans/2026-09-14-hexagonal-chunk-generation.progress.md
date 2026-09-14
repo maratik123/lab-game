@@ -11,8 +11,8 @@ _Updated: 2026-09-14 00:33_
 **Spec:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.spec.md
 **Design:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.design.md
 
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** go build ./... | 2026-09-14T00:32:25Z | ed9a4baaaffb0d3243f1c73ae6304a77a11cfe5b
+**current_step:** Step 8 — subtask 2 of 9 complete
+**last_passed_gate:** golangci-lint run ./internal/maze/... | 2026-09-14 | (subtask 2 commit)
 
 **entry_args:** 119
 
@@ -24,9 +24,9 @@ _Updated: 2026-09-14 00:33_
 
 Titles are the design's `## Decomposition` rows, abridged; the design row is the contract.
 
-- [ ] 1. `hexgrid`: add the super-lattice beside the rhombic API — `Lattice` and its methods, `Chunk.Neighbor`, cell `Distance`; tests for AC1, AC2, AC3, AC5. (Group A) ← CURRENT
-- [ ] 2. `maze`: remove the prefab hook on the shipped core; the no-plug-in guard; re-mint `cells.golden`. (Group A)
-- [ ] 3. `maze` onto hexagonal chunks, portal count still one-or-two; `Params.Radius` with `MinRadius`; delete the rhombic `hexgrid` API. (Group A)
+- [x] 1. `hexgrid`: add the super-lattice beside the rhombic API — `Lattice` and its methods, `Chunk.Neighbor`, cell `Distance`; tests for AC1, AC2, AC3, AC5. (Group A) — 3c119a2
+- [x] 2. `maze`: remove the prefab hook on the shipped core; the no-plug-in guard; re-mint `cells.golden`. (Group A)
+- [ ] 3. `maze` onto hexagonal chunks, portal count still one-or-two; `Params.Radius` with `MinRadius`; delete the rhombic `hexgrid` API. (Group A) ← CURRENT
 - [ ] 4. `maze`: the portal rule — shares, count range, non-touching placement; AC6, AC7, AC8's pair-level clause. (Group A)
 - [ ] 5. `maze`: the chunk-level core — `ChunkType`, `Version`, `Map`, `Generate(ch, typ)`, `CellSeed`; AC8's type clause. (Group A)
 - [ ] 6. `maze`: stored neighbours — `NewMap` and `neighbors`; AC14; AC8's stored-neighbour clause. (Group A)
@@ -43,6 +43,7 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - **Step 7**: the design's `_inbox.jsonl` question — orchestrator ruling: this task neither edits nor routes those rows.
 - **Step 7**: design-review round 2 GO with five minor issues and two recommendations, all design-internal; `design-writer` folded them in at ed9a4ba, and design-review did not run again (Step 7 table). The orchestrator read the fold-in diff item by item (§ GO notes).
 - **Step 8**: progress file created; in-flight marker created and owned by this session.
+- **Step 8, subtask 1**: `hexgrid.Lattice` implements the hexagon-of-hexagons mapping via the inverse super-basis in D3, checked against a bounded four-candidate search. `Border`'s path order was derived analytically for the three canonical directions (a "lone" direction's face at the range's minimum, then the secondary-then-lone pair for every following index) and verified by an independent vertex-sharing predicate in the test, not by re-deriving the order from the enumeration itself.
 
 ## GO notes
 
@@ -67,11 +68,11 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
+| AC1 | PASS (subtask 1) |
+| AC2 | PASS (subtask 1) |
+| AC3 | PASS (subtask 1) |
 | AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
+| AC5 | PASS (subtask 1) |
 | AC6 | NOT_TESTED |
 | AC7 | NOT_TESTED |
 | AC8 | NOT_TESTED |
@@ -85,7 +86,7 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 | AC16 | NOT_TESTED |
 | AC17 | NOT_TESTED |
 | AC18 | NOT_TESTED |
-| AC19 | NOT_TESTED |
+| AC19 | PASS (subtask 2, `TestGuard_NoPlugInPoint`) |
 
 ## Review register
 
@@ -94,4 +95,12 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 
 ## Files touched
 
-- (none yet)
+- internal/hexgrid/lattice.go (new)
+- internal/hexgrid/lattice_test.go (new)
+- internal/hexgrid/chunk.go (Chunk.Neighbor added)
+- internal/hexgrid/doc.go (package doc names the lattice)
+- internal/maze/prefab.go, internal/maze/prefab_test.go (deleted)
+- internal/maze/generate.go, algorithm.go, doc.go (prefab hook removed; FaceState loses FaceDeferred)
+- internal/maze/generate_test.go, bench_test.go, property_test.go, golden_test.go (New is now 2-arg; golden re-minted)
+- internal/maze/guards_test.go (TestGuard_NoPlugInPoint added)
+- internal/maze/testdata/cells.golden (re-minted, prefab marker dropped)
