@@ -11,14 +11,14 @@ _Updated: 2026-09-14 05:06_
 **Spec:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.spec.md
 **Design:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.design.md
 
-**current_step:** Step 8 — subtask 11 of 11 complete; Group A design gaps fixed at 761efa5
-**last_passed_gate:** golangci-lint run | 2026-09-14T02:24:54Z | 761efa5b08c94cc7e5fa7ed93048481feb877a28
+**current_step:** Step 9.5 — docs updated
+**last_passed_gate:** golangci-lint run | 2026-09-14T02:30:27Z | 00179420469d34ded4b5dce8b91f407779eee9ba
 
 **entry_args:** 119
 
 ## Next action
 
-**Do this immediately:** Step 9 — run the full verify list, then the per-AC sweep with a verifying command per AC.
+**Do this immediately:** Step 9.5 — append this task's entry to `ai-docs/context-status.md` (PR locator `#TBD-at-Step-12`), bump `ai-docs/context.md`'s world block only where Group B's edit left it stale, then Step 10 self-review.
 
 ## Subtasks
 
@@ -53,6 +53,11 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - **Step 8, subtask 10**: KD-37…KD-40 rewritten in place to describe the core as Group A left it, each with an `*Amended by #119:*` clause naming what the rework replaced and an `*Amended:* 2026-09-14` date. Every claim was read against the code, not copied from the design checklist: `resolveNeighborMaps` checks chunk, radius, adjacency and duplicates but never the version (KD-37's "whatever version that map names"); `go list -deps ./cmd/bot` now lists `internal/maze` and `internal/hexgrid`, and `go run ./cmd/importguard` is green (KD-38); `gateCapacity(6)` is 90 (KD-40); `TestIslandShare_AchievedShareWithinTolerance` still asserts against the achieved share (KD-39's retained sentence). **Three Group A deviations found while verifying, reported to the orchestrator and not edited (Group B edits no code file):** (a) `Params.validate` still carries the `capacity == 0 && IslandShare.IsPositive()` refusal that design D7 says goes away; it is unreachable behind the `MinRadius` check, so KD-40 is worded to hold either way ("guards no reachable case"), not "is gone". (b) `TestGenerate_TakesSharedBorderFromStoredNeighbour` has only the different-seed-and-shares row; the design's § Test Design rows "N rebuilt with one border face flipped" and "N rebuilt under a version other than `Version`" are absent — no test passes `Generate` a `NewMap` map at a version other than the one it was generated under (every test `NewMap` call is in `map_test.go`). AC14's stated condition is still exercised by the first row, but the version-independence KD-37 now records is held by the code alone. (c) `internal/maze/doc.go` says every value is a pure function of the seed, the inputs, the chunk coordinate and its type, omitting the supplied neighbour maps AC12 lists.
 - **Step 8, subtask 11**: ran the design's sweep recipe after subtask 10 landed (f9c1c0b), over the 98 tracked prose files (`*.md`, `docs/**`, `ai-docs/**`, `.claude/**`, minus the recipe's history surfaces, this task's spec/state/design and `ai-docs/deferred/**`). All three controls behaved: `floorDiv32` hit the narrow tier, `chunk: cols/rows` counted in the broad tier, and `rows.Err()` did not. Because the recipe's word list does not bound AC18's class, a third probe was added with its own control: per-coordinate, `cells.golden`, `world.chunk.cols/rows`, `Cols`, "one or two portals" in English and Russian, and `Cell`. Four sites were rewritten. `ai-docs/context.md`'s `internal/hexgrid` and `internal/maze` layout entries now name the super-lattice, the chunk type, the portal rule and `Generate`/`Map`/`NewMap`/`Version`, where they had named the floor-division chunk mapping, the chunk-grid distance, the prefab hook and `Cell`; their "no call site reaches yet" became "only the balance loader reaches, to check the chunk radius". `ai-docs/context.md`'s status line got the same change. `ai-docs/code-style.md`'s chunk-size row now reads `world.chunk.radius`, not `world.chunk.cols`/`rows` "until the core moves to hexagonal chunks". The parallelogram-chunk sentence in `docs/world-topology-redesign-plan.md` § «Поправки к исходному саммари» was rewritten in Russian in the past tense. Every remaining hit was read and kept under the recipe's carve-out or as unrelated. This file's own past-tense work records stayed. Line 74 of the redesign plan refers to the old model as old. The KD-38/39/40 amendment clauses and KD-40's "which the rhombic core needed" say what was replaced. `docs/DESIGN.md` and the plan's D-table describe the hexagonal design. `context.md:43` matched only on the `capacity_role` column, `.claude/skills/ai-audit/checklist-m.md:11` on "table rows", and `ai-docs/instruction-file-validation.md:45` names an unrelated example `Cell`. No code-surface hit turned up, and no code file was edited. The relative-link check and `check-citations.sh` are green after the last edit.
 - **Step 8 (orchestrator, after Group B)**: Group B reported three places where Group A's code fell short of the design; the orchestrator re-resolved each against the code and the design and swept every test name the design gives, finding four more (AC4 and AC9 tests not driven through `New`/`Generate`, refusal messages not asserted to name their input, `TestCell_*` names left after `Cell`'s deletion). `code-writer` Mode B fixed all seven, committed by the orchestrator at 761efa5. Each new assertion was seen RED against a mutant; the two AC14 subtests were re-probed after the first mutant stopped at the parent test's setup `t.Fatal`. Before that commit the orchestrator ran `go build ./...`, `go vet ./...`, `go test -count=1` over `maze`/`hexgrid`/`config`, `go test -race` over `maze`, `golangci-lint fmt -d` (empty), `golangci-lint run` (0 issues), `make comment-refs` and `make import-guard`, all green; the commit's ratchet held at 91.58%. `TestConnectivity_MultiChunkRegionOverASeedSweep` and the split `TestParams_Validate*` tests are accepted as the design's `TestConnectivity_MultiChunkRegion` and `TestParams_Validate`.
+- **Step 9**: `make verify` exited 0 at 75092cb (fmt-check, build, vet, lint with 0 issues, file-limits, test, test-race, tidy-check, actionlint, shellcheck, comment-refs, import-guard), and the CI prose guards ran green after the last edit: check-citations, the relative-link check, check-ac-shape, check-spec-shape, check-spec-anchors, check-script-shape, check-harness-gaps-forge. The only commit after 75092cb (0017942) touches `ai-docs/key-decisions.md` alone.
+- **Step 9**: panic-index sync — no `panic(`, `log.Fatal`/`log.Panic` or `func Must…` in the changed production Go files (control lines hit); `ai-docs/panic-index.md` needs no row.
+- **Step 9**: domain-invariant sweep — checks 1, 2, 4 and 5 clean (controls hit). Check 3 hits only YAML fixtures inside `internal/config/balance_load_test.go` (`cap: 100`, `sell_rate: 0.25`, …): test data for the balance loader, not a balance constant compiled into Go — legitimate. No posting, event or telemetry surface changed.
+- **Step 9**: the AC17 sweep found KD-40 still describing the zero-capacity island refusal that 761efa5 removed; rewritten at 0017942. An earlier KD-37…KD-40 extraction came back empty because KD entries are bold paragraphs, not headings — re-run over `^\*\*KD-` lines.
+- **Step 9.5**: appended this task's entry to `ai-docs/context-status.md` with the PR locator `#TBD-at-Step-12`; `ai-docs/context.md`'s world layout and status entries were already rewritten by Group B at 7e8a71d, and a case-insensitive sweep of it for every removed name (`Dims`, `ChunkOf`, `Origin`, `Contains`, `Cell`, `PrefabClaimer`, `FaceDeferred`, `chunksConsulted`, `cells.golden`, `world.chunk.cols`/`rows`, prefab hook) returned no hit, so it needed no further edit. There is no repo-root `README.md`. No open question in `context.md` was resolved by this task.
 
 ## GO notes
 
@@ -75,27 +80,29 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | PASS (subtask 1) |
-| AC2 | PASS (subtask 1) |
-| AC3 | PASS (subtask 1) |
-| AC4 | PASS (subtask 3, `TestParams_ValidateRadiusBound`) |
-| AC5 | PASS (subtask 1) |
-| AC6 | PASS (subtask 4, `TestPortals_CountWithinRoundedUpShares`) |
-| AC7 | PASS (subtask 4, `TestPortals_NoTwoPortalsOfABorderShareAVertex`) |
-| AC8 | PASS — all three clauses (subtasks 4-6, `TestBorder_IndependentOfChunkTypeAndThirdChunks`) |
-| AC9 | PASS (subtask 5, `TestSelectIslands_GateChunkNeverSelectsTheCentre`) |
-| AC10 | PASS (subtask 5, `TestGenerate_NonIslandCellsConnectedInsideEveryChunk`) |
-| AC11 | PASS (subtasks 5-6, `TestCell_ConnectivityOverAMultiChunkRegion` + `TestGenerate_SequentialAgainstStoredNeighboursMatchesIndependentGeneration`) |
-| AC12 | PASS (subtask 5, `TestGenerate_SettledByItsInputsAlone` + `TestGuard_ImportsAllowlist`) |
-| AC13 | PASS (subtask 5, `TestGenerate_MapNamesGenerationVersion`) |
-| AC14 | PASS (subtask 6, `TestGenerate_TakesSharedBorderFromStoredNeighbour`) |
-| AC15 | NOT_TESTED |
-| AC16 | NOT_TESTED |
-| AC17 | PASS (subtask 10, KD-37…KD-40 rewritten; checked item by item against the design's § Instruction subtasks checklist and the code) |
-| AC18 | PASS — code-surface sweep (subtask 9) and prose-surface sweep (subtask 11); every remaining hit read and judged a carve-out or unrelated |
-| AC19 | PASS (subtask 2, `TestGuard_NoPlugInPoint`) |
+Step 9 sweep at 0017942 by the orchestrator. Test rows: `go test -v -count=1 -run '^(<names>)$' ./internal/hexgrid/ ./internal/maze/ ./internal/config/`, captured to `tmp/`, each name confirmed by its own `--- PASS: <name>` line (a `-run` pattern matching nothing is green too).
+
+| AC | Status | verifying command |
+|----|--------|-------------------|
+| AC1 | PASS | `TestLattice_LocateRoundTripsAndPartitions`, `TestLattice_LocateRoundTripsFarFromOrigin` |
+| AC2 | PASS | `TestChunk_SixSymmetricNeighboursJoinedByAFace` |
+| AC3 | PASS | `TestDistance_EqualsLatticeStepCount` |
+| AC4 | PASS | `TestNew_RefusesRadiusBelowSix_AcceptsSixAndGenerates`, `TestParams_ValidateRadiusBound`, `TestLoadBalance_PredicateFailures/below_min_radius` |
+| AC5 | PASS | `TestLattice_BorderHasTwoRPlusOneFacesInOneOrderFromEitherSide` |
+| AC6 | PASS | `TestPortals_CountWithinRoundedUpShares` |
+| AC7 | PASS | `TestPortals_NoTwoPortalsOfABorderShareAVertex` |
+| AC8 | PASS | `TestBorder_IndependentOfChunkTypeAndThirdChunks` |
+| AC9 | PASS | `TestGenerate_IslandsOffEveryBorder_GateCentreNeverAnIsland`, `TestSelectIslands_GateChunkNeverSelectsTheCentre` |
+| AC10 | PASS | `TestGenerate_NonIslandCellsConnectedInsideEveryChunk` |
+| AC11 | PASS | `TestConnectivity_MultiChunkRegionOverASeedSweep`, `TestGenerate_ConnectivityOverAMultiChunkRegion`, `TestGuard_ConnectivityHelperCalledOnlyFromIslandSelection` |
+| AC12 | PASS | `TestGenerate_SettledByItsInputsAlone`, `TestGuard_ImportsAllowlist` |
+| AC13 | PASS | `TestGenerate_MapNamesGenerationVersion` |
+| AC14 | PASS | `TestGenerate_TakesSharedBorderFromStoredNeighbour` (base row plus `flipped_border_face_propagates`, `neighbour_version_irrelevant`), `TestGenerate_NeighbourArgumentOrderIrrelevant`, `TestNewMap_RoundTripsAGeneratedMap` |
+| AC15 | PASS | `rg -n '"world\.chunk\.[a-z_]+"' internal/config/` → `world.chunk.radius` only; `rg -n 'world\.chunk\|chunk:\|radius\|cols\|rows' config/balance.yaml` → `radius` only (control `entry("world.chunk.cols"` hits the first pattern) |
+| AC16 | PASS | `TestChunksGolden`, its three `TestChunksGolden_*` cross-checks, `TestDerive_Golden`; `git diff --exit-code ed9a4ba..HEAD -- internal/maze/testdata/derive.golden` |
+| AC17 | PASS | `grep -E '^\*\*KD-(37\|38\|39\|40) ' ai-docs/key-decisions.md` piped to `rg -o` over the rhombic vocabulary (`rhomb`, `cols`, `rows`, `one or two portal`, `Dims`, `ChunkOf`, `PrefabClaimer`, `FaceDeferred`, `per-coordinate`) → hits only inside `*Amended by #119:*` clauses and negations; KD-40's stale zero-capacity sentence fixed at 0017942 |
+| AC18 | PASS | `git ls-files` minus `learnings.md`, `harness-gaps.md`, `context-status.md`, `plans/done/`, `plans/ignored/`, `deferred/` and this task's plan files, searched with `rg -n` over the rhombic vocabulary in both languages (control `chunks are parallelogram-shaped` hits) → `docs/world-topology-redesign-plan.md:45`, now past tense about the replaced generator, and KD-38/39/40 `*Amended by #119:*` clauses only |
+| AC19 | PASS | `TestGuard_NoPlugInPoint`; `rg -n -i 'prefab\|claimer\|FaceDeferred' --glob '!*_test.go' internal/maze/` → no hits (control hits) |
 
 ## Review register
 
