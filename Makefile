@@ -36,7 +36,7 @@ GO_MAX_TEST_LINES ?= 1500
 CLIENTS ?= 1
 CONTENTION_PARALLEL ?= $(shell nproc 2>/dev/null || echo 4)
 
-.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet comment-refs import-guard test-db-up test-db-down test-fallback test-contention
+.PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet comment-refs import-guard test-db-up test-db-down test-fallback test-contention test-contention-stop-probe
 
 verify: fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs import-guard
 
@@ -158,6 +158,13 @@ test-contention:
 	' > tmp/test-contention.log 2>&1 || status=$$?; \
 	cat tmp/test-contention.log; \
 	exit "$$status"
+
+# Runs test-contention with its load loop stopped, on purpose, inside a load
+# binary's container provisioning, and exits non-zero when that stop leaves a
+# container or volume of the run's session behind (exit 2 when the window was
+# not hit, which proves nothing either way). Needs podman; not part of verify.
+test-contention-stop-probe:
+	bash ai-docs/scripts/probe-contention-stop.sh
 
 # `git diff -- go.sum` exits 128 while the module has no dependencies and the
 # file therefore does not exist, so ask git about worktree state instead — that
