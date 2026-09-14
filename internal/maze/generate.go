@@ -7,9 +7,10 @@ import (
 )
 
 // Generator is an immutable, concurrency-safe deterministic chunk
-// generator: New validates every input once, and Generate can neither
-// fail (given a known ChunkType) nor panic afterwards. It holds no
-// memo — the caching question is a later decision this package defers.
+// generator: New validates params once. Generate can still refuse an
+// unknown ChunkType or an invalid neighbour map, but never panics. It
+// holds no memo — the caching question is a later decision this
+// package defers.
 type Generator struct {
 	seed   int64
 	params Params
@@ -43,7 +44,7 @@ func (gen *Generator) CellSeed(c hexgrid.Coord) uint64 {
 // depend on the order of neighbors.
 func (gen *Generator) Generate(ch hexgrid.Chunk, typ ChunkType, neighbors ...Map) (Map, error) {
 	if !typ.valid() {
-		return Map{}, fmt.Errorf("maze.Generate: unknown chunk type %v", typ)
+		return Map{}, fmt.Errorf("maze.Generate: unknown chunk type %v (%d)", typ, int8(typ))
 	}
 	neighborMaps, err := resolveNeighborMaps(ch, gen.params.Radius, neighbors)
 	if err != nil {

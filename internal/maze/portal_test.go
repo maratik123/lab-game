@@ -49,8 +49,7 @@ func TestBorderCandidates_HasTwoRPlusOneEntriesForEveryNeighbourDirection(t *tes
 // nonConsecutiveInPositionList reports whether none of the chosen
 // positions (indices into candidates) are consecutive integers — the
 // vertex-touching predicate for two portals of one border, since
-// consecutive entries in candidates' own path order share a vertex
-// (Lattice.Border's own contract).
+// consecutive entries in candidates' own path order share a vertex.
 func nonConsecutiveInPositionList(positions []int) bool {
 	for i := range positions {
 		for j := range positions {
@@ -65,42 +64,34 @@ func nonConsecutiveInPositionList(positions []int) bool {
 	return true
 }
 
-func positionsOf(candidates []hexgrid.Face, portals map[hexgrid.Face]bool) []int {
-	var out []int
-	for i, c := range candidates {
-		if portals[c] {
-			out = append(out, i)
-		}
-	}
-	return out
-}
-
 // TestPortals_CountWithinRoundedUpShares checks that over a sweep of
-// radii, seeds and share pairs, the portal count lies within
-// [⌈lower×L⌉, ⌈upper×L⌉], and the sweep observes both ends for the
-// 0.1/0.2 pair.
+// radii, chunk-pair directions, seeds and share pairs, the portal count
+// lies within [⌈lower×L⌉, ⌈upper×L⌉]; the sweep observes both ends for
+// the 0.1/0.2 pair, and a lo==hi share pair pins the count exactly.
 func TestPortals_CountWithinRoundedUpShares(t *testing.T) {
 	t.Parallel()
 	radii := []int32{6, 7, 9, 12}
 	sawLo, sawHi := false, false
+	origin := hexgrid.Chunk{Q: 0, R: 0}
 	for _, r := range radii {
 		lattice := hexgrid.Lattice{Radius: r}
-		origin := hexgrid.Chunk{Q: 0, R: 0}
-		east := origin.Neighbor(hexgrid.DirE)
-		candidates := borderCandidates(lattice, origin, east)
-		lo, hi := portalBounds(refLowerShare, refUpperShare, len(candidates))
-		for seedByte := range 60 {
-			s := newStream([32]byte{byte(r), byte(seedByte)})
-			portals := selectPortals(candidates, s, refLowerShare, refUpperShare)
-			if len(portals) < lo || len(portals) > hi {
-				t.Fatalf("radius %d seed %d: portal count = %d, want within [%d,%d]", r, seedByte, len(portals), lo, hi)
-			}
-			if r == MinRadius {
-				if len(portals) == lo {
-					sawLo = true
+		for _, d := range sixDirections {
+			neighbor := origin.Neighbor(d)
+			candidates := borderCandidates(lattice, origin, neighbor)
+			lo, hi := portalBounds(refLowerShare, refUpperShare, len(candidates))
+			for seedByte := range 60 {
+				s := newStream([32]byte{byte(r), byte(d), byte(seedByte)})
+				portals := selectPortals(candidates, s, refLowerShare, refUpperShare)
+				if len(portals) < lo || len(portals) > hi {
+					t.Fatalf("radius %d direction %v seed %d: portal count = %d, want within [%d,%d]", r, d, seedByte, len(portals), lo, hi)
 				}
-				if len(portals) == hi {
-					sawHi = true
+				if r == MinRadius && d == hexgrid.DirE {
+					if len(portals) == lo {
+						sawLo = true
+					}
+					if len(portals) == hi {
+						sawHi = true
+					}
 				}
 			}
 		}
@@ -108,33 +99,119 @@ func TestPortals_CountWithinRoundedUpShares(t *testing.T) {
 	if !sawLo || !sawHi {
 		t.Errorf("over the sweep at radius %d, sawLo=%v sawHi=%v, want both ends observed", MinRadius, sawLo, sawHi)
 	}
+
+	// A lo==hi share pair pins the count to that exact value, over
+	// several chunk pairs and seeds.
+	pinned := decimal.New(2, -1)
+	for _, r := range radii {
+		lattice := hexgrid.Lattice{Radius: r}
+		for _, d := range sixDirections {
+			neighbor := origin.Neighbor(d)
+			candidates := borderCandidates(lattice, origin, neighbor)
+			lo, hi := portalBounds(pinned, pinned, len(candidates))
+			if lo != hi {
+				t.Fatalf("radius %d direction %v: portalBounds(0.2,0.2,%d) = (%d,%d), want lo==hi", r, d, len(candidates), lo, hi)
+			}
+			for seedByte := range 10 {
+				s := newStream([32]byte{byte(r), byte(d), byte(seedByte), 7})
+				portals := selectPortals(candidates, s, pinned, pinned)
+				if len(portals) != lo {
+					t.Fatalf("radius %d direction %v seed %d: portal count = %d, want exactly %d", r, d, seedByte, len(portals), lo)
+				}
+			}
+		}
+	}
 }
 
-// TestPortals_NoTwoPortalsOfABorderShareAVertex checks a border's
-// portals against the independent nonConsecutiveInPositionList
-// predicate, and confirms the predicate itself is seen RED against an
-// adjacent-positions mutant.
+// facesShareVertex decides vertex sharing independently of
+// Lattice.Border's own path order: a hex vertex is touched by exactly
+// three mutually adjacent cells, so two distinct faces {x,y} and {u,v}
+// share one exactly when {x,y,u,v} collapses to three cells — one cell
+// common to both — and the two cells left over are themselves adjacent,
+// closing the triangle.
+func facesShareVertex(f, g hexgrid.Face) bool {
+	fx, fy := f.Cell, f.Cell.Neighbor(f.Dir)
+	gx, gy := g.Cell, g.Cell.Neighbor(g.Dir)
+	if (fx == gx && fy == gy) || (fx == gy && fy == gx) {
+		return false
+	}
+	adjacent := func(a, b hexgrid.Coord) bool {
+		for _, d := range sixDirections {
+			if a.Neighbor(d) == b {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case fx == gx:
+		return adjacent(fy, gy)
+	case fx == gy:
+		return adjacent(fy, gx)
+	case fy == gx:
+		return adjacent(fx, gy)
+	case fy == gy:
+		return adjacent(fx, gx)
+	default:
+		return false
+	}
+}
+
+// TestPortals_NoTwoPortalsOfABorderShareAVertex checks, over several
+// chunk pairs and radii, that no two portal faces of one border share a
+// vertex under the independent facesShareVertex predicate, reading the
+// actual portal faces through Generate and Map.Faces rather than
+// through candidates' own list order.
 func TestPortals_NoTwoPortalsOfABorderShareAVertex(t *testing.T) {
 	t.Parallel()
 	radii := []int32{6, 7, 9, 12}
 	for _, r := range radii {
 		lattice := hexgrid.Lattice{Radius: r}
 		origin := hexgrid.Chunk{Q: 0, R: 0}
-		east := origin.Neighbor(hexgrid.DirE)
-		candidates := borderCandidates(lattice, origin, east)
-		for seedByte := range 30 {
-			s := newStream([32]byte{byte(r), byte(seedByte), 1})
-			portals := selectPortals(candidates, s, refLowerShare, refUpperShare)
-			positions := positionsOf(candidates, portals)
-			if !nonConsecutiveInPositionList(positions) {
-				t.Fatalf("radius %d seed %d: portal positions %v are not pairwise non-consecutive", r, seedByte, positions)
+		params := refParams()
+		params.Radius = r
+		for _, d := range sixDirections {
+			neighbor := origin.Neighbor(d)
+			candidates := borderCandidates(lattice, origin, neighbor)
+			for seedByte := range 10 {
+				seed := int64(r)<<16 | int64(d)<<8 | int64(seedByte)
+				gen, err := New(seed, params)
+				if err != nil {
+					t.Fatalf("New: %v", err)
+				}
+				m, err := gen.Generate(origin, ChunkTypeFabric)
+				if err != nil {
+					t.Fatalf("Generate: %v", err)
+				}
+				var portals []hexgrid.Face
+				for _, f := range candidates {
+					// A candidate's canonical Cell may sit in either
+					// chunk's own frame (FaceOf picks the direction, not
+					// a side), so resolve origin's own local cell and
+					// direction for this face before reading m.Faces.
+					originCell, originDir := f.Cell, f.Dir
+					if ch, _ := lattice.Locate(f.Cell); ch != origin {
+						originCell, originDir = f.Cell.Neighbor(f.Dir), f.Dir.Opposite()
+					}
+					_, local := lattice.Locate(originCell)
+					faces, ok := m.Faces(local)
+					if !ok {
+						t.Fatalf("Faces(%v): ok=false", local)
+					}
+					if faces[originDir] == FacePassage {
+						portals = append(portals, f)
+					}
+				}
+				for i := range portals {
+					for j := range portals {
+						if i != j && facesShareVertex(portals[i], portals[j]) {
+							t.Fatalf("radius %d direction %v seed %d: portals %v and %v share a vertex",
+								r, d, seedByte, portals[i], portals[j])
+						}
+					}
+				}
 			}
 		}
-	}
-	// The predicate itself must be discriminating: an adjacent-positions
-	// mutant is seen RED.
-	if nonConsecutiveInPositionList([]int{2, 3}) {
-		t.Fatal("test setup: nonConsecutiveInPositionList did not flag adjacent positions 2,3")
 	}
 }
 
@@ -185,10 +262,14 @@ func TestSelectPortals_ReproducibleFromTheSameKey(t *testing.T) {
 	}
 }
 
-// TestBorder_IndependentOfChunkTypeAndThirdChunks (pair-level, subtask
-// 3/4): a border's candidate faces from A's side equal, face by face,
-// those from B's side, and depend on the pair's own border key alone —
-// no third chunk enters the derivation.
+// TestBorder_IndependentOfChunkTypeAndThirdChunks checks three clauses
+// of the same independence: the pair-level clause, that A's border
+// candidate faces equal, face by face, B's side, and depend on the
+// pair's own border key alone with no third chunk entering the
+// derivation; the type clause, that A's border with B is identical
+// whether A is generated fabric or gate; and the stored-neighbour
+// clause, that A's border with B does not change when NewMap-built
+// maps are supplied for A's other neighbours.
 func TestBorder_IndependentOfChunkTypeAndThirdChunks(t *testing.T) {
 	t.Parallel()
 	lattice := refLattice()

@@ -68,8 +68,8 @@ func drawAlgorithm(s stream, w AlgorithmWeights) Algorithm {
 	return Algorithm(weightedPick(s, w[:]))
 }
 
-// FaceState is one face's state as Cell reports it: a wall or a
-// passage. FaceWall is deliberately the zero value.
+// FaceState is one face's state: a wall or a passage. FaceWall is
+// deliberately the zero value.
 type FaceState int8
 
 // The two face states.

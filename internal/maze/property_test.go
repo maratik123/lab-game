@@ -185,57 +185,119 @@ func TestAlgorithmDraw_SingleWeightSweep(t *testing.T) {
 	}
 }
 
-// TestConnectivity_MultiChunkRegionOverASeedSweep checks multi-chunk
-// connectivity over a handful of world seeds.
-func TestConnectivity_MultiChunkRegionOverASeedSweep(t *testing.T) {
+// TestConnectivity_MultiChunkRegion checks a patch of the centre
+// chunk and its ring of neighbours, with the centre and one ring chunk
+// typed gate and the rest fabric, is connected end to end. A flood fill
+// over passages across chunks (via Lattice) reaches exactly the
+// region's non-island cells, at R in {6,9} over a seed sweep, under
+// both layouts: every chunk generated with no neighbour maps, and every
+// chunk generated in a fixed outward order against the maps already
+// generated for its earlier-built neighbours.
+func TestConnectivity_MultiChunkRegion(t *testing.T) {
 	t.Parallel()
-	params := goldenParams()
-	for _, seed := range []int64{1, 2, 3, 20260912} {
-		gen, err := New(seed, params)
-		if err != nil {
-			t.Fatalf("New: %v", err)
+	for _, r := range []int32{6, 9} {
+		params := goldenParams()
+		params.Radius = r
+		lattice := params.lattice()
+		centre := hexgrid.Chunk{}
+		region := []hexgrid.Chunk{centre}
+		for _, d := range sixDirections {
+			region = append(region, centre.Neighbor(d))
 		}
-		cache := newMapCache(t, gen, params.lattice(), ChunkTypeFabric)
-		lo := hexgrid.Chunk{Q: 0, R: 0}
-		hi := hexgrid.Chunk{Q: 1, R: 1}
-		all, islandSet := islandRegionCells(params.lattice(), seed, params, lo, hi)
-		regionSet := map[hexgrid.Coord]bool{}
-		for _, c := range all {
-			regionSet[c] = true
+		typeOf := map[hexgrid.Chunk]ChunkType{centre: ChunkTypeGate, region[1]: ChunkTypeGate}
+		for _, ch := range region[2:] {
+			typeOf[ch] = ChunkTypeFabric
 		}
-		var start hexgrid.Coord
-		found := false
-		for _, c := range all {
-			if !islandSet[c] {
-				start = c
-				found = true
-				break
-			}
-		}
-		if !found {
-			continue
-		}
-		visited := map[hexgrid.Coord]bool{start: true}
-		stack := []hexgrid.Coord{start}
-		for len(stack) > 0 {
-			cur := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-			curFaces := cache.faces(cur)
-			for _, d := range sixDirections {
-				if curFaces[d] != FacePassage {
+
+		for _, seed := range []int64{1, 2, 3, 20260912} {
+			for _, sequential := range []bool{false, true} {
+				gen, err := New(seed, params)
+				if err != nil {
+					t.Fatalf("New: %v", err)
+				}
+				maps := map[hexgrid.Chunk]Map{}
+				for _, ch := range region {
+					var neighbors []Map
+					if sequential {
+						for _, d := range sixDirections {
+							if nm, ok := maps[ch.Neighbor(d)]; ok {
+								neighbors = append(neighbors, nm)
+							}
+						}
+					}
+					m, err := gen.Generate(ch, typeOf[ch], neighbors...)
+					if err != nil {
+						t.Fatalf("Generate(%v): %v", ch, err)
+					}
+					maps[ch] = m
+				}
+
+				var all []hexgrid.Coord
+				regionSet := map[hexgrid.Coord]bool{}
+				islandSet := map[hexgrid.Coord]bool{}
+				for _, ch := range region {
+					g := newChunkGraph(lattice)
+					for _, local := range g.cells {
+						c := lattice.At(ch, local)
+						all = append(all, c)
+						regionSet[c] = true
+						faces, ok := maps[ch].Faces(local)
+						if !ok {
+							t.Fatalf("Faces(%v) in chunk %v: ok=false", local, ch)
+						}
+						if allWalled(faces) {
+							islandSet[c] = true
+						}
+					}
+				}
+
+				faceAt := func(c hexgrid.Coord, d hexgrid.Direction) FaceState {
+					t.Helper()
+					ch, local := lattice.Locate(c)
+					m, ok := maps[ch]
+					if !ok {
+						t.Fatalf("cell %v locates to chunk %v, outside the region", c, ch)
+					}
+					faces, ok := m.Faces(local)
+					if !ok {
+						t.Fatalf("Faces(%v) in chunk %v: ok=false", local, ch)
+					}
+					return faces[d]
+				}
+
+				var start hexgrid.Coord
+				found := false
+				for _, c := range all {
+					if !islandSet[c] {
+						start, found = c, true
+						break
+					}
+				}
+				if !found {
 					continue
 				}
-				n := cur.Neighbor(d)
-				if !regionSet[n] || visited[n] {
-					continue
+				visited := map[hexgrid.Coord]bool{start: true}
+				stack := []hexgrid.Coord{start}
+				for len(stack) > 0 {
+					cur := stack[len(stack)-1]
+					stack = stack[:len(stack)-1]
+					for _, d := range sixDirections {
+						if faceAt(cur, d) != FacePassage {
+							continue
+						}
+						n := cur.Neighbor(d)
+						if !regionSet[n] || visited[n] {
+							continue
+						}
+						visited[n] = true
+						stack = append(stack, n)
+					}
 				}
-				visited[n] = true
-				stack = append(stack, n)
-			}
-		}
-		for _, c := range all {
-			if !islandSet[c] && !visited[c] {
-				t.Errorf("seed %d: non-island cell %v not reachable from %v", seed, c, start)
+				for _, c := range all {
+					if !islandSet[c] && !visited[c] {
+						t.Errorf("R=%d seed %d sequential=%v: non-island cell %v not reachable from %v", r, seed, sequential, c, start)
+					}
+				}
 			}
 		}
 	}

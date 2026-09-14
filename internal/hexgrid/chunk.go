@@ -1,7 +1,8 @@
 package hexgrid
 
-// Chunk identifies one hexagonal chunk on the super-lattice — see
-// Lattice for the mapping between a chunk and the cells it holds.
+// Chunk identifies one hexagonal chunk on the super-lattice: the
+// super-lattice's own axial coordinate, one level up from a cell's own
+// Coord. It holds every cell within a validated radius of its centre.
 type Chunk struct {
 	Q int32
 	R int32

@@ -128,6 +128,32 @@ func TestParams_ValidateRejectsPortalShareUpperPastRPlusOne(t *testing.T) {
 	wantErrNaming(t, p.validate(), "portal share upper bound")
 }
 
+// TestParams_ValidatePortalShareUpperAtAndPastTheBound checks the exact
+// edge of the R+1 non-touching-position bound: hi == R+1 is accepted,
+// hi == R+2 is refused naming the portal share upper bound.
+func TestParams_ValidatePortalShareUpperAtAndPastTheBound(t *testing.T) {
+	t.Parallel()
+	p := validParams()
+	p.Radius = MinRadius
+	borderLength := 2*int(p.Radius) + 1
+
+	// A share whose ceiling gives exactly hi = R+1: 0.5*13 = 6.5, ceil 7.
+	p.PortalShareUpper = decimal.New(5, -1)
+	if _, hi := portalBounds(p.PortalShareLower, p.PortalShareUpper, borderLength); hi != int(p.Radius)+1 {
+		t.Fatalf("test setup: hi = %d, want %d", hi, p.Radius+1)
+	}
+	if err := p.validate(); err != nil {
+		t.Errorf("validate() with portal share upper bound at hi=R+1 = %v, want nil", err)
+	}
+
+	// A share whose ceiling gives exactly hi = R+2: 0.6*13 = 7.8, ceil 8.
+	p.PortalShareUpper = decimal.New(6, -1)
+	if _, hi := portalBounds(p.PortalShareLower, p.PortalShareUpper, borderLength); hi != int(p.Radius)+2 {
+		t.Fatalf("test setup: hi = %d, want %d", hi, p.Radius+2)
+	}
+	wantErrNaming(t, p.validate(), "portal share upper bound")
+}
+
 func TestPortalBounds_RoundsUpWithCeiling(t *testing.T) {
 	t.Parallel()
 	// L=13 (radius 6): lower 0.1 -> ceil(1.3)=2, upper 0.2 -> ceil(2.6)=3.
@@ -160,6 +186,27 @@ func TestParams_ValidateAcceptsIslandShareAtGateCapacity(t *testing.T) {
 	if err := p.validate(); err != nil {
 		t.Errorf("validate() with island share at the gate capacity = %v, want nil", err)
 	}
+}
+
+// TestParams_ValidateRejectsIslandShareOneAboveGateCapacity checks the
+// bound at the gate capacity's own edge: a target one above gateCapacity
+// is refused naming the island share, at a radius where the gate
+// capacity (nonBorderCellCount minus the centre) differs from the plain
+// non-border cell count a fabric chunk would allow.
+func TestParams_ValidateRejectsIslandShareOneAboveGateCapacity(t *testing.T) {
+	t.Parallel()
+	p := validParams()
+	p.Radius = MinRadius
+	capacity := gateCapacity(p.Radius)
+	fabricCapacity := nonBorderCellCount(p.Radius)
+	if capacity == fabricCapacity {
+		t.Fatalf("test setup: gate capacity %d equals the fabric capacity %d, want them to differ", capacity, fabricCapacity)
+	}
+	p.IslandShare = shareForIslandTarget(capacity+1, p.lattice().CellCount())
+	if got := islandTarget(p); got != capacity+1 {
+		t.Fatalf("test setup: islandTarget = %d, want %d", got, capacity+1)
+	}
+	wantErrNaming(t, p.validate(), "island share")
 }
 
 func TestNonBorderCellCount_MatchesTheRadiusMinusOneHexagon(t *testing.T) {

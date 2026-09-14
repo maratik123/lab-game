@@ -102,7 +102,7 @@ func borderPositionsLine(t *testing.T, m Map, lattice hexgrid.Lattice, ch hexgri
 
 // dumpChunkBlock renders one chunk's full golden block: its type and
 // drawn algorithm, its six borders' portal positions in canonical
-// direction order, and every local cell's global coordinate and six
+// direction order, and every local cell's local coordinate and six
 // face states in LocalCells order. neighbors are passed to Generate
 // directly, so a chunk generated against a stored neighbour renders
 // exactly what that route produces.
@@ -124,7 +124,7 @@ func dumpChunkBlock(t *testing.T, gen *Generator, lattice hexgrid.Lattice, ch he
 		if !ok {
 			t.Fatalf("Faces(%v): ok=false", local)
 		}
-		lines = append(lines, renderCellLine(c, faces, gen.CellSeed(c)))
+		lines = append(lines, renderCellLine(local, faces, gen.CellSeed(c)))
 	}
 	return lines
 }
@@ -222,15 +222,21 @@ func TestChunksGolden_EveryIslandCellHasAllSixFacesAsWallInTheMintedTable(t *tes
 	islands := selectIslands(g, newStream(chunkKey(goldenSeed, purposeIsland, origin)), params, ChunkTypeGate)
 	islandCoords := map[hexgrid.Coord]bool{}
 	for idx := range islands {
-		islandCoords[lattice.At(origin, g.localCoord(idx))] = true
+		islandCoords[g.localCoord(idx)] = true
 	}
 	if len(islandCoords) == 0 {
 		t.Fatal("test setup: the origin chunk has no island at the golden's own share — nothing to check")
 	}
 
 	checked := 0
+	inOriginBlock := false
+	originHeader := fmt.Sprintf("chunk(%d,%d).type=", origin.Q, origin.R)
 	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.HasPrefix(line, "cell(") {
+		if strings.HasPrefix(line, "chunk(") && strings.Contains(line, ".type=") {
+			inOriginBlock = strings.HasPrefix(line, originHeader)
+			continue
+		}
+		if !inOriginBlock || !strings.HasPrefix(line, "cell(") {
 			continue
 		}
 		var q, r int32

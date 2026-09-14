@@ -137,6 +137,18 @@ func TestChunk_SixSymmetricNeighboursJoinedByAFace(t *testing.T) {
 			if len(seen) != 6 {
 				t.Fatalf("R=%d chunk %v has %d distinct neighbours, want 6", r, ch, len(seen))
 			}
+			// The converse: every chunk a face of ch leads into is
+			// either ch itself or one of the six neighbours just found.
+			for _, local := range l.LocalCells() {
+				c := l.At(ch, local)
+				for _, e := range allDirections {
+					other, _ := l.Locate(c.Neighbor(e))
+					if other != ch && !seen[other] {
+						t.Fatalf("R=%d chunk %v: cell %v's %v-face leads into %v, which is not among its six neighbours",
+							r, ch, local, e, other)
+					}
+				}
+			}
 		}
 	}
 }
@@ -193,20 +205,97 @@ func TestDistance_EqualsLatticeStepCount(t *testing.T) {
 			rt.Fatalf("greedy walk from %v to %v took %d steps, Distance = %d", a, b, steps, hexgrid.Distance(a, b))
 		}
 	})
+
+	// A genuine breadth-first step count over a small region of the open
+	// lattice, from several sources, equals Distance.
+	window := int32(15)
+	sources := []hexgrid.Coord{{}, {Q: 4, R: -6}, {Q: -5, R: 5}}
+	for _, src := range sources {
+		steps := bfsStepCounts(src, -window, window, -window, window)
+		for q := -window; q <= window; q++ {
+			for row := -window; row <= window; row++ {
+				c := hexgrid.Coord{Q: q, R: row}
+				want := hexgrid.Distance(src, c)
+				got, ok := steps[c]
+				if !ok || got != want {
+					t.Fatalf("BFS step count from %v to %v = %v (ok=%v), want %d", src, c, got, ok, want)
+				}
+			}
+		}
+	}
+
+	// A pair of cells straddling a chunk border (built through Lattice)
+	// and a pair of adjacent cells within one chunk give the same
+	// Distance and the same genuine BFS step count for an equal number
+	// of Neighbor steps: crossing the border costs nothing extra.
+	for _, r := range []int32{6, 9} {
+		l := hexgrid.Lattice{Radius: r}
+		borderCell := l.At(hexgrid.Chunk{}, hexgrid.Coord{Q: r})
+		acrossBorder := borderCell.Neighbor(hexgrid.DirE)
+		if ch, _ := l.Locate(acrossBorder); ch == (hexgrid.Chunk{}) {
+			t.Fatalf("R=%d: test setup: %v did not cross into a different chunk", r, acrossBorder)
+		}
+		within := l.At(hexgrid.Chunk{}, hexgrid.Coord{})
+		withinNeighbor := within.Neighbor(hexgrid.DirE)
+
+		straddlingDist := hexgrid.Distance(borderCell, acrossBorder)
+		withinDist := hexgrid.Distance(within, withinNeighbor)
+		if straddlingDist != withinDist {
+			t.Fatalf("R=%d: straddling-pair Distance = %d, within-chunk-pair Distance = %d, want equal", r, straddlingDist, withinDist)
+		}
+		box := func(c hexgrid.Coord) (loQ, hiQ, loR, hiR int32) {
+			return c.Q - 2, c.Q + 2, c.R - 2, c.R + 2
+		}
+		loQ, hiQ, loR, hiR := box(borderCell)
+		if got := bfsStepCounts(borderCell, loQ, hiQ, loR, hiR)[acrossBorder]; got != straddlingDist {
+			t.Fatalf("R=%d: straddling-pair BFS steps = %d, want Distance = %d", r, got, straddlingDist)
+		}
+		loQ, hiQ, loR, hiR = box(within)
+		if got := bfsStepCounts(within, loQ, hiQ, loR, hiR)[withinNeighbor]; got != withinDist {
+			t.Fatalf("R=%d: within-chunk-pair BFS steps = %d, want Distance = %d", r, got, withinDist)
+		}
+	}
 }
 
-// sharesVertex reports whether two distinct faces share a vertex: two
-// faces {x,y} and {u,v} (each named by the pair of cells it separates)
-// share a vertex exactly when the four cells lie inside one triangle of
-// three mutually adjacent cells — equivalently, one face's two cells
-// each neighbour one of the other's two cells (or coincide with it).
+// bfsStepCounts returns, for every cell within the absolute box
+// [loQ,hiQ]x[loR,hiR] (which must contain src), the fewest Neighbor
+// steps from src — a genuine breadth-first search over the open
+// lattice, independent of Distance's own formula.
+func bfsStepCounts(src hexgrid.Coord, loQ, hiQ, loR, hiR int32) map[hexgrid.Coord]int64 {
+	inBox := func(c hexgrid.Coord) bool {
+		return c.Q >= loQ && c.Q <= hiQ && c.R >= loR && c.R <= hiR
+	}
+	dist := map[hexgrid.Coord]int64{src: 0}
+	queue := []hexgrid.Coord{src}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, d := range allDirections {
+			n := cur.Neighbor(d)
+			if _, seen := dist[n]; seen || !inBox(n) {
+				continue
+			}
+			dist[n] = dist[cur] + 1
+			queue = append(queue, n)
+		}
+	}
+	return dist
+}
+
+// sharesVertex reports whether two distinct faces share a vertex. Each
+// face is named by the pair of cells it separates, and a hex vertex is
+// touched by exactly three mutually adjacent cells, so two distinct
+// faces {x,y} and {u,v} share a vertex exactly when {x,y,u,v} collapses
+// to three cells — one cell common to both pairs — and the two cells
+// left over (one from each face) are themselves adjacent, closing the
+// triangle.
 func sharesVertex(f, g hexgrid.Face) bool {
 	fx, fy := f.Cell, f.Cell.Neighbor(f.Dir)
 	gx, gy := g.Cell, g.Cell.Neighbor(g.Dir)
-	cellsAdjacentOrEqual := func(a, b hexgrid.Coord) bool {
-		if a == b {
-			return true
-		}
+	if (fx == gx && fy == gy) || (fx == gy && fy == gx) {
+		return false
+	}
+	adjacent := func(a, b hexgrid.Coord) bool {
 		for _, d := range allDirections {
 			if a.Neighbor(d) == b {
 				return true
@@ -214,14 +303,18 @@ func sharesVertex(f, g hexgrid.Face) bool {
 		}
 		return false
 	}
-	// {fx,fy} and {gx,gy} share a vertex when, pairing up the cells
-	// correctly, one pair coincides and the crossing pair is adjacent —
-	// i.e. all four cells are mutually adjacent-or-equal in the two
-	// possible pairings across the two faces.
-	pairingOK := func(a1, a2, b1, b2 hexgrid.Coord) bool {
-		return cellsAdjacentOrEqual(a1, b1) && cellsAdjacentOrEqual(a2, b2)
+	switch {
+	case fx == gx:
+		return adjacent(fy, gy)
+	case fx == gy:
+		return adjacent(fy, gx)
+	case fy == gx:
+		return adjacent(fx, gy)
+	case fy == gy:
+		return adjacent(fx, gx)
+	default:
+		return false
 	}
-	return pairingOK(fx, fy, gx, gy) || pairingOK(fx, fy, gy, gx)
 }
 
 // TestLattice_BorderHasTwoRPlusOneFacesInOneOrderFromEitherSide checks
@@ -270,18 +363,59 @@ func TestLattice_BorderHasTwoRPlusOneFacesInOneOrderFromEitherSide(t *testing.T)
 					t.Fatalf("R=%d Border(%v)[%d]=%v and [%d]=%v do not share a vertex", r, d, i-1, border[i-1], i, border[i])
 				}
 			}
-			// Translating the neighbour's Border(d.Opposite()) by
-			// Offset(d) gives the identical list, order included.
-			neighborBorder := l.Border(d.Opposite())
-			offset := l.Offset(d)
-			if len(neighborBorder) != len(border) {
-				t.Fatalf("R=%d Border(%v) and Border(%v) differ in length", r, d, d.Opposite())
+			// Reconstruct the order independently of canonicalBorder:
+			// start at the face whose tip locates into the designed
+			// start corner, then repeatedly walk to the one remaining
+			// face sharing a vertex with the current one.
+			// This also covers the neighbour's translated agreement,
+			// since bruteSet already proves the two chunks' borders are
+			// the identical set of faces.
+			canonicalDirs := map[hexgrid.Direction]bool{hexgrid.DirE: true, hexgrid.DirNE: true, hexgrid.DirNW: true}
+			firstStep := -1
+			if !canonicalDirs[d] {
+				firstStep = 1
 			}
-			for i, f := range neighborBorder {
-				translated := hexgrid.Face{Cell: hexgrid.Coord{Q: f.Cell.Q + offset.Q, R: f.Cell.R + offset.R}, Dir: f.Dir}
-				if translated != border[i] {
-					t.Fatalf("R=%d Border(%v)[%d] = %v, translating Border(%v)[%d]=%v by Offset(%v)=%v gives %v",
-						r, d, i, border[i], d.Opposite(), i, f, d, offset, translated)
+			startCorner := hexgrid.Chunk{}.Neighbor(ringNeighbor(d, firstStep))
+			remaining := make(map[hexgrid.Face]bool, len(bruteSet))
+			for f := range bruteSet {
+				remaining[f] = true
+			}
+			var cur hexgrid.Face
+			found := false
+			for f := range remaining {
+				for _, z := range flankCells(f.Cell, f.Cell.Neighbor(f.Dir)) {
+					if ch, _ := l.Locate(z); ch == startCorner {
+						cur, found = f, true
+					}
+				}
+			}
+			if !found {
+				t.Fatalf("R=%d Border(%v): no brute-forced face touches the designed start corner %v", r, d, startCorner)
+			}
+			walked := []hexgrid.Face{cur}
+			delete(remaining, cur)
+			for len(remaining) > 0 {
+				var next hexgrid.Face
+				ok := false
+				for f := range remaining {
+					if sharesVertex(cur, f) {
+						next, ok = f, true
+						break
+					}
+				}
+				if !ok {
+					t.Fatalf("R=%d Border(%v): walk stuck after %d of %d faces at %v", r, d, len(walked), len(bruteSet), cur)
+				}
+				walked = append(walked, next)
+				delete(remaining, next)
+				cur = next
+			}
+			if len(walked) != len(border) {
+				t.Fatalf("R=%d Border(%v): walked %d faces, Border returned %d", r, d, len(walked), len(border))
+			}
+			for i, f := range walked {
+				if f != border[i] {
+					t.Fatalf("R=%d Border(%v)[%d] = %v, independent walk gives %v", r, d, i, border[i], f)
 				}
 			}
 		}
@@ -295,6 +429,80 @@ func TestLattice_BorderHasTwoRPlusOneFacesInOneOrderFromEitherSide(t *testing.T)
 				}
 				total[f] = true
 			}
+		}
+	}
+}
+
+// ringNeighbor returns the direction one step around allDirections'
+// fixed ring from d, forward for step +1 and backward for step -1.
+func ringNeighbor(d hexgrid.Direction, step int) hexgrid.Direction {
+	idx := 0
+	for i, e := range allDirections {
+		if e == d {
+			idx = i
+			break
+		}
+	}
+	return allDirections[(idx+step+len(allDirections))%len(allDirections)]
+}
+
+// flankCells returns the (up to) two cells adjacent to both a and b —
+// the two hex cells that, together with a and b, could close a triangle
+// around one of the edge (a,b)'s two vertices.
+func flankCells(a, b hexgrid.Coord) []hexgrid.Coord {
+	var out []hexgrid.Coord
+	for _, e := range allDirections {
+		z := a.Neighbor(e)
+		if z == b {
+			continue
+		}
+		for _, e2 := range allDirections {
+			if b.Neighbor(e2) == z {
+				out = append(out, z)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// TestLattice_BorderStartsAndEndsAtTheDesignedCorner checks, independently
+// of Border's own construction, that Border(d)'s first face sits at the
+// corner where the chunk, its d-neighbour and its ring-previous neighbour
+// meet, and its last face sits at the corner shared with its
+// ring-next neighbour (the other way around for d's opposites). It
+// finds the third chunk by locating the two cells flanking the face's
+// edge and checking which one lands in the designed neighbour, rather
+// than reusing canonicalBorder's cell/lone/secondary shape.
+func TestLattice_BorderStartsAndEndsAtTheDesignedCorner(t *testing.T) {
+	t.Parallel()
+	canonical := map[hexgrid.Direction]bool{hexgrid.DirE: true, hexgrid.DirNE: true, hexgrid.DirNW: true}
+	for _, r := range testRadii {
+		l := hexgrid.Lattice{Radius: r}
+		for _, d := range allDirections {
+			border := l.Border(d)
+			// Canonical directions run previous-corner to next-corner;
+			// their opposites run the other way.
+			firstStep, lastStep := -1, 1
+			if !canonical[d] {
+				firstStep, lastStep = 1, -1
+			}
+			check := func(label string, f hexgrid.Face, ringStep int) {
+				wantChunk := hexgrid.Chunk{}.Neighbor(ringNeighbor(d, ringStep))
+				found := false
+				for _, z := range flankCells(f.Cell, f.Cell.Neighbor(f.Dir)) {
+					if ch, _ := l.Locate(z); ch == wantChunk {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatalf("R=%d Border(%v) %s face %v: no flanking cell locates into the designed neighbour %v",
+						r, d, label, f, wantChunk)
+				}
+			}
+			check("first", border[0], firstStep)
+			check("last", border[len(border)-1], lastStep)
 		}
 	}
 }

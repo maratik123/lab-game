@@ -107,7 +107,7 @@ func radiusForCellCount(n int64) (r int32, ok bool) {
 // check it against.
 func NewMap(ch hexgrid.Chunk, typ ChunkType, version int32, faces [][6]FaceState) (Map, error) {
 	if !typ.valid() {
-		return Map{}, fmt.Errorf("maze.NewMap: unknown chunk type %v", typ)
+		return Map{}, fmt.Errorf("maze.NewMap: unknown chunk type %v (%d)", typ, int8(typ))
 	}
 	if version < 1 {
 		return Map{}, fmt.Errorf("maze.NewMap: version must be at least 1, got %d", version)

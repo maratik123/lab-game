@@ -216,6 +216,59 @@ func TestLoadBalance_NullValue_ZeroAdmittingKeys(t *testing.T) {
 	}
 }
 
+// TestLoadBalance_Radius checks the world.chunk.radius key end to end:
+// MinRadius itself and a larger radius both load, a radius below
+// MinRadius is refused naming the key and stating the bound rather than
+// "positive" (a radius of 5 is itself positive), and a leftover cols:
+// key from the rhombic schema is refused as unknown.
+func TestLoadBalance_Radius(t *testing.T) {
+	t.Parallel()
+	t.Run("at_min_radius", func(t *testing.T) {
+		t.Parallel()
+		yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 6\n", 1)
+		path := writeBalanceFile(t, yaml)
+		got, err := loadBalance(path)
+		if err != nil {
+			t.Fatalf("loadBalance: unexpected error: %v", err)
+		}
+		if got.World.Chunk.Radius != 6 {
+			t.Errorf("World.Chunk.Radius = %d, want 6", got.World.Chunk.Radius)
+		}
+	})
+	t.Run("larger_radius", func(t *testing.T) {
+		t.Parallel()
+		yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 40\n", 1)
+		path := writeBalanceFile(t, yaml)
+		got, err := loadBalance(path)
+		if err != nil {
+			t.Fatalf("loadBalance: unexpected error: %v", err)
+		}
+		if got.World.Chunk.Radius != 40 {
+			t.Errorf("World.Chunk.Radius = %d, want 40", got.World.Chunk.Radius)
+		}
+	})
+	t.Run("below_min_radius_states_the_bound", func(t *testing.T) {
+		t.Parallel()
+		yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 5\n", 1)
+		path := writeBalanceFile(t, yaml)
+		_, err := loadBalance(path)
+		assertKeyError(t, err, ErrInvalidValue, "world.chunk.radius")
+		if strings.Contains(err.Error(), "positive") {
+			t.Errorf("error %q says \"positive\", which is false for radius 5 — it must state the actual bound", err)
+		}
+		if !strings.Contains(err.Error(), "6") {
+			t.Errorf("error %q does not state the bound 6", err)
+		}
+	})
+	t.Run("cols_key_is_unknown", func(t *testing.T) {
+		t.Parallel()
+		yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    cols: 16\n    radius: 9\n", 1)
+		path := writeBalanceFile(t, yaml)
+		_, err := loadBalance(path)
+		assertKeyError(t, err, ErrUnknownKey, "world.chunk.cols")
+	})
+}
+
 func TestLoadBalance_IntGivenFloat(t *testing.T) {
 	t.Parallel()
 	yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 9.5\n", 1)

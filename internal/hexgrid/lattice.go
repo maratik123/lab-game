@@ -58,10 +58,9 @@ func (l Lattice) Locate(c Coord) (Chunk, Coord) {
 	// One of the four candidates above always satisfies the distance
 	// bound — the four-candidate search over the inverse super-basis
 	// partitions the plane exactly, for any radius a caller has
-	// validated (see the package's Locate tests). This line is not
-	// meant to be reached.
+	// validated. This line is not meant to be reached.
 	centerQ, centerR := iStar*(2*r+1)+jStar*r, -iStar*r+jStar*(r+1)
-	//nolint:gosec // G115: this fallback path is unreached for any validated radius (see above); the conversion mirrors the reached branch.
+	//nolint:gosec // G115: this fallback path is unreached for any validated radius, for the same reason the four-candidate search above never falls through; the conversion mirrors the reached branch.
 	return Chunk{Q: int32(iStar), R: int32(jStar)}, Coord{Q: int32(q - centerQ), R: int32(rr - centerR)}
 }
 
@@ -118,14 +117,23 @@ func (l Lattice) Border(d Direction) []Face {
 }
 
 // canonicalBorder builds one canonical border's path over index range
-// [lo, hi]: the lone direction's face at lo, then the secondary
-// direction's face followed by the lone direction's face at every index
-// after lo, up to hi. cell maps an index to the local cell it names.
+// [lo, hi]. The forward pass walks the lone direction's face at lo,
+// then the secondary direction's face followed by the lone direction's
+// face at every index after lo, up to hi; that order runs from the
+// corner nearer the secondary neighbour to the one nearer the lone
+// neighbour's other side, so the result is reversed before it is
+// returned to run the other way: from the corner shared with the
+// neighbour one step around from lone, to the corner shared with the
+// neighbour one step around from secondary. cell maps an index to the
+// local cell it names.
 func (l Lattice) canonicalBorder(cell func(int32) Coord, lone, secondary Direction, lo, hi int32) []Face {
 	faces := make([]Face, 0, 2*int(hi-lo)+1)
 	faces = append(faces, FaceOf(cell(lo), lone))
 	for x := lo + 1; x <= hi; x++ {
 		faces = append(faces, FaceOf(cell(x), secondary), FaceOf(cell(x), lone))
+	}
+	for i, j := 0, len(faces)-1; i < j; i, j = i+1, j-1 {
+		faces[i], faces[j] = faces[j], faces[i]
 	}
 	return faces
 }

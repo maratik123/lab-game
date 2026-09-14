@@ -1,6 +1,9 @@
 package maze
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/maratik123/lab-game/internal/hexgrid"
@@ -73,47 +76,77 @@ func TestNewMap_Refuses(t *testing.T) {
 
 	t.Run("zero_type", func(t *testing.T) {
 		t.Parallel()
-		if _, err := NewMap(hexgrid.Chunk{}, chunkTypeUnset, 1, validFaces); err == nil {
+		_, err := NewMap(hexgrid.Chunk{}, chunkTypeUnset, 1, validFaces)
+		if err == nil {
 			t.Fatal("NewMap with zero type = nil error, want an error")
+		}
+		if !strings.Contains(err.Error(), "0") {
+			t.Errorf("NewMap with zero type error = %q, want it to name the value 0", err)
 		}
 	})
 	t.Run("out_of_range_type", func(t *testing.T) {
 		t.Parallel()
-		if _, err := NewMap(hexgrid.Chunk{}, ChunkType(99), 1, validFaces); err == nil {
+		_, err := NewMap(hexgrid.Chunk{}, ChunkType(99), 1, validFaces)
+		if err == nil {
 			t.Fatal("NewMap with an out-of-range type = nil error, want an error")
+		}
+		if !strings.Contains(err.Error(), "99") {
+			t.Errorf("NewMap with an out-of-range type error = %q, want it to name the value 99", err)
 		}
 	})
 	t.Run("version_zero", func(t *testing.T) {
 		t.Parallel()
-		if _, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, 0, validFaces); err == nil {
+		_, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, 0, validFaces)
+		if err == nil {
 			t.Fatal("NewMap with version 0 = nil error, want an error")
+		}
+		if !strings.Contains(err.Error(), "0") {
+			t.Errorf("NewMap with version 0 error = %q, want it to name the value 0", err)
 		}
 	})
 	t.Run("version_negative", func(t *testing.T) {
 		t.Parallel()
-		if _, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, -1, validFaces); err == nil {
+		_, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, -1, validFaces)
+		if err == nil {
 			t.Fatal("NewMap with a negative version = nil error, want an error")
+		}
+		if !strings.Contains(err.Error(), "-1") {
+			t.Errorf("NewMap with a negative version error = %q, want it to name the value -1", err)
 		}
 	})
 	t.Run("length_not_a_hexagon", func(t *testing.T) {
 		t.Parallel()
-		if _, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, 1, make([][6]FaceState, validLen+1)); err == nil {
+		badLen := validLen + 1
+		_, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, 1, make([][6]FaceState, badLen))
+		if err == nil {
 			t.Fatal("NewMap with a non-hexagon length = nil error, want an error")
+		}
+		if !strings.Contains(err.Error(), strconv.Itoa(badLen)) {
+			t.Errorf("NewMap with a non-hexagon length error = %q, want it to name the length %d", err, badLen)
 		}
 	})
 	t.Run("radius_below_minimum", func(t *testing.T) {
 		t.Parallel()
 		below := hexgrid.Lattice{Radius: MinRadius - 1}
-		if _, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, 1, make([][6]FaceState, len(below.LocalCells()))); err == nil {
+		badLen := len(below.LocalCells())
+		_, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, 1, make([][6]FaceState, badLen))
+		if err == nil {
 			t.Fatal("NewMap with a radius-5 hexagon's cell count = nil error, want an error")
+		}
+		if !strings.Contains(err.Error(), strconv.Itoa(badLen)) {
+			t.Errorf("NewMap with a radius-5 hexagon's cell count error = %q, want it to name the length %d", err, badLen)
 		}
 	})
 	t.Run("face_state_out_of_range", func(t *testing.T) {
 		t.Parallel()
 		faces := make([][6]FaceState, validLen)
 		faces[0][0] = FaceState(99)
-		if _, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, 1, faces); err == nil {
+		_, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, 1, faces)
+		if err == nil {
 			t.Fatal("NewMap with an out-of-range face state = nil error, want an error")
+		}
+		if !strings.Contains(err.Error(), "99") {
+			t.Errorf("NewMap with an out-of-range face state error = %q, want it to name the value 99", err)
 		}
 	})
 	t.Run("interior_face_disagreement", func(t *testing.T) {
@@ -123,8 +156,17 @@ func TestNewMap_Refuses(t *testing.T) {
 		intFace := g.interiorFaces()[0]
 		faces[intFace.a][intFace.dir] = FacePassage
 		faces[intFace.b][intFace.dir.Opposite()] = FaceWall
-		if _, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, 1, faces); err == nil {
+		_, err := NewMap(hexgrid.Chunk{}, ChunkTypeFabric, 1, faces)
+		if err == nil {
 			t.Fatal("NewMap with one interior face flipped on one side only = nil error, want an error")
+		}
+		aLocal := fmt.Sprintf("%v", g.localCoord(intFace.a))
+		bLocal := fmt.Sprintf("%v", g.localCoord(intFace.b))
+		dir := fmt.Sprintf("%v", intFace.dir)
+		msg := err.Error()
+		if !strings.Contains(msg, aLocal) || !strings.Contains(msg, bLocal) || !strings.Contains(msg, dir) {
+			t.Errorf("NewMap interior-face-disagreement error = %q, want it to name both local coordinates %s, %s and the direction %s",
+				err, aLocal, bLocal, dir)
 		}
 	})
 	t.Run("control_border_face_flip_is_accepted", func(t *testing.T) {
