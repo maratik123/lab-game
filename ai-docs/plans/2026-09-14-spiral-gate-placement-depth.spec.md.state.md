@@ -58,7 +58,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: a7879fa54e60232cc
 prior_qa:
   - round: 1
@@ -67,4 +67,7 @@ prior_qa:
   - round: 1
     question: "Which lattice direction does the spiral start in, and which way does it turn? Both only rotate or mirror the same world; neither changes packing or depth."
     answer: "Design fixes (Recommended)"
+  - round: 1
+    question: "Where should each ring of the gate spiral start? (follow-up to the orchestrator's reply on how k is understood: k is the minimum distance in chunks between gate chunks, not counting the gate chunks themselves, i.e. super-lattice distance between gates at least k+1; asked to choose the ring start — at a corner, or mid-side)"
+    answer: "Да, все так по поводу k. Давай выберем опцию старта с середины стороны (округление вниз), но не потому что более плотная решетка, а потому что таково мое решение."
 ```
