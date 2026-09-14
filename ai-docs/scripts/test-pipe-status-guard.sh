@@ -16,8 +16,10 @@
 # Known false positive, asserted deliberately: a spaced pipe inside a quoted
 # pattern, followed by a read of $?, is BLOCKED. The guard matches command
 # text, not shell grammar, and a loud refusal costs one re-spelling.
-# Known miss, asserted so that closing it is a deliberate change: a status
-# read joined to the pipeline with && instead of ; is ALLOWED.
+# Known misses, asserted so that closing one is a deliberate change: a status
+# read joined to the pipeline with && instead of ;, an unspaced pipe, a |&
+# pipe, a pipe that ends its line, and a pipeline continued with a backslash
+# are ALLOWED. The guard matches the common spelling; it is not a parser.
 #
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
@@ -91,8 +93,10 @@ ALLOW git log --oneline | head -5; git status --porcelain; echo "status=$?"
 ALLOW ls .claude/agents | wc -l
 ALLOW grep -rn 'echo $?' AGENTS.md | head -3
 ALLOW go build ./... > tmp/b.log 2>&1; echo "build=$?"
-# --- must allow: the accepted miss (see the header) ---
+# --- must allow: the accepted misses (see the header) ---
 ALLOW grep foo AGENTS.md | head && echo "ok $?"
+ALLOW grep foo AGENTS.md|head; echo "exit=$?"
+ALLOW grep foo AGENTS.md |& head; echo "exit=$?"
 FIXTURES
 
 # A pipeline on one line and the status read on the next is the same defect:
@@ -103,6 +107,21 @@ echo "exit=$?"
 ML
 )
 check BLOCK "$multiline"
+
+# The two multi-line misses from the header: a pipe ending its line, and a
+# pipeline continued with a backslash.
+trailing_pipe=$(cat <<'ML'
+grep -n foo AGENTS.md |
+head; echo "exit=$?"
+ML
+)
+check ALLOW "$trailing_pipe"
+continued=$(cat <<'ML'
+grep -n foo AGENTS.md \
+| head; echo "exit=$?"
+ML
+)
+check ALLOW "$continued"
 
 # The escape hatch must survive byte-for-byte.
 grep -qF -- "grep -qE 'pipefail|PIPESTATUS' && exit 0" <<<"$body" || {

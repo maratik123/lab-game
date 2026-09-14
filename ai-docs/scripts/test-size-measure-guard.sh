@@ -13,10 +13,16 @@
 # Verdict convention: the body exits 2 to block a tool call. Any other exit
 # status means the call proceeds.
 #
+# Known false positive, asserted deliberately: a search whose pattern text
+# names stat or wc beside a covered path is BLOCKED, because the guard matches
+# command text; the pattern can be put in a file and read with grep -f.
+#
 # Known misses, asserted so that closing one is a deliberate change: a line
-# count through awk, through grep -c with an empty pattern, and through ls -l
-# are ALLOWED. The guard carries the prohibition to the common spellings; it
-# is not a sandbox.
+# count through awk, through grep -c with an empty pattern, and through ls -l;
+# wc behind time, if, command, backticks or bash -c; find -exec wc; and any
+# text appended after the Sub-check 9 recipe, whose exemption is a substring
+# match, are ALLOWED. The guard carries the prohibition to the common
+# spellings; it is not a sandbox.
 #
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
@@ -82,6 +88,8 @@ BLOCK stat -c %s ai-docs/context.md
 BLOCK du -b .claude/rules
 BLOCK wc -l .claude/skills/*/SKILL.md .claude/skills/*/reference.md
 BLOCK for f in x; do wc -c AGENTS.md; done
+# --- must block: the accepted false positive (see the header) ---
+BLOCK grep -rn -E '(^|[^A-Za-z])(wc -[clmL]|du -[bsh]|stat -c)' AGENTS.md
 # --- must allow: the two audit recipes, verbatim ---
 ALLOW wc -l .claude/skills/*/SKILL.md
 ALLOW { find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md'; printf '%s\n' ai-docs/code-style.md ai-docs/doc-convention.md ai-docs/context.md ai-docs/agent-writing-style.md ai-docs/corrections-log.md; } | xargs wc -c
@@ -100,6 +108,13 @@ ALLOW LC_ALL=C sort -u tmp/names.txt
 ALLOW awk 'END { print NR }' AGENTS.md
 ALLOW grep -c '' AGENTS.md
 ALLOW ls -l AGENTS.md
+ALLOW time wc -c AGENTS.md
+ALLOW if wc -c AGENTS.md; then :; fi
+ALLOW command wc -c AGENTS.md
+ALLOW echo `wc -c AGENTS.md`
+ALLOW bash -c "wc -c AGENTS.md"
+ALLOW find . -name AGENTS.md -exec wc -c {} +
+ALLOW { find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md'; } | xargs wc -c; wc -c AGENTS.md
 FIXTURES
 
 # Both audit recipes must survive as exemptions byte-for-byte.

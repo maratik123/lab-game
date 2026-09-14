@@ -174,7 +174,7 @@ gh run view <run-id> --log-failed --job <job-id> 2>&1 | tail -200
 | `test` | `go test ./... -run <TestName>`, then the full suite |
 | `race` | `go test -race ./... -run <TestName>` |
 | `lint` | `golangci-lint run`; if that is clean the failure is the file-size gate — `awk` over `*.go`, hard 1000 / 1500 for `_test.go` |
-| `harness` | the failing guard itself (`shellcheck`, `check-citations.sh`, a guard suite, `check-script-shape.sh`, `wc -c`) |
+| `harness` | the failing guard itself (`shellcheck`, `check-citations.sh`, a guard suite, `check-script-shape.sh`) |
 | `comment-refs` | `make comment-refs`, or `go run ./cmd/commentrefs <file>...` for the reported files |
 | `actionlint` | `actionlint .github/workflows/<file>.yml` |
 | `other` | Pause; print log excerpt + classifier candidates; surface to user. |

@@ -181,7 +181,7 @@ Classify the failure into exactly one class:
 | `test` | `go test ./... -run <TestName>`, then the full `go test ./...` |
 | `race` | `go test -race ./... -run <TestName>` |
 | `lint` | `golangci-lint run`; if that is clean the failure is the file-size gate — `awk` over `*.go`, hard 1000 / 1500 for `_test.go` |
-| `harness` | the failing guard itself: `shellcheck -s bash <script>`, `bash .claude/skills/ai-audit/scripts/check-citations.sh`, `bash .claude/skills/task/scripts/test-append-task-run.sh`, `bash ai-docs/scripts/test-piped-gate-guard.sh`, `bash ai-docs/scripts/check-script-shape.sh`, or `wc -c <file>` |
+| `harness` | the failing guard itself: `shellcheck -s bash <script>`, `bash .claude/skills/ai-audit/scripts/check-citations.sh`, `bash .claude/skills/task/scripts/test-append-task-run.sh`, `bash ai-docs/scripts/test-piped-gate-guard.sh`, `bash ai-docs/scripts/check-script-shape.sh`, or the failing guard suite under `ai-docs/scripts/` |
 | `comment-refs` | `make comment-refs` for the whole tracked set, or `go run ./cmd/commentrefs <file>...` for the reported files. The fix is to rewrite the sentence without the pointer, not to widen the gate — the rule and its exemptions are in `ai-docs/doc-convention.md` § DOC-4 |
 | `actionlint` | `actionlint .github/workflows/<file>.yml` |
 | `other` | Pause; print log excerpt + the classifier's top-2 candidate classes; surface to user. |
