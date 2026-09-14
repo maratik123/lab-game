@@ -11,13 +11,13 @@ _Updated: 2026-09-14 10:58_
 **Spec:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.spec.md
 **Design:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.design.md
 
-**current_step:** Step 8 — subtask 5 of 5 complete, Group B done (awaiting the orchestrator's Group B return)
+**current_step:** Step 8 — subtask 5 of 5 complete
 **last_passed_gate:** check-citations.sh + relative-markdown-link check (working tree over 2b76287) | 2026-09-14T10:57:46Z | 2b762873170d4322f26b7bca877068eae297eb18
 **entry_args:** 120
 
 ## Next action
 
-**Do this immediately:** Group B return — re-validate the docs commit, decide the two code-surface doc-comment findings from subtask 5 (Decisions log, below) and the Status-bullet edit made beyond the design's named layout line, then Step 9.
+**Do this immediately:** Step 9 — the full verify list (`make verify`, panic-index sync, domain-invariant sweep, per-AC sweep with the orchestrator's own commands).
 
 ## Subtasks
 
@@ -43,6 +43,8 @@ Groups per the design's `## Handoff plan`.
 - **Step 8, subtask 5 (context.md)**: `internal/gate` added to the layout line after `internal/maze`. **Beyond the design's named line:** the Status "Code:" bullet said the generation core (`hexgrid` and `maze`) "reaches no call site beyond the balance loader's radius check", which became false once `internal/gate` imports `hexgrid`. It now reads "no call site outside the world packages", followed by one sentence naming `internal/gate`. The reasons are the Propagation Rule's step 4 (every live doc must agree) and the #119 precedent, whose PR changed that same bullet. The orchestrator may revert it.
 - **Step 8, subtask 5 (propagation grep)**: `grep -rniE 'spiral|nearest[- ]gate|depth gradient'` (control line matched) over `.claude/`, `AGENTS.md`, `ai-docs/`, `README.md`. `context.md` lines 19, 32 and 42 remain true, as do KD-38 and the history surfaces (`harness-gaps.md`, `deferred/_inbox.jsonl`, left untouched). `docs/DESIGN.md` §2.2 fixes no start direction, turn or ring start, so nothing there contradicts D2. A post-edit re-sweep adding `vocabulary alone|no call site` found only intended sentences.
 - **Step 8, subtask 5 (code-surface findings, reported, not fixed; Group A defects)**: a scratch copy of `spiral.go`/`depth.go`/`next.go`/`errors.go` under `tmp/_probe/gatedoc` (deleted after the run) established two false doc comments. (1) `Set.Depth`'s "It never looks at a chunk farther than the nearest gate's own ring" is false. With R=6, a sole gate in the cell's own chunk and the local cell farthest from the centre, `depthSearch` returned depth=6, lastRing=1 while the nearest gate is in ring 0, since `L(1)=4 < 6`. The true bound is `S(cell)`. (2) `Next`'s "So the fallback is never actually reached by an input the scan cannot already satisfy" contradicts the fallback it documents. With rings 0–2 created and k=0, `Next` returned `(3,-1)` from the fallback return, and `TestNext_Table` has that very row.
+- **Step 8, Group B return**: orchestrator re-validated branch, base_commit and a clean tree and pushed; accepted Group B's `context.md` Status "Code:" edit beyond the design's list, because the added `internal/gate` import made that bullet's "reaches no call site beyond the balance loader" false and Step 9.5 would have required the same edit; a case-insensitive sweep of `key-decisions.md` and `context.md` found neither false doc-comment claim copied into KD-41.
+- **Step 8, doc-comment defect**: Group B reported two false doc comments in Group A's code (`Set.Depth` "never looks at a chunk farther than the nearest gate's own ring"; `Next` "the fallback is never actually reached"); orchestrator reproduced both (radius-6 lower bound 4 < depth 6 visits ring 1; `TestNext_Table`'s fallback row) and routed a comment-only fix to a `code-writer` Mode B delegate; learnings entry written.
 
 ## GO notes
 

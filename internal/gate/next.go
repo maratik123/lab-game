@@ -18,10 +18,11 @@ import "github.com/maratik123/lab-game/internal/hexgrid"
 // chunk of created or gates (0 when both are empty), every created
 // chunk lies within ring M, so the fallback — beyond ring M+k — is
 // never in created, and by the triangle inequality it is at least k+1
-// from every gate, whose own ring is at most M. So the fallback is
-// never actually reached by an input the scan cannot already satisfy;
-// it is what makes Next total rather than a search that could fail to
-// terminate.
+// from every gate, whose own ring is at most M. The fallback is reached
+// exactly when every chunk the scan covers is created or too close to a
+// gate — for instance when every chunk out to ring M is created and k
+// is 0 — and it is what makes Next total rather than a search that
+// could fail to terminate.
 func Next(created, gates []hexgrid.Chunk, k int) (hexgrid.Chunk, error) {
 	if k < 0 {
 		return hexgrid.Chunk{}, ErrNegativeK

@@ -31,9 +31,10 @@ func NewSet(lattice hexgrid.Lattice, gates []hexgrid.Chunk) (Set, error) {
 
 // Depth returns the hex-cell distance from cell to the nearest gate
 // chunk's centre cell, and true — or (0, false) when the set holds no
-// gate, the zero Set included. It never looks at a chunk farther than
-// the nearest gate's own ring, so its cost tracks that distance, not
-// the number of gates the set holds.
+// gate, the zero Set included. It stops at the first ring beyond which
+// no chunk centre can lie nearer to cell than the best distance already
+// found, so the rings it visits are bounded by that distance and the
+// lattice radius, never by the number of gates the set holds.
 func (s Set) Depth(cell hexgrid.Coord) (int64, bool) {
 	depth, found, _ := s.depthSearch(cell)
 	return depth, found

@@ -1059,3 +1059,9 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** Any instruction violation — including one a gate caught before commit and the actor corrected in-task — is a `learnings.md` entry. A progress-file Decisions-log line does not substitute for it: `/improve` reads only the learnings log, and the progress file is retired before the PR.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-14 — documentation — doc comments stated behaviour the code does not have, past every gate
+**What happened:** In the #120 run, Group A's `code-writer` shipped two false doc comments in `internal/gate`, both green on every gate. `Set.Depth`'s comment said the search "never looks at a chunk farther than the nearest gate's own ring", but its stop rule continues while the best distance exceeds the next ring's lower bound, so with radius 6 and the only gate in the cell's own chunk, a cell 6 from that centre makes the search visit ring 1 (bound 4). `Next`'s comment said the fallback "is never actually reached by an input the scan cannot already satisfy", while its own table test has a row that returns the fallback. Group B's documentation delegate found both while checking KD-41's claims against the code; the orchestrator reproduced both and routed a comment-only fix.
+**Rule:** A doc comment that describes a function's behaviour — a bound, a reachability, a "never" — is a claim about the code and is checked against the code or its tests before commit, the same as a design claim. A comment that paraphrases the design's proof in stronger words than the proof establishes is the likeliest false one.
+**Kind:** correction
+**Escalated?** no
