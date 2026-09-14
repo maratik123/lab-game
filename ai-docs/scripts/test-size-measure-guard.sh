@@ -20,14 +20,17 @@
 #
 # Known misses, asserted so that closing one is a deliberate change: a line
 # count through awk, through grep -c with an empty pattern, and through ls -l;
-# wc behind time, if, command, backticks or bash -c; and find -exec wc are
-# ALLOWED. The guard carries the prohibition to the common spellings; it is
-# not a sandbox.
+# wc behind time, if, command, backticks or bash -c; find -exec wc; a brace
+# group ending in ; piped to xargs, alone or after the recipe; and a directory
+# below the covered skills directory given to du or to find | xargs are
+# ALLOWED. The guard
+# carries the prohibition to the common spellings; it is not a sandbox.
 #
-# The Sub-check 9 recipe passes without an exemption: its brace group ends
-# the find with ;, which the xargs branch does not cross. Its one-line and
-# multi-line forms are both fixtures, so a regex change that starts refusing
-# the recipe fails here, and text appended after it is refused like any other.
+# The Sub-check 9 recipe passes without an exemption: the xargs branch needs a
+# covered path and the pipe into xargs with no ; between them, and the recipe's
+# brace group ends its last statement with ; right before } | xargs. Its
+# one-line and multi-line forms are both fixtures, and so is the recipe with
+# that ; removed, which is refused.
 #
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
@@ -97,6 +100,8 @@ BLOCK for f in x; do wc -c AGENTS.md; done
 BLOCK grep -rn -E '(^|[^A-Za-z])(wc -[clmL]|du -[bsh]|stat -c)' AGENTS.md
 # --- must block: a measurement appended after the Sub-check 9 recipe ---
 BLOCK { find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md'; } | xargs wc -c; wc -c AGENTS.md
+# --- must block: the recipe with its last statement's ; removed (see the header) ---
+BLOCK { find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md'; printf '%s\n' ai-docs/code-style.md ai-docs/doc-convention.md ai-docs/context.md ai-docs/agent-writing-style.md ai-docs/corrections-log.md } | xargs wc -c
 # --- must allow: the two audit recipes, verbatim ---
 ALLOW wc -l .claude/skills/*/SKILL.md
 ALLOW { find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md'; printf '%s\n' ai-docs/code-style.md ai-docs/doc-convention.md ai-docs/context.md ai-docs/agent-writing-style.md ai-docs/corrections-log.md; } | xargs wc -c
@@ -122,6 +127,10 @@ ALLOW command wc -c AGENTS.md
 ALLOW echo `wc -c AGENTS.md`
 ALLOW bash -c "wc -c AGENTS.md"
 ALLOW find . -name AGENTS.md -exec wc -c {} +
+ALLOW { find .claude/agents -name '*.md'; } | xargs wc -c
+ALLOW { find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md'; } | xargs wc -c; { find .claude/agents -name '*.md'; } | xargs wc -c
+ALLOW du -b .claude/skills/task
+ALLOW find .claude/skills/task -name '*.md' | xargs wc -c
 FIXTURES
 
 # The Sub-check 9 recipe in its multi-line form, as the audit checklist prints it.
