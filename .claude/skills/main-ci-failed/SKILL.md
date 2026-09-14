@@ -26,7 +26,7 @@ This skill enforces the AGENTS.md `## Workflow` axiom **"CI-fix commits get self
 
 **Out:**
 
-- **Committing directly on main.** The skill MUST NOT push to `main` directly. AGENTS.md `## Permissions` also denies force-push to main at the server level.
+- **Committing directly on main.** The skill MUST NOT push to `main` directly. The `main` ruleset also refuses a force-push server-side; `gh api repos/maratik123/lab-game/rules/branches/main` lists the rules in force, and `AGENTS.md` § Permissions says what holds when it lists none.
 - Force-push, rebase, merge-conflict resolution → bail; surface to user.
 - Re-running CI without a code change (`gh run rerun`) — not a Claude-driven workflow.
 - Bisecting CI history to find which main commit first turned the check red — user runs `gh run list --branch main --status failure` manually.

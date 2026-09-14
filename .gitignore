@@ -31,6 +31,8 @@
 # /task in-flight marker (Stop-hook contract)
 /ai-docs/plans/.task-inflight
 /ai-docs/pr-comments/
+/ai-docs/ci-fixes/
+/ai-docs/dependabot/
 /ai-docs/bugfix/trace-*.md
 /ai-docs/triage/*.progress.md
 

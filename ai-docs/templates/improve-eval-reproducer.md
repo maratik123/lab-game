@@ -73,6 +73,8 @@ A reproducer that trips any of these is **not a valid reproducer**. It is rewrit
 
    The consequence of getting this wrong is on the contract page and is worth reading before waiving the condition: an unattributable baseline FAIL is indistinguishable from a genuine *not recalled* when read from the returned answer alone, so FAIL-before / PASS-after would license a rule the run never tested.
 
+4. **Reachable evidence (a rejection condition, not advice).** When the clause under test requires the agent to consult an artefact — source, a test, a log — the scenario names a real artefact in the tree by its path, never presents it as hypothetical or paraphrases what it does, and the GRADER's `Rule-citation observable` includes the tool call that opens it. A scenario that describes the code instead of pointing at it lets the agent answer from the paraphrase: a FAIL is then not attributable to the rule, and a PASS could not have been earned.
+
 ## Worked examples
 
 Both examples below are **illustrative**: they anchor the block shape, and neither is an executed eval. Substitute real Step-1 patterns and real diff quotes at runtime.

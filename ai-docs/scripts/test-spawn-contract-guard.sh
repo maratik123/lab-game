@@ -224,6 +224,62 @@ check BLOCK 'a priority steer' self-review "$(cat <<'P'
 P
 )"
 
+# --- must allow: the blocks the task skill ships, read from the file ---
+# Steps 7 and 10 give the orchestrator literal line blocks to copy. They are
+# extracted here rather than retyped, so an edit that makes a shipped block
+# unspawnable fails this suite instead of a review round.
+skill=.claude/skills/task/SKILL.md
+shipped_block() {
+  awk -v intro="$1" '
+    index($0, intro) { armed = 1; next }
+    armed && /^```/ { if (inblock) exit; inblock = 1; next }
+    inblock { print }
+  ' "$skill"
+}
+realise() { sed -e 's/<name>/2026-09-15-name/g' -e 's/<N>/2/g' -e 's/<base-sha>/7efdbb7/g'; }
+step7=$(shipped_block 'The five things are these lines' | realise)
+step10=$(shipped_block 'The lines, spelled exactly so' | realise)
+for b in step7 step10; do
+  [ -n "${!b}" ] && continue
+  printf 'FAIL: the %s block was not found in %s\n' "$b" "$skill"
+  failures=$((failures + 1))
+done
+check ALLOW '/task Step 7 block as shipped' design-review "$step7"
+check ALLOW '/task Step 7 block, no progress file yet' design-review "$(printf '%s\n' "$step7" | grep -v '^Progress:')"
+check ALLOW '/task Step 10 block as shipped' self-review "$step10"
+
+# --- a self-review range with no change in it ---
+# Run in a scratch repository so that both ends resolve. The empty window is the
+# state a /bugfix run reached by reviewing before it committed.
+er=$(mktemp -d "${TMPDIR:-/tmp}/spawn-empty-range.XXXXXX")
+trap 'rm -rf "$er"' EXIT
+git -C "$er" init -q
+git -C "$er" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m base
+printf 'x\n' > "$er/f"
+git -C "$er" add f
+git -C "$er" -c user.name=t -c user.email=t@example.invalid commit -q -m fix
+head_sha=$(git -C "$er" rev-parse --short HEAD)
+base_sha=$(git -C "$er" rev-parse --short HEAD~1)
+
+# check_in <dir> <want> <label> <subagent_type> <prompt>
+check_in() {
+  local got rc
+  (cd "$1" && jq -n --arg st "$4" --arg p "$5" '{tool_input: {subagent_type: $st, prompt: $p}}' | bash -c "$body" >/dev/null 2>&1) && rc=0 || rc=$?
+  if [ "$rc" -eq 2 ]; then got=BLOCK; else got=ALLOW; fi
+  if [ "$got" != "$2" ]; then
+    printf 'FAIL: expected %s, got %s, for: %s\n' "$2" "$got" "$3"
+    failures=$((failures + 1))
+  fi
+}
+trace_prompt() {
+  printf 'Read .claude/agents/self-review.md and follow it.\nSpec-equivalent: ai-docs/bugfix/trace-2026-09-15-name.md\nProgress: ai-docs/bugfix/trace-2026-09-15-name.md\n%s\n' "$1"
+}
+check_in "$er" BLOCK 'base..HEAD with the base at HEAD' self-review "$(trace_prompt "$head_sha..HEAD")"
+check_in "$er" BLOCK 'two equal commits' self-review "$(trace_prompt "$head_sha..$head_sha")"
+check_in "$er" ALLOW 'a one-commit window' self-review "$(trace_prompt "$base_sha..HEAD")"
+check_in "$er" ALLOW 'a range this repository cannot resolve' self-review "$(trace_prompt 'abcdef1..HEAD')"
+check_in "$er" ALLOW 'design-review carries no range' design-review "$(printf 'Read .claude/agents/design-review.md and follow it.\nDesign: ai-docs/plans/x.design.md\nRound: 1\n')"
+
 # --- must allow: instrument failure never blocks a review ---
 
 check_raw ALLOW 'unparseable payload' 'not json at all'

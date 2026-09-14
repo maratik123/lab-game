@@ -225,7 +225,7 @@ For each hit, decide and record: a legitimate case gets one line in the progress
 
 For each `⬜ Open` finding in the latest `## Self-Review (Round N)` section of the progress file:
 
-- **Fix it** → mark `✅ Fixed` in the progress file, implement the change.
+- **Fix it** → mark `✅ Fixed` in the progress file; the change is authored by the actor its change-type names — `code-writer` Mode B for a predominantly-`.go` fix, in-thread for prose (`SKILL.md` § Step 11, *Who authors a fix*).
 - **Requires a design change** → trigger the **Design Amendment** recipe above (user approval required); on return mark `✅ Fixed (design amended)`.
 - **Object to it** (finding is wrong or intentionally out of scope):
   - `nit` / `minor`: Subagent may object autonomously — write reason, mark `⚠️ Objected: <reason>`.

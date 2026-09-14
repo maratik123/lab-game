@@ -70,6 +70,10 @@ jobs:
               # runs from is named here too, for the same reason.
               - '.githooks/**'
               - 'Makefile'
+              # The ruleset check compares the job names with the checks the
+              # branch rules require, so a commit that renames a job and touches
+              # nothing else must still reach this job.
+              - '.github/workflows/**'
             workflows:
               - '.github/workflows/**'
             # Every path class the comment-reference gate reaches — kept as
@@ -272,6 +276,10 @@ jobs:
           bash ai-docs/scripts/test-spec-anchors.sh
           bash ai-docs/scripts/test-script-shape.sh
           bash ai-docs/scripts/test-harness-gaps-forge.sh
+          bash ai-docs/scripts/test-harness-gaps-targets.sh
+          bash ai-docs/scripts/test-ruleset-checks.sh
+          bash ai-docs/scripts/test-tmp-go-guard.sh
+          bash ai-docs/scripts/test-bypass-guard.sh
       - name: acceptance criteria state conditions, not tests
         run: bash ai-docs/scripts/check-ac-shape.sh
       - name: specs locate by commit or symbol and store no tally
@@ -282,6 +290,12 @@ jobs:
         run: bash ai-docs/scripts/check-script-shape.sh
       - name: harness-gaps closing fields are written by a forge branch only
         run: bash ai-docs/scripts/check-harness-gaps-forge.sh
+      - name: every open harness-gaps entry routes its fix to a file that exists
+        run: bash ai-docs/scripts/check-harness-gaps-targets.sh
+      - name: the workflow jobs and the checks the main ruleset requires are one set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ai-docs/scripts/check-ruleset-checks.sh
       - name: relative markdown links resolve
         run: |
           set -euo pipefail
