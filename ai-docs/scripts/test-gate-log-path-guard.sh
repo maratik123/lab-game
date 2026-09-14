@@ -72,7 +72,7 @@ BLOCK	golangci-lint run > lint.gate.log 2>&1
 BLOCK	go vet ./... 2> vet.log
 BLOCK	actionlint .github/workflows/*.yml > actionlint.gate.log 2>&1
 BLOCK	shellcheck -s bash x.sh > s9lint.gate.log 2>&1
-BLOCK	cd /home/syt/lab-game && go test -count=1 ./... >> m2.gate.log 2>&1
+BLOCK	cd /home/dev/lab-game && go test -count=1 ./... >> m2.gate.log 2>&1
 # --- must allow: any target with a slash, and any non-gate command ---
 ALLOW	mkdir -p tmp && go test ./... > tmp/gate.log 2>&1 && echo GATE-GREEN || echo GATE-RED
 ALLOW	grep -E "^(FAIL|ok|---)" tmp/gate.log

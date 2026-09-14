@@ -1,35 +1,41 @@
 # Go Agent Rules
 
 **CRITICALLY**
-1) **English for every durable artefact** — code, comments, commit messages, PR bodies, instruction files, specs, designs, `learnings.md`. **Russian for two surfaces only:** conversation with the product owner, and `docs/**` (the game-design corpus is Russian by decision — do not translate it).
+1) **English for every durable artefact** — code, comments, commit messages, PR bodies, instruction files, specs, designs, `learnings.md`. **Russian for two surfaces only:** conversation with the product owner, and `~/lab-private/**` (the game-design corpus is Russian by decision — do not translate it).
 
 ## Project
 
 **lab-game** — a Telegram bot game ("Лабиринты", working title): a group chat becomes a settlement in a shared, infinite hex maze; raids, instant auto-combat, stamina, extraction (backpacks / corpses / looting / rescue raids), asynchronous PvP by trails, seasonal world rotation. Go + Postgres, Telegram Bot API via long polling against a self-hosted `telegram-bot-api` instance.
 
-> **AXIOM — `docs/DESIGN.md` is DECISIONS; `docs/IDEAS.md` is NOT.**
+> **AXIOM — `~/lab-private/DESIGN.md` is DECISIONS; `~/lab-private/IDEAS.md` is NOT.**
 > The boundary between the two files is *designed / not designed*, **not** *MVP / post-MVP*. The test the corpus itself states: *"can an agent implement this without making design decisions?"*
 >
 > | Surface | Standing |
 > |---|---|
-> | `docs/DESIGN.md` | **Implement from it. Never redesign it** without an explicit user request. §14 is the MVP scope; §15 is the deferred backlog with reasons; §16 is the open-question list. |
-> | `docs/DESIGN.md` outside §14 | Still binding as a **constraint**: MVP code must not hard-wire assumptions that contradict designed post-MVP behaviour (the canonical example: a raid session is modelled for many participants even while raids are solo). |
-> | `docs/IDEAS.md` | **Never implement, never encode in a schema.** Directions without mechanics. A file promotes to `DESIGN.md` only through an explicit user decision. |
+> | `~/lab-private/DESIGN.md` | **Implement from it. Never redesign it** without an explicit user request. §14 is the MVP scope; §15 is the deferred backlog with reasons; §16 is the open-question list. |
+> | `~/lab-private/DESIGN.md` outside §14 | Still binding as a **constraint**: MVP code must not hard-wire assumptions that contradict designed post-MVP behaviour (the canonical example: a raid session is modelled for many participants even while raids are solo). |
+> | `~/lab-private/IDEAS.md` | **Never implement, never encode in a schema.** Directions without mechanics. A file promotes to `DESIGN.md` only through an explicit user decision. |
 > | An open question in §16 | Not a licence to decide it silently. Surface it; balance numbers go to config, never to code. |
 
-> Read [`ai-docs/context.md`](ai-docs/context.md) for orientation, architecture, and the standing decisions — on demand. The canonical spec is [`docs/DESIGN.md`](docs/DESIGN.md); its idea backlog is [`docs/IDEAS.md`](docs/IDEAS.md).
+> Read [`ai-docs/context.md`](ai-docs/context.md) for orientation, architecture, and the standing decisions — on demand. The canonical spec is `~/lab-private/DESIGN.md`; its idea backlog is `~/lab-private/IDEAS.md`.
+
+> **AXIOM — the design corpus lives OUTSIDE this repository, in `~/lab-private/`, a git repository of its own.** `DESIGN.md` and `IDEAS.md` are there and nowhere in this tree; every checkout of this repository reads the same directory.
+>
+> - **Absent means stop.** If `~/lab-private/DESIGN.md` does not exist on this machine, a task that touches a designed mechanic stops and asks the owner — it never proceeds from a remembered, quoted or historical copy. The session-start hook announces the absence.
+> - **A flow edits and commits it in place** when its task changes the design. The commit is spelled `git -C ~/lab-private add <file>`, then `git -C ~/lab-private commit -m "<subject>"`: this repository's commit hooks match the text `git commit` and read *this* repository's branch and index, so `cd ~/lab-private && git commit` is judged against the wrong repository. The edit is not part of this repository's pull request, so neither review agent nor CI sees it.
+> - **An older reference names the same file.** `docs/DESIGN.md` or `docs/IDEAS.md` in a record written before the move (`ai-docs/plans/done/**`, `ai-docs/deferred/`, `ai-docs/learnings.md`, `ai-docs/harness-gaps.md`, `ai-docs/metrics/`) means `~/lab-private/DESIGN.md` or `~/lab-private/IDEAS.md`. A line number or a `<sha>:docs/DESIGN.md` pin in such a record resolves in this repository's history (`git show <sha>:docs/DESIGN.md`), never in the moved file. `docs/world-topology-redesign-plan.md` was deleted, not moved; its text exists in history only.
 
 ## Permissions
 
 Machine-enforced rules live in `.claude/settings.json` (allow/deny entries, hooks). Read that file for the authoritative list — duplicating it here lets the two sources drift.
 
-> **`origin` enforces NOTHING.** `maratik123/lab-game` is a **private repository on a free plan**, where GitHub refuses both branch protection and rulesets (`403: Upgrade to GitHub Pro or make this repository public`). CI runs on every PR and every push to `main`, but **no check is required** and nothing blocks a merge or a force-push. Every `main`-protection rule below is therefore enforced by the local `PreToolUse` commit hook plus honour-system discipline — treat them as *harder* obligations, not softer ones, because a red check will not stop you.
+> **`origin` enforces only what a ruleset requires — read it, never assume it.** Server-side protection of `main` is decided by `gh api repos/maratik123/lab-game/rulesets` and `gh api repos/maratik123/lab-game/branches/main/protection`, not by this file: GitHub refuses both on a private repository on the free plan (`403: Upgrade to GitHub Pro or make this repository public`) and accepts both on a public one. While neither lists a rule that requires checks and blocks force-pushes to `main`, CI runs on every PR and every push to `main` but **no check is required** and nothing blocks a merge or a force-push, so every `main`-protection rule below is enforced by the local `PreToolUse` commit hook plus honour-system discipline — treat them as *harder* obligations, not softer ones, because a red check will not stop you.
 
 Honor-system rules (no machine check; still binding):
 
 - **DENY:** `git push --force` to feature branches — prefer `--force-with-lease`, and only after explicit user approval. Never force-push `main`.
 - **DENY:** `git push` to `main`. Every change reaches `main` through a merged PR.
-- **DENY:** files outside project root.
+- **DENY:** files outside project root — except `~/lab-private/`, the design corpus, which a flow edits and commits in place (§ Project).
 - **DENY:** a real bot token, DSN, or `api_id`/`api_hash` in any tracked file — including a test fixture, an example, a commit message, and a PR body. Secrets live in `.env` (gitignored) and in the deploy environment. A leaked token is rotated through BotFather, not edited out of history.
 - **ASK:** any tool not allow-listed in `settings.json`; if denied — suggest an alternative.
 
@@ -151,7 +157,7 @@ Search: `ast-index` first (see [`.claude/rules/ast-index.md`](.claude/rules/ast-
 > | Keep both old and new APIs side-by-side temporarily | Pick one — old is gone |
 > | Add an interface solely to preserve an old signature | Remove the old signature |
 
-> **CARVE-OUT — data contracts are the opposite, and the asymmetry is the point.** The Postgres schema, the append-only `posting` / `item_movement` ledgers, the basis-document tables, the scheduler's `scheduled_task` payloads, and any persisted enum value are **live data that outlives every deploy**. They change by **forward migration**, never by redefinition: a posting written last season must still parse and still balance. A renamed state string, a re-numbered enum, or a repurposed column is a data-corruption bug wearing a refactor's clothes. Combat is the designed exception the other way (`docs/DESIGN.md` §4): `combat()` is a pure function whose internals may be rewritten wholesale — the **version of the combat system is part of every stored log and PvP-trail snapshot** precisely so that freedom stays safe.
+> **CARVE-OUT — data contracts are the opposite, and the asymmetry is the point.** The Postgres schema, the append-only `posting` / `item_movement` ledgers, the basis-document tables, the scheduler's `scheduled_task` payloads, and any persisted enum value are **live data that outlives every deploy**. They change by **forward migration**, never by redefinition: a posting written last season must still parse and still balance. A renamed state string, a re-numbered enum, or a repurposed column is a data-corruption bug wearing a refactor's clothes. Combat is the designed exception the other way (`~/lab-private/DESIGN.md` §4): `combat()` is a pure function whose internals may be rewritten wholesale — the **version of the combat system is part of every stored log and PvP-trail snapshot** precisely so that freedom stays safe.
 
 ## API Naming
 
@@ -164,7 +170,7 @@ Thin by design — this project grows its own style rules through the learning l
 - **Source files:** Go only under `cmd/*` and `internal/*`; format via `golangci-lint fmt`, never by hand.
 - **Linter posture:** strict `golangci-lint run` (config in `.golangci.yml`); no `//nolint` without a specific linter and a stated reason (`nolintlint` enforces both).
 - **Errors:** every returned error is handled or deliberately wrapped with `%w` and context (`fmt.Errorf("materialize node %s: %w", coord, err)`). Never `_ = err`. Never `panic` in production code — see the panic rule in *Go Test Conventions*.
-- **Magic numbers:** a literal with semantic meaning becomes a named constant. **Balance constants are different and stronger: they belong in configuration, not in Go source** (`docs/DESIGN.md` §16.5 — stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice). A tuning value hard-coded in a `.go` file is a defect even when it is named.
+- **Magic numbers:** a literal with semantic meaning becomes a named constant. **Balance constants are different and stronger: they belong in configuration, not in Go source** (`~/lab-private/DESIGN.md` §16.5 — stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice). A tuning value hard-coded in a `.go` file is a defect even when it is named.
 - **Determinism:** world generation, combat, and any PvP-trail replay are pure functions of `(seed, input)`. No `time.Now()`, no map-iteration order, and no un-seeded `math/rand` on those paths.
 - **Documentation:** every exported item carries a doc comment starting with its name; every package has a package comment. See [`ai-docs/doc-convention.md`](ai-docs/doc-convention.md).
 - **Comments point at nothing outside themselves.** A comment says what the thing is, states its call contract, and carries what the linter requires; it carries no markdown path, design-section number, acceptance-criterion id, decision anchor, review-register finding id, issue number outside `TODO(#…)`, repository path, URL, or package-qualified symbol of this module named outside its own package. The reason is rot: the thing pointed at is edited and the comment becomes a claim nothing checks. `make comment-refs` gates the lexical half over `*.go`, `*.sh`, `*.sql`, `*.yml`, `*.yaml`, `.gitignore`, `.env.example`, `Makefile` and `.githooks/**`; narration and the bare unqualified name are review-judged. Full rule, exemptions and the two review-judged halves: [`ai-docs/doc-convention.md`](ai-docs/doc-convention.md) § DOC-4.
@@ -181,7 +187,7 @@ Project invariants that outrank convenience. Full detail: [`ai-docs/domain-invar
 >
 > The action table — what to do instead of each ad-hoc write — lives with the mechanics: [`ai-docs/domain-invariants.md` § 1 — The ledger](ai-docs/domain-invariants.md).
 
-> **AXIOM — A new mechanic declares its telemetry in the same PR that implements it** (`docs/DESIGN.md` §13.4). Events go in the event dictionary; a mechanic that moves balances additionally declares its **posting signature**, and the contract test checks actual postings against it. Telemetry never lags code.
+> **AXIOM — A new mechanic declares its telemetry in the same PR that implements it** (`~/lab-private/DESIGN.md` §13.4). Events go in the event dictionary; a mechanic that moves balances additionally declares its **posting signature**, and the contract test checks actual postings against it. Telemetry never lags code.
 >
 > | If the PR... | It also carries |
 > |---|---|
@@ -211,7 +217,7 @@ Three more, each with its mechanics on that page: **never write to a chat that i
 > | The package is unmaintained or abandoned, or its API cannot express the requirement | **A real argument** — make it in the design document, naming the package and the specific mismatch. |
 > | A rejected-alternatives comparison: what was evaluated, why each lost, what the escape hatch is | **The standard an argued wheel meets.** Model: **KD-4**, the self-written scheduler — `gocron` rejected as in-memory, Temporal as overkill, River named as the escape hatch. That decision stands. |
 
-When changing dependencies: **never hand-edit a version in `go.mod`** — `go get <module>@<version>`, then `go mod tidy`, then `go build ./...`, then read `git diff go.mod go.sum` **before staging** (tidy also prunes and adds transitive lines). A new dependency needs a stated reason in the design document, and so does hand-rolling in place of one — the AXIOM above governs both directions (`docs/DESIGN.md` §11 already fixes the load-bearing ones).
+When changing dependencies: **never hand-edit a version in `go.mod`** — `go get <module>@<version>`, then `go mod tidy`, then `go build ./...`, then read `git diff go.mod go.sum` **before staging** (tidy also prunes and adds transitive lines). A new dependency needs a stated reason in the design document, and so does hand-rolling in place of one — the AXIOM above governs both directions (`~/lab-private/DESIGN.md` §11 already fixes the load-bearing ones).
 
 ## Workflow
 
@@ -286,7 +292,7 @@ When changing dependencies: **never hand-edit a version in `go.mod`** — `go ge
 1. Before closing the edit, `grep -rni "<changed-keyword>" .claude/ AGENTS.md ai-docs/` for any file referencing the same rule/terminology. **`-i` is not optional** — a sweep over prose is case-insensitive or it under-reports. Corollary: **a file you have already edited is not thereby done** — re-grep it whole, after the edit; one file holding both the fix and the surviving falsehood is the likeliest shape, not the least.
 2. Apply the same change (or the corresponding enforcement adjustment) in every match.
 3. Rule exemptions must propagate to the checklists that enforce the rule.
-4. When the change propagates a **factual / policy claim** (a version, a CI-gate status, a "the repo does X" statement) rather than a rule keyword, the step-1 grep set is necessary but not sufficient — also sweep repo-root user-facing docs (`README.md`, `docs/**`) for the same claim. Completeness test: every LIVE doc must agree; history surfaces (`ai-docs/learnings.md`, `ai-docs/plans/done/**`) are left untouched.
+4. When the change propagates a **factual / policy claim** (a version, a CI-gate status, a "the repo does X" statement) rather than a rule keyword, the step-1 grep set is necessary but not sufficient — also sweep repo-root user-facing docs (`README.md`, `~/lab-private/**`) for the same claim. Completeness test: every LIVE doc must agree; history surfaces (`ai-docs/learnings.md`, `ai-docs/plans/done/**`) are left untouched.
 
 Do not refer to a skill as an "agent" or vice versa — the distinction matters for spawning. (`project-review` is a skill; `review-findings` and `self-review` are agents it spawns.)
 
@@ -391,9 +397,9 @@ Run `/improve` when **≥3 unescalated correction entries**, **≥2 unescalated 
 - **`go test -race ./...` is a required gate for any change touching goroutines, the scheduler, or shared state.** A race is a defect, never a flake.
 - **Every package with tests ends with a goroutine-leak check.** Its `TestMain` is the single statement `os.Exit(leaktest.Main(m, <runner>))` — `testdb.Main` in a database-backed package, `(*testing.M).Run` everywhere else — and a guard fails the suite when a package with tests lacks it. A leak is fixed where the goroutine is owned, never waited out: an ignore entry is only for a dependency's process-lifetime goroutine, states its reason, and fails the suite when it is not needed or excuses this module's own code. A detection fails its package with no `--- FAIL:` line; reproduce it as the whole package with `-count=1` on the route it failed on, never with `-run`. Form, ignore set, guard and reproducers: [`ai-docs/go-test-conventions.md`](ai-docs/go-test-conventions.md) § *Goroutine-leak detection*.
 - **No `panic` / `log.Fatal` in production code.** A `PostToolUse` hook flags them on write; every surviving instance is justified in a doc comment **and** recorded in [`ai-docs/panic-index.md`](ai-docs/panic-index.md). The comment states the justification itself and does not point at the index — a comment naming a markdown path is what the reference ban forbids, and the index is found by name, not by a pointer from the code. `main` may exit non-zero; libraries return errors.
-- **Determinism is testable, so test it exactly.** Generation, combat, and trail replays take an explicit seed: assert exact outputs, and keep the golden log of a combat in the repository (`combat()` is a pure function by design — `docs/DESIGN.md` §4 — so a snapshot test is free and the freedom to rewrite combat depends on it).
+- **Determinism is testable, so test it exactly.** Generation, combat, and trail replays take an explicit seed: assert exact outputs, and keep the golden log of a combat in the repository (`combat()` is a pure function by design — `~/lab-private/DESIGN.md` §4 — so a snapshot test is free and the freedom to rewrite combat depends on it).
 - **Postgres is tested against Postgres**, not a mock: the ledger's invariants (zero-sum per kind, the `CHECK` constraints, the capture order under concurrency) are database behaviour. Concurrency stress tests run under `-race`.
-- **Assert on behaviour, transitions, errors, and edge cases** — for the raid FSM that means every edge, including the timer edges whose guard fails (a stale task firing late is expected traffic, `docs/DESIGN.md` §3.5).
+- **Assert on behaviour, transitions, errors, and edge cases** — for the raid FSM that means every edge, including the timer edges whose guard fails (a stale task firing late is expected traffic, `~/lab-private/DESIGN.md` §3.5).
 - A search miss on a construct that SHOULD exist is a **search-method failure first** ([`.claude/rules/ast-index.md`](.claude/rules/ast-index.md) → *Negative results are NOT evidence*).
 
 Detail and worked examples: [`ai-docs/go-test-conventions.md`](ai-docs/go-test-conventions.md).

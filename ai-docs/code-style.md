@@ -30,7 +30,7 @@ Go only, under `cmd/<binary>/` (process entry points) and `internal/<package>/` 
   | `rowserrcheck`, `sqlclosecheck` | a forgotten `rows.Err()` reads as an empty result, i.e. silent data loss; rows and statements are closed |
   | `unconvert`, `wastedassign` | dead conversions, dead stores |
   | `gosec` | string-built SQL and the rest of the security set |
-  | `asciicheck` | identifiers stay ASCII; it checks identifiers only, so the Russian `docs/**` corpus is untouched |
+  | `asciicheck` | identifiers stay ASCII; it checks identifiers only, so Russian prose is untouched |
   | `goconst`, `misspell`, `predeclared`, `whitespace` | style and clarity |
   | `gocritic` | its own default checkers, plus `deferInLoop`: a `defer` inside a loop does not run until the whole function returns |
   | `nolintlint` | a `//nolint` carries a specific linter and a stated reason |
@@ -134,7 +134,7 @@ Two different rules, and conflating them is the common mistake:
 | Kind of value | Where it belongs |
 |---|---|
 | A structural constant (the number of edges of a hex, a protocol limit) | A named Go constant next to the code that owns it |
-| A **balance** value (stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice) — and **chunk size**, which `docs/DESIGN.md` §2.2.2 makes configuration (the radius R of a hexagonal chunk; *ориентир* attaches to its reference value R = 9, not to R being configurable) and which ships in `config/balance.yaml` as `world.chunk.radius` | **Configuration**, per `docs/DESIGN.md` §16.5 — never a Go literal, never a Go constant |
+| A **balance** value (stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice) — and **chunk size**, which `~/lab-private/DESIGN.md` §2.2.2 makes configuration (the radius R of a hexagonal chunk; *ориентир* attaches to its reference value R = 9, not to R being configurable) and which ships in `config/balance.yaml` as `world.chunk.radius` | **Configuration**, per `~/lab-private/DESIGN.md` §16.5 — never a Go literal, never a Go constant |
 | A test fixture value | Inline in the test, named only when it aids reading |
 
 ## Determinism

@@ -53,8 +53,8 @@ Read [`ai-docs/domain-invariants.md`](../../ai-docs/domain-invariants.md) first.
 | **Ledger bypass** | A balance column mutated outside `store.Post` / `store.Move`; an inventory row inserted outside `store.Move` (`item_movement` today) | `major` |
 | **Posting without a basis** | A posting group not tied to exactly one basis document; a new document type without the `CHECK (num_nonnulls(...) = 1)` update | `major` |
 | **Hand-rolled capture order** | Balance `UPDATE`s locked in caller-chosen order instead of `store.Post`'s sorted, deduplicated order | `major` |
-| **Telemetry lag** (`docs/DESIGN.md` §13.4) | A mechanic with no declared event; a balance-moving mechanic with no posting signature or no contract test | `major` |
-| **Balance constant in code** (`docs/DESIGN.md` §16.5) | A tuning value as a Go literal or named constant instead of configuration | `major` |
+| **Telemetry lag** (`~/lab-private/DESIGN.md` §13.4) | A mechanic with no declared event; a balance-moving mechanic with no posting signature or no contract test | `major` |
+| **Balance constant in code** (`~/lab-private/DESIGN.md` §16.5) | A tuning value as a Go literal or named constant instead of configuration | `major` |
 | **Schema break** | A renamed / re-purposed column, a re-numbered enum, a changed persisted state string without a forward migration | `major` |
 | **Chat-safety** | An outbound path bypassing `ALLOWED_CHAT_IDS`; a retry loop ignoring `retry_after` or lacking backoff | `major` |
 | **Non-determinism on a pure path** | `time.Now()`, unseeded `math/rand`, or map-iteration order inside generation, combat, or replay | `major` |

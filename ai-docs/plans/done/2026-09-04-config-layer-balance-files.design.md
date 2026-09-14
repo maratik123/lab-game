@@ -56,7 +56,7 @@ tree, so a pointer keeps every call site from copying it; the returned value is
 documented as read-only rather than defended by the type system. This is **not** a lint
 requirement: `gocritic`'s `hugeParam` check is not active under this repo's configuration
 [measured 5285f4c:.golangci.yml · a scratch package passing a large struct by value
-through `golangci-lint run --config /home/syt/lab-game/.golangci.yml ./...` → the run
+through `golangci-lint run --config .golangci.yml ./...` → the run
 reports only the `errcheck` and `gosec` findings of D7, no `gocritic` finding]. Recorded
 so the rationale is not later "restored" to a lint that never fired.
 
@@ -224,7 +224,7 @@ Any `switch` on `yaml.Kind` carries a `default` clause; the lint config sets
 
 - **`gosec` G304 fires on `os.ReadFile(p)` and on `os.Open(p)` with a variable path**
   [measured 5285f4c:.golangci.yml · a scratch package run through
-  `golangci-lint run --config /home/syt/lab-game/.golangci.yml ./...` →
+  `golangci-lint run --config .golangci.yml ./...` →
   `G304: Potential file inclusion via variable (gosec)` at both call sites]. Reading a
   file the operator named **is** the feature, so each such site carries
   `//nolint:gosec // G304: …` with a reason — which clears the finding and satisfies
@@ -408,7 +408,7 @@ and `Edit(./**)` is in `allow`, so `Write` reaches the path
 [measured 5285f4c:.claude/settings.json · `jq -r '.permissions.allow[]?' .claude/settings.json | grep -E 'Edit|Write|Read'` → `Edit(./**)`, `Edit(.claude/**)`, and no `Write(...)` entry]. Confirmed against the live matcher rather than
 by reading the rules alone: a `Read` of the path returns *"File does not exist"*, i.e. it
 cleared the permission layer and reports the ordinary truth that this task has not
-created the file yet [measured 5285f4c · `Read` tool on `/home/syt/lab-game/.env.example` → `File does not exist.`].
+created the file yet [measured 5285f4c · `Read` tool on `.env.example` → `File does not exist.`].
 The narrowing itself is already committed on this branch and therefore ships in this
 task's PR (spec Scope 11, AC17)
 [measured 5285f4c · `git log --oneline a73040b..HEAD -- .claude/settings.json ai-docs/claude-tools-hierarchy.md` → `db7999e docs(tools-hierarchy): describe the narrowed env deny rules` / `929b8e7 chore(settings): stop denying .env.example`] — see § Propagation targets.
@@ -508,7 +508,7 @@ Two groups, within the default maximum of 4 — no user gate needed.
 - **A silently defaulted balance number — the defect this layer exists to prevent — reaches production through a YAML null or a truncated float.** Both are measured library behaviours (D6), and both are closed by explicit node-tag rules rather than by trusting the binder — `[measured go.yaml.in/yaml/v3@v3.0.5 · probe of `a: ~` and `a: 3.25` → `int err=<nil> val=0` and `int err=<nil> val=3`]`.
 - **A duplicated key in the balance file silently picks one value.** The node tree does not report duplicates; a map decode does, at every depth. The pre-pass uses the library's own check — `[measured go.yaml.in/yaml/v3@v3.0.5 · probe of a nested duplicate → into `yaml.Node` `err=<nil>`; into `map[string]any` `err=… mapping key "b" already defined at line 2`]`.
 - **The "file is empty" case is tested with the wrong predicate.** An empty input and `{}` differ at the document node and agree only at the mapping node, so `len(doc.Content) == 0` passes for one and fails for the other; a walk normalised at the document node would accept `{}` as a populated file and never report AC6's missing paths — `[measured go.yaml.in/yaml/v3@v3.0.5 · probe → `empty: docKind=0 len(doc.Content)=0`; `braces: docKind=1 len(doc.Content)=1 child.Tag="!!map" len(child.Content)=0`]`. Closed by D6's normalise-to-the-root-mapping rule and by testing both inputs (§ Test Design, subtask 1).
-- **The lint gate rejects the natural spelling of the file reads.** `gosec` G304 fires on a variable path and `errcheck` on `defer f.Close()`; both were run against this repo's config, and the design fixes the spelling that passes — `[measured 5285f4c:.golangci.yml · scratch package through `golangci-lint run --config /home/syt/lab-game/.golangci.yml ./...` → `G304: Potential file inclusion via variable (gosec)` and `Error return value of 'f.Close' is not checked (errcheck)`; the annotated form → `0 issues.`]`.
+- **The lint gate rejects the natural spelling of the file reads.** `gosec` G304 fires on a variable path and `errcheck` on `defer f.Close()`; both were run against this repo's config, and the design fixes the spelling that passes — `[measured 5285f4c:.golangci.yml · scratch package through `golangci-lint run --config .golangci.yml ./...` → `G304: Potential file inclusion via variable (gosec)` and `Error return value of 'f.Close' is not checked (errcheck)`; the annotated form → `0 issues.`]`.
 - **A per-subtask commit fails its own lint gate for a reason unrelated to its content.** `revive`'s `package-comments` fires on a package with no package comment, and `code-writer` Mode A gates and commits per subtask, so deferring the package comment to the last Go subtask would red-gate every earlier one — `[measured 5285f4c:.golangci.yml:45-48 · scratch package with a documented exported function and no package comment through the repo config → `package-comments: should have a package comment (revive)`]`. Closed by D7: subtask 1 ships `doc.go`, subtask 5 rewrites its body.
 - **A second package comment ships unnoticed.** Nothing gates it — two package comments pass `golangci-lint run` and `go vet` and merely concatenate in the rendered docs — so DOC-2's "exactly one" is honour-system on this diff — `[measured 5285f4c:.golangci.yml · scratch package with the comment on both `doc.go` and `dup.go` → `0 issues.`, `go vet` silent, `go doc` printing both paragraphs]`. Closed by making subtask 5 an **edit** to `doc.go` rather than an addition to `config.go`.
 - **A verification command for `.env.example` is refused rather than answered.** The deny rules reach `Bash`, and a refusal does not look like a failed criterion; the refusal is not predictable from the substring, so the rule is one path per command, never a convenience one-liner naming both — `[measured 5285f4c · `ls -la .env .env.example` → `Permission to use Bash with command … has been denied.`; `ls -la .env.example` → ordinary `ls`, exit 2]`. Closed by D13(c) and by § Test Design → Gate-level checks.

@@ -31,6 +31,7 @@ cd "$repo_root" || exit 1
 guard=".claude/skills/ai-audit/scripts/check-citations.sh"
 target="ai-docs/corrections-log.md"
 backup=$(mktemp)
+probe=".claude/zz-citation-namespace-probe.md"
 failures=0
 
 # Restore the pristine file however we exit — including on interrupt. A stray
@@ -39,11 +40,11 @@ failures=0
 # only cleans up lets the script resume with its backup already deleted, so
 # every later restore silently fails and the target is left mutated.
 # shellcheck disable=SC2064  # intentional: expand $backup/$target now, not at trap time
-trap "cp '$backup' '$target'; rm -f '$backup'" EXIT
+trap "cp '$backup' '$target'; rm -f '$backup' '$probe'" EXIT
 # shellcheck disable=SC2064  # same
-trap "cp '$backup' '$target'; rm -f '$backup'; exit 130" INT
+trap "cp '$backup' '$target'; rm -f '$backup' '$probe'; exit 130" INT
 # shellcheck disable=SC2064  # same
-trap "cp '$backup' '$target'; rm -f '$backup'; exit 143" TERM
+trap "cp '$backup' '$target'; rm -f '$backup' '$probe'; exit 143" TERM
 cp "$target" "$backup"
 mode_before=$(stat -c '%a' "$target")
 
@@ -164,6 +165,26 @@ else
   failures=$((failures + 1))
 fi
 rm -rf "$fakebin"
+
+# --- Cases 8-10: a memory citation names its namespace by project, not by home
+# Check (3) accepts a memory-file citation only on a line naming the sibling
+# project's memory namespace. Tracked text spells that namespace as a glob over
+# the encoded checkout path, so no home directory is published; the guard must
+# accept the glob and still refuse a citation that names no namespace, or names
+# another project's. The file name is ASSEMBLED AT RUNTIME: this script sits in
+# a directory check (3) scans, so a literal name would be flagged here.
+memfile="feedback_"
+memfile="${memfile}probe_case.md"
+printf 'Recorded in ~/.claude/projects/*-quartzite/memory/%s as feedback.\n' "$memfile" > "$probe"
+run_guard
+report "case 8: a citation under the sibling's globbed namespace resolves" "$?" 0
+printf 'Recorded in the memory file %s as feedback.\n' "$memfile" > "$probe"
+run_guard
+report "case 9: a citation naming no namespace is still RED" "$?" 1
+printf 'Recorded in ~/.claude/projects/*-lab-game/memory/%s as feedback.\n' "$memfile" > "$probe"
+run_guard
+report "case 10: a citation under another project's namespace is still RED" "$?" 1
+rm -f "$probe"
 
 # --- Case 4: this test must not mutate the tracked file's MODE ---------------
 # `git status` cannot see a permission change, so a test that quietly drops

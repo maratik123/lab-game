@@ -1,10 +1,10 @@
-# Mechanical code-style gates ported from claude-alduna
+# Mechanical code-style gates ported from a donor project
 
 **Source:** user description (free-text entry)
 **Date:** 2026-08-30
 **Tracked in:** none — owner declined a tracking issue (round-2 approval); the repository has no issues, open or closed.
 
-Port the **mechanical** half of the sibling project `~/claude-alduna`'s code-style
+Port the **mechanical** half of the sibling project `<donor>`'s code-style
 enforcement into lab-game: the linter delta, a stricter formatter, one Makefile
 entry point that every runner (local, CI, hook) shares, and a hard file-size gate.
 The prose half — idioms, rules expressed as guidance — is explicitly **not** part
@@ -15,10 +15,10 @@ of this task.
 ## Scope
 
 1. **`.golangci.yml` — enable `asciicheck`, and nothing else.** The transferable
-   delta from `~/claude-alduna/.golangci.yml` reduces to exactly one line
-   [source: `~/claude-alduna/.golangci.yml:11`, under its own rationale comment at
+   delta from `<donor>/.golangci.yml` reduces to exactly one line
+   [source: `<donor>/.golangci.yml:11`, under its own rationale comment at
    `:10` — `# ПРАВИЛО ПРОЕКТА: идентификаторы только ASCII.` ·
-   `cat -n ~/claude-alduna/.golangci.yml`]. Everything else alduna enables is
+   `cat -n <donor>/.golangci.yml`]. Everything else the donor enables is
    either already active here or inapplicable, and its two `errcheck` loosenings
    were **rejected** by the owner (KD-11). Remove and disable nothing we already
    have, and add no exclusion. Row-by-row account: *Technical constraints § A*.
@@ -38,7 +38,7 @@ of this task.
 
 4. **File-limit gate — hard 1000 lines for a non-test `.go` file, hard 1500 for a
    `_test.go` file.** Minimal means only: a `revive` rule, an `awk` step in the
-   Makefile, or a combination. **No new `cmd/` binary and no import of alduna's
+   Makefile, or a combination. **No new `cmd/` binary and no import of the donor's
    `projectlint` package.** Mechanism choice belongs to design; the enforceability
    limits discovered by probe are in *Technical constraints § C*.
 
@@ -110,17 +110,17 @@ Not to be done, not to be specced, not "while we are here":
 
 | Item | Why |
 |---|---|
-| Coverage ratchet | Named out of scope by the owner. (`~/claude-alduna/Makefile:111-132` has one; it does not cross over.) |
-| Porting prose rules and idioms from alduna | Separate task, owner-authored. |
+| Coverage ratchet | Named out of scope by the owner. (`<donor>/Makefile:111-132` has one; it does not cross over.) |
+| Porting prose rules and idioms from the donor | Separate task, owner-authored. |
 | **Adding** a new agent, skill, or hook | Named out of scope by the owner, and it stays out: this change adds **no entry** to `.claude/settings.json`'s `hooks` block and creates no agent or skill — no new `.claude/agents/*.md`, and no new skill directory or `SKILL.md`. **Editing an existing** agent, skill or hook body is a different act and is explicitly *in* scope — KD-8 for the hook body, Scope items 6 and 7 for the rest, Scope item 8 for the guard regex. **A shell regression script is none of the three** (KD-17): Scope item 9's suite is a test fixture that joins the two guard suites CI already runs, exactly as `test-check-citations.sh` and `test-append-task-run.sh` are — it declares no `allowed-tools`, is never invoked as `/name`, and registers no hook event. It lands under `.claude/skills/**/scripts/` beside its siblings without making its parent a new skill. |
 | Edits to `docs/DESIGN.md` | Named out of scope. |
-| A bash code-line gate | `MaxShellCode = 10` exists in the source [source: `~/claude-alduna/internal/projectlint/projectlint.go:37` · `grep -n "MaxShellCode" ~/claude-alduna/internal/projectlint/*.go`], but the owner's deliverable list names four items and a bash gate is not one of them. The 10-line ceiling still binds *this task's own shell* — see KD-7. |
-| A markdown / prose size guard | alduna declines it on the record: "Сторожа на размер markdown НЕ ЗАВОДИМ" [source: `~/claude-alduna/docs/code-style.md:23-25` · `cat -n ~/claude-alduna/docs/code-style.md`]. |
-| alduna's `internal/query/` lint exclusion | Inapplicable: this repo has no `internal/` directory and no code generator. Verified — `find /home/syt/lab-game -name '*.go' -not -path '*/.git/*'` returns exactly `cmd/bot/main.go`. |
-| alduna's `errcheck` `exclude-functions: [fmt.Fprintf, fmt.Fprintln, fmt.Fprint]` (`~/claude-alduna/.golangci.yml:30-36`) | **Rejected by the owner, round 1 (KD-11).** It loosens a rule this repo already holds tighter: `ai-docs/code-style.md:20` — "Never discard: `_ = err` is a defect. If an error genuinely cannot be acted on, say why in a comment on the line that drops it." Do not re-propose. |
-| alduna's `errcheck` exclusion `source: 'defer .*Close\(\)'` (`~/claude-alduna/.golangci.yml:43-45`) | **Rejected by the owner, round 1 (KD-11).** Same reason: a blanket source-regex exclusion removes exactly the per-site stated reason `ai-docs/code-style.md:20` requires. If a deferred `Close` genuinely cannot be checked, the channel is `//nolint:errcheck // <reason>`, which `nolintlint` already polices. Do not re-propose. |
+| A bash code-line gate | `MaxShellCode = 10` exists in the source [source: `<donor>/internal/projectlint/projectlint.go:37` · `grep -n "MaxShellCode" <donor>/internal/projectlint/*.go`], but the owner's deliverable list names four items and a bash gate is not one of them. The 10-line ceiling still binds *this task's own shell* — see KD-7. |
+| A markdown / prose size guard | the donor declines it on the record: "Сторожа на размер markdown НЕ ЗАВОДИМ" [source: `<donor>/docs/code-style.md:23-25` · `cat -n <donor>/docs/code-style.md`]. |
+| the donor's `internal/query/` lint exclusion | Inapplicable: this repo has no `internal/` directory and no code generator. Verified — `find . -name '*.go' -not -path '*/.git/*'` returns exactly `cmd/bot/main.go`. |
+| the donor's `errcheck` `exclude-functions: [fmt.Fprintf, fmt.Fprintln, fmt.Fprint]` (`<donor>/.golangci.yml:30-36`) | **Rejected by the owner, round 1 (KD-11).** It loosens a rule this repo already holds tighter: `ai-docs/code-style.md:20` — "Never discard: `_ = err` is a defect. If an error genuinely cannot be acted on, say why in a comment on the line that drops it." Do not re-propose. |
+| the donor's `errcheck` exclusion `source: 'defer .*Close\(\)'` (`<donor>/.golangci.yml:43-45`) | **Rejected by the owner, round 1 (KD-11).** Same reason: a blanket source-regex exclusion removes exactly the per-site stated reason `ai-docs/code-style.md:20` requires. If a deferred `Close` genuinely cannot be checked, the channel is `//nolint:errcheck // <reason>`, which `nolintlint` already polices. Do not re-propose. |
 | Removing the `python3` heredoc at `.github/workflows/ci.yml:169-182` | Pre-existing; the language decision (KD-7) constrains what *this* change adds, not what it must clean up. |
-| `asciicheck`-equivalent coverage for SQL / TypeScript | alduna's `projectlint` does that for non-Go files; importing `projectlint` is forbidden here, and lab-game has neither surface yet. |
+| `asciicheck`-equivalent coverage for SQL / TypeScript | the donor's `projectlint` does that for non-Go files; importing `projectlint` is forbidden here, and lab-game has neither surface yet. |
 
 ---
 
@@ -128,8 +128,8 @@ Not to be done, not to be specced, not "while we are here":
 
 | What | Why | Separate issue needed? |
 |---|---|---|
-| Coverage ratchet | Owner-deferred; alduna's rationale for keeping it a separate target rather than a `make test` line is worth reading when it comes up (`~/claude-alduna/Makefile:111-126`). | Yes, when scheduled |
-| Porting alduna's prose code-style rules | Owner will author it. | Owner-owned |
+| Coverage ratchet | Owner-deferred; the donor's rationale for keeping it a separate target rather than a `make test` line is worth reading when it comes up (`<donor>/Makefile:111-126`). | Yes, when scheduled |
+| Porting the donor's prose code-style rules | Owner will author it. | Owner-owned |
 | A bash code-line gate (10 code lines, comments excluded) | The rule is real in the source but outside this task's four deliverables. | Optional |
 | `.claude/agents/self-improve.md:255` prescribes `gofmt -- --check` | **Measured, not assumed:** `gofmt --help` lists only `-cpuprofile -d -e -l -r -s -w` — there is no `--check`. `gofmt --check` fails with `flag provided but not defined: -check` (exit 2), and the prescribed form `gofmt -- --check` fails with `lstat --check: no such file or directory` (exit 2), because `--` turns it into a path operand. So the step can never pass. Pre-existing defect found by the propagation sweep, in a file this task does not otherwise touch. Belongs to `/improve`. | Yes |
 | `AGENTS.md:50` offers `go mod tidy && git diff --exit-code go.mod go.sum` | **Measured, not assumed:** in this repository `git diff --exit-code go.mod go.sum` exits **128** with `fatal: go.sum: no such path in the working tree`, because the module has no dependencies and `go.sum` does not exist — so the "hygiene gate" reports failure on a clean tree. Adding the `--` separator (`git diff --exit-code -- go.mod go.sum`) exits **0**; the repo already routes around it via `git status --porcelain` — the check now lives at `Makefile:52-59`, whose own comment records the move out of `.github/workflows/ci.yml`. Fixing `AGENTS.md:50` would *not* grow the file, but it is a distinct defect from this task's two rule changes. | Yes |
@@ -141,16 +141,16 @@ Not to be done, not to be specced, not "while we are here":
 | # | Question | Decision |
 |---|---|---|
 | KD-1 | What is the gated file-size threshold? | **1000 lines** for a non-test `.go` file, **1500** for a `_test.go` file. The 500 and 800 bands stay prose. Owner decision; full source-conflict record below. |
-| KD-2 | What do the 500 / 800 bands mean, and where do they live? | 500 = *reasonable limit* — the target a split is carried to; 800 = *soft, plan the split now*. Both live in `ai-docs/code-style.md` prose, enforced by author and reviewer, never by a linter. [source: `~/claude-alduna/docs/code-style.md:29-30` · `cat -n ~/claude-alduna/docs/code-style.md` — rows read `500 строк \| разумный предел` and `800 строк \| мягкий: пора думать о расщеплении`] |
-| KD-3 | How are lines counted for the gate? | **Raw lines**, comments and blanks included — matching the source implementation, which counts `\n` bytes [source: `~/claude-alduna/internal/projectlint/projectlint.go:294` `func countLines(body []byte) int` · `grep -n "countLines" ~/claude-alduna/internal/projectlint/projectlint.go`]. If `revive` is the mechanism, this means **not** passing `skipComments` / `skipBlankLines` — probe evidence in *Technical constraints § C*. |
-| KD-4 | Which test-file names get the 1500 limit? | Files whose base name ends `_test.go`. alduna additionally matches `.test.` for TypeScript [source: `~/claude-alduna/internal/projectlint/projectlint.go:288` · `sed -n '286,292p' ~/claude-alduna/internal/projectlint/projectlint.go`]; lab-game has no TypeScript, so `_test.go` alone. |
-| KD-5 | Which linters cross over from alduna? | `asciicheck` only, among linters. alduna's `errcheck`/`staticcheck`/`govet`/`ineffassign`/`unused` (`.golangci.yml:15,19,20,21,22`) are already active here via `linters.default: standard` — verified: `golangci-lint help linters` prints exactly those five under "Enabled by default linters:". `nilerr`/`errorlint`/`bodyclose`/`gocritic` (`:16,17,25,27`) are already in our `.golangci.yml:14-37`. |
+| KD-2 | What do the 500 / 800 bands mean, and where do they live? | 500 = *reasonable limit* — the target a split is carried to; 800 = *soft, plan the split now*. Both live in `ai-docs/code-style.md` prose, enforced by author and reviewer, never by a linter. [source: `<donor>/docs/code-style.md:29-30` · `cat -n <donor>/docs/code-style.md` — rows read `500 строк \| разумный предел` and `800 строк \| мягкий: пора думать о расщеплении`] |
+| KD-3 | How are lines counted for the gate? | **Raw lines**, comments and blanks included — matching the source implementation, which counts `\n` bytes [source: `<donor>/internal/projectlint/projectlint.go:294` `func countLines(body []byte) int` · `grep -n "countLines" <donor>/internal/projectlint/projectlint.go`]. If `revive` is the mechanism, this means **not** passing `skipComments` / `skipBlankLines` — probe evidence in *Technical constraints § C*. |
+| KD-4 | Which test-file names get the 1500 limit? | Files whose base name ends `_test.go`. The donor additionally matches `.test.` for TypeScript [source: `<donor>/internal/projectlint/projectlint.go:288` · `sed -n '286,292p' <donor>/internal/projectlint/projectlint.go`]; lab-game has no TypeScript, so `_test.go` alone. |
+| KD-5 | Which linters cross over from the donor? | `asciicheck` only, among linters. The donor's `errcheck`/`staticcheck`/`govet`/`ineffassign`/`unused` (`.golangci.yml:15,19,20,21,22`) are already active here via `linters.default: standard` — verified: `golangci-lint help linters` prints exactly those five under "Enabled by default linters:". `nilerr`/`errorlint`/`bodyclose`/`gocritic` (`:16,17,25,27`) are already in our `.golangci.yml:14-37`. |
 | KD-6 | What is the format gate command? | `golangci-lint fmt -d` — it exits **1** when any enabled formatter would rewrite a file, so it works as a check-mode gate without post-processing its output. Probe evidence in *Technical constraints § B*. A standalone `gofumpt` binary is not an option: `which gofumpt` reports it absent from PATH. |
-| KD-7 | Which languages may this change introduce? | Go and bash only, bash capped at **10 code lines** per unit; python is barred from project artefacts (agents' own one-off tooling may use it). Owner decision; corroborated by the source [source: `~/claude-alduna/CLAUDE.md:99` "обвязка \| **bash**, и только минимальная \| всё, что длиннее десятка строк, переезжает в Go" and `:115` "**Go.** Не Python" · `grep -n -iE "bash\|python" ~/claude-alduna/CLAUDE.md`]. This binds the Makefile recipes and any CI step this change writes. |
+| KD-7 | Which languages may this change introduce? | Go and bash only, bash capped at **10 code lines** per unit; python is barred from project artefacts (agents' own one-off tooling may use it). Owner decision; corroborated by the source [source: `<donor>/CLAUDE.md:99` "обвязка \| **bash**, и только минимальная \| всё, что длиннее десятка строк, переезжает в Go" and `:115` "**Go.** Не Python" · `grep -n -iE "bash\|python" <donor>/CLAUDE.md`]. This binds the Makefile recipes and any CI step this change writes. |
 | KD-8 | Does the `PostToolUse` `gofmt -w` hook change? | **Yes.** The owner's stated reason for the Makefile is that hook, CI and a local run must not diverge, and the divergence is demonstrated (§ B): the hook currently runs plain `gofmt -w`, which leaves files that the new gate rejects. Its body becomes a `gofumpt`-equivalent through `golangci-lint fmt`. Editing an existing hook body is not "a new hook"; it does trigger the `AGENTS.md` § *Propagation Rule* obligation to re-verify per `ai-docs/hook-verification.md` and keeps the CI hook-body `shellcheck` step honest. |
 | KD-9 | Does `Makefile` need a paths-filter entry? | **Yes — and KD-9 is why it now has one.** Before this change the `go` filter listed `**/*.go`, `go.mod`, `go.sum`, `.golangci.yml` and `.github/workflows/**`, and **no `Makefile`**: a Makefile-only change would have skipped every Go job, and `AGENTS.md:78` states that a job that did not run is not a passing job. The entry exists today at **`ci.yml:43`**. No line range is cited for the old state deliberately — this decision removed that state, so no range in the live file shows it. |
 | KD-10 | How does CI adopt the Makefile? | **Per-job `make` sub-targets** — owner answer, round 1. The `paths-filter` job matrix stays exactly as it is (`changes` · Format · Build · Test · Lint · Harness guards · Actionlint), each job keeping its `if: needs.changes.outputs.* == 'true'` guard; the Go/format/lint jobs' inline `run:` commands become invocations of `make` sub-targets. `make verify` is the local aggregate of exactly those sub-targets. Parallelism and the `ci.yml:38-51` filter contract survive; the **Harness-guards job stays inline**, so its guards stay outside the Makefile — no Makefile-owned gate is routed through `make` there. (KD-10 decided the job's *relationship to `make`*, not that its contents are frozen: Scope item 9 appends one `bash` line to its existing `guard regression suites` step — the job keeps exactly seven steps — and AC8 states the boundary.) |
-| KD-11 | Do alduna's two `errcheck` loosenings cross over? | **Neither** — owner answer, round 1. `asciicheck` is the whole crossover; `errcheck` keeps its current strictness, matching `ai-docs/code-style.md:20` exactly. **Nothing this repo enforces today gets narrower.** Both rejected settings are recorded in *Out of scope* with their reason so they are not re-proposed later. |
+| KD-11 | Do the donor's two `errcheck` loosenings cross over? | **Neither** — owner answer, round 1. `asciicheck` is the whole crossover; `errcheck` keeps its current strictness, matching `ai-docs/code-style.md:20` exactly. **Nothing this repo enforces today gets narrower.** Both rejected settings are recorded in *Out of scope* with their reason so they are not re-proposed later. |
 | KD-12 | How broad is the propagation of the two changed rules? | **Full** — every site that asserts the old rule, authorised **through a spec amendment** rather than left to the design. Owner answer, round 3, verbatim: *"Full, но через spec-amendment."* The reason the owner gave the amendment route: a design must not carry scope the spec never granted. Scope items 6 and 7 are that grant; § H is the measured site list. |
 | KD-13 | Does the harness get a new permission entry? | **Yes — `Bash(make *)`** in `.claude/settings.json`'s `permissions.allow`. Owner answer, round 3. Scoped to match the file's existing per-tool granularity, not broadened. |
 | KD-14 | Does `AGENTS.md:78` get edited so `AGENTS.md` names the Makefile? | **Yes — "Add it back."** Owner answer, round 4. The design had dropped this edit when it reconciled to the amended spec, correctly: Scope item 5 enumerated four lines and `:77` was not among them, so carrying it would have been design-side scope the spec never granted. The cost the design named, and the owner's reason for reinstating it: **`AGENTS.md` is the one file every agent loads on every invocation, and a Makefile no agent can discover there is a Makefile that will not be used** — precisely the hook/CI/local divergence this task exists to close. The edit is an in-place rewrite of the existing sentence, adding no line and no section; its byte cost is measured in § H. |
@@ -165,12 +165,12 @@ Not to be done, not to be specced, not "while we are here":
 
 ### A. The `.golangci.yml` delta, line by line
 
-Present in `~/claude-alduna/.golangci.yml`, absent from `/home/syt/lab-game/.golangci.yml`
+Present in `<donor>/.golangci.yml`, absent from `.golangci.yml`
 [both read with `cat -n`]:
 
-| Item | alduna source | Applicable here? |
+| Item | donor source | Applicable here? |
 |---|---|---|
-| `asciicheck` | `.golangci.yml:11`, under the comment `# ПРАВИЛО ПРОЕКТА: идентификаторы только ASCII.` (`:10`); corroborated by `~/claude-alduna/CLAUDE.md:366`, which maps "идентификаторы ASCII (Go)" to `golangci-lint` / `asciicheck` | **Yes — and it is the entire crossover.** Checks identifiers only, so the Russian `docs/**` corpus is untouched. Verified green on the current tree (§ G). |
+| `asciicheck` | `.golangci.yml:11`, under the comment `# ПРАВИЛО ПРОЕКТА: идентификаторы только ASCII.` (`:10`); corroborated by `<donor>/CLAUDE.md:366`, which maps "идентификаторы ASCII (Go)" to `golangci-lint` / `asciicheck` | **Yes — and it is the entire crossover.** Checks identifiers only, so the Russian `docs/**` corpus is untouched. Verified green on the current tree (§ G). |
 | `settings.errcheck.exclude-functions: [fmt.Fprintf, fmt.Fprintln, fmt.Fprint]` | `.golangci.yml:30-36`; rationale comment at `:31-32` — output to stderr is not checked, because if stderr is broken there is nowhere left to report it | **No — rejected (KD-11).** It loosens `errcheck` relative to `ai-docs/code-style.md:20` ("Never discard: `_ = err` is a defect"). |
 | exclusion `linters: [errcheck]` + `source: 'defer .*Close\(\)'` | `.golangci.yml:43-45`; rationale at `:40-42` — in a deferred call there is nowhere to put the error, and the exclusion is deliberately narrow | **No — rejected (KD-11).** Same reason as the row above. |
 | exclusion `path: internal/query/` for `errcheck`/`gocritic`/`staticcheck`/`unused` | `.golangci.yml:48-53` | **No.** No such path; no generator. |
@@ -251,7 +251,7 @@ unimplementable.
 |---|---|---|
 | `golangci-lint` 2.13.1 | yes | installed today by `golangci/golangci-lint-action@v9` pinned to `v2.13.1` (`ci.yml:106-109`) |
 | `shellcheck` | `/usr/bin/shellcheck` | preinstalled |
-| `actionlint` | `/home/syt/go/bin/actionlint` | **not** preinstalled — CI uses `reviewdog/action-actionlint@v1` (`ci.yml:191-194`) |
+| `actionlint` | `~/go/bin/actionlint` | **not** preinstalled — CI uses `reviewdog/action-actionlint@v1` (`ci.yml:191-194`) |
 | `gofumpt` standalone | **absent** (`which gofumpt` → not found) | n/a — reached through `golangci-lint` |
 | `make`, `awk` | `/usr/bin/make`, `/usr/bin/awk` | preinstalled |
 
@@ -275,7 +275,7 @@ same binary.
 - Exactly one Go file: `cmd/bot/main.go`. `go.mod` declares
   `module github.com/maratik123/lab-game`, `go 1.26`, and zero requirements.
 - Five `*.sh` files, all under `.claude/skills/**/scripts/`.
-- No `Makefile` exists yet (`ls -la /home/syt/lab-game/Makefile` → no such file).
+- No `Makefile` exists yet (`ls -la Makefile` → no such file).
 - `AGENTS.md` was **34 986 bytes** when this spec was first written. It is
   **35 071** today (`wc -c AGENTS.md`), because KD-18 added a `make verify` line to
   § *Build & Test*. It therefore now sits **inside** the 35 000–39 999
@@ -555,12 +555,12 @@ disabled by the very idiom it exists to catch. Rejected.
 
 ## Source conflicts
 
-### Conflict 1 — alduna's own hard file-size threshold: 500 vs 1000
+### Conflict 1 — the donor's own hard file-size threshold: 500 vs 1000
 
 Two sites of the named source disagree.
 
-- **Site A — the linter.** `~/claude-alduna/internal/projectlint/projectlint.go:30-31`
-  [`sed -n '25,40p' ~/claude-alduna/internal/projectlint/projectlint.go`]:
+- **Site A — the linter.** `<donor>/internal/projectlint/projectlint.go:30-31`
+  [`sed -n '25,40p' <donor>/internal/projectlint/projectlint.go`]:
 
   ```go
   const (
@@ -574,8 +574,8 @@ Two sites of the named source disagree.
   жёсткий" — *a reasonable limit, not a hard one* — while the code enforces it as
   the only limit there is.
 
-- **Site B — the prose.** `~/claude-alduna/docs/code-style.md:27-32`
-  [`cat -n ~/claude-alduna/docs/code-style.md`], verbatim:
+- **Site B — the prose.** `<donor>/docs/code-style.md:27-32`
+  [`cat -n <donor>/docs/code-style.md`], verbatim:
 
   ```
   | порог | что значит |
@@ -598,7 +598,7 @@ recorded in this repository's history — commit `a870415`
 whose message reads *"The linter enforces 1000/1500; 500 (reasonable) and 800
 (plan the split) stay in prose because a judgement a linter enforces stops being
 one."* [`git log -1 --format='%s%n%b' a870415`]. That commit lives on the
-abandoned branch `chore/2026-08-29-codestyle-from-alduna` and is **not** an
+abandoned branch `chore/2026-08-29-codestyle-from-<donor>` and is **not** an
 ancestor of `main` (`git merge-base --is-ancestor a870415 main` → non-zero), so
 its content is history, not a live rule — it is cited here as the record of the
 decision, not as an implementation to copy. Its approach (a Go package under
@@ -627,13 +627,13 @@ within its existing budget (AC9).
 
 | # | Criterion |
 |---|-----------|
-| AC1 | `.golangci.yml` enables `asciicheck` and changes nothing else in `linters`: `golangci-lint linters` lists **27** enabled linters — the 26 enabled before this change plus `asciicheck`. The `exclusions.rules` block is unchanged from its pre-change content (the single `_test.go` rule at `.golangci.yml:50-57`), and neither rejected alduna `errcheck` setting appears anywhere in the file (KD-11). |
+| AC1 | `.golangci.yml` enables `asciicheck` and changes nothing else in `linters`: `golangci-lint linters` lists **27** enabled linters — the 26 enabled before this change plus `asciicheck`. The `exclusions.rules` block is unchanged from its pre-change content (the single `_test.go` rule at `.golangci.yml:50-57`), and neither rejected donor `errcheck` setting appears anywhere in the file (KD-11). |
 | AC2 | `.golangci.yml`'s `formatters.enable` includes `gofumpt` alongside `gofmt` and `goimports`; `golangci-lint formatters` lists `gofumpt` under "Enabled by your configuration formatters:". |
 | AC3 | The format gate rejects a file that plain `gofmt` accepts: on a fixture that is `gofmt -l`-clean but gofumpt-dirty, the repository's format gate exits non-zero. |
 | AC4 | A tracked `Makefile` exists with a `.PHONY` `verify` target that runs, each with a load-bearing exit status: `go build ./...`; `go vet ./...`; `go test ./...`; `go test -race ./...`; `golangci-lint run`; the format check; `go mod tidy` followed by a no-delta check on `go.mod`/`go.sum`; `actionlint` over `.github/workflows/*.yml`; `shellcheck` over every `*.sh` in the tree; the AC6 file-limit check. `make verify` exits 0 on the branch head. |
 | AC5 | No step of `make verify` can report green while its gate is red: no recipe pipes a gate into another command without `pipefail` in force, and no recipe ends in `\|\| true`. Demonstrated for the **new** gate (AC6) by a temporary over-limit fixture that turns `make verify` red and is then removed. |
 | AC6 | The file-limit gate is exactly two-tier: a non-test `.go` file of **1001** raw lines fails and one of **1000** passes; a `_test.go` file of **1501** fails, **1500** passes, and **1001** passes (test files are governed by 1500, never by 1000). Counting is raw lines, comments and blanks included (KD-3). |
-| AC7 | The gate is implemented without a new `cmd/` binary, without any new Go package, and without importing or vendoring alduna's `projectlint`. |
+| AC7 | The gate is implemented without a new `cmd/` binary, without any new Go package, and without importing or vendoring the donor's `projectlint`. |
 | AC8 | `.github/workflows/ci.yml` keeps its `paths-filter` job matrix: the jobs `changes`, `format`, `build`, `test`, `lint`, `harness` and `actionlint` all still exist, each non-`changes` job still guarded by `if: needs.changes.outputs.* == 'true'`. Every gate the Makefile owns is invoked in CI **through** `make` — no gate's command text exists independently in both files. The `harness` job keeps everything KD-10 decided for it: it stays inline, keeps its own `harness` paths-filter, routes **no** Makefile-owned gate through `make`, and **keeps exactly seven steps** — none added, removed, or reordered. The **one** permitted edit inside those steps is a **single `bash` line appended to the existing `guard regression suites` step**, invoking Scope item 9's suite after the two that already run there, so all three guard suites stay grouped in the one step where the existing two live. It lands in this job because it has nowhere else to go — `harness` is the only job whose filter matches `.claude/**` (verified: `go` matches `**/*.go`, `go.mod`, `go.sum`, `.golangci.yml`, `Makefile`, `.github/workflows/**`; `workflows` matches `.github/workflows/**`), so a `.claude/settings.json`-only edit fires no other job. `Makefile` is present in the `go` paths-filter at `ci.yml:38-43`. `actionlint .github/workflows/ci.yml` passes. |
 | AC9 | `wc -c AGENTS.md` after the change is **≤ 35 100** — raised from `≤ 34 986` by KD-18, and a **bound, not a target**: the measured result is **35 071**, and the criterion is not restated as an equality. AGENTS.md gains no new section, table, or bullet — KD-18's addition is a single line *inside* the existing § *Build & Test* code block, and the other five changes are in-place replacements of existing pointer lines (`:48`, `:49`, `:78`, `:103`, `:109` as needed). |
 | AC10 | `ai-docs/code-style.md` § *File size* states all four bands with their enforcer: 500 reasonable (prose), 800 plan-the-split (prose), 1000 hard non-test (gated), 1500 hard `_test.go` (gated). `grep -rni "excl" AGENTS.md ai-docs/code-style.md` returns no line that still describes the four numbers as an excluding-tests / including-tests pair. |

@@ -8,7 +8,7 @@ an instruction file; delete or archive it after the comparison is made.
 
 ## How to measure a run
 
-`T` = the session transcript `~/.claude/projects/-home-syt-lab-game/<session>.jsonl`;
+`T` = the session transcript `~/.claude/projects/<encoded checkout path>/<session>.jsonl`;
 `P` = the task's `*.progress.md`; `B` = the task branch.
 
 | # | Metric | Baseline (ec78f817) | Target | Command / where to look |

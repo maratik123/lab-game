@@ -181,7 +181,7 @@ echo
 echo "--- (3) 'feedback_*.md' cited without its owning namespace ---"
 while IFS=: read -r file line _; do
   txt=$(sed -n "${line}p" "$file")
-  echo "$txt" | grep -qE 'projects/-home-syt-RustroverProjects-(quartzite|graphite-gp)' && continue
+  echo "$txt" | grep -qE 'projects/[^/[:space:]]*-(quartzite|graphite-gp)/memory/' && continue
   printf '  RED  %s:%s  -> cites a memory file without naming whose namespace holds it\n' "$file" "$line"
   fail=$((fail + 1))
 done < <(grep -rnoE 'feedback_[a-z_]+\.md' .claude/ AGENTS.md 2>/dev/null)

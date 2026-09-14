@@ -528,7 +528,7 @@ The source is `Options.Jitter func() float64`, defaulting to `math/rand/v2`'s `F
 the first run.** `gosec`'s G404 flags `math/rand` in non-test code, and this repo's `_test.go`
 gosec exclusion does not reach a package-level default living in production source
 [measured 31736b4:.golangci.yml + golangci-lint 2.13.1 · a scratch package returning
-`rand.Float64()` from a non-test file, `golangci-lint run --config /home/syt/lab-game/.golangci.yml ./...` →
+`rand.Float64()` from a non-test file, `golangci-lint run --config .golangci.yml ./...` →
 `G404: Use of weak random number generator (math/rand or math/rand/v2 instead of crypto/rand) (gosec)`].
 The default therefore carries
 `//nolint:gosec // G404: jitter is a backoff spread, not a security decision` — verified to
