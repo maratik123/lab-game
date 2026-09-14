@@ -11,14 +11,14 @@ _Updated: 2026-09-14 00:33_
 **Spec:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.spec.md
 **Design:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.design.md
 
-**current_step:** Step 8 — Group A complete (subtasks 1-9); handoff to Group B pending
-**last_passed_gate:** go test ./... (full module) + make import-guard | 2026-09-14 | (subtask 9 commit)
+**current_step:** Step 8 — Group A complete (subtasks 1–9 of 11)
+**last_passed_gate:** go build ./... | 2026-09-14T01:51:29Z | 32f0d373bf5a3770284e9620e6da74897c859482
 
 **entry_args:** 119
 
 ## Next action
 
-**Do this immediately:** Group A (subtasks 1-9) is complete, all nine commits landed on this branch, tree green. Per design § Handoff plan: spawn `/context-reset` per `.claude/skills/context-reset/SKILL.md` § Compaction recovery (re-entry), then hand off to Group B (subtasks 10-11, instructions/harness change-type) via the `general-purpose` subagent. Group B edits no code file — a code-surface hit found there is a Group A defect to stop and report, not to fix in place.
+**Do this immediately:** Group B — complete subtasks 10–11 of the design's `## Decomposition`, in order, one commit per subtask. Edit no code file: a code-surface hit found during the sweep is a Group A defect — stop and report it instead of editing it.
 
 ## Subtasks
 
