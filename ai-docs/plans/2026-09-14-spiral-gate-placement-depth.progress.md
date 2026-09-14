@@ -11,13 +11,13 @@ _Updated: 2026-09-14 10:58_
 **Spec:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.spec.md
 **Design:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.design.md
 
-**current_step:** Step 8 — subtask 5 of 5 complete
-**last_passed_gate:** check-citations.sh + relative-markdown-link check (working tree over 2b76287) | 2026-09-14T10:57:46Z | 2b762873170d4322f26b7bca877068eae297eb18
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** make verify (fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs import-guard) | 2026-09-14T11:08:49Z | e946162e2d19b7d7c11ae4e2c9071fcc88f36f14
 **entry_args:** 120
 
 ## Next action
 
-**Do this immediately:** Step 9 — the full verify list (`make verify`, panic-index sync, domain-invariant sweep, per-AC sweep with the orchestrator's own commands).
+**Do this immediately:** Step 9.5 — append this task's entry to `ai-docs/context-status.md` with the PR locator `#TBD-at-Step-12`, and bump `ai-docs/context.md`'s Status summary if it changed.
 
 ## Subtasks
 
@@ -45,6 +45,12 @@ Groups per the design's `## Handoff plan`.
 - **Step 8, subtask 5 (code-surface findings, reported, not fixed; Group A defects)**: a scratch copy of `spiral.go`/`depth.go`/`next.go`/`errors.go` under `tmp/_probe/gatedoc` (deleted after the run) established two false doc comments. (1) `Set.Depth`'s "It never looks at a chunk farther than the nearest gate's own ring" is false. With R=6, a sole gate in the cell's own chunk and the local cell farthest from the centre, `depthSearch` returned depth=6, lastRing=1 while the nearest gate is in ring 0, since `L(1)=4 < 6`. The true bound is `S(cell)`. (2) `Next`'s "So the fallback is never actually reached by an input the scan cannot already satisfy" contradicts the fallback it documents. With rings 0–2 created and k=0, `Next` returned `(3,-1)` from the fallback return, and `TestNext_Table` has that very row.
 - **Step 8, Group B return**: orchestrator re-validated branch, base_commit and a clean tree and pushed; accepted Group B's `context.md` Status "Code:" edit beyond the design's list, because the added `internal/gate` import made that bullet's "reaches no call site beyond the balance loader" false and Step 9.5 would have required the same edit; a case-insensitive sweep of `key-decisions.md` and `context.md` found neither false doc-comment claim copied into KD-41.
 - **Step 8, doc-comment defect**: Group B reported two false doc comments in Group A's code (`Set.Depth` "never looks at a chunk farther than the nearest gate's own ring"; `Next` "the fallback is never actually reached"); orchestrator reproduced both (radius-6 lower bound 4 < depth 6 visits ring 1; `TestNext_Table`'s fallback row) and routed a comment-only fix to a `code-writer` Mode B delegate; learnings entry written.
+- **Step 9**: panic-index sync — no `panic(`, `log.Fatal`/`log.Panic` or `Must…` helper in `internal/gate` production files (patterns control-checked); no panic-index row.
+- **Step 9**: domain-invariant sweep over `internal/gate` — patterns 1, 2, 4, 5 no hits; pattern 3 hit `internal/gate/next_test.go` `iterationCap`, a test oracle's loop bound, not a balance constant — legitimate. No ledger, scheduler, outbound message or migration in the diff.
+- **Step 9**: `-race` is not required by the change (no goroutine, channel or `sync` use in `internal/gate` production files, pattern control-checked); `make verify` runs `test-race` regardless.
+- **Step 9**: mutants run by the orchestrator via cp-backup, each confirmed to build before its result was read: three spiral mutants red on `TestSpiral_RingWalkTable`; `lowerBound` `+R`, "stop at first hit" (its first form did not build and was replaced by a building one) and "search until every gate is seen" red on their named tests; `spiral.go` and `depth.go` restored with no diff.
+- **Step 9**: `make verify` exit 0 at e946162 (log `tmp/step9-verify.log`): no `FAIL` line; `internal/gate` ran fresh under both `test` and `test-race`, the unchanged packages replayed from the test cache. Harness-guard scripts CI runs over docs (`check-citations.sh`, `check-ac-shape.sh`, `check-spec-shape.sh`, `check-spec-anchors.sh`, `check-harness-gaps-forge.sh`) exit 0 locally, and the relative-link check is green; hook-body shellcheck and the guard regression suites were not run because neither `settings.json` nor any guard changed.
+- **Step 9**: owner asked mid-step why the orchestrator authors code fixes after self-review instead of delegating; answered from a section-scoped read of `task/SKILL.md`, `task/reference.md`, `code-writer.md` and `delegation-rules.md`, and logged the Step 11 actor gap in `ai-docs/harness-gaps.md` 2026-09-14. Step 11 fixes in this run route by change-type: `.go` to `code-writer` Mode B, prose in-thread.
 
 ## GO notes
 
@@ -61,17 +67,17 @@ Groups per the design's `## Handoff plan`.
 
 ## AC Status
 
-| AC | Status |
-|----|--------|
-| AC1 | PASS (spiral_test.go) |
-| AC2 | PASS (spiral_test.go) |
-| AC3 | PASS (next_test.go) |
-| AC4 | PASS (next_test.go) |
-| AC5 | PASS (next_test.go) |
-| AC6 | PASS (next_test.go) |
-| AC7 | PASS (depth_test.go) |
-| AC8 | PASS (depth_test.go) |
-| AC9 | PASS (depth_internal_test.go) |
+| AC | Status | verifying command |
+|----|--------|-------------------|
+| AC1 | PASS (orchestrator, Step 9, at e946162) | `go test -count=1 -v -run '^(TestSpiral_ListsEveryChunkOnceRingByRing|TestSpiralIndex_AgreesWithSpiral|TestSpiralIndex_RingRange)$' ./internal/gate/` — every named test `--- PASS` |
+| AC2 | PASS (orchestrator, Step 9, at e946162; mutants seen red on TestSpiral_RingWalkTable: ceil start (ring 1), corner start (ring 2), mirrored turn (ring 1)) | `go test -count=1 -v -run '^(TestSpiral_RingWalkTable|TestSpiral_RingStartAndTurn)$' ./internal/gate/` — every named test `--- PASS` |
+| AC3 | PASS (orchestrator, Step 9, at e946162) | `go test -count=1 -v -run '^(TestNext_FirstGateIsCentre)$' ./internal/gate/` — every named test `--- PASS` |
+| AC4 | PASS (orchestrator, Step 9, at e946162) | `go test -count=1 -v -run '^(TestNext_Table|TestNext_SequentialFillReproducesSpiral|TestNext_MatchesSpiralScan)$' ./internal/gate/` — every named test `--- PASS` |
+| AC5 | PASS (orchestrator, Step 9, at e946162) | `go test -count=1 -v -run '^(TestNext_AlwaysReturns)$' ./internal/gate/` — every named test `--- PASS` |
+| AC6 | PASS (orchestrator, Step 9, at e946162) | `go test -count=1 -v -run '^(TestNext_RefusesNegativeK)$' ./internal/gate/` — every named test `--- PASS` |
+| AC7 | PASS (orchestrator, Step 9, at e946162; mutant "stop at first hit" seen red on TestSetDepth_Table (farther-ring gate nearer in cells)) | `go test -count=1 -v -run '^(TestSetDepth_MatchesBruteForce|TestSetDepth_Table)$' ./internal/gate/` — every named test `--- PASS` |
+| AC8 | PASS (orchestrator, Step 9, at e946162) | `go test -count=1 -v -run '^(TestSetDepth_FarBeyondEveryGate)$' ./internal/gate/` — every named test `--- PASS` |
+| AC9 | PASS (orchestrator, Step 9, at e946162; mutant "search until every gate is seen" seen red on TestSearch_FarGatesAddNoWork; lowerBound "+R" mutant red on TestLowerBound_HoldsAndIsAttained) | `go test -count=1 -v -run '^(TestSearch_StaysWithinBound|TestSearch_FarGatesAddNoWork)$' ./internal/gate/` — every named test `--- PASS` |
 
 ## Review register
 
