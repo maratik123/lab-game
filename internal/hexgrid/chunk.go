@@ -44,6 +44,14 @@ func (d Dims) Contains(ch Chunk, c Coord) bool {
 	return d.ChunkOf(c) == ch
 }
 
+// Neighbor returns the chunk one step from ch in direction d on the
+// super-lattice, using the same six direction deltas as a cell's
+// Neighbor.
+func (ch Chunk) Neighbor(d Direction) Chunk {
+	delta := directionDeltas[d]
+	return Chunk{Q: ch.Q + delta.Q, R: ch.R + delta.R}
+}
+
 // ChunkDistance returns the hex distance between a and b measured on the
 // chunk grid — the axial hex-distance formula applied to chunk
 // coordinates rather than cell coordinates, widened to int64 because the
