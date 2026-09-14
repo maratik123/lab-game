@@ -1077,3 +1077,16 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** A defect report scoped to one line is evidence about that line only (`AGENTS.md` § Patterns 1). When a delegate reports a defect of a class — a false doc comment, a wrong bound — sweep every instance of that class the same author wrote in the same change before routing the fix, and put the sweep into the fix's scope.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-14 — documentation — a learnings entry said a function was not shared, from direct call sites alone
+**What happened:** The 2026-09-14 entry "more false and narrating doc comments in the same package" says `ringChunk`'s comment claimed `SpiralIndex` and `Next` share it, and that "neither calls it". `Next` ranges over `Spiral()`, which calls `ringChunk`, so `Next` does share the ring walk; only the `SpiralIndex` half was false, and that half was all self-review round 1 had raised. The orchestrator widened the reviewer's finding into the log without following the call chain. Self-review round 2 raised it (SR2-3).
+**Rule:** A claim that X does not use Y, written into any durable surface, is checked through the call chain — every caller, not only direct call sites — and a log entry restates a reviewer's finding at the finding's own scope, never wider.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — process — accepted a delegate's "no further false claims" sweep without re-running it
+**What happened:** The round-1 fix delegate in the #120 run was told to re-read every doc comment in `internal/gate` and reported that the others "describe contracts/complexity guarantees, not implementation retelling". The orchestrator accepted that negative result. `Set`'s comment said repeated `Depth` queries "cost no more than the distance to the nearest gate", while the chunk lookups grow with the square of that distance in rings — with one gate at the centre chunk, radius 0, and a cell 100 chunks out, a query makes 30301 lookups. Self-review round 2 raised it (SR2-1).
+**Rule:** A delegate's negative sweep result ("no further instances") is a claim like any other: re-run the sweep over the claim class yourself — here, every cost or complexity word in the package's comments, each checked against the code — before sending the fix back to review.
+**at:** e7835b8
+**Kind:** correction
+**Escalated?** no

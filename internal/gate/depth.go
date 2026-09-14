@@ -2,10 +2,9 @@ package gate
 
 import "github.com/maratik123/lab-game/internal/hexgrid"
 
-// Set is a snapshot of a world's gate chunks, indexed once so that
-// repeated Depth queries against the same lattice radius cost no more
-// than the distance to the nearest gate, never the number of gates in
-// the snapshot. Build it once per gate snapshot with NewSet; a caller
+// Set is a snapshot of a world's gate chunks, indexed once so that a
+// Depth query's work does not grow with the number of gates in the
+// snapshot. Build it once per gate snapshot with NewSet; a caller
 // that rebuilds it per query pays the gate count every time.
 type Set struct {
 	lattice hexgrid.Lattice
