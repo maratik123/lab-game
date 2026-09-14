@@ -6,11 +6,11 @@ import (
 	"github.com/maratik123/lab-game/internal/hexgrid"
 )
 
-// BenchmarkCell reports one chunk's generation cost under the
+// BenchmarkGenerate reports one chunk's generation cost under the
 // equal-weight reference Params. No threshold is asserted here: whether
 // a cache is required is a later decision this task defers: the
 // measurement is on demand only (go test -run=^$ -bench=. ./internal/maze/).
-func BenchmarkCell(b *testing.B) {
+func BenchmarkGenerate(b *testing.B) {
 	gen, err := New(goldenSeed, goldenParams())
 	if err != nil {
 		b.Fatalf("New: %v", err)
@@ -24,12 +24,12 @@ func BenchmarkCell(b *testing.B) {
 	}
 }
 
-// BenchmarkCellPerAlgorithm reports one chunk's generation cost under a
+// BenchmarkGeneratePerAlgorithm reports one chunk's generation cost under a
 // single-weight Params for each of the five algorithms in turn, so the
 // deferred caching decision has the spread across algorithms and not
 // only an average — Wilson's loop-erased walk in particular has no
 // worst-case bound on its own draw count.
-func BenchmarkCellPerAlgorithm(b *testing.B) {
+func BenchmarkGeneratePerAlgorithm(b *testing.B) {
 	algos := []struct {
 		name string
 		algo Algorithm
