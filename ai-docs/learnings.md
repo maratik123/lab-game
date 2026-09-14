@@ -1033,3 +1033,10 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** Before spawning a gate agent (`design-review`, `self-review`), write the prompt in that agent's own spawn-prompt contract line shapes, not in the field vocabulary of the flow just left — the closed list binds the spelling of each line, not only which items appear.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-14 — process — surfaced unreachable numeric extremes to the owner as spec decisions
+**What happened:** In the #119 run, after design-review round 1 returned ITERATE, the orchestrator put two delegate-raised edge cases to the owner as spec-amendment questions — AC4's upper radius at the `int32` cell-count limit, and AC1–AC3 at the `int32` coordinate seam — recommending a spec amendment for each, without first weighing whether either state is reachable at the product's real scale. The owner answered: «Какой бред, это число буду задавать я, и я явно буду делать разумный выбор. Зачем я буду выбирать числа порядка 2^20? Чтобы что?» and «Может, оценивать реально? Зачем закладывать то, что никогда не будет достигнуто? Это телеграм игра, готовим мвп, ты реально считаешь, что к игре подключаться 100500 чатов на старте?»
+**Rule:** Before forwarding a delegate's edge case to the owner, judge whether it is reachable at the product's actual scale (an MVP Telegram game; configuration values the owner sets deliberately). A type-domain extreme no real input reaches is not an owner question and not a spec amendment — at most a design-level note, and the recommendation offered must reflect that weighing, not the delegate's framing.
+**at:** bf20076
+**Kind:** correction
+**Escalated?** no
