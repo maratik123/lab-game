@@ -1065,3 +1065,15 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** A doc comment that describes a function's behaviour — a bound, a reachability, a "never" — is a claim about the code and is checked against the code or its tests before commit, the same as a design claim. A comment that paraphrases the design's proof in stronger words than the proof establishes is the likeliest false one.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-14 — documentation — more false and narrating doc comments in the same package, after the first two were fixed
+**What happened:** Self-review round 1 of the #120 run found further doc-comment defects in `internal/gate`, written by the same Group A delegate that wrote the two false comments recorded earlier today. False claims: `delta`'s comment said `Next`'s fallback uses it and `ringChunk`'s said `SpiralIndex` and `Next` share it — neither calls it — and `ringChunk`'s pointed at an int32 "disclaimer" in `Next`'s comment that does not exist. `lowerBound`'s comment called a lower bound "the least possible" distance and placed its attainment at the ring walk's start; measured at radius 6, ring 1's bound is 4 against a true least of 7, and the attaining chunk at ring 13 is walk position 1, not 0. Narration (DOC-4): `Next`'s comment retold its bounded scan, fallback and proof, and three more comments described how their function works rather than what a caller may rely on.
+**Rule:** A doc comment states what the item is and what a caller may rely on — never which other functions use it, never how it computes its result, and never a pointer to another comment. Every behavioural word in it ("least", "attained", "shared", "never") is checked against the code before commit.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — process — fixed only the two doc comments a delegate reported, without checking their neighbours
+**What happened:** When Group B reported two false doc comments in Group A's `internal/gate` code, the orchestrator reproduced both and routed a fix for exactly those two sentences. It did not re-read the package's other doc comments, although both defects were of one class from one author in one package. Self-review round 1 then found four more false or narrating comments in the same files, costing a review round.
+**Rule:** A defect report scoped to one line is evidence about that line only (`AGENTS.md` § Patterns 1). When a delegate reports a defect of a class — a false doc comment, a wrong bound — sweep every instance of that class the same author wrote in the same change before routing the fix, and put the sweep into the fix's scope.
+**Kind:** correction
+**Escalated?** no

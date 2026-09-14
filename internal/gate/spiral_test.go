@@ -211,9 +211,8 @@ func TestSpiral_RingStartAndTurn(t *testing.T) {
 	}
 }
 
-// delta returns n * the direction's unit chunk vector, computed
-// independently of the package's own unexported delta helper by driving
-// a chunk's exported Neighbor method n times.
+// delta returns n * the direction's unit chunk vector, computed by
+// driving a chunk's exported Neighbor method n times.
 func delta(d hexgrid.Direction, n int) hexgrid.Chunk {
 	ch := hexgrid.Chunk{}
 	for range n {

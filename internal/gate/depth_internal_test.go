@@ -21,7 +21,7 @@ func TestLowerBound_HoldsAndIsAttained(t *testing.T) {
 		r := int64(radius)
 		localCells := lat.LocalCells()
 		for ring := int64(0); ring <= 2*r+1; ring++ {
-			bound := lowerBound(r, ring)
+			bound := lowerBound(lat, ring)
 			ringChunks := ringChunksAround(hexgrid.Chunk{}, ring)
 			for _, cell := range localCells {
 				for _, ch := range ringChunks {

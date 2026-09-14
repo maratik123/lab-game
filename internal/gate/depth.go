@@ -49,9 +49,8 @@ func (s Set) depthSearch(cell hexgrid.Coord) (depth int64, found bool, lastRing 
 		return 0, false, -1
 	}
 	c0, _ := s.lattice.Locate(cell)
-	r := int64(s.lattice.Radius)
 	for ring := int64(0); ; ring++ {
-		if found && depth <= lowerBound(r, ring) {
+		if found && depth <= lowerBound(s.lattice, ring) {
 			return depth, true, lastRing
 		}
 		for _, ch := range ringChunksAround(c0, ring) {
@@ -66,28 +65,25 @@ func (s Set) depthSearch(cell hexgrid.Coord) (depth int64, found bool, lastRing 
 	}
 }
 
-// ringChunksAround returns the chunks at ChunkDistance n from centre,
-// found by translating the same ring walk Spiral uses.
+// ringChunksAround returns the chunks at ChunkDistance n from centre.
 func ringChunksAround(centre hexgrid.Chunk, n int64) []hexgrid.Chunk {
 	if n == 0 {
 		return []hexgrid.Chunk{centre}
 	}
-	out := make([]hexgrid.Chunk, 6*n)
-	for p := int64(0); p < 6*n; p++ {
+	out := make([]hexgrid.Chunk, sides*n)
+	for p := int64(0); p < sides*n; p++ {
 		off := ringChunk(n, p)
 		out[p] = hexgrid.Chunk{Q: centre.Q + off.Q, R: centre.R + off.R}
 	}
 	return out
 }
 
-// lowerBound returns L(ring): the least possible hex-cell distance from
-// any cell to the centre of any chunk at super-lattice distance ring
-// from that cell's own chunk, for a lattice of radius r. It is
-// attained, not merely valid, on the mid-side direction the ring walk
-// itself starts from.
-func lowerBound(r, ring int64) int64 {
-	c := 3*r*r + 3*r + 1
-	return ceilDiv64(ring*c, 2*r+1) - r
+// lowerBound returns L(ring): no cell lies nearer than L(ring) to the
+// centre of any chunk at super-lattice distance ring from that cell's
+// own chunk, for lattice.
+func lowerBound(lattice hexgrid.Lattice, ring int64) int64 {
+	r := int64(lattice.Radius)
+	return ceilDiv64(ring*lattice.CellCount(), 2*r+1) - r
 }
 
 // ceilDiv64 returns the ceiling of a/b for a >= 0, b > 0.

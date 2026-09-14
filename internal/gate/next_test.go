@@ -197,10 +197,9 @@ func TestNext_AlwaysReturns(t *testing.T) {
 func TestNext_RefusesNegativeK(t *testing.T) {
 	t.Parallel()
 	for _, k := range []int{-1, math.MinInt} {
-		got, err := gate.Next(nil, nil, k)
+		_, err := gate.Next(nil, nil, k)
 		if !errors.Is(err, gate.ErrNegativeK) {
 			t.Errorf("Next(nil, nil, %d) error = %v, want ErrNegativeK", k, err)
 		}
-		_ = got
 	}
 }

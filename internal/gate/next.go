@@ -12,17 +12,7 @@ import "github.com/maratik123/lab-game/internal/hexgrid"
 // chunk need not also appear in created, since a gate is at distance 0
 // from itself.
 //
-// If the scan finds no qualifying chunk within the bound it searches,
-// it returns the first chunk of the ring one past that bound instead.
-// That fallback is always valid: with M the largest ring holding any
-// chunk of created or gates (0 when both are empty), every created
-// chunk lies within ring M, so the fallback — beyond ring M+k — is
-// never in created, and by the triangle inequality it is at least k+1
-// from every gate, whose own ring is at most M. The fallback is reached
-// exactly when every chunk the scan covers is created or too close to a
-// gate — for instance when every chunk out to ring M is created and k
-// is 0 — and it is what makes Next total rather than a search that
-// could fail to terminate.
+// For k >= 0, Next returns a nil error.
 func Next(created, gates []hexgrid.Chunk, k int) (hexgrid.Chunk, error) {
 	if k < 0 {
 		return hexgrid.Chunk{}, ErrNegativeK
@@ -68,8 +58,7 @@ func Next(created, gates []hexgrid.Chunk, k int) (hexgrid.Chunk, error) {
 }
 
 // farEnough reports whether ch keeps hex distance at least k+1 from
-// every chunk in gates. It loops over the slice rather than a set,
-// since gates is exactly the caller's input.
+// every chunk in gates.
 func farEnough(ch hexgrid.Chunk, gates []hexgrid.Chunk, k int64) bool {
 	for _, g := range gates {
 		if hexgrid.ChunkDistance(ch, g) < k+1 {
