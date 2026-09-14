@@ -1110,3 +1110,9 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** 743f79b
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-15 — search — told the owner a registry does not exist after a search miss, without reading the source
+**What happened:** In round 1 of the `/interview` for #26, the spec-writer searched non-test Go for the identifier `TaskType`, found only the store's basis structs, and wrote into an option of a question to the owner that task types have no registry («у типов тасок нет реестра») — as the cost of the option the owner then chose. `internal/scheduler/registry.go` declares `Registry` and `Declaration`, which name a task type by its `Type` field rather than by any `TaskType` identifier, and `cmd/bot` builds a `Registry`. Round 2 found it by listing the scheduler package's files.
+**Rule:** A question put to the owner is an assertion like any spec row. A claim that a construct does not exist needs a raw read of the package that would own it, or an `ast-index` lookup for the concept (`ast-index class "Registry"`), never a miss on one guessed identifier — and an option's description is exactly where the owner reads the cost of choosing it.
+**Kind:** correction
+**Escalated?** no
