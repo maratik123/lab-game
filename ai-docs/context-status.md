@@ -470,3 +470,27 @@ Entry shape:
   - A border's portal count lies between the lower and upper portal share of its faces, each rounded up; the lower bound is at least one portal and the upper at most `R + 1`, and no two portals of one border share a vertex.
   - Islands are never border cells and never a gate chunk's centre; island capacity is checked once, against the gate chunk's smaller capacity, so one valid input holds for every chunk type.
   - `maze` imports only an allowlist, so no database or store package can enter generation.
+
+## Spiral gate placement and nearest-gate depth — `internal/gate`: the spiral order, the next gate, and an exact ring-search depth (PR #TBD-at-Step-12, 2026-09-14)
+
+- **What landed:** a new package, `internal/gate`, over `internal/hexgrid` and the standard library. `Spiral` is the infinite gate-placement order from the centre chunk, and `SpiralIndex` its closed-form inverse, recovered from a chunk's own coordinates. `Next` returns the first chunk in that order that is not created and keeps at least `k+1` chunks from every gate, and refuses a negative `k` with `ErrNegativeK`. `NewSet` builds a gate `Set` (refusing a negative radius with `ErrNegativeRadius`), and `Set.Depth` returns the hex-formula cell distance from a cell to the nearest gate chunk's centre, or `(0, false)` for a set with no gate, the zero `Set` included. Property, table and internal tests, and reporting-only benchmarks. KD-41 records the package and its decisions; KD-38's consumer sentence and `context.md` now name `internal/gate`.
+
+- **Decisions worth keeping:**
+  - **`k` is the gap between gate chunks, the gate chunks themselves not counted.** Two gates lie at super-lattice distance of at least `k+1`, so `k = 0` lets neighbouring chunks both hold gates and fills concentric rings. The owner confirmed this reading in the interview.
+  - **Each ring starts mid-side, rounding down — the owner's decision, not a packing argument.** Ring `n` starts `⌊n/2⌋` steps from its corner `(n, 0)`, at `(n, −⌊n/2⌋)`. The design fixed the start direction as `DirE` and the turn as the canonical `Direction` order. Once #29 stores gate indices, this orientation is a data contract: changing it re-places later gates and renumbers stored indices, which is a migration, never a refactor.
+  - **`Next` scans a bounded prefix and falls back to a chunk that is valid by construction.** With `M` the outermost ring of any created or gate chunk, it scans rings `0..M+k` and otherwise returns ring `M+k+1`'s first chunk, which lies beyond every created chunk and, by the triangle inequality, at least `k+1` from every gate. So it is total with no unbounded loop.
+  - **Depth is an exact ring search with a lower-bound stop rule — no BFS, no scan over all gates.** Around the cell's chunk it widens ring by ring and stops once the best distance found is at most `L(s) = ⌈s·C/(2R+1)⌉ − R`, with `C = 3R²+3R+1`. The rings it visits are bounded by the returned depth and the radius, never by the number of gates. That bound rests on the proof and on its tests, not on `detguard`, whose map-range check sees only what a name-based pass can see.
+  - **The gate set is built once per gate snapshot.** Where that snapshot lives, and whether depth is stored or computed on read, is #29's.
+
+- **Traps found:**
+  - **A residue class is not a regularity test.** Judging simulated gate layouts by `(q−r) mod 3` reported seams in corner-start layouts that are perfectly regular lattices, because that class is invariant only on the index-3 lattice. The instrument that answers the question is a coset test — the gate set equals one translate of the lattice its nearest-neighbour vectors span — with both of its failing branches seen red on constructed layouts.
+  - **The rounding of a mid-side start is part of the layout.** In simulation, ceil and floor rounding place gates differently at `k = 2`, and floor keeps a regular lattice at every `k` tested.
+  - **Scratch Go under `tmp/` is walked by `./...`.** A design probe there failed the module-wide lint gate while `git status` stayed clean. Scratch Go goes under a `_`-prefixed directory.
+  - **`detguard` treats a map-typed struct field's name as map-typed across its whole file.** A `Set` field named `gates` beside a `range gates` over the constructor's slice would fail the determinism guard over code that ranges no map; the field is `members`.
+  - **A doc comment can overstate the proof it paraphrases, and every gate stays green.** `Set.Depth`'s comment first claimed the search never passes the nearest gate's ring, and `Next`'s that its fallback is unreachable, while a table row returns it. Both were found only by checking a decision record's claims against the code.
+  - **A mutant must build before its red counts.** The first "stop at the first hit" mutant did not compile, which tested the compiler and not the suite.
+
+- **Invariants this now relies on:**
+  - `Spiral` lists every chunk exactly once, ring by ring, and `SpiralIndex` inverts it exactly.
+  - `Next` never returns a created chunk or a chunk nearer than `k+1` to a gate, and it returns for every finite input and every `k ≥ 0`.
+  - `Set.Depth` equals the least hex distance from the cell to any gate chunk's centre however far that gate lies, and gates beyond its search bound add no work.

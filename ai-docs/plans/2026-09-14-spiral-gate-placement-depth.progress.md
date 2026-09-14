@@ -11,13 +11,13 @@ _Updated: 2026-09-14 10:58_
 **Spec:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.spec.md
 **Design:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.design.md
 
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** make verify (fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs import-guard) | 2026-09-14T11:08:49Z | e946162e2d19b7d7c11ae4e2c9071fcc88f36f14
 **entry_args:** 120
 
 ## Next action
 
-**Do this immediately:** Step 9.5 — append this task's entry to `ai-docs/context-status.md` with the PR locator `#TBD-at-Step-12`, and bump `ai-docs/context.md`'s Status summary if it changed.
+**Do this immediately:** Step 10 — spawn `self-review` with the closed five-item prompt (invocation line, spec, design, progress, `360c61d..HEAD`).
 
 ## Subtasks
 
@@ -51,6 +51,7 @@ Groups per the design's `## Handoff plan`.
 - **Step 9**: mutants run by the orchestrator via cp-backup, each confirmed to build before its result was read: three spiral mutants red on `TestSpiral_RingWalkTable`; `lowerBound` `+R`, "stop at first hit" (its first form did not build and was replaced by a building one) and "search until every gate is seen" red on their named tests; `spiral.go` and `depth.go` restored with no diff.
 - **Step 9**: `make verify` exit 0 at e946162 (log `tmp/step9-verify.log`): no `FAIL` line; `internal/gate` ran fresh under both `test` and `test-race`, the unchanged packages replayed from the test cache. Harness-guard scripts CI runs over docs (`check-citations.sh`, `check-ac-shape.sh`, `check-spec-shape.sh`, `check-spec-anchors.sh`, `check-harness-gaps-forge.sh`) exit 0 locally, and the relative-link check is green; hook-body shellcheck and the guard regression suites were not run because neither `settings.json` nor any guard changed.
 - **Step 9**: owner asked mid-step why the orchestrator authors code fixes after self-review instead of delegating; answered from a section-scoped read of `task/SKILL.md`, `task/reference.md`, `code-writer.md` and `delegation-rules.md`, and logged the Step 11 actor gap in `ai-docs/harness-gaps.md` 2026-09-14. Step 11 fixes in this run route by change-type: `.go` to `code-writer` Mode B, prose in-thread.
+- **Step 9.5**: appended the task's `ai-docs/context-status.md` entry with the literal PR locator `#TBD-at-Step-12`; bumped `ai-docs/context.md`'s Status heading date (its Code bullet and layout line were already updated by Group B). No `docs/DESIGN.md` §16 open question is resolved by this task; no repo-root user-facing doc is contradicted.
 
 ## GO notes
 
