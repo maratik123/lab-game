@@ -471,7 +471,7 @@ Entry shape:
   - Islands are never border cells and never a gate chunk's centre; island capacity is checked once, against the gate chunk's smaller capacity, so one valid input holds for every chunk type.
   - `maze` imports only an allowlist, so no database or store package can enter generation.
 
-## Spiral gate placement and nearest-gate depth — `internal/gate`: the spiral order, the next gate, and an exact ring-search depth (PR #TBD-at-Step-12, 2026-09-14)
+## Spiral gate placement and nearest-gate depth — `internal/gate`: the spiral order, the next gate, and an exact ring-search depth (PR #124, 2026-09-14)
 
 - **What landed:** a new package, `internal/gate`, over `internal/hexgrid` and the standard library. `Spiral` is the infinite gate-placement order from the centre chunk, and `SpiralIndex` its closed-form inverse, recovered from a chunk's own coordinates. `Next` returns the first chunk in that order that is not created and keeps at least `k+1` chunks from every gate, and refuses a negative `k` with `ErrNegativeK`. `NewSet` builds a gate `Set` (refusing a negative radius with `ErrNegativeRadius`), and `Set.Depth` returns the hex-formula cell distance from a cell to the nearest gate chunk's centre, or `(0, false)` for a set with no gate, the zero `Set` included. Property, table and internal tests, and reporting-only benchmarks. KD-41 records the package and its decisions; KD-38's consumer sentence and `context.md` now name `internal/gate`.
 
