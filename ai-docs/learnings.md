@@ -1097,3 +1097,9 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** 69747c5
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-14 — documentation — a delegate prompt licensed a comment pointer the reference ban forbids
+**What happened:** In the `/bugfix 125` run, the `code-writer` prompt for rewriting the `test-contention` Makefile comment said "You may mention the `test-contention-stop-probe` target by name". The delegate wrote "(test-contention-stop-probe exercises exactly this window)" — a bare name whose only job is to send the reader elsewhere, which the comment-reference rule bans in its review-judged half, where `make comment-refs` cannot see it. The orchestrator read the returned diff and passed the parenthetical; self-review round 1 flagged it.
+**Rule:** A delegate prompt grants no licence the comment rules withhold: check any "you may name X" offer against the review-judged half of the reference ban before sending it, and read a returned comment for pointer-shaped asides, since a green lexical gate says nothing about them.
+**Kind:** correction
+**Escalated?** no
