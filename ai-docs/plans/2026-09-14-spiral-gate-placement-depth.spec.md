@@ -24,14 +24,15 @@
 ## Key decisions
 | Question | Decision |
 |---|---|
-| Where does each ring of the spiral start: at a corner of the ring, or mid-side? | TBD |
-| Which lattice direction does the spiral start in, and which way does it turn? | TBD |
+| What does k measure? | The minimum distance in chunks between gate chunks, the gate chunks themselves not counted: any two gate chunks lie at super-lattice hex distance of at least k+1. [answer 1.3: "Да, все так по поводу k."] |
+| Where does each ring of the spiral start: at a corner of the ring, or mid-side? | Mid-side, rounding down: ring n starts at the middle chunk of a side, and where a side has no single middle chunk, at the one nearer the corner the ring's walk starts from. This is the owner's decision, not a consequence of how densely gates pack. [answer 1.3: "Давай выберем опцию старта с середины стороны (округление вниз), но не потому что более плотная решетка, а потому что таково мое решение."] |
+| Which lattice direction does the spiral start in, and which way does it turn? | The design chooses both and states them. [answer 1.2: "Design fixes"] |
 
 ## Acceptance Criteria
 | # | Criterion |
 |---|-----------|
 | AC1 | The spiral order lists every chunk of the super-lattice exactly once, starts with the centre chunk, and lists every chunk at super-lattice hex distance n from the centre before any chunk at distance n+1. [task: "k = 0 fills concentric rings"] |
-| AC2 | Within each ring, the spiral order starts and turns as recorded under Key decisions (TBD until the owner answers). [task: "with its starting direction and ring traversal stated"] |
+| AC2 | Each ring n ≥ 1 is walked once around the centre in the turn direction the design states. The walk starts on the side that leads away, in that turn direction, from the corner lying n chunks from the centre in the starting direction the design states, at the chunk ⌊n/2⌋ steps along that side from that corner. Every ring starts from the corner in the same direction. [answer 1.3: "старта с середины стороны (округление вниз)"] |
 | AC3 | With no gate chunks and the centre chunk not created, the next gate is the centre chunk. [task: "the first gate is the centre chunk"] |
 | AC4 | The next gate is the first chunk in spiral order that is not a created chunk and lies at super-lattice hex distance of at least k+1 from every gate chunk. [task: "spiral order is respected; a created chunk is never chosen; every two gates are at least k+1 chunks apart"] |
 | AC5 | For every finite set of created chunks, every finite set of gate chunks and every non-negative k, a next gate chunk is returned. [task: "the search always terminates, since the world is unbounded"] |
