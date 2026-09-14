@@ -112,13 +112,12 @@ test-fallback:
 # at an arbitrary instant: a signal landing mid-iteration, inside a test's
 # own container provisioning, can arrive after the container is created but
 # before its cleanup is registered and before its session's reaper is up,
-# and nothing then ever removes it (test-contention-stop-probe exercises
-# exactly this window). So the foreground run's completion asks the loop to
-# stop by creating a file the loop checks between iterations, and only a
-# loop still running past the bound below is signalled at all. Job control
-# stays on for that bounded fallback: it puts the loop in its own process
-# group so the kill reaches the go test inside it rather than only the
-# subshell around it.
+# and nothing then ever removes it. So the foreground run's completion asks
+# the loop to stop by creating a file the loop checks between iterations,
+# and only a loop still running past the bound below is signalled at all.
+# Job control stays on for that bounded fallback: it puts the loop in its
+# own process group so the kill reaches the go test inside it rather than
+# only the subshell around it.
 #
 # The loop's own failure is swallowed on purpose. The subshell inherits -e,
 # so without that the loop would stop at its FIRST failing iteration and the
@@ -133,11 +132,14 @@ test-fallback:
 # server directly for liveness, because a way the server dies without
 # leaving any of those signatures behind is still a way the run says nothing
 # about contention. Either kind of finding is neither a pass nor a finding:
-# the target names it and exits 2, distinct from the foreground gate's own
-# status. The two binaries below are built rather than run through `go run`
-# because a `go run` invocation flattens a non-zero child exit status to 1,
-# which would make the exit-2 half of this contract unreachable by its
-# caller.
+# the recipe names it and exits 2, distinct from the foreground gate's own
+# status, which a clean run passes through. Those are the recipe's statuses:
+# make itself exits 2 for any failing recipe, so a caller tells the two apart
+# by the status make prints on its error line and by the classifier's own
+# line, never by make's exit status. The two binaries below are built rather
+# than run through `go run` because a `go run` invocation flattens a non-zero
+# child exit status to 1, which would make the recipe's exit-2 status
+# unreachable.
 #
 # The target's OWN output — the granted ceiling the
 # wrapper echoes, the client count and the pinned parallelism — is captured
@@ -178,9 +180,11 @@ test-contention:
 	exit "$$status"
 
 # Runs test-contention with its load loop stopped, on purpose, inside a load
-# binary's container provisioning, and exits non-zero when that stop leaves a
-# container or volume of the run's session behind (exit 2 when the window was
-# not hit, which proves nothing either way). Needs podman; not part of verify.
+# binary's container provisioning, and fails when that stop leaves a container
+# or volume of the run's session behind. The probe prints one verdict line —
+# GREEN, RED, or INCONCLUSIVE when it could establish neither — and exits 0, 1
+# or 2 accordingly; make exits 2 for either failure, so the verdict line is
+# what tells them apart. Needs podman; not part of verify.
 test-contention-stop-probe:
 	bash ai-docs/scripts/probe-contention-stop.sh
 

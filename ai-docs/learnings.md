@@ -1090,3 +1090,10 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** e7835b8
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-14 — tooling — documented a make target's exit statuses without running make
+**What happened:** In the `/bugfix 125` run, the new `test-contention-stop-probe` target's Makefile comment and `ai-docs/go-test-conventions.md` said the target exits 1 on RED and 2 when inconclusive. GNU make exits 2 for every failing recipe, so a RED reaches the caller as 2 as well. The evidence was already in the trace's own red-check record — `make: *** [...] Error 1` followed by `probe exit=2`, annotated there as make's own status — yet the documentation was written from the script's exit codes. Self-review round 1 caught it with a two-recipe control makefile; the same false contract had been standing in the pre-existing `make test-contention` text.
+**Rule:** Before writing what exit status a wrapper tool (make, `go run`, `xargs`, `timeout`) hands to its caller, run a control recipe that exits 1 and 2 through it and read the caller-side status; document a script's own statuses as the script's, and name what the caller can actually tell apart.
+**at:** 69747c5
+**Kind:** correction
+**Escalated?** no
