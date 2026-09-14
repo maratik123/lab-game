@@ -14,15 +14,20 @@
 # status means the call proceeds.
 #
 # Known false positive, asserted deliberately: a search whose pattern text
-# names stat or wc beside a covered path is BLOCKED, because the guard matches
-# command text; the pattern can be put in a file and read with grep -f.
+# puts wc, du or stat right after one of ; & | ( { beside a covered path is
+# BLOCKED, because the guard matches command text; the pattern can be put in
+# a file and read with grep -f. A plain quoted 'stat -c' is not matched.
 #
 # Known misses, asserted so that closing one is a deliberate change: a line
 # count through awk, through grep -c with an empty pattern, and through ls -l;
-# wc behind time, if, command, backticks or bash -c; find -exec wc; and any
-# text appended after the Sub-check 9 recipe, whose exemption is a substring
-# match, are ALLOWED. The guard carries the prohibition to the common
-# spellings; it is not a sandbox.
+# wc behind time, if, command, backticks or bash -c; and find -exec wc are
+# ALLOWED. The guard carries the prohibition to the common spellings; it is
+# not a sandbox.
+#
+# The Sub-check 9 recipe passes without an exemption: its brace group ends
+# the find with ;, which the xargs branch does not cross. Its one-line and
+# multi-line forms are both fixtures, so a regex change that starts refusing
+# the recipe fails here, and text appended after it is refused like any other.
 #
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
@@ -90,11 +95,14 @@ BLOCK wc -l .claude/skills/*/SKILL.md .claude/skills/*/reference.md
 BLOCK for f in x; do wc -c AGENTS.md; done
 # --- must block: the accepted false positive (see the header) ---
 BLOCK grep -rn -E '(^|[^A-Za-z])(wc -[clmL]|du -[bsh]|stat -c)' AGENTS.md
+# --- must block: a measurement appended after the Sub-check 9 recipe ---
+BLOCK { find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md'; } | xargs wc -c; wc -c AGENTS.md
 # --- must allow: the two audit recipes, verbatim ---
 ALLOW wc -l .claude/skills/*/SKILL.md
 ALLOW { find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md'; printf '%s\n' ai-docs/code-style.md ai-docs/doc-convention.md ai-docs/context.md ai-docs/agent-writing-style.md ai-docs/corrections-log.md; } | xargs wc -c
 # --- must allow: innocent commands containing the substrings ---
 ALLOW grep -rn 'wc -c' AGENTS.md
+ALLOW grep -rn 'stat -c' AGENTS.md
 ALLOW wc -l ai-docs/learnings.md
 ALLOW wc -l .claude/skills/task/scripts/test-append-task-run.sh
 ALLOW grep -rn 'Propagation' .claude/skills | wc -l
@@ -114,16 +122,23 @@ ALLOW command wc -c AGENTS.md
 ALLOW echo `wc -c AGENTS.md`
 ALLOW bash -c "wc -c AGENTS.md"
 ALLOW find . -name AGENTS.md -exec wc -c {} +
-ALLOW { find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md'; } | xargs wc -c; wc -c AGENTS.md
 FIXTURES
 
-# Both audit recipes must survive as exemptions byte-for-byte.
-for recipe in "'wc -l .claude/skills/*/SKILL.md') exit 0" \
-              "find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md'"; do
-  grep -qF -- "$recipe" <<<"$body" && continue
-  printf 'FAIL: audit recipe exemption no longer present verbatim: %s\n' "$recipe"
+# The Sub-check 9 recipe in its multi-line form, as the audit checklist prints it.
+recipe=$(cat <<'RECIPE'
+{ find AGENTS.md CLAUDE.md .claude/rules .claude/agents .claude/skills -name '*.md';
+  printf '%s\n' ai-docs/code-style.md ai-docs/doc-convention.md \
+                 ai-docs/context.md ai-docs/agent-writing-style.md \
+                 ai-docs/corrections-log.md; } | xargs wc -c
+RECIPE
+)
+check ALLOW "$recipe"
+
+# K1's exemption must survive byte-for-byte.
+grep -qF -- "'wc -l .claude/skills/*/SKILL.md') exit 0" <<<"$body" || {
+  echo "FAIL: K1 exemption no longer present verbatim"
   failures=$((failures + 1))
-done
+}
 
 if [ "$failures" -eq 0 ]; then
   echo "size-measure guard: all fixtures behave as specified"

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Regression suite for the PreToolUse pipe-status hook guard.
 #
-# The guard blocks a command that reads $? in the statement right after a
-# pipeline, because bash reports the LAST pipeline stage's exit status: head,
+# The guard blocks the common spelling of a command that reads $? in the
+# statement after a spaced pipe, because bash reports the LAST pipeline
+# stage's exit status: head,
 # cut, sed and tee succeed on any input, so a no-match or an error from the
 # stage that was meant to be measured records as a clean result.
 #
@@ -17,9 +18,10 @@
 # pattern, followed by a read of $?, is BLOCKED. The guard matches command
 # text, not shell grammar, and a loud refusal costs one re-spelling.
 # Known misses, asserted so that closing one is a deliberate change: a status
-# read joined to the pipeline with && instead of ;, an unspaced pipe, a |&
-# pipe, a pipe that ends its line, and a pipeline continued with a backslash
-# are ALLOWED. The guard matches the common spelling; it is not a parser.
+# read joined to the pipeline with && or || instead of ;, an unspaced or
+# half-spaced pipe, a |& pipe, a later stage whose own text contains ;, a
+# pipe that ends its line, and a pipeline continued with a backslash are
+# ALLOWED. The guard matches the common spelling; it is not a parser.
 #
 # Exit 0 = every fixture behaves as specified. Exit 1 = regression.
 
@@ -97,6 +99,9 @@ ALLOW go build ./... > tmp/b.log 2>&1; echo "build=$?"
 ALLOW grep foo AGENTS.md | head && echo "ok $?"
 ALLOW grep foo AGENTS.md|head; echo "exit=$?"
 ALLOW grep foo AGENTS.md |& head; echo "exit=$?"
+ALLOW grep foo AGENTS.md |head; echo "exit=$?"
+ALLOW grep foo AGENTS.md | head || echo "exit=$?"
+ALLOW grep foo AGENTS.md | sed 's/;/ /'; echo "exit=$?"
 FIXTURES
 
 # A pipeline on one line and the status read on the next is the same defect:

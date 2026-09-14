@@ -66,7 +66,7 @@ a character count read lower than the gate does.
 - `ai-docs/agent-writing-style.md`
 - `ai-docs/corrections-log.md`
 
-This list and the recipe are one surface: a change to either updates the other in the same PR per the Propagation Rule. There is no upstream copy to defer to. The size-measurement `PreToolUse` hook in `.claude/settings.json` carries the covered set as a path pattern, K1's command as an exact-match exemption and this recipe's `find` clause as a substring exemption — a change to any of the three updates the hook and `ai-docs/scripts/test-size-measure-guard.sh` in the same PR.
+This list and the recipe are one surface: a change to either updates the other in the same PR per the Propagation Rule. There is no upstream copy to defer to. The size-measurement `PreToolUse` hook in `.claude/settings.json` carries the covered set as a path pattern and K1's command as an exact-match exemption; this recipe passes it without one, and the hook's suite pins both of the recipe's forms — a change to the covered set, this recipe or K1's command updates the hook and `ai-docs/scripts/test-size-measure-guard.sh` in the same PR.
 
 **Extraction model.** The canonical pattern for `AGENTS.md`: verbose subsections move into `ai-docs/<topic>.md` reference pages with anchored links from the source file. `/ai-audit` applies the same model in both its extraction passes — K1's routine proposal and M9's mandatory one.
 
