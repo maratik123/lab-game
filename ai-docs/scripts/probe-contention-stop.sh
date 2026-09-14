@@ -32,9 +32,12 @@ window_ceiling_s=300
 # session's reaper before it counts: longer than the reaper's default
 # ten-second reconnection timeout, with room for the removal itself.
 settle_ceiling_s=60
-# How long after the window opens the session's volumes are recorded: both of
-# the binary's parallel provisionings have created their containers by then.
-snapshot_delay_s=2
+# How often the session's volumes are recorded, from the moment the window
+# opens until the target returns. One late look is not enough: once the stop
+# no longer kills them, the tests in flight stop and remove their own
+# containers within seconds, and a look taken while they do records less than
+# the session had.
+record_interval_s=0.2
 probe_prefix=lab-game-exists-probe-
 
 usage() {
@@ -102,7 +105,7 @@ session_volumes() {
   local cid name state reaper
   while read -r cid name state reaper; do
     [ "$reaper" = true ] && continue
-    podman inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\n"}}{{end}}{{end}}' "$cid"
+    podman inspect --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\n"}}{{end}}{{end}}' "$cid" </dev/null 2>/dev/null
   done < <(session_containers "$1") | sed '/^$/d'
 }
 
@@ -132,11 +135,19 @@ main() {
     sleep 0.05
   done
 
-  local stop_ns='' create_ns='' id='' sid='' volumes=()
+  local stop_ns='' create_ns='' id='' sid='' volumes=() v
+  local -A seen=()
   if [ -f "$hit" ]; then
     read -r stop_ns create_ns id sid <"$hit"
-    sleep "$snapshot_delay_s"
-    mapfile -t volumes < <(session_volumes "$sid")
+    while :; do
+      while read -r v; do
+        [ -n "${seen[$v]:-}" ] && continue
+        seen[$v]=1
+        volumes+=("$v")
+      done < <(session_volumes "$sid")
+      kill -0 "$make_pid" 2>/dev/null || break
+      sleep "$record_interval_s"
+    done
   fi
   wait "$make_pid" || make_status=$?
   echo "probe: make test-contention exited $make_status; its output is in $dir/make.log"
@@ -152,7 +163,7 @@ main() {
     inconclusive "the stop was requested $(((stop_ns - start_ns) / 1000000)) ms after the container started, outside the window"
   fi
 
-  local deadline=$((SECONDS + settle_ceiling_s)) left=() vleft=() cid name state reaper v
+  local deadline=$((SECONDS + settle_ceiling_s)) left=() vleft=() cid name state reaper
   while :; do
     left=()
     vleft=()
