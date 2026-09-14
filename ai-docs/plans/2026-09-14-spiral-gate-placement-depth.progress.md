@@ -11,13 +11,13 @@ _Updated: 2026-09-14 10:58_
 **Spec:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.spec.md
 **Design:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.design.md
 
-**current_step:** Step 11 — review fixes complete (Round 1)
+**current_step:** Step 10 — self-review REJECT (Round 2), addressing findings
 **last_passed_gate:** golangci-lint run | 2026-09-14T11:29:59Z | f82feb8
 **entry_args:** 120
 
 ## Next action
 
-**Do this immediately:** Step 10 — spawn a cold `self-review` for Round 2 with the closed five-item prompt (invocation line, spec, design, progress, `360c61d..HEAD`).
+**Do this immediately:** Step 11 — verify SR2-1 … SR2-3; route SR2-1 (a `.go` doc comment) to `code-writer` Mode B with a cost-claim sweep of `internal/gate`; correct SR2-2 and SR2-3 in-thread by new append-only entries.
 
 ## Subtasks
 
@@ -56,6 +56,7 @@ Groups per the design's `## Handoff plan`.
 - **Step 11 (Round 1)**: every open finding verified against the code before routing (SR1-1 call sites of `delta` / `ringChunk` and the absent `Next` disclaimer; SR1-2 reproduced at radius 6 — ring 1 bound 4 vs least 7, ring 3 24 vs 26, `C` at ring 13 walk position 1; SR1-4/5/6 lines and `Lattice.CellCount` present). All six are `.go` fixes, routed to a `code-writer` Mode B delegate with a sweep of the package's other doc comments in scope; a warm follow-up refined `Next`'s contract sentence to the nil error and dropped `ringChunk`'s int64 narration. No finding objected; no spec or design amendment.
 - **Step 11 (Round 1)**: fix-round measurement at f82feb8 — SR1-1: `delta(` only in `ringChunk`, `ringChunk(` only in `Spiral` and `ringChunksAround`, no disclaimer pointer; SR1-2: `lowerBound`'s comment states a lower bound, attainment sentence gone, `+R` mutant on the new `lowerBound(lattice, ring)` signature built and went red on `TestLowerBound_HoldsAndIsAttained`; SR1-4, SR1-5, SR1-6 greps empty; `go build ./...`, `golangci-lint run`, `go test -count=1 ./internal/gate/` green; coverage ratchet holds on commit.
 - **Step 11 (Round 1)**: the Mode B delegate found `tmp/sr1-bak/*.go` (self-review's mutation backups) breaking `go build ./...` and renamed them `.go.bak`; recurrence logged in `ai-docs/harness-gaps.md`. Two `ai-docs/learnings.md` entries: the recurring false/narrating doc comments, and the orchestrator's fix scoped to the two reported comments without a neighbour sweep.
+- **Step 10**: self-review Round 2 REJECT — one major (SR2-1, `Set`'s cost claim) and two minor (SR2-2 harness-gaps entry, SR2-3 learnings entry) open, three accepted (SR2-A1 … SR2-A3); all six Round 1 rows hold. Re-litigation share: no register row re-opened; SR2-3 alone cites Round 1, 1 of 3 raised rows (below 50%); cap 3, continuing.
 
 ## GO notes
 
@@ -98,6 +99,12 @@ Groups per the design's `## Handoff plan`.
 | SR1-A2 | 1 | — | accepted@1 — `bench_test.go:17-19` carries `(go test -run=^$ -bench=. ./internal/gate/)`, the same form as `internal/maze/bench_test.go:9-12`; `make comment-refs` passes; not raised | `make comment-refs` → exit 0 |
 | SR1-A3 | 1 | — | accepted@1 — `**parent_skill:**` absent from the progress header: `ai-docs/templates/progress-format.md:97` requires it only when a nested skill writes into a parent's file; this is `/task`'s own file | `rg -n parent_skill ai-docs/templates/progress-format.md` |
 | SR1-A4 | 1 | — | accepted@1 — `TestSpiral_RingWalkTable` (3 cases, no `t.Run`, no case names) keys each case by ring and names the ring in every failure message; below severity floor | read `internal/gate/spiral_test.go:111-174` |
+| SR2-1 | 2 | major | open | `grep -n 'cost no more' internal/gate/depth.go` → `6:`; then a temporary `package main` under `tmp/_probe/<name>/` that builds `gate.NewSet(hexgrid.Lattice{Radius: r}, []hexgrid.Chunk{{}})` and, for the cell `lat.Center(hexgrid.Chunk{Q: n, R: 0})`, prints `Set.Depth` beside `1 + 3g(g+1)` with `g = ChunkDistance(Locate(cell), centre)` — the chunk count of rings `0..g`, every one of which the search looks up before it can find the gate. At 1e33876: `R=0 chunk=(100,0) depth=100 … minChunkLookups=30301`, `R=6 chunk=(100,0) depth=1300 … minChunkLookups=30301`, `R=6 chunk=(300,0) depth=3900 … minChunkLookups=270901` |
+| SR2-2 | 2 | minor | open | `grep -n -i 'mutation backup' AGENTS.md` → `98:` "a mutation backup or a throwaway probe written there by any other tool … goes to `tmp/` all the same"; `grep -n -E '^### 2026-09-1[34] — the (designated scratch|scratch-Go)' ai-docs/harness-gaps.md` → one 2026-09-13 entry and two 2026-09-14 entries |
+| SR2-3 | 2 | minor | open | `git show 1dcb265:internal/gate/next.go` → `52: for ch := range Spiral() {`; `git show 1dcb265:internal/gate/spiral.go` → `60: yield(ringChunk(n, p))` — at the commit the learnings entry describes, `Next` reached `ringChunk` through `Spiral` |
+| SR2-A1 | 2 | — | accepted@2 — `Set.Depth`'s "It stops at the first ring beyond which no chunk centre can lie nearer to cell than the best distance already found" describes the stop rule, but the sentence ends in the caller-visible cost contract AC9 asks for ("the rings it visits are bounded by that distance and the lattice radius, never by the number of gates"), and that contract is true (`TestSearch_StaysWithinBound`); below severity floor | read `internal/gate/depth.go:32-37` |
+| SR2-A2 | 2 | — | accepted@2 — `depthSearch`'s "so the internal test suite can check the stated search bound directly rather than through timing" states why an unexported function exposes `lastRing`; it neither narrates the search nor names a place; below severity floor | read `internal/gate/depth.go:43-46` |
+| SR2-A3 | 2 | — | accepted@2 — `context-status.md`'s doc-comment trap bullet names only the first two false comments, not round 1's further ones; incomplete, not false, and the two 2026-09-14 learnings entries carry the rest | read `ai-docs/context-status.md` § Spiral gate placement and nearest-gate depth → Traps found |
 
 ## Files touched
 
@@ -163,3 +170,39 @@ Groups per the design's `## Handoff plan`.
 **Not raised (register `accepted@1`):** SR1-A1 (the equivalent mutant), SR1-A2 (the benchmark command comment follows the `maze` precedent and passes the gate), SR1-A3 (`parent_skill` not required for `/task`'s own file), SR1-A4 (`TestSpiral_RingWalkTable` without `t.Run`).
 
 **Routing note:** rows 1–3 are comment-only fixes in `internal/gate/*.go`, not a Spec or Design Amendment trigger. The design and KD-41 state these facts correctly; only the code comments contradict them.
+
+## Self-Review (Round 2)
+
+**Verdict:** REJECT
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | internal/gate/depth.go:5-9 | major | SR2-1. The `Set` doc comment says the set is "indexed once so that repeated Depth queries against the same lattice radius cost no more than the distance to the nearest gate, never the number of gates in the snapshot". The first half is false. The work of a query is chunk lookups over every ring from 0 to at least the nearest gate's ring `g`, which is `1 + 3g(g+1)` lookups. That grows with the square of the distance, not linearly. Probe at 1e33876, with one gate at the centre chunk and the cell at the centre of chunk `(n, 0)`: `R=0 chunk=(100,0) depth=100 … minChunkLookups=30301`, `R=6 chunk=(100,0) depth=1300 … minChunkLookups=30301`, `R=6 chunk=(300,0) depth=3900 … minChunkLookups=270901`. This is AC9's cost contract stated wrongly, and it contradicts the design's § Risks ("`Depth` costs chunk lookups over the hexagon of radius `S(cell)`, which grows with distance from the nearest gate"). Whether depth is cached, which is #29's open question, is decided by reading exactly this cost. Round 1's neighbour sweep missed it. `Set.Depth`'s own comment, KD-41 and the `context-status.md` entry all bound the **rings** visited, which is true, so only this comment is wrong. Fix (comment only, not an amendment trigger): state the bound as `Depth`'s comment does, by the distance to the nearest gate and the lattice radius, never by the gate count, or drop the cost clause from `Set`'s comment. | ⬜ Open |
+| 2 | ai-docs/harness-gaps.md:519-524 | minor | SR2-2. Two claims in the new entry are false. (a) "This is the third instance in one run": only two of the three are in this run. The first is the 2026-09-13 entry, whose own heading shows it came before this run; the in-run instances are the design probe and the reviewer's backups. (b) "Nothing tells a mutant runner where a cp-backup of a `.go` file may live", and "The recipe `AGENTS.md` § Workflow gives … names no location": `AGENTS.md:98` (§ Build & Test) does name one. It says "a mutation backup or a throwaway probe written there by any other tool … goes to `tmp/` all the same". That instruction sends a `.go` backup into the walked directory, so the diagnosis names the wrong gap: the gap is not a missing location but a named location that is unsafe for a `.go` file. The proposed edit still fits. Fix: correct both sentences so the supervisor reading the log targets `AGENTS.md:98`'s sentence. | ⬜ Open |
+| 3 | ai-docs/learnings.md:1070 | minor | SR2-3. The new entry says "`ringChunk`'s [comment] said `SpiralIndex` and `Next` share it — neither calls it". The part about `Next` misreports the defect. At 1dcb265 `Next` ranges over `Spiral()` (`next.go:52`), and `Spiral` calls `ringChunk` (`spiral.go:60`), so `Next` did share the ring walk. SR1-1 raised `SpiralIndex` alone. The log is append-only, so the fix is a new correcting entry, never an edit of this one. | ⬜ Open |
+
+**Minor and nit items without a row:** none beyond the three `accepted@2` register rows (SR2-A1, SR2-A2, SR2-A3).
+
+**What was checked.**
+- **Spawn prompt:** the five permitted items only (invocation line, `Spec:`, `Design:`, `Progress:`, `360c61d..HEAD`); no contamination.
+- **Register, round 1 rows** (re-examined over the f82feb8 diff and the tree at 1e33876):
+  - SR1-1 holds: `delta(` occurs only inside `ringChunk` (`spiral.go:38-39`), and `ringChunk(` only in `Spiral` (`spiral.go:59`) and `ringChunksAround` (`depth.go:75`). A grep for comments naming other users (`share|both take|Next.s own|disclaimer|independent derivation|translating`) finds nothing; its control line matched. `ringChunk`'s comment now states its own seam disclaimer.
+  - SR1-2 holds: `lowerBound`'s comment now states only a lower bound, which is true. I rebuilt the `+R` mutant against the new `lowerBound(lattice, ring)` and confirmed it builds. It went red on `TestLowerBound_HoldsAndIsAttained` (`radius 1 ring 0: cell {0 0} to chunk {0 0} centre distance 0 < lower bound 1`).
+  - SR1-3 holds: `Next`'s fallback narration is replaced by the contract sentence "For k >= 0, Next returns a nil error." The narration and bare-name pointers in `farEnough`, `SpiralIndex` and `ringChunksAround` are gone.
+  - SR1-4, SR1-5 and SR1-6 hold: each grep is empty and each control line matched. `sides` is named, and `lowerBound` uses `Lattice.CellCount`, whose value `3R²+3R+1` I read at `internal/hexgrid/lattice.go:15-18`.
+  - None of the f82feb8 changes touches a spec or design file.
+- **Spec conformance, AC1–AC9:** the saved `go test -count=1 -race -v ./internal/gate/` log at 1e33876 (`tmp/sr2-gate-test.log`) ends in `ok` and has exactly one `--- PASS` line for each of the 16 AC Status tests, plus `TestLowerBound_HoldsAndIsAttained`, `TestSetDepth_NoGateReportsFalse`, `TestNewSet_RefusesNegativeRadius` and `TestGuard_DeterminismPredicates`; the grep's control line matched. The fix commit adds no scope.
+- **Design conformance:** f82feb8 changes no behaviour. `lowerBound`'s signature change (`r` becomes `lattice`) and the `sides` constant are internal to D5 and D2, and the design names neither signature. The GO notes G1 and G2 are unchanged (folded at 360c61d), and the design file is unchanged in the range.
+- **Mutants,** each built before its result was read, with backups kept in the session scratchpad outside the module and the tree restored afterwards (`git status --porcelain internal/gate` empty):
+  - `lowerBound` `+R` → `TestLowerBound_HoldsAndIsAttained` red.
+  - "stop at first hit" (`if found {`) → `TestSetDepth_Table/a_farther-ring_gate_is_nearer_in_cells` red.
+- **Gates at 1e33876:** `go build ./...`, `go vet ./internal/gate/...`, `golangci-lint run ./...` (0 issues), `golangci-lint fmt -d`, `make comment-refs` and `make file-limits` exit 0 (`tmp/sr2-gates.log`). `check-ac-shape.sh`, `check-spec-shape.sh`, `check-spec-anchors.sh` and `check-harness-gaps-forge.sh` exit 0. A find for `*.go` and `go.mod` under `tmp/` outside `_`-prefixed directories is empty; round 1's backups are now `tmp/sr1-bak/*.go.bak`.
+- **Safety and domain invariants:** f82feb8 adds no `panic(`, no goroutine and no error path. Nothing ledger, scheduler, outbound-send, migration or secret related is in the range. `sides` is a geometric constant, not a balance value.
+- **Doc comments (DOC-1–DOC-4),** every comment in `internal/gate` at 1e33876: name-first summaries and a package comment are present. The one false claim is row 1. `Depth`'s stop-rule sentence and `depthSearch`'s rationale were examined and accepted (SR2-A1, SR2-A2).
+- **Prose added since round 1 (Pattern 1):**
+  - The two 2026-09-14 learnings entries: the `lowerBound` figures, the ring-13 position-1 attainment and the narration list match round 1's probe and table. The false part is row 3.
+  - The harness-gaps entry: `tmp/sr1-bak` holding three `.go.bak` files is true. The false parts are row 2.
+  - `context-status.md`'s #120 entry: the "rings it visits are bounded by the returned depth and the radius" sentence is true (SR2-A3).
+- **Objections:** none were recorded in round 1, so there is nothing to evaluate.
+
+**Routing note:** row 1 is a comment-only fix in `internal/gate/depth.go`. The design's § Risks, KD-41 and `Set.Depth`'s own comment already state the cost correctly, so it is not a Spec or Design Amendment trigger. Rows 2 and 3 are prose fixes to log surfaces; row 3 needs a new entry, since the learnings log is append-only.
