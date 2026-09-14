@@ -11,8 +11,8 @@ _Updated: 2026-09-14 10:29_
 **Spec:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.spec.md
 **Design:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.design.md
 
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** go build ./... | 2026-09-14T10:29:29Z | 360c61d385a81ddc0ec85dd6e83343f66a44d4cc
+**current_step:** Step 8 — subtask 1 of 5 complete
+**last_passed_gate:** golangci-lint run ./internal/gate/... | 2026-09-14 | a2fa3d8
 **entry_args:** 120
 
 ## Next action
@@ -23,9 +23,9 @@ _Updated: 2026-09-14 10:29_
 
 Groups per the design's `## Handoff plan`.
 
-- [ ] 1. Group A — package scaffold and the spiral order (`internal/gate`: doc, errors, spiral, main_test, guards_test, spiral tests)  ← CURRENT
-- [ ] 2. Group A — the next gate and its tests
-- [ ] 3. Group A — `Set`, `NewSet`, `Depth`, with the external tests and the internal AC9 test
+- [x] 1. Group A — package scaffold and the spiral order (`internal/gate`: doc, errors, spiral, main_test, guards_test, spiral tests) — commit a2fa3d8
+- [x] 2. Group A — the next gate and its tests — commit (pending)
+- [ ] 3. Group A — `Set`, `NewSet`, `Depth`, with the external tests and the internal AC9 test  ← CURRENT
 - [ ] 4. Group A — the reporting-only benchmark
 - [ ] 5. Group B — documentation (KD-41, KD-38 consumer sentence, `context.md` layout line)
 
@@ -35,6 +35,7 @@ Groups per the design's `## Handoff plan`.
 - **Steps 1–5**: orchestrator's round-1 verification of the ring-start question used an invalid regularity instrument (`(q-r) mod 3`); corrected by a coset test before the question reached the owner — logged in `ai-docs/learnings.md` 2026-09-14.
 - **Step 6**: design-writer's scratch probe under `tmp/spiralprobe` was walked by `./...` and failed module-wide lint; moved to `tmp/_spiralprobe` with a symlink while the design cited it, deleted once round 2 dropped the citations — recurrence logged in `ai-docs/harness-gaps.md` 2026-09-14.
 - **Step 7**: design-review round 1 ITERATE (three major, two minor); round 2 GO with one minor and one recommendation, both design-internal, folded by design-writer at 360c61d; design-review not re-run.
+- **Step 8, subtask 1**: the pre-commit comment-refs gate (run over the staged diff) caught a decision-anchor ("D9") in a `//nolint` comment and a package-qualified symbol (`hexgrid.Chunk.Neighbor`) in a test-helper doc comment that `make comment-refs` (run before staging) had not yet seen against these files; both reworded to name no decision id and no cross-package symbol, and the commit succeeded on retry.
 
 ## GO notes
 
@@ -52,12 +53,12 @@ Groups per the design's `## Handoff plan`.
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
+| AC1 | PASS (spiral_test.go) |
+| AC2 | PASS (spiral_test.go) |
+| AC3 | PASS (next_test.go) |
+| AC4 | PASS (next_test.go) |
+| AC5 | PASS (next_test.go) |
+| AC6 | PASS (next_test.go) |
 | AC7 | NOT_TESTED |
 | AC8 | NOT_TESTED |
 | AC9 | NOT_TESTED |
@@ -69,4 +70,5 @@ Groups per the design's `## Handoff plan`.
 
 ## Files touched
 
-- (none yet)
+- `internal/gate/doc.go`, `internal/gate/errors.go`, `internal/gate/spiral.go`, `internal/gate/spiral_test.go`, `internal/gate/main_test.go`, `internal/gate/guards_test.go` (subtask 1, commit a2fa3d8)
+- `internal/gate/next.go`, `internal/gate/next_test.go` (subtask 2)
