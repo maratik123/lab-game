@@ -37,4 +37,4 @@ The full map of `ai-docs/**` and the harness's supporting pages. `AGENTS.md` § 
 | [`ai-docs/harness-gaps.md`](harness-gaps.md) | Harness diagnoses — the second learning log, read outside this repository by the harness supervisor; an entry's `**Forge:**` / `**Closed by:**` field names the forge or the pull request that dealt with it, and only a forge writes either (see AGENTS.md § *Learning Log*) |
 | [`ai-docs/harness-restart-metrics.md`](harness-restart-metrics.md) | Restart/recovery measurements behind the harness's flow decisions |
 
-**Reading order for a newcomer to this repo:** `context.md` → `docs/DESIGN.md` §0–§3 → `domain-invariants.md` → `key-decisions.md`. Everything else is read when the task touches it.
+**Reading order for a newcomer to this repo:** `context.md` → `~/lab-private/DESIGN.md` §0–§3 → `domain-invariants.md` → `key-decisions.md`. Everything else is read when the task touches it.

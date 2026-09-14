@@ -138,7 +138,7 @@ Every regression suite must pass `shellcheck -s bash` and run green before `git 
 
 **A filtered-out job is not a passing job.** `dorny/paths-filter` decides what runs; a new artefact class must be added to its filter in the same PR that introduces it, or its gate silently stops running.
 
-**No check is required at the merge button** — GitHub refuses rulesets on a private repository on the free plan (`AGENTS.md` § Permissions). CI reports; discipline enforces.
+**No check is required at the merge button** unless a ruleset requires one — `gh api repos/maratik123/lab-game/rulesets` decides, not this page (`AGENTS.md` § Permissions). CI reports; discipline enforces.
 
 ## Dependabot — `.github/dependabot.yml`
 

@@ -31,6 +31,16 @@
             "statusMessage": "Read session rules..."
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"$HOME/lab-private/DESIGN.md\" ] && exit 0; echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"DESIGN CORPUS ABSENT: ~/lab-private/DESIGN.md does not exist on this machine. A task that touches a designed mechanic stops and asks the owner before anything else; it never proceeds from a remembered, quoted or historical copy (AGENTS.md > Project).\"}}'; exit 0",
+            "timeout": 10,
+            "statusMessage": "Checking the design corpus..."
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -39,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cmd=$(jq -r '.tool_input.command // empty'); if echo \"$cmd\" | grep -qE '(^|[ ;&|`])git[[:space:]]+commit\\b'; then branch=$(git branch --show-current 2>/dev/null); if [ \"$branch\" = \"main\" ]; then printf 'BLOCKED: git commit on main is forbidden.\\n\\nRecovery (no commits yet on main):\\n  git checkout -b feat/YYYY-MM-DD-name\\n\\nRecovery (commits already on main, not yet pushed):\\n  git stash                                           # save uncommitted work\\n  git checkout -b feat/YYYY-MM-DD-name                 # branch carries the commits\\n  git checkout main                                    # back to main\\n  git reset --soft origin/main && git restore --staged .   # rewind without losing work\\n  git checkout feat/YYYY-MM-DD-name && git stash pop   # resume on feature branch\\n\\nNever use git reset --hard. Full procedure: AGENTS.md > Workflow > AXIOM 1.\\nNote: origin enforces nothing on this repo (private, free plan) -- this hook is the enforcement.\\n' >&2; exit 2; fi; fi",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if echo \"$cmd\" | grep -qE '(^|[ ;&|`])git[[:space:]]+commit\\b'; then branch=$(git branch --show-current 2>/dev/null); if [ \"$branch\" = \"main\" ]; then printf 'BLOCKED: git commit on main is forbidden.\\n\\nRecovery (no commits yet on main):\\n  git checkout -b feat/YYYY-MM-DD-name\\n\\nRecovery (commits already on main, not yet pushed):\\n  git stash                                           # save uncommitted work\\n  git checkout -b feat/YYYY-MM-DD-name                 # branch carries the commits\\n  git checkout main                                    # back to main\\n  git reset --soft origin/main && git restore --staged .   # rewind without losing work\\n  git checkout feat/YYYY-MM-DD-name && git stash pop   # resume on feature branch\\n\\nNever use git reset --hard. Full procedure: AGENTS.md > Workflow > AXIOM 1.\\nNote: origin enforces nothing unless a ruleset requires it (AGENTS.md > Permissions) -- this hook is the enforcement.\\n' >&2; exit 2; fi; fi",
             "timeout": 10,
             "statusMessage": "Checking branch before commit..."
           },
@@ -167,9 +177,13 @@
     ]
   },
   "permissions": {
+    "additionalDirectories": [
+      "~/lab-private"
+    ],
     "allow": [
       "Edit(./**)",
       "Edit(.claude/**)",
+      "Edit(~/lab-private/**)",
       "Bash(go *)",
       "Bash(gofmt *)",
       "Bash(golangci-lint *)",

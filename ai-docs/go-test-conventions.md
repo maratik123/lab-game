@@ -29,7 +29,7 @@ Names describe behaviour (`rejects_overdraft`), not mechanics (`test2`). `t.Para
 
 ## Determinism is testable — assert exactly
 
-Generation, combat and trail replay take an explicit seed and are pure (`docs/DESIGN.md` §2.2.2, §4). So:
+Generation, combat and trail replay take an explicit seed and are pure (`~/lab-private/DESIGN.md` §2.2.2, §4). So:
 
 - Assert exact output, not "roughly". A fuzzy assertion on a deterministic function hides the regression it was written to catch.
 - Keep a **golden combat log** in the repository. `combat()` is a pure function precisely so the log can be snapshotted; the freedom to rewrite the combat system later depends on that snapshot existing now.
@@ -51,7 +51,7 @@ The ledger's invariants are database behaviour — the zero-sum check, the `CHEC
 
 ## The scheduler and the FSM
 
-- Every FSM edge gets a test, **including the timer edges whose guard fails** — a stale task firing late is expected traffic, not an error path (`docs/DESIGN.md` §3.5).
+- Every FSM edge gets a test, **including the timer edges whose guard fails** — a stale task firing late is expected traffic, not an error path (`~/lab-private/DESIGN.md` §3.5).
 - Idempotency has its own tests: the same Telegram update delivered twice creates one basis document and one set of postings; a stale `seq` in `callback_data` redraws instead of acting.
 - Time is injected, never read from the wall clock, so a timer edge can be tested without sleeping.
 

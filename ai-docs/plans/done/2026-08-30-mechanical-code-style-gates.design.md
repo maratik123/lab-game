@@ -1,4 +1,4 @@
-# Design: Mechanical code-style gates ported from claude-alduna
+# Design: Mechanical code-style gates ported from a donor project
 
 **Issue:** none — the owner declined a tracking issue (spec § header). Spec: `ai-docs/plans/2026-08-30-mechanical-code-style-gates.spec.md`
 **Date:** 2026-08-30
@@ -53,7 +53,7 @@ Three sub-decisions, each measured rather than assumed:
 
 - **Exit status propagates through `find -exec … +`** — the gate is not piped, so nothing masks it `[measured: the run above returned exit=1 from find itself; with the offenders removed, exit=0; the `-path ./.git -prune -o` form propagates identically, tested with an offender present → exit=1]`. POSIX additionally specifies that `find` returns non-zero if *any* `-exec … +` invocation does, which covers a future ARG_MAX split.
 - **The program is POSIX awk, so `mawk` on `ubuntu-latest` runs it** — no gawk extension is used `[measured: gawk --posix and gawk --traditional both reproduce the exit-1/exit-0 results above; mawk is not installed on this machine (command -v mawk → empty), so the runner itself is discharged by the first CI Lint job]`.
-- **Records vs `\n` bytes.** `awk` counts a final newline-less line as a record; alduna counts `\n` bytes. The two can differ by one only for a file with no trailing newline, and no such file can pass the format gate `[measured: printf 'package main\n\nfunc main() {}' > nl.go → 28 bytes; gofmt -w nl.go → 29 bytes, last byte \n]`. The divergence is therefore unreachable for a tree that is green, and `awk`'s reading is the stricter one.
+- **Records vs `\n` bytes.** `awk` counts a final newline-less line as a record; the donor counts `\n` bytes. The two can differ by one only for a file with no trailing newline, and no such file can pass the format gate `[measured: printf 'package main\n\nfunc main() {}' > nl.go → 28 bytes; gofmt -w nl.go → 29 bytes, last byte \n]`. The divergence is therefore unreachable for a tree that is green, and `awk`'s reading is the stricter one.
 
 **Rejected — `revive` alone:** spec § C probe 4 shows two `file-length-limit` entries silently collapse to one. Unimplementable as specified.
 
@@ -94,7 +94,7 @@ No `fmt` (apply) target: `golangci-lint fmt` is the apply command, it is already
 Longest recipe is 4 code lines (`tidy-check`); the `awk` gate is one logical line. KD-7's 10-code-line cap holds with room. No python, no third language (AC12).
 
 A prototype of exactly this file was run against the real repository from the scratchpad, so the tree stayed clean
-`[measured: make -f $S/Makefile.proto verify → VERIFY-GREEN, every target executed in order; git status --porcelain afterwards unchanged (only the pre-existing INDEX.md/spec entries); make -f $S/Makefile.proto actionlint shellcheck file-limits with no PATH prefix → green, so actionlint (/home/syt/go/bin) and shellcheck (/usr/bin) resolve on the default PATH]`.
+`[measured: make -f $S/Makefile.proto verify → VERIFY-GREEN, every target executed in order; git status --porcelain afterwards unchanged (only the pre-existing INDEX.md/spec entries); make -f $S/Makefile.proto actionlint shellcheck file-limits with no PATH prefix → green, so actionlint (~/go/bin) and shellcheck (/usr/bin) resolve on the default PATH]`.
 
 **CI never runs `make verify`.** It runs sub-targets per job; `verify` is the local aggregate. That is what keeps AC14's "cannot disagree" true while `actionlint` is absent from the runner (spec § E).
 
@@ -143,7 +143,7 @@ The fix is **count-agnostic**: `both guard suites` → `the guard suites` (−1 
 
 ### 8. Exemptions — the spec's first open question, answered
 
-The `awk` gate has no per-file escape and will not get one: the exemption channel is **a path prune added to the `file-limits` recipe in a reviewed diff**, recorded in `ai-docs/code-style.md` § *File size*. Rationale: `//nolint:revive` would only exist under the rejected mechanism; an inline escape hatch on a *hard* limit is the thing that turns a hard limit soft; and `ai-docs/code-style.md` already states the equivalent posture for lint ("A rule that keeps firing on correct code is a config bug: change `.golangci.yml` in a reviewed diff"). No prune is added now — no `testdata/`, `vendor/` or generated directory exists `[measured: find /home/syt/lab-game -name '*.go' -not -path '*/.git/*' → cmd/bot/main.go only]` — and adding one pre-emptively is YAGNI.
+The `awk` gate has no per-file escape and will not get one: the exemption channel is **a path prune added to the `file-limits` recipe in a reviewed diff**, recorded in `ai-docs/code-style.md` § *File size*. Rationale: `//nolint:revive` would only exist under the rejected mechanism; an inline escape hatch on a *hard* limit is the thing that turns a hard limit soft; and `ai-docs/code-style.md` already states the equivalent posture for lint ("A rule that keeps firing on correct code is a config bug: change `.golangci.yml` in a reviewed diff"). No prune is added now — no `testdata/`, `vendor/` or generated directory exists `[measured: find . -name '*.go' -not -path '*/.git/*' → cmd/bot/main.go only]` — and adding one pre-emptively is YAGNI.
 
 ### 9. The piped-gate guard and its regression suite (Scope items 8–9)
 

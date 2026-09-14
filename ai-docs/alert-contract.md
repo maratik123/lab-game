@@ -44,7 +44,7 @@ duration. Where an expression needs a number, it carries one of these.
   and addressed by `LAB_GAME_HEALTH_CANARY_CLOUD_BASE_URL`. An empty or
   absent token disables the leg outright — see § 5.
 - **The alert channel must not depend on the bot's own instance**
-  (`docs/DESIGN.md` § 13.2): an alert delivered through the bot whose
+  (`~/lab-private/DESIGN.md` § 13.2): an alert delivered through the bot whose
   instance just died never arrives. Mail, a separate alerter bot living on
   the cloud Bot API, or anything else independent — the pass picks one, and
   "through the production bot" is not a candidate.

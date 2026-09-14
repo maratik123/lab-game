@@ -219,7 +219,7 @@ rg -n 'time\.Now\(\)|math/rand' --type go <those files>
 rg -n '[0-9]{8,10}:[A-Za-z0-9_-]{35}' <changed-files>
 ```
 
-For each hit, decide and record: a legitimate case gets one line in the progress file's decisions log saying **why**; anything else is fixed before Step 10. A new mechanic that moves balances must additionally have (a) its event(s) in the dictionary, (b) its posting signature declared, (c) the contract test asserting actual postings against that signature — `docs/DESIGN.md` §13.4 makes that same-PR, never follow-up.
+For each hit, decide and record: a legitimate case gets one line in the progress file's decisions log saying **why**; anything else is fixed before Step 10. A new mechanic that moves balances must additionally have (a) its event(s) in the dictionary, (b) its posting signature declared, (c) the contract test asserting actual postings against that signature — `~/lab-private/DESIGN.md` §13.4 makes that same-PR, never follow-up.
 
 ## Step 11 — review-fix narrative (detail)
 

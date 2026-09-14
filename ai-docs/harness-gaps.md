@@ -414,7 +414,7 @@ Entries are appended at the END, newest last.
 
 ### 2026-09-11 — the interview-live instruction-edit guard also refuses the user's auto-memory directory
 **target:** `.claude/settings.json` (the `PreToolUse` instruction-edit guard), `ai-docs/scripts/test-instruction-edit-guard.sh`
-**Observed:** In a conversational session analysing issue #80, while #74's interview state file was on the checked-out branch, a `Write` to the user's auto-memory — `~/.claude/projects/-home-syt-lab-game/memory/`, outside the repository — was refused as "write into an instruction file while an interview is live". The owner's decisions on #80's contradictions then lived only in the conversation until they reached the issue texts.
+**Observed:** In a conversational session analysing issue #80, while #74's interview state file was on the checked-out branch, a `Write` to the user's auto-memory — `~/.claude/projects/<encoded checkout path>/memory/`, outside the repository — was refused as "write into an instruction file while an interview is live". The owner's decisions on #80's contradictions then lived only in the conversation until they reached the issue texts.
 **Gap:** the guard's path class is the glob `*/.claude/*`, which matches every absolute path containing `/.claude/`, not the repository's `.claude/**`; the user-level Claude directory falls inside it. `*/AGENTS.md` and `*/CLAUDE.md` reach just as far.
 **Proposed edit:** resolve `file_path` against the repository root and apply the class only to paths under it; add suite rows showing that a path under `$HOME/.claude/projects/*/memory/` passes while a state file exists, and that the repository's own `.claude/` still blocks.
 **at:** 166eb26

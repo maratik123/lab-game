@@ -1,10 +1,10 @@
 # Domain invariants
 
-> Extracted from `AGENTS.md` § *Domain Rules*. That file keeps the binding AXIOMs; this page carries the mechanics and the reasoning. Every claim here traces to a section of [`docs/DESIGN.md`](../docs/DESIGN.md) — when the two disagree, the design document wins and this page is the bug.
+> Extracted from `AGENTS.md` § *Domain Rules*. That file keeps the binding AXIOMs; this page carries the mechanics and the reasoning. Every claim here traces to a section of `~/lab-private/DESIGN.md` — when the two disagree, the design document wins and this page is the bug.
 
 ## 1. The ledger — every balance moves by posting
 
-**Rule.** Stamina, resources, money and item capacity change **only** through postings written by `store.Post` or `store.Move`, under exactly one basis document, and the postings of one transaction sum to zero per kind. Emission and burning are postings against the global **World** account, which alone may go negative (`docs/DESIGN.md` §11).
+**Rule.** Stamina, resources, money and item capacity change **only** through postings written by `store.Post` or `store.Move`, under exactly one basis document, and the postings of one transaction sum to zero per kind. Emission and burning are postings against the global **World** account, which alone may go negative (`~/lab-private/DESIGN.md` §11).
 
 `store.Move` is the second write path and composes the first: it takes the caller's own postings alongside the instance movements, derives the capacity legs from those movements, and hands the whole batch to the same body `store.Post` uses — so the zero-sum check, the capture order and the deadlock discipline described below govern a move exactly as they govern a plain posting group.
 
@@ -83,7 +83,7 @@ The five MVP views read columns that the mechanic PRs must populate, and **every
 
 **And the non-obligations, which matter just as much because a reader looks for them.** No shipped view reads `chat_id` from `raid_started` or from `death`; none reads `maze_id`; none reads any payload key. A mechanic may set them and nothing here degrades if it does not.
 
-**The funnel attributes a player to the chat they started in, and that is not a membership decision.** A player active in several chats is credited to the chat of their earliest `player_started` — ties broken by the lower chat id — even for raids that conceptually belong to another chat. `docs/DESIGN.md` §16.7 «Привязка игрок↔чат (membership)» is an **open question**, owned by #30; this view does not resolve it. Once a raid session is bound to a chat, a better attribution exists and the view becomes a candidate for a same-column-set replacement.
+**The funnel attributes a player to the chat they started in, and that is not a membership decision.** A player active in several chats is credited to the chat of their earliest `player_started` — ties broken by the lower chat id — even for raids that conceptually belong to another chat. `~/lab-private/DESIGN.md` §16.7 «Привязка игрок↔чат (membership)» is an **open question**, owned by #30; this view does not resolve it. Once a raid session is bound to a chat, a better attribution exists and the view becomes a candidate for a same-column-set replacement.
 
 ### An event as a basis document — two consequences a mechanic author must be told
 

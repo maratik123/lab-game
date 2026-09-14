@@ -76,7 +76,7 @@ BLOCK	git commit -m "wip" --no-verify
 BLOCK	git commit -n -m "wip"
 BLOCK	git commit -nm "wip"
 BLOCK	git push --no-verify
-BLOCK	cd /home/syt/lab-game && git commit --no-verify -m "x"
+BLOCK	cd /home/dev/lab-game && git commit --no-verify -m "x"
 # --- must block: the two accepted false positives (see the header) ---
 BLOCK	git push -n
 BLOCK	git commit -m "docs: explain the -n flag"

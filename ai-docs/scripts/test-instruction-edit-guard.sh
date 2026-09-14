@@ -104,7 +104,7 @@ check_edit() {  # want state file_path
 
 # The real command from the 2026-09-08 run, trimmed to its load-bearing lines.
 real_write=$(cat <<'REAL'
-cd /home/syt/lab-game
+cd /home/dev/lab-game
 python3 - <<'PY'
 import pathlib
 p = pathlib.Path('.claude/agents/spec-writer.md')
@@ -128,7 +128,7 @@ check_bash BLOCK live "printf '%s\n' rule | tee -a ai-docs/doc-convention.md"
 check_bash BLOCK live "cp tmp/draft.md .claude/skills/task/SKILL.md"
 check_bash BLOCK live "git mv .claude/agents/design.md .claude/agents/design-writer.md"
 check_bash BLOCK live "python3 -c \"open('ai-docs/code-style.md','a').write('x')\""
-check_bash BLOCK live "cd /home/syt/lab-game && sed -i.orig 's/a/b/' CLAUDE.md"
+check_bash BLOCK live "cd /home/dev/lab-game && sed -i.orig 's/a/b/' CLAUDE.md"
 # --- Bash side, guard armed: reads and recoveries stay legal ---
 check_bash ALLOW live "sed -n '127,132p' .claude/agents/spec-writer.md"
 check_bash ALLOW live "grep -n 'Rule 8' .claude/agents/spec-writer.md | head"

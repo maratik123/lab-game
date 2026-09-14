@@ -15,7 +15,7 @@ DOC-4 and DOC-5 apply to every comment in the **gated set**: `*.go`, `*.sh`, `*.
 a comment wherever its marker sits on the line — a trailing comment is in scope exactly as a
 line-leading one is.
 
-Markdown is outside the gated set entirely. Prose in `docs/`, `ai-docs/`, `.claude/` and `AGENTS.md`
+Markdown is outside the gated set entirely. Prose in `~/lab-private/`, `ai-docs/`, `.claude/` and `AGENTS.md`
 obeys § *Durable references* below instead, which is a different rule and must not be conflated
 with the ban below: markdown keeps naming paths and sections.
 
@@ -145,7 +145,7 @@ An `Example…` function in `_test.go` is the preferred documentation for anythi
 
 ## Durable references — a place named to be read later names a SYMBOL
 
-The rule § *Scope* points at, and the whole of it. It governs markdown prose in `docs/`, `ai-docs/`,
+The rule § *Scope* points at, and the whole of it. It governs markdown prose in `~/lab-private/`, `ai-docs/`,
 `.claude/` and `AGENTS.md` — **not** comments, which DOC-4 governs far more strictly (a comment names
 no place at all, symbols included).
 
