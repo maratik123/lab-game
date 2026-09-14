@@ -1090,3 +1090,10 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** e7835b8
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-14 — tooling — reverted an addition with an Edit whose old_string did not end at a line boundary, and the tool joined two lines
+**What happened:** During the `/improve` run on `chore/2026-09-14-improve`, two applied proposals were reverted from `AGENTS.md` with `Edit`, each `new_string` empty and each `old_string` exactly the text the apply had added — one beginning with a space in the middle of a line, one beginning with a newline. Both reverts also deleted the line break after the match and joined two bullets into one line; a third revert, in `.claude/agents/code-writer.md`, whose `old_string` ended with a newline, landed clean. `git diff --numstat` read 4 insertions and 6 deletions where two modified lines were expected, and a line-length comparison against `git show HEAD:AGENTS.md` located both seams before anything was staged. A scratch-file probe reproduced it: with an empty `new_string` and an `old_string` that does not end in a newline, the newline following the match is removed as well.
+**Rule:** To delete text with `Edit`, end `old_string` with the newline of the line it sits on, or replace the whole line with its surviving text instead of an empty string. After any revert, compare the file against the state it should return to — `git diff --quiet -- <file>` for a revert of a pure addition, the expected modified-line count from `git diff --numstat` otherwise — before staging.
+**at:** 743f79b
+**Kind:** correction
+**Escalated?** no
