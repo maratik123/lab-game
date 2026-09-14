@@ -36,6 +36,10 @@ GO_MAX_TEST_LINES ?= 1500
 CLIENTS ?= 1
 CONTENTION_PARALLEL ?= $(shell nproc 2>/dev/null || echo 4)
 
+# Bounds how long test-contention waits for its load loop to notice the stop
+# request before falling back to killing the loop's process group.
+CONTENTION_LOAD_STOP_TIMEOUT ?= 120
+
 .PHONY: verify fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck cover-ratchet comment-refs import-guard test-db-up test-db-down test-fallback test-contention test-contention-stop-probe
 
 verify: fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs import-guard
@@ -104,10 +108,17 @@ test-fallback:
 # cached pass is a real pass: this gate asserts a property of the run's
 # conditions, which the cache key cannot see.
 #
-# Job control is on so the load loop is its own process group and the kill
-# below reaches the go test inside it rather than only the subshell around
-# it; an orphaned loop otherwise dies in the container teardown and fills
-# its log with failures that the classification then has to read past.
+# The load loop stops itself between iterations rather than being signalled
+# at an arbitrary instant: a signal landing mid-iteration, inside a test's
+# own container provisioning, can arrive after the container is created but
+# before its cleanup is registered and before its session's reaper is up,
+# and nothing then ever removes it (test-contention-stop-probe exercises
+# exactly this window). So the foreground run's completion asks the loop to
+# stop by creating a file the loop checks between iterations, and only a
+# loop still running past the bound below is signalled at all. Job control
+# stays on for that bounded fallback: it puts the loop in its own process
+# group so the kill reaches the go test inside it rather than only the
+# subshell around it.
 #
 # The loop's own failure is swallowed on purpose. The subshell inherits -e,
 # so without that the loop would stop at its FIRST failing iteration and the
@@ -134,7 +145,7 @@ test-fallback:
 # arithmetic a run relied on outlives the scrollback it was printed in; a
 # terminal is not a record. The foreground's status is captured explicitly
 # rather than letting the shell's -e abort the script before the load loop
-# is killed, and the wrapper's own status is captured around the capture for
+# is stopped, and the wrapper's own status is captured around the capture for
 # the same reason; the wrapper reads none of the three logs, and no exit
 # status crosses a pipe.
 test-contention:
@@ -145,11 +156,18 @@ test-contention:
 	tmp/testpg --clients 2 --parallel $(CONTENTION_PARALLEL) -- bash -c '\
 	  set -eu -o pipefail; \
 	  set -m; \
-	  ( while true; do go test -count=1 -parallel $(CONTENTION_PARALLEL) ./internal/ingest/... ./internal/scheduler/... ./internal/store/... ./internal/testdb/... || true; done ) >tmp/test-contention-load.log 2>&1 & \
+	  rm -f tmp/test-contention-load.stop; \
+	  ( while [ ! -e tmp/test-contention-load.stop ]; do go test -count=1 -parallel $(CONTENTION_PARALLEL) ./internal/ingest/... ./internal/scheduler/... ./internal/store/... ./internal/testdb/... || true; done ) >tmp/test-contention-load.log 2>&1 & \
 	  load_pid=$$!; \
 	  fg_status=0; \
 	  go test -race -count=1 -parallel $(CONTENTION_PARALLEL) ./... >tmp/test-contention-race.log 2>&1 || fg_status=$$?; \
-	  kill -- -"$$load_pid" 2>/dev/null || true; \
+	  touch tmp/test-contention-load.stop; \
+	  waited=0; \
+	  while kill -0 "$$load_pid" 2>/dev/null && [ "$$waited" -lt $(CONTENTION_LOAD_STOP_TIMEOUT) ]; do sleep 1; waited=$$((waited + 1)); done; \
+	  if kill -0 "$$load_pid" 2>/dev/null; then \
+	    echo "test-contention: load loop did not stop within $(CONTENTION_LOAD_STOP_TIMEOUT)s of its stop request; killing its process group, which can leave a test container behind"; \
+	    kill -- -"$$load_pid" 2>/dev/null || true; \
+	  fi; \
 	  wait "$$load_pid" 2>/dev/null || true; \
 	  echo "test-contention: clients=2 parallel=$(CONTENTION_PARALLEL)"; \
 	  cls=0; \
