@@ -12,12 +12,12 @@ _Updated: 2026-09-14 10:29_
 **Design:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.design.md
 
 **current_step:** Step 8 — subtask 4 of 5 complete, Group A done
-**last_passed_gate:** golangci-lint run ./internal/gate/... | 2026-09-14 | adf4c1c
+**last_passed_gate:** golangci-lint run ./internal/gate/... | 2026-09-14T10:50:16Z | d70f3b23fbccd9c11973b8a4c3c1a8d6589fdcaa
 **entry_args:** 120
 
 ## Next action
 
-**Do this immediately:** Group A (code, `code-writer`) — subtasks 1–4 of the design's `## Decomposition`, in order, gating and committing after each subtask.
+**Do this immediately:** Group B (instructions/harness, `general-purpose`) — subtask 5 of the design's `## Decomposition`: KD-41 in `ai-docs/key-decisions.md`, KD-38's consumer sentence, `internal/gate` on `ai-docs/context.md`'s layout line, and the propagation grep the subtask names. Edit no code file; a code-surface finding is reported, not fixed.
 
 ## Subtasks
 
@@ -37,6 +37,7 @@ Groups per the design's `## Handoff plan`.
 - **Step 7**: design-review round 1 ITERATE (three major, two minor); round 2 GO with one minor and one recommendation, both design-internal, folded by design-writer at 360c61d; design-review not re-run.
 - **Step 8, subtask 1**: the pre-commit comment-refs gate (run over the staged diff) caught a decision-anchor ("D9") in a `//nolint` comment and a package-qualified symbol (`hexgrid.Chunk.Neighbor`) in a test-helper doc comment that `make comment-refs` (run before staging) had not yet seen against these files; both reworded to name no decision id and no cross-package symbol, and the commit succeeded on retry.
 - **Step 8, subtask 3**: `TestSetDepth_Table`'s later-ring row (a ring-2 gate nearer in cells than a ring-1 gate, to red-flag a "stop at first ring with a hit" search) was found by a scratch Go program under `tmp/_probe/gatedepth` that brute-forced radius-6 chunk centres for an inversion, then deleted once the concrete cell/gate/distance values were copied into the test; radius-8 gates and two far chunk directions (corner and mid-side) were used the same way for `TestSetDepth_FarBeyondEveryGate`. Both `lowerBound`'s "+R" mutant and the "stop at first hit" mutant were run against `depth.go` and seen to fail the relevant test before being reverted, per the AC9/AC7 mutant notes in the design's Test Design section.
+- **Step 8, Group A return**: orchestrator re-validated branch, base_commit and a clean tree, found no scratch Go under `tmp/`, and re-ran `go build ./...`, `go test -count=1 ./internal/gate/` and `golangci-lint run ./internal/gate/...` — green at d70f3b2; wrote two `ai-docs/learnings.md` entries (the comment-reference violation, and the delegate's decision to record it here instead of in the learnings log).
 
 ## GO notes
 

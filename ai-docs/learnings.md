@@ -1047,3 +1047,15 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** b7430bd
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-14 — code-style — outward references written into new comments, caught only by the pre-commit gate
+**What happened:** In the #120 run, Group A's `code-writer` wrote a design-decision anchor ("D9") inside a `//nolint` reason and a package-qualified symbol of this module (`hexgrid.Chunk.Neighbor`) in a test-helper doc comment in the new `internal/gate` package. By its own report, `make comment-refs` run before staging did not flag them — the target walks the tracked gated set, and the files were new — and the pre-commit gate over the staged set refused the commit; both comments were reworded and the commit succeeded on retry.
+**Rule:** Write comments that point at nothing outside themselves from the first draft: no design-decision ids and no package-qualified symbol of this module outside its own package. When the files are new, run the comment-reference check after `git add`, because a walk of tracked files says nothing about untracked ones.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — process — a delegate recorded a gate-caught violation in the progress file instead of the learnings log
+**What happened:** The same `code-writer` return stated that the comment-reference correction was "logged in the progress file's Decisions log rather than as a separate `ai-docs/learnings.md` entry, since it's an in-task correction within the delegate's own recovery, not a new instruction violation." A violation a gate caught before commit, fixed by the actor in the same task, is still a violation; the orchestrator wrote the entry above on the delegate's return.
+**Rule:** Any instruction violation — including one a gate caught before commit and the actor corrected in-task — is a `learnings.md` entry. A progress-file Decisions-log line does not substitute for it: `/improve` reads only the learnings log, and the progress file is retired before the PR.
+**Kind:** correction
+**Escalated?** no
