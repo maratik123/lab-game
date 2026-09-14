@@ -11,13 +11,13 @@ _Updated: 2026-09-14 10:58_
 **Spec:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.spec.md
 **Design:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.design.md
 
-**current_step:** Step 9.5 — docs updated
+**current_step:** Step 10 — self-review REJECT (Round 1), addressing findings
 **last_passed_gate:** make verify (fmt-check build vet lint file-limits test test-race tidy-check actionlint shellcheck comment-refs import-guard) | 2026-09-14T11:08:49Z | e946162e2d19b7d7c11ae4e2c9071fcc88f36f14
 **entry_args:** 120
 
 ## Next action
 
-**Do this immediately:** Step 10 — spawn `self-review` with the closed five-item prompt (invocation line, spec, design, progress, `360c61d..HEAD`).
+**Do this immediately:** Step 11 — verify each open Round 1 finding, then route the `.go` fixes (SR1-1 … SR1-6) to a `code-writer` Mode B delegate; the orchestrator commits.
 
 ## Subtasks
 
@@ -52,6 +52,7 @@ Groups per the design's `## Handoff plan`.
 - **Step 9**: `make verify` exit 0 at e946162 (log `tmp/step9-verify.log`): no `FAIL` line; `internal/gate` ran fresh under both `test` and `test-race`, the unchanged packages replayed from the test cache. Harness-guard scripts CI runs over docs (`check-citations.sh`, `check-ac-shape.sh`, `check-spec-shape.sh`, `check-spec-anchors.sh`, `check-harness-gaps-forge.sh`) exit 0 locally, and the relative-link check is green; hook-body shellcheck and the guard regression suites were not run because neither `settings.json` nor any guard changed.
 - **Step 9**: owner asked mid-step why the orchestrator authors code fixes after self-review instead of delegating; answered from a section-scoped read of `task/SKILL.md`, `task/reference.md`, `code-writer.md` and `delegation-rules.md`, and logged the Step 11 actor gap in `ai-docs/harness-gaps.md` 2026-09-14. Step 11 fixes in this run route by change-type: `.go` to `code-writer` Mode B, prose in-thread.
 - **Step 9.5**: appended the task's `ai-docs/context-status.md` entry with the literal PR locator `#TBD-at-Step-12`; bumped `ai-docs/context.md`'s Status heading date (its Code bullet and layout line were already updated by Group B). No `docs/DESIGN.md` §16 open question is resolved by this task; no repo-root user-facing doc is contradicted.
+- **Step 10**: self-review Round 1 REJECT — three major (SR1-1, SR1-2, SR1-3, all doc comments) and three nit (SR1-4, SR1-5, SR1-6) open, four accepted (SR1-A1 … SR1-A4); no finding touches a spec or design; re-litigation share 0 (first round).
 
 ## GO notes
 
@@ -84,6 +85,16 @@ Groups per the design's `## Handoff plan`.
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
+| SR1-1 | 1 | major | open | `for f in spiral.go next.go; do git show HEAD:internal/gate/$f \| grep -n -E '(ringChunk\|delta)\(\|int32\|seam' \| sed "s\|^\|$f:\|"; done` — expect `delta(` to occur in `next.go`, `ringChunk(` inside `SpiralIndex`, and an int32-seam disclaimer in `Next`'s doc comment; at 1dcb265 none of the three does (only `next.go:66`'s `//nolint` reason mentions the seam) |
+| SR1-2 | 1 | major | open | temporary `package gate` test logging `lowerBound(6, s)` beside the brute-force least `Distance(cell, lat.Center(ch))` over `lat.LocalCells()` × `ringChunksAround(Chunk{}, s)` for `s = 0..13`, and the `ringChunk(13, p)` positions whose centre is exactly `C` from the origin — at 1dcb265: `ring 1 lowerBound 4 leastActual 7`, `ring 3 lowerBound 24 leastActual 26`; `C attained at ring 13 walk position 1 chunk {13 -7}` (never position 0) |
+| SR1-3 | 1 | major | open | read `internal/gate/next.go:15-25`, `next.go:71-72`, `spiral.go:70-72`, `depth.go:70` against `ai-docs/doc-convention.md` DOC-4 *Narration* and *bare unqualified name used as a pointer* |
+| SR1-4 | 1 | nit | open | `grep -n 'unexported delta' internal/gate/spiral_test.go` → `215:` a `gate_test` comment naming package `gate`'s unexported `delta` |
+| SR1-5 | 1 | nit | open | `grep -n '_ = got' internal/gate/next_test.go` → `204:` a dead assignment in `TestNext_RefusesNegativeK` |
+| SR1-6 | 1 | nit | open | `grep -n -E '3\*r\*r \+ 3\*r \+ 1\|6 \* n\|6\*n\|% 6' internal/gate/depth.go internal/gate/spiral.go` — `C` recomputed where `hexgrid.Lattice.CellCount` exists; the six-sides literal unnamed |
+| SR1-A1 | 1 | — | accepted@1 — mutant "DirE side also claims corner (n,−n)" (`r > -n` → `r >= -n` in `SpiralIndex`) stays green because it is equivalent: DirE with `t = n` gives `pos = n − ⌊n/2⌋`, identical to DirNE with `t = 0`; not a coverage gap | apply the mutant via cp-backup, `go test -count=1 -run '^TestSpiralIndex_AgreesWithSpiral$' ./internal/gate/` → ok |
+| SR1-A2 | 1 | — | accepted@1 — `bench_test.go:17-19` carries `(go test -run=^$ -bench=. ./internal/gate/)`, the same form as `internal/maze/bench_test.go:9-12`; `make comment-refs` passes; not raised | `make comment-refs` → exit 0 |
+| SR1-A3 | 1 | — | accepted@1 — `**parent_skill:**` absent from the progress header: `ai-docs/templates/progress-format.md:97` requires it only when a nested skill writes into a parent's file; this is `/task`'s own file | `rg -n parent_skill ai-docs/templates/progress-format.md` |
+| SR1-A4 | 1 | — | accepted@1 — `TestSpiral_RingWalkTable` (3 cases, no `t.Run`, no case names) keys each case by ring and names the ring in every failure message; below severity floor | read `internal/gate/spiral_test.go:111-174` |
 
 ## Files touched
 
@@ -92,3 +103,60 @@ Groups per the design's `## Handoff plan`.
 - `internal/gate/depth.go`, `internal/gate/depth_test.go`, `internal/gate/depth_internal_test.go` (subtask 3, commit 7f47611)
 - `internal/gate/bench_test.go` (subtask 4)
 - `ai-docs/key-decisions.md`, `ai-docs/context.md` (subtask 5, commit b33e5a4)
+
+## Self-Review (Round 1)
+
+**Verdict:** REJECT
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | internal/gate/spiral.go:9-11, 25-32 | major | SR1-1. Three claims in unexported doc comments are false against the code, and one of them is also a DOC-4 bare-name pointer. (a) `delta`: "the step Spiral's ring walk and Next's fallback both take". `Next`'s fallback builds `hexgrid.Chunk{Q: int32(fallbackRing), R: int32(-(fallbackRing / 2))}` directly, and `delta(` occurs only at `spiral.go:39-40`. (b) `ringChunk`: "the one ring walk Spiral, SpiralIndex, Next and Set.Depth all share". `SpiralIndex` never calls `ringChunk`, and its own doc comment (`spiral.go:70-72`) calls itself "an independent derivation from the walk ringChunk performs". The two comments contradict each other. (c) `ringChunk`: "matching Next's own disclaimer that no promise is made near the int32 seam". `Next`'s doc comment (`next.go:5-25`) carries no such disclaimer. The only seam text in `next.go` is the `//nolint:gosec` reason at `next.go:66`. So the comment points the reader at something that does not exist, which DOC-4 refuses in review even when the target is real. Verifying command output at 1dcb265: `spiral.go:39: corner := delta(d)`, `spiral.go:40: step := delta(...)`, `spiral.go:60: yield(ringChunk(n, p))`, `depth.go:77: off := ringChunk(n, p)`; `next.go` int32/seam hits: only `66:` (the nolint) and `67:` (the conversion). This is the same class of defect as the two false doc comments this run already fixed at e946162 and recorded as a trap in `context-status.md`. Fix: say only what `delta` and `ringChunk` are and what they return, and drop the pointer sentences. | ⬜ Open |
+| 2 | internal/gate/depth.go:83-87 | major | SR1-2. The `lowerBound` doc comment states "L(ring): the least possible hex-cell distance from any cell to the centre of any chunk at super-lattice distance ring", then "It is attained, not merely valid, on the mid-side direction the ring walk itself starts from". Both are false. The function is a lower bound: it is not the least distance, and it is attained only at some rings. The centre distance `C` at ring `2R+1` is reached at walk position 1, not at the walk's start. A temporary `package gate` probe at 1dcb265 (radius 6) printed `ring 1 lowerBound 4 leastActual 7`, `ring 3 lowerBound 24 leastActual 26`, `ring 5 lowerBound 43 leastActual 45`, and `centre distance C attained at ring 13 walk position 1 chunk {13 -7}` with no position-0 line. The design's Risks section names a wrong lower bound as the silently-wrong-depth risk, so a comment calling it exact invites the edit that risk describes. KD-41 states it correctly ("a lower bound … attained … the chunk `(2R+1, −(R+1))`"); only the code comment is wrong. Fix: call it a lower bound that the stop rule relies on, and drop the attainment sentence or state it correctly without pointing at the ring walk. | ⬜ Open |
+| 3 | internal/gate/next.go:15-25, next.go:71-72, spiral.go:70-72, depth.go:70 | major | SR1-3. DOC-4 *Narration*. Each of these comments tells how the function is implemented rather than what it is or what the caller may rely on. `Next`'s third paragraph ("If the scan finds no qualifying chunk within the bound it searches, it returns the first chunk of the ring one past that bound instead. That fallback is always valid: with M the largest ring … by the triangle inequality … The fallback is reached exactly when …") walks through the bounded scan, its fallback and the proof. The caller's contract is already complete in the first paragraph (the earliest qualifying chunk in `Spiral`'s order), and the result is the same whichever branch produces it. Any contract content ("Next always returns for k ≥ 0") fits in one sentence. `farEnough` "It loops over the slice rather than a set, since gates is exactly the caller's input" is implementation. `SpiralIndex` "The side and step within the ring are recovered from ch's own coordinates, an independent derivation from the walk ringChunk performs, so the two must agree" is implementation plus a bare-name pointer to `ringChunk`. `ringChunksAround` "found by translating the same ring walk Spiral uses" is implementation plus a bare-name pointer. The mechanism and its proof already live in KD-41, so deleting them from the comments loses nothing. | ⬜ Open |
+| 4 | internal/gate/spiral_test.go:215 | nit | SR1-4. The `gate_test` helper comment "computed independently of the package's own unexported delta helper" names a symbol from another package by bare name. The independence claim is about the method used, and "by driving a chunk's exported Neighbor method n times" already says that. | ⬜ Open |
+| 5 | internal/gate/next_test.go:204 | nit | SR1-5. `_ = got` is a dead statement: `got` is bound only to be discarded. Use `_, err := gate.Next(...)`. | ⬜ Open |
+| 6 | internal/gate/depth.go:89 | nit | SR1-6. `lowerBound` recomputes `C = 3*r*r + 3*r + 1` although `hexgrid.Lattice.CellCount` already computes it; the six-sides literal `6` in `6 * n` / `% 6` (spiral.go, depth.go) is unnamed. | ⬜ Open |
+
+**What was checked.**
+- **Spawn prompt:** the five permitted items only; no contamination.
+- **Spec conformance, AC1–AC9:**
+  - AC1: `TestSpiral_ListsEveryChunkOnceRingByRing`, `TestSpiralIndex_AgreesWithSpiral`, `TestSpiralIndex_RingRange`.
+  - AC2: `TestSpiral_RingWalkTable` and `TestSpiral_RingStartAndTurn`. I checked AC2's wording by hand against `directionDeltas`: DirNE (1,−1), DirNW (0,−1), and ring 3's start (3,−1).
+  - AC3: `TestNext_FirstGateIsCentre`.
+  - AC4: `TestNext_Table`, `TestNext_SequentialFillReproducesSpiral`, `TestNext_MatchesSpiralScan`.
+  - AC5: `TestNext_AlwaysReturns`.
+  - AC6: `TestNext_RefusesNegativeK` (`errors.Is`).
+  - AC7: `TestSetDepth_MatchesBruteForce` and `TestSetDepth_Table`. I recomputed the later-ring row by hand: cell (0,−6), gate (0,1) → 19, gate (1,−2) at ring 2 → 14.
+  - AC8: `TestSetDepth_FarBeyondEveryGate`.
+  - AC9: `TestSearch_StaysWithinBound` and `TestSearch_FarGatesAddNoWork`. `S = ⌊(depth+R)(2R+1)/C⌋` is the largest `s` with `L(s) ≤ depth`.
+  - The 16-test AC Status command set, re-run at 1dcb265 with `-count=1 -v`: 16 `--- PASS`, `ok` (`tmp/sr1-ac.log`). No scope creep. The `context.md` Code-bullet edit is propagation the orchestrator recorded and accepted.
+- **Design conformance:**
+  - D1: the exported surface matches exactly; imports are `errors`, `iter` and `internal/hexgrid` (`go list`); nothing imports `internal/gate`; `guards_test.go` applies `detguard`; `TestMain` uses the leaktest form.
+  - D2: start `(n, −⌊n/2⌋)`, turn `d+2`, index formula, and a side-and-step switch identical to the design.
+  - D4: scan bound `1+3B(B+1)`, fallback `(B+1, −⌊(B+1)/2⌋)`.
+  - D5: map field `members`, the empty-set early return, and the stop rule `found && depth ≤ L(ring)`.
+  - D6, D7: `NewSet` builds the set outside the query; the benchmarks assert no threshold.
+  - D8: zero chunk on error.
+  - Every Decomposition file is present. The GO notes: G1 and G2 were folded at 360c61d, and the design file is unchanged in the range. The design has no `AC<N> verified by:` lines; the AC Status commands above serve as that set.
+- **Mutants,** each confirmed to build before its result was read (cp-backup, tree restored, `git status --porcelain internal/gate` empty):
+  - "stop at first hit" → `TestSetDepth_Table` red.
+  - `lowerBound` `+R` → `TestLowerBound_HoldsAndIsAttained` red.
+  - "search until every gate seen" → `TestSearch_FarGatesAddNoWork` and `TestSearch_StaysWithinBound` red.
+  - scan one ring short → `TestNext_SequentialFillReproducesSpiral` red.
+  - fallback at the corner → `TestNext_Table` fallback row red.
+  - `SpiralIndex` ceil start → `TestSpiralIndex_AgreesWithSpiral` red.
+  - spacing `< k` → `TestNext_Table` and `TestNext_AlwaysReturns` red.
+  - created ignored → `TestNext_Table` red.
+  - "DirE claims corner (n,−n)" → green, an equivalent mutant (SR1-A1).
+- **Safety:** no `panic(` / `log.Fatal*` / `log.Panic*` / `must…` in `internal/gate` production files, so no panic-index row is needed. No goroutine or `sync`, so `-race` is not load-bearing, but it was run anyway: `go test -count=1 -race -v ./internal/gate/` → ok (`tmp/sr1-gate-test.log`). No returned error is dropped; there is no context parameter and no `…Unchecked` function.
+- **Domain invariants:** no ledger, posting, scheduler, outbound send, migration or secret in the diff. No balance constant: `k` and the radius are inputs. No `time.Now`, `math/rand` or map range on the pure paths (`detguard` green).
+- **Gates at 1dcb265:** `go build ./...`, `go vet ./internal/gate/...`, `golangci-lint run ./...` (0 issues), `make comment-refs`, `make file-limits`, `golangci-lint fmt -d` all exit 0 (`tmp/sr1-gates.log`). `check-ac-shape.sh`, `check-spec-shape.sh`, `check-spec-anchors.sh` and `check-harness-gaps-forge.sh` exit 0. The coverage ratchet rose from 91.59 to 91.78.
+- **Docs (Pattern 1, prose claims):**
+  - KD-41's import set, "no import-allowlist guard … unlike maze's" (`internal/maze/guards_test.go:177` `TestGuard_ImportsAllowlist`; `internal/gate` has none, grep with a control line), the attaining chunk `(2R+1, −(R+1))` (probe: `{13 -7}` at R=6), and every cited test name exist and are true.
+  - The KD-38 amendment and the `context.md` layout and Code bullets are true.
+  - The `context-status.md` entry is consistent with the code.
+- **Doc comments (DOC-1–DOC-4):** every exported item and the package carry name-first comments. The false claims and narration are rows 1–3.
+
+**Not raised (register `accepted@1`):** SR1-A1 (the equivalent mutant), SR1-A2 (the benchmark command comment follows the `maze` precedent and passes the gate), SR1-A3 (`parent_skill` not required for `/task`'s own file), SR1-A4 (`TestSpiral_RingWalkTable` without `t.Run`).
+
+**Routing note:** rows 1–3 are comment-only fixes in `internal/gate/*.go`, not a Spec or Design Amendment trigger. The design and KD-41 state these facts correctly; only the code comments contradict them.
