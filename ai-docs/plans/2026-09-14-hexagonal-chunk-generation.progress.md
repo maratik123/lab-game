@@ -11,14 +11,14 @@ _Updated: 2026-09-14 05:06_
 **Spec:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.spec.md
 **Design:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.design.md
 
-**current_step:** Step 9.5 — docs updated
+**current_step:** Step 10 — self-review REJECT (Round 1), addressing findings
 **last_passed_gate:** golangci-lint run | 2026-09-14T02:30:27Z | 00179420469d34ded4b5dce8b91f407779eee9ba
 
 **entry_args:** 119
 
 ## Next action
 
-**Do this immediately:** Step 9.5 — append this task's entry to `ai-docs/context-status.md` (PR locator `#TBD-at-Step-12`), bump `ai-docs/context.md`'s world block only where Group B's edit left it stale, then Step 10 self-review.
+**Do this immediately:** Step 11 — fix every `⬜ Open` finding of `## Self-Review (Round 1)` (register rows R1-1…R1-20) as code and test changes, with each row's verifying command run and quoted, then Step 10 round 2.
 
 ## Subtasks
 
@@ -58,6 +58,7 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - **Step 9**: domain-invariant sweep — checks 1, 2, 4 and 5 clean (controls hit). Check 3 hits only YAML fixtures inside `internal/config/balance_load_test.go` (`cap: 100`, `sell_rate: 0.25`, …): test data for the balance loader, not a balance constant compiled into Go — legitimate. No posting, event or telemetry surface changed.
 - **Step 9**: the AC17 sweep found KD-40 still describing the zero-capacity island refusal that 761efa5 removed; rewritten at 0017942. An earlier KD-37…KD-40 extraction came back empty because KD entries are bold paragraphs, not headings — re-run over `^\*\*KD-` lines.
 - **Step 9.5**: appended this task's entry to `ai-docs/context-status.md` with the PR locator `#TBD-at-Step-12`; `ai-docs/context.md`'s world layout and status entries were already rewritten by Group B at 7e8a71d, and a case-insensitive sweep of it for every removed name (`Dims`, `ChunkOf`, `Origin`, `Contains`, `Cell`, `PrefabClaimer`, `FaceDeferred`, `chunksConsulted`, `cells.golden`, `world.chunk.cols`/`rows`, prefab hook) returned no hit, so it needed no further edit. There is no repo-root `README.md`. No open question in `context.md` was resolved by this task.
+- **Step 10**: self-review round 1 REJECT — 9 major (R1-1…R1-9), 11 minor (R1-10…R1-20), 5 accepted nits (R1-21…R1-25). The orchestrator re-read the evidence before routing: R1-1, R1-2 and R1-4 in `tmp/sr1/probe.log` (every border's first face touches the next canonical direction's corner, the opposite of D5; `sharesVertex` 14 against a true 4; `unknown chunk type unknown`), R1-2, R1-3, R1-6, R1-7 and R1-8 in `tmp/sr1/mutate.log` (M1, M2a, M2b, M3 in `hexgrid`, M4 green), R1-9 by `ChunkTypeGate` absent from both multi-chunk connectivity tests, R1-19 by `renderCellLine` receiving `lattice.At(ch, local)`. All twenty route to code and test fixes, none to an amendment: R1-1 by reversing the canonical border paths to D5's order and re-minting `chunks.golden` (nothing is stored under `Version` 1), R1-19 by rendering the local coordinate as Goldens (b) says. Re-litigation share 0 (round 1).
 
 ## GO notes
 
@@ -108,6 +109,31 @@ Step 9 sweep at 0017942 by the orchestrator. Test rows: `go test -v -count=1 -ru
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
+| R1-1 | round 1 | major | open | `go test -count=1 -run '^TestLattice_BorderHasTwoRPlusOneFacesInOneOrderFromEitherSide$' ./internal/hexgrid/` carrying the design's corner-start assertion (the third chunk touching `Border(d)[0]` is the d−1 neighbour for DirE/DirNE/DirNW and the d+1 neighbour for their opposites), seen RED at 32f0142; or a D5 amendment naming the shipped order |
+| R1-2 | round 1 | major | open | mutant M3 (`canonicalBorder`: lone faces ascending, then secondary faces descending) → `go test -count=1 ./internal/hexgrid/` RED; `sharesVertex(FaceOf({0,0},DirE), FaceOf({0,1},DirE))` returns false |
+| R1-3 | round 1 | major | open | mutant M3 → `go test -count=1 -run '^TestPortals_NoTwoPortalsOfABorderShareAVertex$' ./internal/maze/` RED |
+| R1-4 | round 1 | major | open | the errors of `Generate(hexgrid.Chunk{}, ChunkType(99))` and `NewMap(…, ChunkType(99), …)` contain `99`, asserted by `TestGenerate_RefusesUnknownChunkType` and `TestNewMap_Refuses` |
+| R1-5 | round 1 | major | open | a mutant dropping the offending input from each refusal message → `go test -count=1 -run '^TestNewMap_Refuses$' ./internal/maze/` RED, and the same for `-run '^TestGenerate_RefusesInvalidNeighbourMaps$'` |
+| R1-6 | round 1 | major | open | mutant M1 (`params.go` `capacity := gateCapacity(p.Radius)` → `nonBorderCellCount(p.Radius)`) → `go test -count=1 ./internal/maze/` RED |
+| R1-7 | round 1 | major | open | mutants M2a (`if hi >= int(p.Radius)+1`) and M2b (`if hi > int(p.Radius)+2`) → `go test -count=1 ./internal/maze/` RED for each |
+| R1-8 | round 1 | major | open | mutant M4 (`v > maze.MinRadius`, want `fmt.Sprint("positive")`) → `go test -count=1 ./internal/config/` RED; a `cols:` fixture asserts `ErrUnknownKey` |
+| R1-9 | round 1 | major | open | `rg -n 'ChunkTypeGate'` over the AC11 test body hits; rows at radius 6 and 9 and the outward-against-stored layout present |
+| R1-10 | round 1 | minor | open | `rg -n -w 'Cell' internal/maze/algorithm.go` → no hit |
+| R1-11 | round 1 | minor | open | `grep -n 'can neither fail' internal/maze/generate.go` → no hit, or the sentence admits the neighbour-map refusals |
+| R1-12 | round 1 | minor | open | `rg -n -i -e 'see the package' -e 'see above' -e 'see Lattice' -e 'TestGenerate_\*' -e 'own contract' internal/hexgrid/ internal/maze/` → no hit |
+| R1-13 | round 1 | minor | open | `rg -n 'subtask' internal/maze/portal_test.go` → no hit |
+| R1-14 | round 1 | minor | open | `TestChunk_SixSymmetricNeighboursJoinedByAFace` asserts the converse: every chunk a face of `ch` leads into is one of `ch`'s six neighbours |
+| R1-15 | round 1 | minor | open | `TestDistance_EqualsLatticeStepCount` carries breadth-first step counts and chunk-straddling pairs at radius 6 and 9 |
+| R1-16 | round 1 | minor | open | `TestPortals_CountWithinRoundedUpShares` sweeps a share pair with lo == hi and more than one chunk pair |
+| R1-17 | round 1 | minor | open | `TestGenerate_SettledByItsInputsAlone` compares two generation orders with `NewMap` rebuilds, a gate chunk in the patch |
+| R1-18 | round 1 | minor | open | `go test -race -count=1 -run '^TestGenerate_RaceSafeAcrossGoroutines$' ./internal/maze/` with shared neighbour maps passed to the concurrent calls |
+| R1-19 | round 1 | minor | open | `chunks.golden` cell lines carry the local coordinate, or a Goldens (b) amendment names the global one |
+| R1-20 | round 1 | minor | open | `TestGenerate_TakesSharedBorderFromStoredNeighbour`'s setup `Fatal`s unless N's portal count on the C–N border lies outside C's `[lo, hi]` |
+| R1-21 | round 1 | nit | accepted@1 — decomposition lists `coord.go`/`coord_test.go`, `seed_test.go`, `derive.golden` and `balance_file_test.go`, all untouched: `Distance` lives in `lattice.go`, the key chain did not move, the file-loader test needed no edit | `git diff --exit-code ed9a4ba..HEAD -- internal/maze/testdata/derive.golden` |
+| R1-22 | round 1 | nit | accepted@1 — `maze.MinRadius` is a Go constant by D12's recorded decision (a validation bound); the radius value itself ships in `config/balance.yaml`, so § 4a's balance-constant row does not apply | `rg -n 'radius' config/balance.yaml` |
+| R1-23 | round 1 | nit | accepted@1 — `Locate`'s fallback after the four-candidate loop is unreachable and returns without an error, as D3/D13 (hexgrid returns no error) allow; the exhaustive partition test covers the reached branch | `go test -count=1 -run '^TestLattice_LocateRoundTripsAndPartitions$' ./internal/hexgrid/` |
+| R1-24 | round 1 | nit | accepted@1 — AC18's remaining narrow-tier hits describe the replaced model as replaced: `docs/world-topology-redesign-plan.md` lines 45 and 74, the KD-38/39/40 amendment clauses, `guards_test.go` line 119 | the design's narrow-tier sweep over `git ls-files` minus the history surfaces, control `floorDiv32` hit |
+| R1-25 | round 1 | nit | accepted@1 — below severity floor: `radiusForCellCount`'s `2147483647` literal in `internal/maze/map.go`; the determinism guard bans the `math` import that would name it | `grep -n 2147483647 internal/maze/map.go` |
 
 ## Files touched
 
@@ -146,3 +172,52 @@ Step 9 sweep at 0017942 by the orchestrator. Test rows: `go test -v -count=1 -ru
 - ai-docs/context.md (subtask 11: the `internal/hexgrid` / `internal/maze` layout entries and the status line rewritten for the hexagonal core)
 - ai-docs/code-style.md (subtask 11: the chunk-size row names `world.chunk.radius`)
 - docs/world-topology-redesign-plan.md (subtask 11: the parallelogram-chunk sentence rewritten in Russian, in the past tense)
+
+## Self-Review (Round 1)
+
+**Verdict:** REJECT
+
+Reviewed `ed9a4ba..32f0142`. No spawn-prompt contamination: the prompt held only the invocation line, the spec, design and progress paths, and the range.
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | internal/hexgrid/lattice.go:124 | major | **D5's border order is reversed on all six borders.** D5 says a canonical border runs from the previous direction's corner to the next one's, and gives the concrete case: `DirW` runs "from the DirSW corner to the DirNW corner". A probe located the third chunk touching the first and last face of each `Border(d)`. At R=6 and R=9 alike it printed `Border(E): first face touches third chunk [NE], last face touches [SE]`, `Border(W): first face touches third chunk [NW], last face touches [SW]`, `Border(NE): … [NW] … [E]`, `Border(NW): … [W] … [NE]`, `Border(SW): … [W] … [SE]` and `Border(SE): … [SW] … [E]`. Each is the opposite of D5. Both chunks still agree, because the opposite lists are built by translation, so AC5 holds. `chunks.golden`'s per-border portal positions, though, index an order the design does not describe. Fix: reverse the canonical paths and re-mint `chunks.golden` (nothing is stored under `Version` 1). If the shipped order is kept instead, this is a **Design Amendment trigger**: spawn the `design-writer` Subagent to amend D5 in `ai-docs/plans/2026-09-14-hexagonal-chunk-generation.design.md` (recipe in `.claude/skills/task/SKILL.md` Step 11's fail-loud table). Either way, add the corner-start assertion from finding 2. | ⬜ Open |
+| 2 | internal/hexgrid/lattice_test.go:203 | major | **The AC5 test cannot detect a wrong border order.** (a) The doc comment on `sharesVertex` states the design's triangle predicate, but the code accepts two faces with no cell in common: the probe gives `E-face(0,0) vs E-face(0,1): trueShare=false testShare(sharesVertex)=true`, and `faces sharing a vertex with E-face(0,0): trueShare=4 (geometry says 4) sharesVertex=14`. (b) The start-corner assertion that § Test Design's AC5 row requires is absent (line 229 onward). (c) The translation check at lines 273–286 compares `Border(d)` with the very translation `Border` is built from (lattice.go:109–116), so it cannot fail. Mutant M3 reordered `canonicalBorder` as lone faces ascending, then secondary faces descending. Result: `M3-HEXGRID-SUITE-GREEN`, while an independent probe through `Generate` counted `vertex-sharing-portal-pairs=616` (0 on the shipped tree). This is the failure mode § Risks names: "The non-touching rule verified by the property that built it". | ⬜ Open |
+| 3 | internal/maze/portal_test.go:117 | major | **AC7's test decides "shares a vertex" from list positions.** It calls `nonConsecutiveInPositionList`, whose doc (line 53) rests on "(Lattice.Border's own contract)", so the test only proves the enumeration agrees with itself. § Test Design's AC7 row requires an independent vertex predicate and a placement mutant seen RED. The "RED" control at line 136 runs the predicate on the literal `[]int{2, 3}`, not on a placement. It also sweeps only the `DirE` border, not chunk pairs. Under M3 (616 vertex-sharing portal pairs) the result was `M3 PASS TestPortals_NoTwoPortalsOfABorderShareAVertex`, `M3 PASS TestBorder_IndependentOfChunkTypeAndThirdChunks` and `M3 PASS TestChunksGolden_EveryPortalLineWithinBoundsAndNonConsecutive`; only `--- FAIL: TestChunksGolden` went red, and that golden's own message invites a re-mint. The progress file's AC7 PASS row rests on this test. The shipped generator does satisfy AC7: 0 violating pairs over 1920 borders at R 6 and 9, both chunk types. | ⬜ Open |
+| 4 | internal/maze/generate.go:46 | major | **D8 is not met: an unknown chunk type is refused without naming the value.** D8 says `Generate` and `NewMap` refuse the zero value and unknown values, "naming it". Probe output: `maze.Generate: unknown chunk type unknown` for both `ChunkType(99)` and `ChunkType(0)`, and `maze.NewMap: unknown chunk type unknown` (map.go:110). The `%v` goes through `String()`, whose default branch returns `"unknown"` (chunktype.go:25). `TestGenerate_RefusesUnknownChunkType` (generate_test.go:125) asserts only `err != nil`. | ⬜ Open |
+| 5 | internal/maze/map_test.go:68 | major | **`TestNewMap_Refuses` checks that each refusal errors, not what it says.** D9 and § Test Design require "one row per refusal in D9, each asserting the error names its input", and the interior-face row "naming both local coordinates and the direction". Every row asserts only whether `err` is nil, which is how finding 4 shipped green. `TestGenerate_RefusesInvalidNeighbourMaps` (generate_test.go:442) has the same shape against D9's "naming each". | ⬜ Open |
+| 6 | internal/maze/params_test.go:140 | major | **D7's gate-capacity bound is not tested at its edge.** D7 checks island capacity against the gate chunk's smaller count, and § Test Design's Params row requires "one above the gate capacity refused naming the island share". The test uses `IslandShare = 1` instead, and the at-capacity accept row cannot tell 90 from 91. Mutant M1 (params.go:86, `gateCapacity` → `nonBorderCellCount`): `M1-SUITE-GREEN`, `ok github.com/maratik123/lab-game/internal/maze`. | ⬜ Open |
+| 7 | internal/maze/params_test.go:123 | major | **D6's upper portal bound (`hi > R+1`, params.go:78) is not tested at its edge.** The refusal test uses share 1 (hi = 13 at R = 6), and no test accepts hi == R+1. Mutant M2a (`>=`) gave `M2a-SUITE-GREEN`; mutant M2b (`R+2`) gave `M2b-SUITE-GREEN`. | ⬜ Open |
+| 8 | internal/config/balance_load_test.go:250 | major | **AC4's accept half and D12's loader test rows are missing at the configuration layer.** AC4 says a radius of six or more is accepted. Decomposition row 8 requires: "below min refused naming the key and stating the bound, not 'positive'; min accepted; a larger radius accepted; a non-integer refused; the removed keys now unknown". Only the key is asserted, no row loads `radius: 6`, and no row feeds `cols:`. Mutant M4 (balance_load.go:112–113, predicate `v > maze.MinRadius`, want `"positive"`): `M4-SUITE-GREEN`, `ok github.com/maratik123/lab-game/internal/config`. | ⬜ Open |
+| 9 | internal/maze/property_test.go:190 | major | **AC11's "gate chunks among them" clause is untested.** No multi-chunk connectivity test generates a gate chunk. `rg -n 'ChunkTypeGate' internal/maze/property_test.go` exits 1, and in generate_test.go `ChunkTypeGate` appears only inside the AC9, AC10 and AC13 tests, never in `TestGenerate_ConnectivityOverAMultiChunkRegion` (generate_test.go:748). The design's AC11 row also requires radii 6 and 9 and a second layout, generated outward against already-generated neighbours. Both are absent: this test runs at radius 9 only, independent layout only. The progress file marks AC11 PASS on these two tests. | ⬜ Open |
+| 10 | internal/maze/algorithm.go:71 | minor | **Stale doc:** "FaceState is one face's state as Cell reports it". `Cell` was deleted in this diff. | ⬜ Open |
+| 11 | internal/maze/generate.go:10 | minor | **False doc:** "Generate can neither fail (given a known ChunkType) nor panic". `Generate` also returns an error for each refused neighbour map (generate.go:119–145). | ⬜ Open |
+| 12 | internal/hexgrid/lattice.go:61 | minor | **DOC-4: bare-name pointers** (the review-judged half): lattice.go:61 "(see the package's Locate tests)", lattice.go:64 "(see above)" in a directive's reason text, chunk.go:3–4 "see Lattice for the mapping", generate_test.go:25 "(TestGenerate_*)", portal_test.go:53 "(Lattice.Border's own contract)". | ⬜ Open |
+| 13 | internal/maze/portal_test.go:188 | minor | **Test doc names plan subtasks and is stale:** "(pair-level, subtask 3/4)". The test now also carries the type and stored-neighbour clauses. | ⬜ Open |
+| 14 | internal/hexgrid/lattice_test.go:105 | minor | **AC2's converse is untested.** Only "neighbour ⇒ joined by a face" is asserted; "a face into chunk X ⇒ X is one of the six" is not, although the doc comment claims both. | ⬜ Open |
+| 15 | internal/hexgrid/lattice_test.go:147 | minor | **AC3 test diverges from its design row.** There are no breadth-first step counts and no chunk-straddling pairs at radius 6 and 9. The greedy walk steps by `Distance` itself, and no `Lattice` appears although the doc says "straddling a chunk border". | ⬜ Open |
+| 16 | internal/maze/portal_test.go:82 | minor | **AC6 test diverges from its design row:** no share pair with lo == hi, and only one chunk pair. | ⬜ Open |
+| 17 | internal/maze/generate_test.go:627 | minor | **AC12 test diverges from its design row:** no two-order comparison with `NewMap` rebuilds, and no gate chunk. It is partly covered by `TestGenerate_SequentialAgainstStoredNeighboursMatchesIndependentGeneration`, which uses fabric only. | ⬜ Open |
+| 18 | internal/maze/generate_test.go:862 | minor | **Race test diverges from its design row:** the concurrent `Generate` calls are given no shared neighbour maps. | ⬜ Open |
+| 19 | internal/maze/golden_test.go:127 | minor | **Golden cell lines diverge from Goldens (b):** they render the global coordinate, where the design says the local coordinate. Fix the golden, or route a Design Amendment trigger for Goldens (b). | ⬜ Open |
+| 20 | internal/maze/generate_test.go:276 | minor | **AC14 test does not ensure its "count outside C's own range" case.** The comment says "possibly"; the setup does not make sure it happens. | ⬜ Open |
+
+Findings 1–9 clear the severity floor: each cites D5, D6, D7, D8, D9, D12, AC4, AC5, AC7 or AC11 and quotes probe or mutant output. Five items were examined and ruled not-a-defect; they are recorded as `accepted@1` register rows R1-21…R1-25.
+
+**What was checked**
+
+- **Gates, run at 32f0142 with output captured under `tmp/sr1/`:** `go build ./...`, `go vet` over maze/hexgrid/config, `golangci-lint run` over the same three ("0 issues."), `golangci-lint fmt -d` (exit 0, empty output), `make comment-refs`, `go test -count=1 -v` over maze/hexgrid/config (193 `--- PASS`, 3 `ok`), and `go test -race -count=1` over maze and hexgrid (`ok`). All green.
+- **Every AC Status test name re-run:** each has its own `--- PASS:` line. That covers AC1–AC14 and AC16, plus AC4's loader row and AC14's two subtests.
+- **AC15:** `rg -n '"world\.chunk\.[a-z_]+"' internal/config/` returns `world.chunk.radius` only (control hit). PASS.
+- **AC16:** `git diff --exit-code ed9a4ba..HEAD -- internal/maze/testdata/derive.golden` exits 0. PASS.
+- **AC17:** the four KD paragraphs' rhombic vocabulary appears only inside `*Amended by #119:*` clauses (control hit). PASS.
+- **AC18:** the narrow-tier sweep over 404 live tracked files leaves only past-tense or old-model hits (R1-24). PASS.
+- **AC19:** `rg -n -i 'prefab|claimer|FaceDeferred' --glob '!*_test.go' internal/maze/` exits 1 (control hit). PASS.
+- **Test discrimination:** AC5, AC7 and D6/D7/D12 were probed by mutation (M1, M2a, M2b, M3, M4), and AC7 was checked independently through `Generate` with a correct vertex predicate. Every mutated file was cp-backed-up and restored; `git status --porcelain` is empty and `git diff --quiet HEAD` passes afterwards.
+- **Spec and design conformance:** D1–D15 were read against the code. The mismatches are findings 1 and 4. The task source (issue #119 body, `prior_qa` 1–5) agrees with the spec, so no Spec Amendment trigger arises.
+- **GO notes G1–G7:** each fold-in is present in the design at ed9a4ba, and the design file is unchanged in the range.
+- **Progress re-entry fields:** `current_step`, `last_passed_gate`, `entry_args` and the Decisions log are present. `parent_skill` is correctly absent, since `/task` is the parent flow.
+- **Panicking-call audit** (grep over the 16 changed non-test `.go` files, control hit): no hits, so no panic-index row is needed.
+- **Domain invariants:** no ledger, telemetry, chat, schema or secret surface is touched. On the generation path there is no `time.Now`, no unseeded random source and no map range; `TestGuard_DeterminismPredicates` passes. `internal/config` is the only importer of `internal/maze` outside the two packages, which matches the claims in KD-38 and `context.md`.
+- **File sizes:** the largest are `generate_test.go` at 906 lines and `balance_load_test.go` at 412, both under their hard limits.
+- **Claim verification** in KD-37…KD-40, the `context-status.md` entry and the `context.md` layout entries: `gateCapacity(6)` = 90, neighbour maps are not version-checked, the import-guard reach holds, and borders are enumerated from the lesser chunk's side. All accurate.
