@@ -162,11 +162,11 @@ func TestNewMap_Refuses(t *testing.T) {
 		}
 		aLocal := fmt.Sprintf("%v", g.localCoord(intFace.a))
 		bLocal := fmt.Sprintf("%v", g.localCoord(intFace.b))
-		dir := fmt.Sprintf("%v", intFace.dir)
+		dirFragment := fmt.Sprintf("(direction %v)", intFace.dir)
 		msg := err.Error()
-		if !strings.Contains(msg, aLocal) || !strings.Contains(msg, bLocal) || !strings.Contains(msg, dir) {
-			t.Errorf("NewMap interior-face-disagreement error = %q, want it to name both local coordinates %s, %s and the direction %s",
-				err, aLocal, bLocal, dir)
+		if !strings.Contains(msg, aLocal) || !strings.Contains(msg, bLocal) || !strings.Contains(msg, dirFragment) {
+			t.Errorf("NewMap interior-face-disagreement error = %q, want it to name both local coordinates %s, %s and %s",
+				err, aLocal, bLocal, dirFragment)
 		}
 	})
 	t.Run("control_border_face_flip_is_accepted", func(t *testing.T) {

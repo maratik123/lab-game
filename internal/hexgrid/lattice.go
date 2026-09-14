@@ -117,15 +117,10 @@ func (l Lattice) Border(d Direction) []Face {
 }
 
 // canonicalBorder builds one canonical border's path over index range
-// [lo, hi]. The forward pass walks the lone direction's face at lo,
-// then the secondary direction's face followed by the lone direction's
-// face at every index after lo, up to hi; that order runs from the
-// corner nearer the secondary neighbour to the one nearer the lone
-// neighbour's other side, so the result is reversed before it is
-// returned to run the other way: from the corner shared with the
-// neighbour one step around from lone, to the corner shared with the
-// neighbour one step around from secondary. cell maps an index to the
-// local cell it names.
+// [lo, hi]. The returned path runs from the corner shared with the
+// neighbour one step before lone to the corner shared with the
+// secondary neighbour itself. cell maps an index to the local cell it
+// names.
 func (l Lattice) canonicalBorder(cell func(int32) Coord, lone, secondary Direction, lo, hi int32) []Face {
 	faces := make([]Face, 0, 2*int(hi-lo)+1)
 	faces = append(faces, FaceOf(cell(lo), lone))

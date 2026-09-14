@@ -153,9 +153,9 @@ func TestChunk_SixSymmetricNeighboursJoinedByAFace(t *testing.T) {
 	}
 }
 
-// TestDistance_EqualsLatticeStepCount checks that hex distance between cells
-// straddling a chunk border equals a hand-computed table, and it is
-// symmetric.
+// TestDistance_EqualsLatticeStepCount checks hex distance against a
+// hand-computed table, that it is symmetric, and that it agrees with a
+// step count taken along the lattice, including across a chunk border.
 func TestDistance_EqualsLatticeStepCount(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -183,7 +183,7 @@ func TestDistance_EqualsLatticeStepCount(t *testing.T) {
 			}
 		}
 		a, b := draw("a"), draw("b")
-		// Breadth-first step count via repeated Neighbor from a should
+		// A greedy step count via repeated Neighbor from a should
 		// equal Distance(a,b) for at least the direct-path check: moving
 		// one step toward b along a shortest hex path strictly decreases
 		// distance by exactly one, for a Distance-many steps.
@@ -363,13 +363,26 @@ func TestLattice_BorderHasTwoRPlusOneFacesInOneOrderFromEitherSide(t *testing.T)
 					t.Fatalf("R=%d Border(%v)[%d]=%v and [%d]=%v do not share a vertex", r, d, i-1, border[i-1], i, border[i])
 				}
 			}
+			// The neighbour's own border, walked in the opposite
+			// direction and translated into this chunk's frame by
+			// Offset(d), agrees with this border face-for-face, in
+			// order.
+			offset := l.Offset(d)
+			neighborBorder := l.Border(d.Opposite())
+			if len(neighborBorder) != len(border) {
+				t.Fatalf("R=%d Border(%v) has %d faces, neighbour's Border(%v) has %d", r, d, len(border), d.Opposite(), len(neighborBorder))
+			}
+			for i, f := range neighborBorder {
+				translated := hexgrid.Face{Cell: hexgrid.Coord{Q: f.Cell.Q + offset.Q, R: f.Cell.R + offset.R}, Dir: f.Dir}
+				if translated != border[i] {
+					t.Fatalf("R=%d Border(%v)[%d] = %v, neighbour's Border(%v)[%d] translated by Offset(%v) = %v",
+						r, d, i, border[i], d.Opposite(), i, d, translated)
+				}
+			}
 			// Reconstruct the order independently of canonicalBorder:
 			// start at the face whose tip locates into the designed
 			// start corner, then repeatedly walk to the one remaining
 			// face sharing a vertex with the current one.
-			// This also covers the neighbour's translated agreement,
-			// since bruteSet already proves the two chunks' borders are
-			// the identical set of faces.
 			canonicalDirs := map[hexgrid.Direction]bool{hexgrid.DirE: true, hexgrid.DirNE: true, hexgrid.DirNW: true}
 			firstStep := -1
 			if !canonicalDirs[d] {

@@ -309,7 +309,8 @@ func TestGenerate_TakesSharedBorderFromStoredNeighbour(t *testing.T) {
 	}
 
 	// C generated against N reads, face by face, exactly N's states on
-	// the C-N border, including possibly a count outside C's own range.
+	// the C-N border, whose count the setup above guarantees lies
+	// outside C's own range.
 	for _, local := range lattice.LocalCells() {
 		global := lattice.At(c, local)
 		for _, d := range sixDirections {
@@ -760,6 +761,15 @@ func TestGenerate_SettledByItsInputsAlone(t *testing.T) {
 		mapsB := generateInOrder(genB, orderB)
 
 		for _, ch := range region {
+			if mapsA[ch].Version() != mapsB[ch].Version() {
+				t.Fatalf("chunk %v: order A version %d, order B version %d", ch, mapsA[ch].Version(), mapsB[ch].Version())
+			}
+			if mapsA[ch].Type() != mapsB[ch].Type() {
+				t.Fatalf("chunk %v: order A type %v, order B type %v", ch, mapsA[ch].Type(), mapsB[ch].Type())
+			}
+			if mapsA[ch].Radius() != mapsB[ch].Radius() {
+				t.Fatalf("chunk %v: order A radius %d, order B radius %d", ch, mapsA[ch].Radius(), mapsB[ch].Radius())
+			}
 			for _, local := range lattice.LocalCells() {
 				fa, _ := mapsA[ch].Faces(local)
 				fb, _ := mapsB[ch].Faces(local)
