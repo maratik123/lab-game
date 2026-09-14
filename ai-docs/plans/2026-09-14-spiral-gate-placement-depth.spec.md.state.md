@@ -60,5 +60,11 @@ round_cap: 4
 questions_per_round_cap: 3
 round: 1
 agent_id: a7879fa54e60232cc
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "Where should each ring of the gate spiral start? Once k > 0 this decides how many gates fit near the centre and how deep the cells between them are, and it becomes part of the world's identity once gates are stored. Figures cover chunks within ring 30 of the centre, with no chunks created by explorers; depth is the distance to the nearest gate in chunks."
+    answer: "Как ты понимаешь, что такое k?"
+  - round: 1
+    question: "Which lattice direction does the spiral start in, and which way does it turn? Both only rotate or mirror the same world; neither changes packing or depth."
+    answer: "Design fixes (Recommended)"
 ```
