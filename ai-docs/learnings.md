@@ -1040,3 +1040,53 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** bf20076
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-14 — process — an unvalidated measuring instrument put into a delegate prompt as a conclusion
+**What happened:** During `/interview` round 1 for #120, verifying `spec-writer`'s question about where each ring of the gate spiral starts, the orchestrator judged layout regularity by the residue class `(q-r) mod 3` and sent the delegate the conclusion "three misaligned sub-lattices with seams" for the corner start. The test is valid only for the index-3 lattice (k = 1, mid-side); the corner start produces an index-(k+1)² lattice, which spans all three classes while being perfectly regular. The delegate adopted the instrument, extended it to k = 2, and re-emitted two option descriptions that were false ("neither start gives an even layout for every k", "at k = 2 the corner start does"). A strict coset test — gate set equals one lattice coset over the interior, its not-a-lattice branch and its mismatch branch each seen red on a constructed layout — showed every layout at k = 1, 2, 3 is an exact lattice except mid-side with ceil rounding at k = 2.
+**Rule:** Before a measurement-derived conclusion enters a delegate prompt, run its instrument against a constructed case whose answer is known and that differs from the case the instrument was designed around (here: a regular lattice not aligned with the test's modulus). The outbound phase of delegation binds conclusions the orchestrator derives while verifying a delegate, not only premises it writes at spawn.
+**at:** b7430bd
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — code-style — outward references written into new comments, caught only by the pre-commit gate
+**What happened:** In the #120 run, Group A's `code-writer` wrote a design-decision anchor ("D9") inside a `//nolint` reason and a package-qualified symbol of this module (`hexgrid.Chunk.Neighbor`) in a test-helper doc comment in the new `internal/gate` package. By its own report, `make comment-refs` run before staging did not flag them — the target walks the tracked gated set, and the files were new — and the pre-commit gate over the staged set refused the commit; both comments were reworded and the commit succeeded on retry.
+**Rule:** Write comments that point at nothing outside themselves from the first draft: no design-decision ids and no package-qualified symbol of this module outside its own package. When the files are new, run the comment-reference check after `git add`, because a walk of tracked files says nothing about untracked ones.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — process — a delegate recorded a gate-caught violation in the progress file instead of the learnings log
+**What happened:** The same `code-writer` return stated that the comment-reference correction was "logged in the progress file's Decisions log rather than as a separate `ai-docs/learnings.md` entry, since it's an in-task correction within the delegate's own recovery, not a new instruction violation." A violation a gate caught before commit, fixed by the actor in the same task, is still a violation; the orchestrator wrote the entry above on the delegate's return.
+**Rule:** Any instruction violation — including one a gate caught before commit and the actor corrected in-task — is a `learnings.md` entry. A progress-file Decisions-log line does not substitute for it: `/improve` reads only the learnings log, and the progress file is retired before the PR.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — documentation — doc comments stated behaviour the code does not have, past every gate
+**What happened:** In the #120 run, Group A's `code-writer` shipped two false doc comments in `internal/gate`, both green on every gate. `Set.Depth`'s comment said the search "never looks at a chunk farther than the nearest gate's own ring", but its stop rule continues while the best distance exceeds the next ring's lower bound, so with radius 6 and the only gate in the cell's own chunk, a cell 6 from that centre makes the search visit ring 1 (bound 4). `Next`'s comment said the fallback "is never actually reached by an input the scan cannot already satisfy", while its own table test has a row that returns the fallback. Group B's documentation delegate found both while checking KD-41's claims against the code; the orchestrator reproduced both and routed a comment-only fix.
+**Rule:** A doc comment that describes a function's behaviour — a bound, a reachability, a "never" — is a claim about the code and is checked against the code or its tests before commit, the same as a design claim. A comment that paraphrases the design's proof in stronger words than the proof establishes is the likeliest false one.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — documentation — more false and narrating doc comments in the same package, after the first two were fixed
+**What happened:** Self-review round 1 of the #120 run found further doc-comment defects in `internal/gate`, written by the same Group A delegate that wrote the two false comments recorded earlier today. False claims: `delta`'s comment said `Next`'s fallback uses it and `ringChunk`'s said `SpiralIndex` and `Next` share it — neither calls it — and `ringChunk`'s pointed at an int32 "disclaimer" in `Next`'s comment that does not exist. `lowerBound`'s comment called a lower bound "the least possible" distance and placed its attainment at the ring walk's start; measured at radius 6, ring 1's bound is 4 against a true least of 7, and the attaining chunk at ring 13 is walk position 1, not 0. Narration (DOC-4): `Next`'s comment retold its bounded scan, fallback and proof, and three more comments described how their function works rather than what a caller may rely on.
+**Rule:** A doc comment states what the item is and what a caller may rely on — never which other functions use it, never how it computes its result, and never a pointer to another comment. Every behavioural word in it ("least", "attained", "shared", "never") is checked against the code before commit.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — process — fixed only the two doc comments a delegate reported, without checking their neighbours
+**What happened:** When Group B reported two false doc comments in Group A's `internal/gate` code, the orchestrator reproduced both and routed a fix for exactly those two sentences. It did not re-read the package's other doc comments, although both defects were of one class from one author in one package. Self-review round 1 then found four more false or narrating comments in the same files, costing a review round.
+**Rule:** A defect report scoped to one line is evidence about that line only (`AGENTS.md` § Patterns 1). When a delegate reports a defect of a class — a false doc comment, a wrong bound — sweep every instance of that class the same author wrote in the same change before routing the fix, and put the sweep into the fix's scope.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — documentation — a learnings entry said a function was not shared, from direct call sites alone
+**What happened:** The 2026-09-14 entry "more false and narrating doc comments in the same package" says `ringChunk`'s comment claimed `SpiralIndex` and `Next` share it, and that "neither calls it". `Next` ranges over `Spiral()`, which calls `ringChunk`, so `Next` does share the ring walk; only the `SpiralIndex` half was false, and that half was all self-review round 1 had raised. The orchestrator widened the reviewer's finding into the log without following the call chain. Self-review round 2 raised it (SR2-3).
+**Rule:** A claim that X does not use Y, written into any durable surface, is checked through the call chain — every caller, not only direct call sites — and a log entry restates a reviewer's finding at the finding's own scope, never wider.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — process — accepted a delegate's "no further false claims" sweep without re-running it
+**What happened:** The round-1 fix delegate in the #120 run was told to re-read every doc comment in `internal/gate` and reported that the others "describe contracts/complexity guarantees, not implementation retelling". The orchestrator accepted that negative result. `Set`'s comment said repeated `Depth` queries "cost no more than the distance to the nearest gate", while the chunk lookups grow with the square of that distance in rings — with one gate at the centre chunk, radius 0, and a cell 100 chunks out, a query makes 30301 lookups. Self-review round 2 raised it (SR2-1).
+**Rule:** A delegate's negative sweep result ("no further instances") is a claim like any other: re-run the sweep over the claim class yourself — here, every cost or complexity word in the package's comments, each checked against the code — before sending the fix back to review.
+**at:** e7835b8
+**Kind:** correction
+**Escalated?** no
