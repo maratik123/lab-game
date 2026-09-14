@@ -1,5 +1,5 @@
 # Progress: Spiral gate placement and nearest-gate depth — ACTIVE
-_Updated: 2026-09-14 10:29_
+_Updated: 2026-09-14 10:58_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -11,13 +11,13 @@ _Updated: 2026-09-14 10:29_
 **Spec:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.spec.md
 **Design:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.design.md
 
-**current_step:** Step 8 — subtask 4 of 5 complete, Group A done
-**last_passed_gate:** golangci-lint run ./internal/gate/... | 2026-09-14T10:50:16Z | d70f3b23fbccd9c11973b8a4c3c1a8d6589fdcaa
+**current_step:** Step 8 — subtask 5 of 5 complete, Group B done (awaiting the orchestrator's Group B return)
+**last_passed_gate:** check-citations.sh + relative-markdown-link check (working tree over 2b76287) | 2026-09-14T10:57:46Z | 2b762873170d4322f26b7bca877068eae297eb18
 **entry_args:** 120
 
 ## Next action
 
-**Do this immediately:** Group B (instructions/harness, `general-purpose`) — subtask 5 of the design's `## Decomposition`: KD-41 in `ai-docs/key-decisions.md`, KD-38's consumer sentence, `internal/gate` on `ai-docs/context.md`'s layout line, and the propagation grep the subtask names. Edit no code file; a code-surface finding is reported, not fixed.
+**Do this immediately:** Group B return — re-validate the docs commit, decide the two code-surface doc-comment findings from subtask 5 (Decisions log, below) and the Status-bullet edit made beyond the design's named layout line, then Step 9.
 
 ## Subtasks
 
@@ -27,7 +27,7 @@ Groups per the design's `## Handoff plan`.
 - [x] 2. Group A — the next gate and its tests — commit f162d29
 - [x] 3. Group A — `Set`, `NewSet`, `Depth`, with the external tests and the internal AC9 test — commit 7f47611
 - [x] 4. Group A — the reporting-only benchmark — commit adf4c1c
-- [ ] 5. Group B — documentation (KD-41, KD-38 consumer sentence, `context.md` layout line)  ← CURRENT
+- [x] 5. Group B — documentation (KD-41, KD-38 consumer sentence, `context.md` layout line)
 
 ## Decisions log
 
@@ -38,6 +38,11 @@ Groups per the design's `## Handoff plan`.
 - **Step 8, subtask 1**: the pre-commit comment-refs gate (run over the staged diff) caught a decision-anchor ("D9") in a `//nolint` comment and a package-qualified symbol (`hexgrid.Chunk.Neighbor`) in a test-helper doc comment that `make comment-refs` (run before staging) had not yet seen against these files; both reworded to name no decision id and no cross-package symbol, and the commit succeeded on retry.
 - **Step 8, subtask 3**: `TestSetDepth_Table`'s later-ring row (a ring-2 gate nearer in cells than a ring-1 gate, to red-flag a "stop at first ring with a hit" search) was found by a scratch Go program under `tmp/_probe/gatedepth` that brute-forced radius-6 chunk centres for an inversion, then deleted once the concrete cell/gate/distance values were copied into the test; radius-8 gates and two far chunk directions (corner and mid-side) were used the same way for `TestSetDepth_FarBeyondEveryGate`. Both `lowerBound`'s "+R" mutant and the "stop at first hit" mutant were run against `depth.go` and seen to fail the relevant test before being reverted, per the AC9/AC7 mutant notes in the design's Test Design section.
 - **Step 8, Group A return**: orchestrator re-validated branch, base_commit and a clean tree, found no scratch Go under `tmp/`, and re-ran `go build ./...`, `go test -count=1 ./internal/gate/` and `golangci-lint run ./internal/gate/...` — green at d70f3b2; wrote two `ai-docs/learnings.md` entries (the comment-reference violation, and the delegate's decision to record it here instead of in the learnings log).
+- **Step 8, subtask 5 (KD-41)**: added under a new `## Gate placement (2026-09-14)` section at the end of `ai-docs/key-decisions.md`, recording D1, D2, D4 and D5 (plus D6's build-once note). It states the AC9 search bound as resting on the stop-rule proof and `TestSearch_StaysWithinBound` / `TestSearch_FarGatesAddNoWork`, never on `detguard`, and records the zero `Set`'s `(0, false)`. Every test name KD-41 cites was confirmed to exist by a `^func <name>\(` grep with a negative control. `detguard`'s `"math"` ban, its name-based map-ness comment and `isMapRange`'s three recognised shapes were re-read at 2b76287. KD-41 also says no import-allowlist guard holds `internal/gate`'s import set: `internal/gate`'s tests carry no import check (grep for `Imports|go/parser|ImportDir|allowlist`, with a control).
+- **Step 8, subtask 5 (KD-38)**: the consumer sentence now reads that a consumer of a distance, a coordinate vocabulary or the nearest-gate distance depends on `internal/hexgrid`, or on `internal/gate` over it. An `*Amended by #120:*` clause and a source entry were added. `go list -deps` confirms `internal/gate`'s only non-standard dependency is `internal/hexgrid`, and a grep shows no package imports `internal/gate` yet.
+- **Step 8, subtask 5 (context.md)**: `internal/gate` added to the layout line after `internal/maze`. **Beyond the design's named line:** the Status "Code:" bullet said the generation core (`hexgrid` and `maze`) "reaches no call site beyond the balance loader's radius check", which became false once `internal/gate` imports `hexgrid`. It now reads "no call site outside the world packages", followed by one sentence naming `internal/gate`. The reasons are the Propagation Rule's step 4 (every live doc must agree) and the #119 precedent, whose PR changed that same bullet. The orchestrator may revert it.
+- **Step 8, subtask 5 (propagation grep)**: `grep -rniE 'spiral|nearest[- ]gate|depth gradient'` (control line matched) over `.claude/`, `AGENTS.md`, `ai-docs/`, `README.md`. `context.md` lines 19, 32 and 42 remain true, as do KD-38 and the history surfaces (`harness-gaps.md`, `deferred/_inbox.jsonl`, left untouched). `docs/DESIGN.md` §2.2 fixes no start direction, turn or ring start, so nothing there contradicts D2. A post-edit re-sweep adding `vocabulary alone|no call site` found only intended sentences.
+- **Step 8, subtask 5 (code-surface findings, reported, not fixed; Group A defects)**: a scratch copy of `spiral.go`/`depth.go`/`next.go`/`errors.go` under `tmp/_probe/gatedoc` (deleted after the run) established two false doc comments. (1) `Set.Depth`'s "It never looks at a chunk farther than the nearest gate's own ring" is false. With R=6, a sole gate in the cell's own chunk and the local cell farthest from the centre, `depthSearch` returned depth=6, lastRing=1 while the nearest gate is in ring 0, since `L(1)=4 < 6`. The true bound is `S(cell)`. (2) `Next`'s "So the fallback is never actually reached by an input the scan cannot already satisfy" contradicts the fallback it documents. With rings 0–2 created and k=0, `Next` returned `(3,-1)` from the fallback return, and `TestNext_Table` has that very row.
 
 ## GO notes
 
@@ -50,6 +55,7 @@ Groups per the design's `## Handoff plan`.
 
 - A Go package under a non-`_`-prefixed directory in `tmp/` is walked by `go build/test ./...` and `golangci-lint run`; scratch Go goes under `tmp/_probe/<name>/`.
 - `detguard` recognises a map-typed struct field name as map-typed file-wide: the `Set`'s map field is `members`, a name no ranged identifier in `depth.go` carries.
+- `grep` on this host is `ugrep`, which rejects a `.{0,90}(a|b|c).{0,90}` context pattern as exceeding its complexity limits; extract match context with Python instead.
 
 ## AC Status
 
@@ -76,3 +82,4 @@ Groups per the design's `## Handoff plan`.
 - `internal/gate/next.go`, `internal/gate/next_test.go` (subtask 2, commit f162d29)
 - `internal/gate/depth.go`, `internal/gate/depth_test.go`, `internal/gate/depth_internal_test.go` (subtask 3, commit 7f47611)
 - `internal/gate/bench_test.go` (subtask 4)
+- `ai-docs/key-decisions.md`, `ai-docs/context.md` (subtask 5)
