@@ -49,6 +49,7 @@ make test-db-up                                         # bring up a long-lived 
 make test-db-down                                       # remove it — no reaper will
 make test-fallback                                      # the per-binary container path's own gate
 make test-contention                                    # the race gate under induced cross-package load
+make test-contention-stop-probe                         # its load-loop stop, landed inside a container provisioning on purpose
 go vet ./...                                            # vet (also inside golangci-lint)
 golangci-lint run                                       # strict lint gate
 golangci-lint fmt                                       # apply every enabled formatter
