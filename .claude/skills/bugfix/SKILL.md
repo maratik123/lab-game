@@ -56,7 +56,7 @@ Reactive bug-fixing workflow. **Fundamentally different from `/task`:**
 
 Spawn the embedded `Explore` Subagent via the `Agent` Tool to trace the actual execution path. `Explore` is read-only by contract (no `Edit` / `Write` / nested `Agent`); it returns the ASCII sequence diagram AND the file:line citations supporting each arrow. The orchestrator (this skill) writes the trace artefact below from `Explore`'s output — `Explore` cannot write files.
 
-The spawn `prompt` MUST embed the verbatim `ast-index.md § Rules for subagents` block (the subagent does NOT inherit `.claude/rules/ast-index.md`).
+The subagent does NOT inherit `.claude/rules/ast-index.md`; the template below carries the `ast-index` commands it needs, so fill it and add nothing.
 
 ```
 Agent(subagent_type="Explore", prompt="
@@ -199,7 +199,7 @@ Before Edit — make a plan:
 
 ## Step 5: Fix
 
-Delegate the fix's **code-writing** to the `code-writer` subagent (Mode B — single-fix delegate). The orchestrator does NOT open `Edit` for the fix itself; it hands `code-writer` the Step-4 plan plus the Step-2 root cause and Step-3 failing test, and `code-writer` **authors** the concrete edits (it does NOT transcribe a finished diff), runs the gates, and returns **WITHOUT committing** — the orchestrator owns Step 6.5 self-review and the commit, so the fix is reviewed before it lands.
+Delegate the fix's **code-writing** to the `code-writer` subagent (Mode B — single-fix delegate). The orchestrator does NOT open `Edit` for the fix itself; it hands `code-writer` the Step-4 plan plus the Step-2 root cause and Step-3 failing test, and `code-writer` **authors** the concrete edits (it does NOT transcribe a finished diff), runs the gates, and returns **WITHOUT committing** — the orchestrator commits at Step 6, owns Step 6.5 self-review, and pushes only after APPROVE, so the fix is reviewed before it leaves the machine.
 
 ```
 Agent(subagent_type="code-writer", prompt="
@@ -234,7 +234,8 @@ After `code-writer` returns, the **orchestrator** applies the bail rules below �
 2. Run the full suite: `go test ./...` — confirm nothing else broke
 3. Run `golangci-lint run` for changed files
 4. Run `golangci-lint fmt`
-5. **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 6: Verify — green`; rewrite `**last_passed_gate:**` to `golangci-lint run | <ISO-8601 UTC timestamp> | <commit SHA from git rev-parse HEAD>`; append a `## Decisions log` bullet recording any non-trivial regressions caught and resolved (one line, prefixed `Step 6:`; omit the bullet if no decision was needed).
+5. **Commit the fix locally — never push here.** One commit per root cause, `fix(<package>): <imperative summary>`. Self-review reads `<base>..HEAD` (Step 6.5 item 1), so an uncommitted fix is a diff the reviewer is never shown; what APPROVE gates is the push.
+6. **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 6: Verify — green`; rewrite `**last_passed_gate:**` to `golangci-lint run | <ISO-8601 UTC timestamp> | <commit SHA from git rev-parse HEAD>`; append a `## Decisions log` bullet recording any non-trivial regressions caught and resolved (one line, prefixed `Step 6:`; omit the bullet if no decision was needed).
 
 > ⛔ **Do NOT delete the trace artifact yet — Step 6.5 still needs it as the spec-equivalent input for the `self-review` Subagent.**
 
@@ -242,11 +243,11 @@ After `code-writer` returns, the **orchestrator** applies the bail rules below �
 
 ## Step 6.5: Self-review (loop, max 3 rounds — same semantics as `/task` Step 10)
 
-> ⛔ **`/bugfix` cannot report Step 6 as complete and proceed to commit / push until self-review issues APPROVE.** A `/bugfix` PR has the same code-quality bar as a `/task` PR — both land on main after merge. Build-system gates (lint / fmt / test) catch what the compiler and linters know about; they do NOT catch "this literal should be a named const", "this godoc paragraph contradicts the fix", "this fix touches a sibling concern that should be a separate PR" — exactly the class of nits a human reviewer raises. _See the sibling **quartzite** project's `ai-docs/learnings.md` 2026-05-13 `/bugfix`-Step-6-lacks-self-review entry: `maratik123/quartzite#333` shipped a magic-number literal that `self-review` would have caught pre-push but didn't run, costing one extra `/pr-commented` round._
+> ⛔ **`/bugfix` does not push until self-review issues APPROVE.** The fix is committed locally at Step 6 so that the reviewer has a range to read; the object of the AGENTS.md self-review AXIOM is the push. A `/bugfix` PR has the same code-quality bar as a `/task` PR — both land on main after merge. Build-system gates (lint / fmt / test) catch what the compiler and linters know about; they do NOT catch "this literal should be a named const", "this godoc paragraph contradicts the fix", "this fix touches a sibling concern that should be a separate PR" — exactly the class of nits a human reviewer raises. _See the sibling **quartzite** project's `ai-docs/learnings.md` 2026-05-13 `/bugfix`-Step-6-lacks-self-review entry: `maratik123/quartzite#333` shipped a magic-number literal that `self-review` would have caught pre-push but didn't run, costing one extra `/pr-commented` round._
 
 1. Determine the diff window:
-   - **Standalone `/bugfix`** (entry point was a user bug report): `<base>` is the branch's merge-base against `origin/main` when no commits exist yet; once N commits are staged or committed (but not pushed) on the branch, `<base>` is `HEAD~N` against the pre-fix tip. Pass the resolved base as the `base_commit` to the Subagent.
-   - **`/bugfix` invoked from `/task` Steps 8–12** (per the task SKILL Step 8 "Bug report during impl → activate `/bugfix`" hand-off): the diff window is the bugfix's own staged-but-not-pushed commits — NOT the entire `/task` diff. Parent `/task` Step 10 covers the full task diff later; the per-bugfix self-review catches nits inside the bug's window before they get conflated with task-scope feedback.
+   - **Standalone `/bugfix`** (entry point was a user bug report): `<base>` is the commit before the first one Step 6 made — `HEAD~N` for this run's N unpushed commits, the fix commits of later rounds included. It is never `HEAD` itself: a range with no change in it reviews nothing, and the spawn hook refuses it. Pass the resolved base as the `base_commit` to the Subagent.
+   - **`/bugfix` invoked from `/task` Steps 8–12** (per the task SKILL Step 8 "Bug report during impl → activate `/bugfix`" hand-off): the diff window is the bugfix's own committed-but-not-pushed commits — NOT the entire `/task` diff. Parent `/task` Step 10 covers the full task diff later; the per-bugfix self-review catches nits inside the bug's window before they get conflated with task-scope feedback.
 
 2. Spawn the `self-review` Subagent with the trace artifact as the spec-equivalent input. **The prompt is the closed list and nothing else** (`self-review.md` § *Spawn prompt contract*) — the trace's role as the AC-equivalent, the fitness-against-the-bug scope, the findings destination and the round-numbering rule are all stated in that agent file under § *What the prompt paths already tell you*, keyed on the `Spec-equivalent:` path this template sends. A `PreToolUse` hook refuses a spawn that adds anything, and `<base_commit>` is substituted with the base resolved in item 1 — an unsubstituted placeholder is refused too:
 
@@ -261,7 +262,7 @@ After `code-writer` returns, the **orchestrator** applies the bail rules below �
 
 3. **On APPROVE:** proceed to Step 7 (artifact deletion + final cleanup). **Write progress at this step boundary** before further tool calls: rewrite `**current_step:**` to `Step 6.5: Self-review — APPROVE (Round N)`; append a `## Decisions log` bullet recording the round count and any objections accepted (one line, prefixed `Step 6.5:`).
 4. **On REJECT:** loop back to Step 5 (Fix) — address each `⬜ Open` finding (severity ladder applies — `major`/`blocker` may require user confirmation before objecting per the same rules `/task` Step 11 enforces). After fixes, return here for Round N+1. Rewrite `**current_step:**` to `Step 6.5: Self-review — REJECT (Round N), addressing findings` before re-entering Step 5.
-5. **After Round 3 with REJECT:** STOP. Do not commit / push. Surface remaining `⬜ Open` findings to the user and wait for direction (escalate to a wider design-amendment cycle, accept the findings as out-of-scope nits, or abandon the fix).
+5. **After Round 3 with REJECT:** STOP. Do not push. Surface remaining `⬜ Open` findings to the user and wait for direction (escalate to a wider design-amendment cycle, accept the findings as out-of-scope nits, or abandon the fix).
 
 **A warm follow-up is still a gate prompt.** The closed list binds the CONTENT, not the carrier: a round delivered to a resumed reviewer by `SendMessage` carries the same permitted items and nothing else — no fix summary, no characterisation of the work, no self-reported gate results, no round history. The `PreToolUse` matcher is `Task|Agent`, so it does not reach that path; there the rule is the whole enforcement, and the reviewer-side `PROMPT-CONTAMINATION` finding is the only backstop.
 

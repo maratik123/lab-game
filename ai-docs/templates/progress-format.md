@@ -1,6 +1,6 @@
 # `.progress.md` format (canonical)
 
-Single source of truth for the progress-file format. `/task`, `/project-review`, `/pr-commented`, `/bugfix`, and the `review-findings` / `self-review` Subagents all read and write it; the **required** fields below must be present in every progress file regardless of which workflow created it. `/interview`, `/verify-change`, and `/pr-merged` are exempt (see *Exemptions* below).
+Single source of truth for the progress-file format. `/task`, `/project-review`, `/pr-commented`, and the `review-findings` / `self-review` Subagents all read and write it; the **required** fields below must be present in every progress file regardless of which workflow created it. `/interview`, `/bugfix`, `/verify-change`, and `/pr-merged` are exempt (see *Exemptions* below); `/bugfix` keeps the same header fields in its trace file. A skill is named in this participant list or under *Exemptions*, never in both.
 
 ```markdown
 # Progress: [task name] — ACTIVE
@@ -21,7 +21,7 @@ _Updated: YYYY-MM-DD HH:MM_
 **last_passed_gate:** [command + ISO-8601 timestamp + commit SHA, e.g. `golangci-lint run | 2026-05-15T18:42Z | 549282b`]
 
 <!-- Optional re-entry fields: -->
-**parent_skill:** [/task | /project-review | /pr-commented]    <!-- when this progress file is owned by a nested skill (e.g. /bugfix invoked from inside /task Step 8); omit when the current skill IS the parent flow -->
+**parent_skill:** [/task | /project-review | /pr-commented]    <!-- the PARENT flow, when the file is written by a skill nested inside it (a /bugfix trace opened from /task Step 8 carries /task); never the writing skill's own name; omit when the writing skill IS the parent flow -->
 **entry_args:** [the original $ARGUMENTS that started this flow]   <!-- required for /task progress files (recorded at Step 8 creation, read-only thereafter); optional elsewhere. Routes /task's three preambles correctly on re-entry after compaction. -->
 
 ## Next action
@@ -75,7 +75,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ### `## Review register` semantics
 
-- **id** `R<round>-<n>` is permanent; a finding keeps its id across rounds. A later finding that restates an earlier one is not a new row — it is the old row re-opened (`status: open 🔁@<round>`).
+- **id** `R<round>-<n>` is permanent; a finding keeps its id across rounds. A later finding that restates an earlier one is not a new row — it is the old row re-opened (`status: open 🔁@<round>`), and the later round's table row about it leads its Finding cell with that original id (`R1-5 — …`). The shape is the key `ai-docs/scripts/check-review-register.sh` joins on — letters, then `<round>-<n>` (`R2-3`, `SR2-3`) — so an id of any other shape is a row the gate cannot read, and a row that leads with an id joins that id rather than its own round and row number.
 - **status vocabulary:** `open` · `fixed@<sha>` · `accepted@<round> — <one-line reason>` · `superseded→<id>`. `accepted` means a reviewer examined the item and ruled it not-a-defect or inherent; it is the durable form of "Recorded, not raised".
 - **verifying command** is the command whose output settles the row (the failing command for a defect; the measuring command for a threshold). Required for every `blocker`/`major` row.
 - The register is the **only** cross-round memory the loop has. A per-round findings table documents a round; the register is what the next round is scoped by.

@@ -192,6 +192,7 @@ Entries are appended at the END, newest last.
 **Gap:** `code-writer`'s gate discipline says to run the gates and get them green, and nothing distinguishes *the gate found a real defect* from *the gate matched a mention of the defect*. With "green" as the only stated target, editing the matched text is a legal way to reach it, and it is cheaper than reasoning about the hit.
 **Proposed edit:** In `code-writer.md`'s gate section, add a closed rule for textual (grep/rg-shaped) gates: a hit is discharged by confirming it is not an executable instance of what the criterion forbids, and recording that confirmation in the progress file's Decisions log. Editing the matched artefact to remove the match is FORBIDDEN unless the matched text is itself the defect. A gate whose pattern cannot distinguish a call from a mention is a finding about the gate, routed here — never resolved by changing the subject.
 **at:** 2ddc228
+**Forge:** forge-19
 
 ### 2026-09-04 — a harness-gaps `target:` naming a file that does not exist routes the fix nowhere
 **target:** `ai-docs/harness-gaps.md` (the 2026-09-02 `[measured:]`-input-classes entry's `target:` line); no instruction-file rule change proposed here
@@ -201,6 +202,7 @@ Entries are appended at the END, newest last.
 **Also observed, recorded here rather than acted on:** the input-classes gap the 2026-09-02 entry describes is still open at both live coordinates — reading `design-writer.md`'s Claims bullet and `design-review.md`'s tag re-check directly (not by grep, which under-reports on prose) shows neither asks which input classes a probe sent.
 **at:** eb4b087
 **Superseded by:** 2026-09-04 "a target-path guard needs a `Superseded by:` exemption" — the Proposed edit's gate and its own correction procedure are mutually unsatisfiable; refined in the later entry.
+**Forge:** forge-19
 
 ### 2026-09-04 — a target-path guard needs a `Superseded by:` exemption, or it is red on every correctly-handled entry
 **target:** `ai-docs/harness-gaps.md` (the earlier 2026-09-04 target-path-guard entry's `Proposed edit:`); `.claude/skills/ai-audit/scripts/check-citations.sh` if that guard is ever built
@@ -208,6 +210,7 @@ Entries are appended at the END, newest last.
 **Gap:** the proposal was written from the *diagnosis* half (a dead pointer should be findable) without executing the *remedy* half against the file's own append-only rule. A gate over an append-only log has to treat supersession as the discharge, because deletion is unavailable by construction — otherwise the only route to a green gate is to break the log's core invariant. The same run also under-counted the dead targets with a pattern (`{design,`) that matched a brace member only in first position, which is why the count moved from one to four: write the pattern against the shapes the corpus actually holds, then print the count and look at it.
 **Proposed edit:** the guard skips any `**target:**` line whose entry carries a `**Superseded by:**` field; a dead path in an entry **without** one is RED, and the fix is to add the field naming the live coordinates. That makes the gate measure the thing that is actionable — an uncorrected dead pointer — rather than the presence of the history this log exists to keep.
 **at:** c16468c
+**Forge:** forge-19
 
 ### 2026-09-04 — a clean-context reproducer cannot reach an in-flow attention failure, so those rules are unfalsifiable at the gate
 **target:** `ai-docs/improve-eval-contract.md` (§ *Verdict space*, and § D1's "what would show the gap is biting")
@@ -231,6 +234,7 @@ Entries are appended at the END, newest last.
 **Gap:** the participant list at `:3` was not updated when the `/bugfix` exemption was added, and nothing cross-checks the two lists against each other. The file asserts its own authority as the "single source of truth", which is exactly what makes an internal contradiction expensive: each half is quotable as canon.
 **Proposed edit:** remove `/bugfix` from the `:3` participant list — the `## Exemptions` entry already describes its real durable-state surface — and state the invariant that the participant list and the exemption list are disjoint, so that a name appearing in both is mechanically checkable by an `/ai-audit` pass rather than resolved by whichever line the reader hits first. Settle `:24`'s `**parent_skill:**` subject in the same edit and make its value list match.
 **at:** d156f73
+**Forge:** forge-19
 
 ### 2026-09-06 — the citation guard's ceiling is the newest PR, so a newly-filed issue reads as foreign
 **target:** `.claude/skills/ai-audit/scripts/check-citations.sh` (`:57-59`, the `LOCAL_MAX` read)
@@ -246,6 +250,7 @@ Entries are appended at the END, newest last.
 **Gap:** The hook selects its inputs with `git diff --cached --name-only | grep '\.progress\.md$'`, but `ai-docs/templates/progress-format.md:111` designates the `/bugfix` trace (`ai-docs/bugfix/trace-YYYY-MM-DD-<name>.md`) as that workflow's durable-state surface, carrying the same `current_step` / `last_passed_gate` headers and a `## Review register`. The filename never matches the pattern — and even if it did, `.gitignore:34` ignores `/ai-docs/bugfix/trace-*.md`, so the file is never staged and `git diff --cached` can never list it. Both reasons are independent: widening the `grep` alone would leave the gate just as dead. A gate that cannot fire on a whole workflow reads, from inside that workflow, exactly like a gate that fired and passed.
 **Proposed edit:** widen the filter to the union of both surfaces AND source the `/bugfix` path from the working tree rather than the index, since that surface is deliberately untracked — e.g. add `ls ai-docs/bugfix/trace-*.md` to the candidate list, guarded on the glob actually matching. Whichever shape is chosen, it needs the negative test `ai-docs/hook-verification.md` requires: prove the gate goes RED on a trace carrying an `⬜ Open` row before trusting a green one, because this entry exists precisely because nobody had ever seen it fire on this workflow.
 **at:** 23c12c5
+**Forge:** forge-19
 
 ### 2026-09-06 — Step 7 / Step 10 name the five spawn items in prose, so the closed list's line SYNTAX reaches the orchestrator nowhere it reads
 **target:** `.claude/skills/task/SKILL.md` Step 7 and Step 10 (the two inline enumerations)
@@ -253,6 +258,7 @@ Entries are appended at the END, newest last.
 **Gap:** the enumeration was introduced by this file's own 2026-09-02 entry, whose complaint was the opposite one — "`SKILL.md:114` says only `per design-review.md` and restates none of the five items" — and whose escalation was "have `SKILL.md` Step 7 enumerate the five items inline". Step 7 now carries a parenthetical stating the enumeration exists *"rather than left as `per design-review.md`"*, so the pointer to the agent file was deliberately replaced, not supplemented. What moved was the list of items; what stayed behind in `.claude/agents/design-review.md:19` and `.claude/agents/self-review.md:27` was the list of permitted line shapes. An orchestrator that follows Step 7 exactly has the semantics and no spelling, and the nearest spawn template on its own path — `.claude/skills/interview/SKILL.md:152`, `spec_path: <spec_path>` for `spec-writer` — is snake_case, so the wrong guess is the locally-consistent one. The hook (2026-09-04, this file's line 156 entry) converts the miss into a refusal rather than a contaminated review, which is why the cost is a retry and not a wasted round; it does not stop the miss from recurring every run.
 **Proposed edit:** give Step 7 and Step 10 the four literal line shapes they already describe in prose — the same block `reference.md`'s amendment templates carry — so the orchestrator never needs the agent file for syntax it is told not to open. Cheapest form is a fenced four-line block per step, since both steps already spend a paragraph on what must NOT appear. Then add the pair to the *Spawn group* row in `ai-docs/propagation-groups.md` (the row the 2026-09-04 entry created binds the templates, the two contracts, the hook and the suite; `SKILL.md`'s two inline enumerations are a fifth surface stating the same contract and are not in it), so the next edit to the closed list reaches all of them. Verification that distinguishes a real fix from a tautological one: the regression suite's must-allow set should gain the exact block `SKILL.md` ships, run against the live hook body — a block nobody has executed is the same class of green instrument this file's other entries keep finding.
 **at:** 42bf79f
+**Forge:** forge-19
 
 ### 2026-09-07 — the review-register gate is silently defeated by `git add … && git commit` in one Bash call
 **target:** `.claude/settings.json` (the `Checking the review register...` `PreToolUse` hook); `.claude/skills/task/SKILL.md` Step 11 item 1; `ai-docs/delegation-rules.md` if it models the combined shape
@@ -260,6 +266,7 @@ Entries are appended at the END, newest last.
 **Gap:** the hook's input selector assumes staging already happened in an earlier tool call, but nothing states that and the combined shape is the ergonomic default — every commit in this run used it, so the gate had fired zero times across three groups, a Step-9 record and a Step-11 fix batch. This is the failure mode `AGENTS.md` § *Patterns* 2 names: a gate that has never been seen red is a claim about the gate. Note the neighbouring hooks are unaffected because they match on **command text** (the `--no-verify` refusal, the piped-gate refusal, the root-redirect refusal); this one is the only one that reads **repository state**, and it is the only one a call-shape can starve. The coverage ratchet escapes by running from `.githooks/pre-commit`, i.e. inside git rather than before the tool call.
 **Proposed edit:** make the selector independent of when staging happened — parse the `git add` paths out of the same command string and union them with `git diff --cached`, or simply fall back to `git status --porcelain` and consider every modified `*.progress.md` when the staged set is empty. Whichever is chosen it needs the negative test `ai-docs/hook-verification.md` requires: the combined `add && commit` shape must be shown to go RED on a disagreeing register before the fix is believed, because that is the shape this entry exists about. A rule-only fix ("stage in a separate call") is weaker than the hook and would be the third instruction in this repository asking an agent to remember a call shape.
 **at:** d083e83
+**Forge:** forge-19
 
 ### 2026-09-07 — the review-register gate matches only a bare `open`, so a re-opened row passes it
 **target:** `.claude/skills/ai-audit/scripts/check-review-register.sh`; `ai-docs/templates/progress-format.md` § *`## Review register` semantics*
@@ -267,6 +274,7 @@ Entries are appended at the END, newest last.
 **Gap:** the vocabulary and the matcher were written against each other's earlier shapes and drifted — `progress-format.md` documents four status forms (`open` · `fixed@<sha>` · `accepted@<round> — <reason>` · `superseded→<id>`) plus the `open 🔁@<round>` re-opening decoration named in the same section's first bullet, and the script's equality test admits only the first. This is the second hole found in the same gate in one run: the other (`ai-docs/harness-gaps.md`, 2026-09-07) is that `PreToolUse` reads `git diff --cached` before the command executes, so `git add … && git commit` in one call starves it of inputs. A gate with two independent ways to pass without checking anything has not been shown red on either path — `AGENTS.md` § *Patterns* 2.
 **Proposed edit:** match the status cell by **prefix** against the documented vocabulary rather than by equality — anything beginning `open` is open, including the re-opening decoration — and add the decorated form to the script's own regression fixtures. The negative test `ai-docs/hook-verification.md` requires is specifically a register carrying `open 🔁@N` beside a `✅ Fixed` round-table row: it must go RED before the fix is believed, because that is the exact shape this entry is about. While fixing it, re-check the other three vocabulary forms against the matcher too — two holes found by accident in one run is not evidence that the third form is sound.
 **at:** a850d92
+**Forge:** forge-19
 
 ### 2026-09-08 — the self-review severity ladder grades EVIDENCE, not impact, so prose defects arrive as `major`
 **target:** `.claude/agents/self-review.md` § *Rules* (the mechanical severity floor) and § *Verdict* (the REJECT condition)
@@ -282,6 +290,7 @@ Entries are appended at the END, newest last.
 **Gap, as narrow as the evidence supports:** two things, both checkable. (1) The gate enforces one half of PROC-3. Its matcher is `(^|[.;] )([Aa] test |[Tt]ests? (assert|cover|driv|exercis))` — the "never names the test" half. The "never contains a shell command" half of the same rule has no matcher, so a command-shaped AC row passes CI green, and the gate has never been shown red on that shape because it cannot go red on it (`AGENTS.md` § *Patterns* 2). (2) The rule is stated only inside `spec-writer.md`, addressed to the agent that drafts specs. `AGENTS.md` carries no AC-shape rule, and `grep -rniE "acceptance criteri|declarative"` over `AGENTS.md` and the task/interview skills returns nothing on shape — so an orchestrator writing an AC somewhere else (an issue, a PR body, a design's own criteria) has no line telling it the rule reaches there too. That is not an excuse for #68; it is the reason a rule that exists did not travel.
 **Proposed edit:** (1) widen `check-ac-shape.sh` to the command half, held to its own header's standard — measure the new pattern over the AC tables in `ai-docs/plans/done/` and record hit count and false-positive count before adding it; the fix is real only if #68's pre-fix rows flip and no merged spec row does. (2) Put the one-line rule in `AGENTS.md` where every surface reads it: an acceptance criterion states a condition; the command that checks it belongs to the verifier, in the progress file — with the pointer to PROC-3 for the reasoning, so the text is not duplicated twice over.
 **at:** 8a5224f
+**Superseded by:** 2026-09-15 "the AC-shape gate enforces half of the AC rule, restated at the path the gate lives at" — the gate this entry's `target:` names moved to `ai-docs/scripts/check-ac-shape.sh`; the gap stands unchanged, and the later entry carries it at the live path.
 
 ### 2026-09-08 — the spec-writer's Source-conflicts template mandates the bare `file:line` its own pinned-coordinate rule calls a defect
 **target:** `.claude/agents/spec-writer.md` — the `## Source conflicts` section template (the line reading "all conflicting sites verbatim, each with file:line") against Rule 8's pinned-coordinate requirement in the same file
@@ -331,6 +340,7 @@ Entries are appended at the END, newest last.
 **Gap:** the gate's own documentation in the calling skill states it as unconditional — a hook "runs `check-review-register.sh` over every staged `*.progress.md` and blocks the commit on a disagreement" — and the register is described there as the loop's only cross-round memory, with a measured recurrence of five consecutive rounds to justify making it a gate rather than advice. What actually ships blocks only a commit whose staging happened in an *earlier* tool call. So the protection is present for the least common idiom and absent for the most common one, and its absence is silent: a bypassed run and a passing run are indistinguishable in the transcript. This is the same shape the workspace already names in its own patterns — a green result from an instrument that cannot report the failure class it exists to catch — applied to the instrument that guards the review loop's durable state.
 **Proposed edit:** decide where the check belongs given that a `PreToolUse` hook cannot see an index the command has not built yet. The two candidates worth weighing: move it to the repository's `pre-commit` hook, which runs after staging and already carries the comment-reference gate and the coverage ratchet, so the check would see the real index in every idiom; or keep it in `PreToolUse` and have it examine the working tree rather than the index, accepting that it then also fires on an unstaged edit. Whichever is chosen, the skill's sentence describing the gate must be corrected in the same change — it currently asserts a guarantee the wiring does not provide. Verification that would distinguish a real fix from a tautological one: replay this run's own commits, whose register ids were unparseable to the script for their whole life, and require each to be refused; today every one of them is accepted, which is the measurement the fix has to flip.
 **at:** e86eff3b39267bd5123cd7fa200865c93548130c
+**Forge:** forge-19
 
 ### 2026-09-10 — a spec-writer's "apply pre-resolved rules silently" has no gate, so standing AGENTS.md rules land as acceptance criteria
 **target:** `.claude/agents/spec-writer.md` — Hard rule 1 and Round 1 step 4 (the "silently" clauses), with `ai-docs/scripts/check-ac-shape.sh` as the place a mechanical half would go
@@ -347,6 +357,7 @@ Entries are appended at the END, newest last.
 **Gap:** the script treats "no work to do" and "you did not tell me what to check" as the same outcome. That is the exact shape the workspace's own pattern names — a green result from an instrument that cannot report the failure class it exists to catch — applied to the gate that guards the review loop's cross-round memory. The usage message goes to stderr, which a caller redirecting to a log and testing `$?` never reads. Compare the sibling gates: `check-spec-shape.sh` and `check-ac-shape.sh` both have a no-argument mode that is *meaningful* (they default to the branch's changed set), so exit 0 there is a real verdict; this script has no such default, and its silence is therefore not a verdict about anything.
 **Proposed edit:** decide which of the two this script is. Either give it a meaningful no-argument default like its siblings — every `*.progress.md` the branch touches, including the retired ones under `ai-docs/plans/ignored/` — or make the missing argument a usage error with a non-zero status, so a mis-invocation cannot be recorded as a pass. Whichever is chosen, also reconsider whether the `PreToolUse` hook should reach the retired path: today the gate's automatic half stops applying at exactly the moment `/task` Step 12 retires the file, which is when `/pr-commented` starts writing to it. Verification that would distinguish a real fix from a tautological one: run the script with no argument and require a non-zero exit (or a genuine check over a default set), and separately stage a progress file with a deliberate register/round disagreement under the retired path and require the hook to refuse the commit — today the first exits 0 and the second is invisible.
 **at:** 1463d1b
+**Forge:** forge-19
 
 ### 2026-09-11 — the `/improve` Step 6 RED baseline cannot go red: `ai-docs/learnings.md` is itself a rule surface, so the pre-change tree is never rule-free
 **target:** `ai-docs/improve-eval-contract.md` § *The RED baseline* and § *Verdict space*, with `.claude/agents/self-improve.md` § Step 6's two-limb coverage test as the place the fix has to land
@@ -441,6 +452,7 @@ Entries are appended at the END, newest last.
 **Observed:** In `/bugfix 84` the fix came back from `code-writer` uncommitted, as Mode B requires. Step 6.5 says `/bugfix` "cannot report Step 6 as complete and proceed to commit / push until self-review issues APPROVE". But `self-review` takes its diff as `git diff <base_commit>..HEAD` (`.claude/agents/self-review.md` § *Instructions*, step 3), and on an uncommitted fix `HEAD` is the base, so the range is empty. Step 6.5's own diff-window item meanwhile defines `<base>` as `HEAD~N` "once N commits are staged or committed (but not pushed)", which assumes commits already exist. I committed locally, one commit per root cause, nothing pushed, and reviewed `<merge-base>..HEAD`. The `AGENTS.md` self-review AXIOM gates the push, not the commit.
 **Gap:** Step 6.5's no-commit-before-APPROVE sentence contradicts both its own diff-window rule and the reviewer's diff command; read literally, it hands the reviewer an empty diff.
 **Proposed edit:** Choose one ordering and state it in both files. Either Step 6.5 commits locally before the spawn and its ban covers the push only, as the AXIOM does; or `self-review.md` adds `git diff <base_commit>` over the working tree for a `Spec-equivalent:` trace run whose range is empty.
+**Forge:** forge-19
 
 ### 2026-09-12 — the interview-live guard's Bash branch reads the command TEXT, so quoting an instruction file's name blocks a write to an unrelated file
 **target:** `.claude/settings.json` (the `PreToolUse` instruction-edit guard, Bash matcher), `ai-docs/scripts/test-instruction-edit-guard.sh`
@@ -455,24 +467,28 @@ Entries are appended at the END, newest last.
 **Gap:** the two halves of the harness disagree on how "nothing here" is spelled. Rule 1's bullet exclusion exists so a list that merely begins with the word "none" is not swallowed whole, but it also excludes the one-bullet spelling a spec-writer naturally produces under a section whose sibling sections are bulleted. Nothing in the spec-shape gates forbids the bulleted form, so the collision is reachable on any run.
 **Proposed edit:** either let rule 1 fire when the body's bullet lines are exactly one and that bullet is itself a NONE sentinel after the same normalisation, or fix the spelling upstream by having `spec-writer` emit the unbulleted `_None._` for an empty `## Deferred` / `## Out of scope` / `## Open questions`. Whichever is chosen, add a fixture for the bulleted form to the propagation rules' own examples so the next reader does not have to decide it by taste.
 **at:** 877aad3
+**Forge:** forge-19
 ### 2026-09-12 — the register id format the commit gate joins on is documented only inside the gate's own script, so a reviewer writing a descriptive id produces a file whose commit is refused
 **target:** `.claude/agents/self-review.md` (instruction 8, where the register write is specified); `ai-docs/templates/progress-format.md` § *`## Review register` semantics*, whose `id` bullet states the id is permanent but not what shape makes it parseable
 **Observed:** during `/task` Step 10 of this task the reviewer wrote its round-1 row with the id `SR1-CLUSTER-WHY` — a descriptive handle, and the register and the round table agreed in substance for the whole round. `ai-docs/scripts/check-review-register.sh` nevertheless exits 1 on the file, reporting `round 1 finding 1 is marked Fixed and has no register row`, because its parser skips any id failing `^[A-Za-z]*[0-9]+-[0-9]+$` (line 60) and the join at line 86 then finds nothing. The reviewer diagnosed it itself in round 2 and renumbered to `SR1-1`. Neither `self-review.md` nor the progress-format template states the shape; the only place it is written down is the script's own header comment, which says `N` is `R<N>-<n>` and that `SR<N>-<n>` is also accepted.
 **Gap:** the gate joins two tables on a key whose grammar is specified nowhere the author of either table reads. A reviewer following instruction 8 to the letter can produce a register that is internally consistent, human-correct, and unparseable — and the resulting failure message describes a *status disagreement*, which is a different defect with a different fix, so the next reader is pointed away from the real cause. The id is also reviewer-owned state, so nothing downstream corrects it. This is the same gate six open entries above already concern, but it is a distinct fault: those are about **when** the hook reads its input; this is about **what** the script can parse once it does.
 **Proposed edit:** state the join key where the writer reads it — one clause in `self-review.md` instruction 8 and in the progress-format template's `id` bullet, naming the shape rather than pointing at the script. Independently, make the script's own message distinguish the two cases: a round-table row whose id is *unparseable* should say so, not report it as missing from the register. Verification that separates a real fix from a tautological one: a register carrying a descriptive id must be refused with the malformed-id message, and a register carrying a well-formed id whose status genuinely disagrees must still be refused with the existing message — one fixture each, both seen red before the change is believed.
 **at:** a4fc43cf03d7d65b588b49a8c60b373e53a92b7e
+**Forge:** forge-19
 
 ### 2026-09-12 — `/bugfix` Step 1 orders the orchestrator to embed a rules section that does not exist
 **target:** `.claude/skills/bugfix/SKILL.md` (Step 1, the `Explore` spawn)
 **Observed:** Step 1 states, as a MUST: "The spawn `prompt` MUST embed the verbatim `ast-index.md § Rules for subagents` block (the subagent does NOT inherit `.claude/rules/ast-index.md`)." That file has no section of that name — its headings are `Mandatory Search Rules`, `Negative results are NOT evidence`, `Positive results are NOT evidence either`, `Why ast-index`, `Command Reference`, `Go-Specific Commands`, `Index Management`. The instruction is unfollowable as written, and it is also inert: the spawn template printed immediately below it already inlines the `ast-index` command list that the missing section would presumably have supplied, so an orchestrator that just fills the template satisfies the intent and never learns the pointer dangles.
 **Gap:** a MUST whose object does not resolve, kept alive by a sibling that happens to do its job. Nothing downstream fails when the citation goes unresolved, so the only thing that surfaces it is an orchestrator resolving its citations before acting — which this workspace requires in prose (`AGENTS.md` § *Communication*, a citation offered as authority is itself a claim) but which no gate enforces over skill and agent bodies. A citation guard does exist under the `/ai-audit` skill; whether its corpus reaches `.claude/skills/**` section anchors was not checked here.
 **Proposed edit:** delete the sentence, since the template already carries the operative content — or, if a canonical subagent block is genuinely wanted, add that section to `.claude/rules/ast-index.md` and have the template cite it by the name it then really has. Independently worth a gate: resolve every `§`-anchor and named-section citation in `.claude/skills/**` and `.claude/agents/**` against the file it names. Verification that separates a real gate from a tautological one: one fixture citing a section that exists and one citing a section that does not, the second seen RED before the first is believed — the empty-corpus case must report `inconclusive`, not a pass, because an extractor that matches nothing reports the clean answer for every possible input.
+**Forge:** forge-19
 
 ### 2026-09-12 — `/bugfix` Step 6.5 resolves a base commit that hands the reviewer an empty diff on a standalone run
 **target:** `.claude/skills/bugfix/SKILL.md` (Step 6.5, item 1); `.claude/agents/self-review.md` (instruction 3, where the diff is taken)
 **Observed:** Step 6.5 item 1 says that for a standalone `/bugfix`, "`<base>` is the branch's merge-base against `origin/main` when no commits exist yet". `self-review.md` instruction 3 takes its diff as `git diff <base_commit>..HEAD`. On a standalone run that has not committed — which is exactly the state Step 6.5 describes, since it gates the commit: "cannot report Step 6 as complete and proceed to commit / push until self-review issues APPROVE" — the merge-base IS `HEAD`, so that command returns nothing and the reviewer reviews an empty diff. Substituted literally into the closed-list prompt this run, it read `196287f..HEAD` with `HEAD` at `196287f`. The same item's next clause, "once N commits are staged or committed (but not pushed) on the branch, `<base>` is `HEAD~N`", anticipates commits already existing — so the two clauses describe two different flows. Resolved here by committing first and reviewing `HEAD~1..HEAD`, pushing only after APPROVE, which satisfies the AXIOM whose object is `git push`.
 **Gap:** the step's ordering prose and its base-commit arithmetic disagree, and the failure is silent in the worst possible direction — an empty window earns an APPROVE from a reviewer that saw nothing, and because the spawn prompt is a closed list the orchestrator may not explain the situation to it. Nothing in the reviewer's charter makes an empty diff a refusal rather than a pass, so the gate can be fully satisfied without ever reading the work.
 **Proposed edit:** state which artefact the review reads on a standalone run — either "commit the fix first, review `HEAD~1..HEAD`, push only after APPROVE", or give the reviewer the working-tree form (`git diff <base_commit>`, no `..HEAD`) and say so in instruction 3 so the two files agree. Independently, `self-review.md` should refuse an empty diff window instead of approving it. Verification that separates a real fix from a tautological one: a spawn over a range containing no changes must return a refusal, and a spawn over a genuine one-commit range must still return an ordinary verdict — the first seen RED before the second is believed.
+**Forge:** forge-19
 
 ### 2026-09-12 — the claim-tag closed list has no form for a measurement whose subject is outside the tree
 **target:** `.claude/agents/design-writer.md` (§ Quality checklist → Claims)
@@ -481,12 +497,14 @@ Entries are appended at the END, newest last.
 **Gap, second half:** nothing distinguishes a probe whose subject is an external dependency from a probe of a shape the task itself will create. The second is genuinely unsound — a scratch table is not the shipped table — and both rounds of review had to separate them by hand, one claim at a time.
 **Proposed edit:** add a fourth form for an executed external measurement, carrying what a reader needs to re-run it and what makes it external: the dependency and its version, the command, and the output — e.g. `[measured <dependency>@<version> · <cmd> → <output>]`, with the rule that its subject must be outside this module's tree, so a probe of an artefact the task creates stays illegal and keeps taking `[derived → …]`. Verification that separates a real fix from a tautological one: one fixture tagging an external fact and one tagging a scratch probe of a to-be-shipped artefact, the second seen RED before the first is believed — and the empty-corpus case reporting `inconclusive`, since an extractor that matches no tag at all reports the clean answer for every possible design.
 **at:** 95c061a4e5e4d5a5bd820f41513d882672d79140
+**Forge:** forge-19
 ### 2026-09-13 — `code-writer.md` cites an AGENTS.md section that does not exist, and the concept it names lives elsewhere
 **target:** `.claude/agents/code-writer.md`
 **Observed:** `code-writer.md`'s "STOP if handed a predominantly-prose assignment" bullet closes with "(AGENTS.md § Workflow delegation-fitness.)". `grep -cin 'delegation.fitness' AGENTS.md` returns 0 — AGENTS.md has no section, heading or phrase by that name. The rule the bullet paraphrases is `ai-docs/delegation-rules.md` § Phase 1 — Fit, which AGENTS.md § Workflow does reach, but only through the five-phase sentence that names the phase "fit (charter *and* environment)". An orchestrator deciding who should author a Step-11 fix batch followed the citation, found nothing under that name in AGENTS.md, fell back to `code-writer.md`'s own Mode B spawn list, and read that enumeration as the charter boundary — authoring a `.go`-only fix batch in-thread.
 **Gap:** A dangling citation does not merely fail to help; it actively licenses the wrong answer, because the reader who checks it and finds nothing concludes the rule is not where they looked and reaches for the nearest enumeration instead. The repository's own rule for this is in AGENTS.md § *Communication* ("a citation offered as authority is itself a claim — open it"), and nothing gates citations inside `.claude/**` against the file they name.
 **Proposed edit:** Point the bullet at the section that carries the rule — `ai-docs/delegation-rules.md` § Phase 1 — Fit — and state in `code-writer.md`'s Mode B section that the spawn list enumerates known callers rather than bounding the charter, so a fix round in any flow whose diff is predominantly `.go` routes here. Separately, a harness guard could resolve each `§`-style cross-reference in `.claude/**` and `ai-docs/**` against the named file and fail on a miss; the citation guard CI already walks these files for a different property.
 **at:** af9fb63
+**Forge:** forge-19
 
 ### 2026-09-13 — the designated scratch directory is inside the module, so scratch Go files break the build invisibly
 **target:** `AGENTS.md`
@@ -494,6 +512,7 @@ Entries are appended at the END, newest last.
 **Gap:** The rule that makes scratch safe from git does not make it safe from the toolchain, and the two look identical from the flows' own probes. Nothing directs a probe author to keep scratch Go out of the module, and nothing cleans up after a delegate that returns without removing its fixtures.
 **Proposed edit:** Name the underscore convention in the rule — direct scratch Go packages to `tmp/_probe/...` (or require a nested `go.mod`), since a `_`-prefixed directory is invisible to the Go tool while still being a normal ignored path for logs. Add to the delegation rules' return phase that a return which ran scratch or mutation probes is verified by the build, not by `git status`, and that `find tmp -name '*.go' -o -name go.mod` is the sweep that closes it.
 **at:** efc444d
+**Forge:** forge-19
 
 ### 2026-09-14 — a re-opened self-review finding keeps its old register id, but the commit gate joins round N's row n only to `R<N>-n`
 **target:** `ai-docs/scripts/check-review-register.sh`, `.claude/agents/self-review.md`
@@ -501,6 +520,7 @@ Entries are appended at the END, newest last.
 **Gap:** Two contracts disagree about the join key. The reviewer's charter makes a finding's id permanent across rounds; the commit gate recomputes an id from the row's position. A fixer can satisfy both only by adding a pointer row whose meaning the register semantics do not define, or by writing a Status cell that avoids the word the gate keys on.
 **Proposed edit:** Let a round-table row name its register id explicitly — a leading `R<k>-<m>` token in the Finding cell or a dedicated id column — and have the gate join on that id when present, falling back to `R<N>-<n>` only when it is absent. Add a regression fixture in which a re-opened row marked `✅ Fixed` joins its original id and passes, and one in which that original id still reads `open` and fails.
 **at:** 72e55ce
+**Forge:** forge-19
 
 ### 2026-09-14 — the scratch-Go trap recurred through a design's own evidence, so removing the probe would break the design's citations
 **target:** `AGENTS.md`, `.claude/agents/design-writer.md`
@@ -508,6 +528,7 @@ Entries are appended at the END, newest last.
 **Gap:** The underscore convention the 2026-09-13 entry proposes has not landed, and `design-writer.md` gives no location for the scratch probes its evidence tags cite. The probe's path therefore becomes part of the design's text, and a later cleanup of the path has to choose between the design and the gates.
 **Proposed edit:** In addition to the 2026-09-13 entry's edit, direct `design-writer` (and any delegate whose evidence tag names a scratch program) to write scratch Go under a `_`-prefixed directory — `tmp/_probe/<name>/` — so the path it cites is invisible to `./...` from the first write and never needs moving.
 **at:** 8c245ef
+**Forge:** forge-19
 
 ### 2026-09-14 — `/task` Step 11 names no author for a code fix, and the only "orchestrator never writes code" rule is scoped to Step 8
 **target:** `.claude/skills/task/SKILL.md`, `.claude/skills/task/reference.md`
@@ -515,6 +536,7 @@ Entries are appended at the END, newest last.
 **Gap:** Step 8 carries a binding actor rule and Step 11 carries none, so the step the orchestrator is reading when it fixes reads as an instruction to implement, and every text that would correct that reading lives outside the step — a spawner list that omits `/task`, and a fitness rule in another file whose explicit half points the other way.
 **Proposed edit:** In `SKILL.md` § Step 11 and `reference.md` § Step 11 — review-fix narrative, name the actor by the fix's change-type: a predominantly-`.go` fix goes to `code-writer` Mode B (the orchestrator plans it, the delegate authors and gates it and returns without committing, the orchestrator reads the diff and commits); a predominantly-prose fix is authored in-thread. Add `/task` Step 11 (and Step 8 mid-group defect fixes) to `code-writer.md` § Mode B's spawner list, together with the 2026-09-13 entry's statement that the list enumerates known callers rather than bounding the charter.
 **at:** e946162
+**Forge:** forge-19
 
 ### 2026-09-14 — the scratch-Go trap recurred a third time, through a reviewer's mutation backups
 **target:** `.claude/agents/self-review.md`, `AGENTS.md`
@@ -523,6 +545,7 @@ Entries are appended at the END, newest last.
 **Proposed edit:** In the cp-backup recipe and in `self-review.md`'s mutation instructions, require backups of Go sources to carry a non-`.go` suffix (e.g. `tmp/<name>.go.bak`) or live under a `_`-prefixed directory, and add `find tmp \( -name '*.go' -o -name go.mod \)` returning nothing to a reviewer's and a delegate's return checklist.
 **at:** 2045c2b
 **Superseded by:** `ai-docs/harness-gaps.md` 2026-09-14 "a reviewer's mutation backups under `tmp/` kept their `.go` extension and broke the build" — this entry miscounted the instances in this run (two, not three; the 2026-09-13 instance predates it) and said no location is named for a mutation backup, while `AGENTS.md` § Build & Test names `tmp/`.
+**Forge:** forge-19
 
 ### 2026-09-14 — a reviewer's mutation backups under `tmp/` kept their `.go` extension and broke the build
 **target:** `AGENTS.md`, `.claude/agents/self-review.md`
@@ -530,6 +553,7 @@ Entries are appended at the END, newest last.
 **Gap:** The one location the rules name for a mutation backup is unsafe for a Go source that keeps its `.go` extension: `tmp/` is inside the module, and a non-`_`-prefixed directory there is walked by `./...`. Following the rule as written produces the break, and nothing on a reviewer's or a delegate's return path looks for it.
 **Proposed edit:** Where `AGENTS.md` sends mutation backups to `tmp/`, and in the cp-backup recipe and `self-review.md`'s mutation instructions, require a backup of a Go source to carry a non-`.go` suffix (e.g. `tmp/<name>.go.bak`) or live under a `_`-prefixed directory, and add `find tmp \( -name '*.go' -o -name go.mod \)` returning nothing to a reviewer's and a delegate's return checklist.
 **at:** e7835b8
+**Forge:** forge-19
 
 ### 2026-09-14 — inbox propagation's NONE rule excludes a bulleted `- None.`, which is how specs and designs write an empty section
 **target:** `.claude/skills/task/inbox-propagation.md`
@@ -537,6 +561,7 @@ Entries are appended at the END, newest last.
 **Gap:** The rule that exists to make an empty section silent is written against the unbulleted form, while `spec-writer` and `design-writer` write the bulleted form; a literal reading emits junk rows for `/triage` to decline, and a practical reading departs from the text, so two orchestrators can disagree and both cite the rule.
 **Proposed edit:** In shape rule 1, match a section whose only non-blank line is a single bullet whose text is a NONE sentinel (`- None.`, `- None`, `- _None._`, `- None — …`), and add that form to the rule's examples; alternatively have `spec-writer` and `design-writer` write the unbulleted `None.` for an empty section.
 **at:** 258c232
+**Forge:** forge-19
 
 ### 2026-09-14 — the /improve eval cannot reach conduct slips that need session load, and its load-bearing variant does not supply that load
 **target:** `ai-docs/improve-eval-contract.md`
@@ -551,6 +576,7 @@ Entries are appended at the END, newest last.
 **Gap:** The template's derivability condition checks that the scenario is traceable to the clause under test. Nothing checks that the evidence the clause requires the agent to consult is reachable from the scenario. When the clause is "check it against the code" and the scenario presents the code as imaginary, a FAIL is not attributable to the rule and a PASS could not have been earned.
 **Proposed edit:** Add a rejection condition: when the clause under test requires consulting an artefact — source, a test, a log — the scenario names a real artefact in the tree, and the GRADER's `Rule-citation observable` includes the tool call that consults it.
 **at:** 743f79b
+**Forge:** forge-19
 
 ### 2026-09-14 — /task Step 11's measurement pass tells the orchestrator to re-measure size ACs, which checklist-m forbids and a hook now refuses
 **target:** `.claude/skills/task/SKILL.md`
@@ -558,6 +584,7 @@ Entries are appended at the END, newest last.
 **Gap:** The sentence predates the size prohibition and survived it: nothing swept the flow steps for measurement instructions when the prohibition moved into the audit checklist, and the new hook's propagation row couples it to the audit recipes only.
 **Proposed edit:** Drop "size" from the sentence — keep the count half only if a count AC over prose remains a legitimate AC subject — or delete the sentence; and add the Step 11 site to the propagation row that couples the size-measurement hook to its prose surfaces.
 **at:** 8f94ef9
+**Forge:** forge-19
 
 ### 2026-09-14 — /task Step 12 prescribes a test-count commit trailer and names no command that produces either number
 **target:** `.claude/skills/task/SKILL.md`
@@ -565,6 +592,7 @@ Entries are appended at the END, newest last.
 **Gap:** The template asks for two numbers at the moment the message is composed and supplies no recipe, so the figures are recalled rather than produced. AGENTS.md § *Communication*'s recorded-result rule binds them, but nothing places it beside the template.
 **Proposed edit:** Either drop the counts from the trailer, or name the commands beside the template — N from the `func Test` / `func Benchmark` declarations the diff adds against the base, M from the captured gate log of that same tree — and require the message to be composed after both have run.
 **at:** 8f94ef9
+**Forge:** forge-19
 
 ### 2026-09-14 — fabricated commit identifiers recur in durable files, and no mechanical check exists that could run without firing on history
 **target:** `.claude/settings.json`
@@ -579,3 +607,18 @@ Entries are appended at the END, newest last.
 **Gap:** An untracked fallback progress file makes `git status --porcelain` non-empty, which is one of `/pr-ci-failed`'s own bail preconditions, so the re-invocation the skill prescribes after a new red check stops on the file its previous round wrote. Under `/dependabot-pr`, whose child writes to `ai-docs/ci-fixes/` by design, both files sit untracked for the life of the PR, and `/pr-merged`'s cleanup removes only the `ai-docs/ci-fixes/` one.
 **Proposed edit:** Add `/ai-docs/ci-fixes/` and `/ai-docs/dependabot/` to `.gitignore` beside `/ai-docs/pr-comments/` in the harness local-only state block, so `git check-ignore` on a file in each directory exits 0 and the skills' claim becomes true.
 **at:** c9fa5f0
+**Forge:** forge-19
+
+### 2026-09-15 — the AC-shape gate enforces half of the AC rule, restated at the path the gate lives at
+**target:** `ai-docs/scripts/check-ac-shape.sh` (the `prescription` regex); `AGENTS.md` (which states nothing about AC shape)
+**Observed:** The 2026-09-08 entry "the AC-shape gate enforces half of the AC rule, and the rule lives where an orchestrator never reads it" names `.claude/skills/ai-audit/scripts/check-ac-shape.sh`, which does not exist: the gate moved to `ai-docs/scripts/` with the other shared guards, and CI runs it from there. forge-19's target check refuses an open entry whose target does not resolve, and this log is append-only, so the old line is corrected here rather than edited.
+**Gap:** unchanged, and the 2026-09-08 entry carries the evidence. The gate matches the "never names the test" half of the declarative-AC rule and has no matcher for the "never contains a shell command" half; the rule is stated only in `.claude/agents/spec-writer.md`, which an orchestrator writing an acceptance criterion anywhere else does not read.
+**Proposed edit:** unchanged, at the live path. Widen the gate to the command half, measured over the AC tables in `ai-docs/plans/done/` first, with hit and false-positive counts recorded before the pattern lands; and state the one-line rule in `AGENTS.md` — an acceptance criterion states a condition, and the command that checks it belongs to the verifier — with a pointer to `spec-writer.md` PROC-3.
+**at:** 9e31e68
+
+### 2026-09-15 — a `§` citation inside a skill or agent file is resolved by no gate, so a dangling one survives until a reader follows it
+**target:** `.claude/skills/ai-audit/scripts/check-citations.sh` (or a sibling check in the same CI job)
+**Observed:** Two entries found the same shape independently. The 2026-09-12 `/bugfix` Step 1 entry: a MUST to embed `ast-index.md § Rules for subagents`, a section `.claude/rules/ast-index.md` does not have. The 2026-09-13 `code-writer.md` entry: "(AGENTS.md § Workflow delegation-fitness.)", a phrase `AGENTS.md` does not carry, which sent an orchestrator to the nearest enumeration instead. forge-19 fixed both sites and took both entries; it did not build the check each of them proposed as the independent half, and this entry keeps that half in the open set.
+**Gap:** the citation guard resolves `#N`, learnings dates and memory paths. A `<file> § <section>` citation in `.claude/**` or `ai-docs/**` is resolved by nothing, and a reader who follows a dead one concludes that the rule lives somewhere else.
+**Proposed edit:** a check over `.claude/**`, `AGENTS.md` and `ai-docs/**` — the append-only logs and `ai-docs/plans/done/` excluded — that resolves each `<path> § <heading>` citation against the headings of the file it names and fails on a miss. Before it is believed: one fixture citing a heading that exists and one citing a heading that does not, the second seen failing first; and an extractor that matches nothing in the real corpus reports `inconclusive`, not a pass.
+**at:** 9e31e68
