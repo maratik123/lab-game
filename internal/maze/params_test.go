@@ -4,13 +4,11 @@ import (
 	"testing"
 
 	"github.com/shopspring/decimal"
-
-	"github.com/maratik123/lab-game/internal/hexgrid"
 )
 
 func validParams() Params {
 	return Params{
-		Dims:              hexgrid.Dims{Cols: 16, Rows: 16},
+		Radius:            MinRadius,
 		Weights:           AlgorithmWeights{1, 1, 1, 1, 1},
 		IslandShare:       decimal.New(5, -2),
 		ExtraPassageShare: decimal.New(15, -2),
@@ -25,13 +23,20 @@ func TestParams_ValidateAcceptsAValidInput(t *testing.T) {
 	}
 }
 
-func TestParams_ValidateRejectsNonPositiveDims(t *testing.T) {
+func TestParams_ValidateRadiusBound(t *testing.T) {
 	t.Parallel()
-	for _, d := range []hexgrid.Dims{{Cols: 0, Rows: 16}, {Cols: 16, Rows: 0}, {Cols: -1, Rows: 16}} {
+	for _, r := range []int32{5, 0, -1} {
 		p := validParams()
-		p.Dims = d
+		p.Radius = r
 		if err := p.validate(); err == nil {
-			t.Errorf("validate() with dims %+v = nil, want an error", d)
+			t.Errorf("validate() with radius %d = nil, want an error", r)
+		}
+	}
+	for _, r := range []int32{6, 9, 40} {
+		p := validParams()
+		p.Radius = r
+		if err := p.validate(); err != nil {
+			t.Errorf("validate() with radius %d = %v, want nil", r, err)
 		}
 	}
 }
@@ -66,37 +71,29 @@ func TestParams_ValidateRejectsShareOutOfRange(t *testing.T) {
 	}
 }
 
-func TestParams_ValidateRejectsPositiveIslandShareAtDegenerateDims(t *testing.T) {
+func TestParams_ValidateRejectsIslandShareAboveCapacity(t *testing.T) {
 	t.Parallel()
-	for _, d := range []hexgrid.Dims{{Cols: 1, Rows: 1}, {Cols: 1, Rows: 16}, {Cols: 16, Rows: 1}} {
-		p := validParams()
-		p.Dims = d
-		p.IslandShare = decimal.New(1, -2)
-		if err := p.validate(); err == nil {
-			t.Errorf("validate() with dims %+v and a positive island share = nil, want an error", d)
-		}
-		p.IslandShare = decimal.Zero
-		if err := p.validate(); err != nil {
-			t.Errorf("validate() with dims %+v and a zero island share = %v, want nil", d, err)
-		}
+	p := validParams()
+	p.Radius = MinRadius
+	p.IslandShare = decimal.NewFromInt(1) // every cell — far more than the gate/fabric capacity
+	if err := p.validate(); err == nil {
+		t.Error("validate() with island share 1 at the minimum radius = nil, want an error")
 	}
 }
 
-func TestNonBorderCellCount_DegenerateShapes(t *testing.T) {
+func TestNonBorderCellCount_MatchesTheRadiusMinusOneHexagon(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		d    hexgrid.Dims
-		want int64
+		radius int32
+		want   int64
 	}{
-		{hexgrid.Dims{Cols: 1, Rows: 1}, 0},
-		{hexgrid.Dims{Cols: 1, Rows: 16}, 0},
-		{hexgrid.Dims{Cols: 16, Rows: 1}, 0},
-		{hexgrid.Dims{Cols: 2, Rows: 16}, 0},
-		{hexgrid.Dims{Cols: 16, Rows: 16}, 14 * 14},
+		{6, 91},  // radius-5 hexagon: 3*25+15+1
+		{7, 127}, // radius-6 hexagon: 3*36+18+1
+		{9, 217}, // radius-8 hexagon: 3*64+24+1
 	}
 	for _, c := range cases {
-		if got := nonBorderCellCount(c.d); got != c.want {
-			t.Errorf("nonBorderCellCount(%+v) = %d, want %d", c.d, got, c.want)
+		if got := nonBorderCellCount(c.radius); got != c.want {
+			t.Errorf("nonBorderCellCount(%d) = %d, want %d", c.radius, got, c.want)
 		}
 	}
 }

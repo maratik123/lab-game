@@ -8,9 +8,13 @@ import (
 	"github.com/maratik123/lab-game/internal/hexgrid"
 )
 
+func refLattice() hexgrid.Lattice {
+	return hexgrid.Lattice{Radius: MinRadius}
+}
+
 func TestSelectIslands_ZeroShareYieldsNoIsland(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 16, Rows: 16})
+	g := newChunkGraph(refLattice())
 	p := validParams()
 	p.IslandShare = decimal.Zero
 	s := newStream([32]byte{1})
@@ -22,7 +26,7 @@ func TestSelectIslands_ZeroShareYieldsNoIsland(t *testing.T) {
 
 func TestSelectIslands_NoIslandIsABorderCell(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 16, Rows: 16})
+	g := newChunkGraph(refLattice())
 	p := validParams()
 	for seedByte := range 20 {
 		s := newStream([32]byte{byte(seedByte)})
@@ -37,7 +41,7 @@ func TestSelectIslands_NoIslandIsABorderCell(t *testing.T) {
 
 func TestSelectIslands_NonIslandCellsStayConnectedOverInducedSubgraph(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 16, Rows: 16})
+	g := newChunkGraph(refLattice())
 	p := validParams()
 	for seedByte := range 20 {
 		s := newStream([32]byte{byte(seedByte), 7})
@@ -55,23 +59,9 @@ func TestSelectIslands_NonIslandCellsStayConnectedOverInducedSubgraph(t *testing
 	}
 }
 
-func TestSelectIslands_DegenerateShapesYieldNoIslandAtZeroShare(t *testing.T) {
-	t.Parallel()
-	for _, d := range []hexgrid.Dims{{Cols: 1, Rows: 1}, {Cols: 1, Rows: 16}, {Cols: 16, Rows: 1}} {
-		g := newChunkGraph(d)
-		p := validParams()
-		p.Dims = d
-		p.IslandShare = decimal.Zero
-		s := newStream([32]byte{3})
-		if islands := selectIslands(g, s, p); len(islands) != 0 {
-			t.Errorf("dims %+v: selectIslands at zero share = %v, want none", d, islands)
-		}
-	}
-}
-
 func TestSelectIslands_UnchangedByAlgorithmWeights(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 16, Rows: 16})
+	g := newChunkGraph(refLattice())
 	p1 := validParams()
 	p1.Weights = AlgorithmWeights{1, 0, 0, 0, 0}
 	p2 := validParams()
@@ -93,18 +83,19 @@ func TestSelectIslands_UnchangedByAlgorithmWeights(t *testing.T) {
 
 func TestIslandTarget_MatchesRoundHalfUpOfShareTimesTotalCells(t *testing.T) {
 	t.Parallel()
-	p := Params{Dims: hexgrid.Dims{Cols: 16, Rows: 16}, IslandShare: decimal.New(5, -2)}
+	p := Params{Radius: MinRadius, IslandShare: decimal.New(5, -2)}
 	got := islandTarget(p)
-	want := roundHalfUp(decimal.New(5, -2).Mul(decimal.NewFromInt(256)))
+	want := roundHalfUp(decimal.New(5, -2).Mul(decimal.NewFromInt(refLattice().CellCount())))
 	if got != want {
 		t.Errorf("islandTarget = %d, want %d", got, want)
 	}
 }
 
-func TestConnectedOverInduced_SingleCellChunk(t *testing.T) {
+func TestConnectedOverInduced_NoIslands(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 1, Rows: 1})
-	if !connectedOverInduced(g, map[int]bool{}, 0) {
-		t.Error("single-cell chunk with no islands is not reported connected")
+	g := newChunkGraph(refLattice())
+	islands := map[int]bool{}
+	if !connectedOverInduced(g, islands, 0) {
+		t.Error("chunk with no islands is not reported connected from cell 0")
 	}
 }

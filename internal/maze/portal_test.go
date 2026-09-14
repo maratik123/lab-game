@@ -6,14 +6,13 @@ import (
 	"github.com/maratik123/lab-game/internal/hexgrid"
 )
 
-var refDims16 = hexgrid.Dims{Cols: 16, Rows: 16}
-
 func TestBorderCandidates_AgreeFromEitherSide(t *testing.T) {
 	t.Parallel()
+	lattice := refLattice()
 	a := hexgrid.Chunk{Q: 0, R: 0}
 	b := hexgrid.Chunk{Q: 1, R: 0}
-	fromA := borderCandidates(refDims16, a, b)
-	fromB := borderCandidates(refDims16, b, a)
+	fromA := borderCandidates(lattice, a, b)
+	fromB := borderCandidates(lattice, b, a)
 	if len(fromA) != len(fromB) {
 		t.Fatalf("borderCandidates(a,b) has %d entries, borderCandidates(b,a) has %d", len(fromA), len(fromB))
 	}
@@ -24,39 +23,28 @@ func TestBorderCandidates_AgreeFromEitherSide(t *testing.T) {
 	}
 }
 
-func TestBorderCandidates_DiagonalBorderHasExactlyOneCandidateAtEveryDimension(t *testing.T) {
+func TestBorderCandidates_HasTwoRPlusOneEntriesForEveryNeighbourDirection(t *testing.T) {
 	t.Parallel()
-	dimsList := []hexgrid.Dims{{Cols: 16, Rows: 16}, {Cols: 4, Rows: 4}, {Cols: 8, Rows: 20}}
-	for _, d := range dimsList {
+	radii := []int32{6, 7, 9}
+	for _, r := range radii {
+		lattice := hexgrid.Lattice{Radius: r}
 		origin := hexgrid.Chunk{Q: 0, R: 0}
-		diag := hexgrid.Chunk{Q: 1, R: -1}
-		candidates := borderCandidates(d, origin, diag)
-		if len(candidates) != 1 {
-			t.Errorf("dims %+v: diagonal border (0,0)-(1,-1) has %d candidates, want exactly 1", d, len(candidates))
+		for _, d := range sixDirections {
+			n := origin.Neighbor(d)
+			candidates := borderCandidates(lattice, origin, n)
+			if want := 2*int(r) + 1; len(candidates) != want {
+				t.Errorf("radius %d direction %v: borderCandidates has %d entries, want %d", r, d, len(candidates), want)
+			}
 		}
-		mirror := hexgrid.Chunk{Q: -1, R: 1}
-		mirrorCandidates := borderCandidates(d, origin, mirror)
-		if len(mirrorCandidates) != 1 {
-			t.Errorf("dims %+v: diagonal border (0,0)-(-1,1) has %d candidates, want exactly 1", d, len(mirrorCandidates))
-		}
-	}
-}
-
-func TestBorderCandidates_ManyCandidateBordersHaveSeveral(t *testing.T) {
-	t.Parallel()
-	origin := hexgrid.Chunk{Q: 0, R: 0}
-	east := hexgrid.Chunk{Q: 1, R: 0}
-	candidates := borderCandidates(refDims16, origin, east)
-	if len(candidates) < 2 {
-		t.Errorf("east border has %d candidates, want several", len(candidates))
 	}
 }
 
 func TestSelectPortals_OneOrTwoCappedByCandidates(t *testing.T) {
 	t.Parallel()
+	lattice := refLattice()
 	origin := hexgrid.Chunk{Q: 0, R: 0}
 	east := hexgrid.Chunk{Q: 1, R: 0}
-	candidates := borderCandidates(refDims16, origin, east)
+	candidates := borderCandidates(lattice, origin, east)
 
 	sawOne, sawTwo := false, false
 	for seedByte := range 50 {
@@ -88,20 +76,6 @@ func TestSelectPortals_OneOrTwoCappedByCandidates(t *testing.T) {
 	}
 }
 
-func TestSelectPortals_DiagonalBorderAlwaysExactlyOne(t *testing.T) {
-	t.Parallel()
-	origin := hexgrid.Chunk{Q: 0, R: 0}
-	diag := hexgrid.Chunk{Q: 1, R: -1}
-	candidates := borderCandidates(refDims16, origin, diag)
-	for seedByte := range 20 {
-		s := newStream([32]byte{byte(seedByte), 3, 3})
-		portals := selectPortals(candidates, s)
-		if len(portals) != 1 {
-			t.Errorf("seed %d: diagonal-border portal count = %d, want exactly 1", seedByte, len(portals))
-		}
-	}
-}
-
 func TestSelectPortals_EmptyCandidatesYieldsNoPortal(t *testing.T) {
 	t.Parallel()
 	if portals := selectPortals(nil, newStream([32]byte{1})); len(portals) != 0 {
@@ -111,9 +85,10 @@ func TestSelectPortals_EmptyCandidatesYieldsNoPortal(t *testing.T) {
 
 func TestSelectPortals_ReproducibleFromTheSameKey(t *testing.T) {
 	t.Parallel()
+	lattice := refLattice()
 	origin := hexgrid.Chunk{Q: 0, R: 0}
 	east := hexgrid.Chunk{Q: 1, R: 0}
-	candidates := borderCandidates(refDims16, origin, east)
+	candidates := borderCandidates(lattice, origin, east)
 	key := [32]byte{4, 4, 4}
 	a := selectPortals(candidates, newStream(key))
 	b := selectPortals(candidates, newStream(key))
@@ -123,6 +98,42 @@ func TestSelectPortals_ReproducibleFromTheSameKey(t *testing.T) {
 	for f := range a {
 		if !b[f] {
 			t.Errorf("portal sets differ across identical keys: %v vs %v", a, b)
+		}
+	}
+}
+
+// TestBorder_IndependentOfChunkTypeAndThirdChunks (pair-level, subtask
+// 3/4): a border's candidate faces from A's side equal, face by face,
+// those from B's side, and depend on the pair's own border key alone —
+// no third chunk enters the derivation.
+func TestBorder_IndependentOfChunkTypeAndThirdChunks(t *testing.T) {
+	t.Parallel()
+	lattice := refLattice()
+	a := hexgrid.Chunk{Q: 0, R: 0}
+	b := hexgrid.Chunk{Q: 1, R: 0}
+	candidatesFromA := borderCandidates(lattice, a, b)
+	candidatesFromB := borderCandidates(lattice, b, a)
+	for i := range candidatesFromA {
+		if candidatesFromA[i] != candidatesFromB[i] {
+			t.Fatalf("entry %d differs between sides: %v vs %v", i, candidatesFromA[i], candidatesFromB[i])
+		}
+	}
+	seed := int64(20260912)
+	direct := selectPortals(candidatesFromA, newStream(borderKey(seed, a, b)))
+	viaCell, err := New(seed, refParams())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for _, d := range sixDirections {
+		if a.Neighbor(d) != b {
+			continue
+		}
+		for _, f := range candidatesFromA {
+			want := direct[f]
+			got := viaCell.Cell(f.Cell).Faces[f.Dir] == FacePassage
+			if got != want {
+				t.Errorf("face %v: direct portal rule says %v, Cell says %v", f, want, got)
+			}
 		}
 	}
 }

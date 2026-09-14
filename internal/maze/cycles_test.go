@@ -10,7 +10,7 @@ import (
 
 func TestAddExtraPassages_ZeroShareYieldsExactlyATree(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 10, Rows: 10})
+	g := newChunkGraph(hexgrid.Lattice{Radius: 6})
 	islands := map[int]bool{}
 	open := buildBacktracker(g, islands, newStream([32]byte{1}))
 	before := len(open)
@@ -22,7 +22,7 @@ func TestAddExtraPassages_ZeroShareYieldsExactlyATree(t *testing.T) {
 
 func TestAddExtraPassages_PositiveShareAddsACycle(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 10, Rows: 10})
+	g := newChunkGraph(hexgrid.Lattice{Radius: 6})
 	islands := map[int]bool{}
 	open := buildBacktracker(g, islands, newStream([32]byte{3}))
 	treeEdges := len(open)
@@ -42,7 +42,7 @@ func TestAddExtraPassages_CappedByAvailability(t *testing.T) {
 	// A share of 1 asks for as many extra passages as the tree itself
 	// has edges, which the lattice's remaining closed faces cannot
 	// always supply — the pass must cap rather than panic or overshoot.
-	g := newChunkGraph(hexgrid.Dims{Cols: 4, Rows: 4})
+	g := newChunkGraph(hexgrid.Lattice{Radius: 6})
 	islands := map[int]bool{}
 	open := buildBacktracker(g, islands, newStream([32]byte{5}))
 	addExtraPassages(g, islands, open, newStream([32]byte{6}), decimal.NewFromInt(1))
@@ -54,7 +54,7 @@ func TestAddExtraPassages_CappedByAvailability(t *testing.T) {
 
 func TestAddExtraPassages_NeverOpensABorderFace(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 10, Rows: 10})
+	g := newChunkGraph(hexgrid.Lattice{Radius: 6})
 	islands := map[int]bool{}
 	open := buildBacktracker(g, islands, newStream([32]byte{7}))
 	addExtraPassages(g, islands, open, newStream([32]byte{8}), decimal.NewFromInt(1))

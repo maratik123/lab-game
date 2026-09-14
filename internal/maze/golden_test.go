@@ -16,12 +16,18 @@ var updateCellsGolden = flag.Bool("update-cells", false, "update the cells golde
 
 const cellsGoldenPath = "testdata/cells.golden"
 
+// goldenRadius is the pinned chunk radius the cells golden is minted
+// under, kept at the package's own minimum while the golden is still in
+// its interim shape.
+const goldenRadius = MinRadius
+
 // goldenParams is the pinned Params header for the equal-weight region:
-// dims 16x16, island share 0.05, extra-passage share 0.15, growing-tree
-// bias 0.5, every one of the five algorithms weighted equally.
+// radius goldenRadius, island share 0.05, extra-passage share 0.15,
+// growing-tree bias 0.5, every one of the five algorithms weighted
+// equally.
 func goldenParams() Params {
 	return Params{
-		Dims:              hexgrid.Dims{Cols: 16, Rows: 16},
+		Radius:            goldenRadius,
 		Weights:           AlgorithmWeights{1, 1, 1, 1, 1},
 		IslandShare:       decimal.New(5, -2),
 		ExtraPassageShare: decimal.New(15, -2),
@@ -51,33 +57,28 @@ func renderCellLine(coord hexgrid.Coord, c Cell) string {
 	return fmt.Sprintf("cell(%d,%d)=faces:%s seed:%016x", coord.Q, coord.R, strings.Join(faces, ","), c.Seed)
 }
 
-// dumpChunk renders every cell of chunk ch under dims, via gen, sorted
-// by (Q,R) for a stable line order.
-func dumpChunk(gen *Generator, dims hexgrid.Dims, ch hexgrid.Chunk) []string {
-	origin := dims.Origin(ch)
+// dumpChunk renders every cell of chunk ch under lattice, via gen,
+// sorted by local (Q,R) for a stable line order — the lattice's own
+// LocalCells order.
+func dumpChunk(gen *Generator, lattice hexgrid.Lattice, ch hexgrid.Chunk) []string {
 	var lines []string
-	for lr := int32(0); lr < dims.Rows; lr++ {
-		for lq := int32(0); lq < dims.Cols; lq++ {
-			c := hexgrid.Coord{Q: origin.Q + lq, R: origin.R + lr}
-			lines = append(lines, renderCellLine(c, gen.Cell(c)))
-		}
+	for _, local := range lattice.LocalCells() {
+		c := lattice.At(ch, local)
+		lines = append(lines, renderCellLine(c, gen.Cell(c)))
 	}
 	return lines
 }
 
-// dumpBorderRing renders only ch's own border-ring cells under dims,
-// via gen.
-func dumpBorderRing(gen *Generator, dims hexgrid.Dims, ch hexgrid.Chunk) []string {
-	origin := dims.Origin(ch)
+// dumpBorderRing renders only ch's own border-ring cells (those at
+// exactly lattice's radius from the centre) under lattice, via gen.
+func dumpBorderRing(gen *Generator, lattice hexgrid.Lattice, ch hexgrid.Chunk) []string {
 	var lines []string
-	for lr := int32(0); lr < dims.Rows; lr++ {
-		for lq := int32(0); lq < dims.Cols; lq++ {
-			if lq != 0 && lq != dims.Cols-1 && lr != 0 && lr != dims.Rows-1 {
-				continue
-			}
-			c := hexgrid.Coord{Q: origin.Q + lq, R: origin.R + lr}
-			lines = append(lines, renderCellLine(c, gen.Cell(c)))
+	for _, local := range lattice.LocalCells() {
+		if hexgrid.Distance(local, hexgrid.Coord{}) != int64(lattice.Radius) {
+			continue
 		}
+		c := lattice.At(ch, local)
+		lines = append(lines, renderCellLine(c, gen.Cell(c)))
 	}
 	return lines
 }
@@ -94,9 +95,10 @@ func algorithmLine(chunk hexgrid.Chunk, weights AlgorithmWeights) string {
 // named chunk.
 func cellsGoldenLines() []string {
 	var lines []string
-	lines = append(lines, "# domain-tag=lab-game/maze/v1 seed=20260912 dims=16x16 island_share=0.05 extra_passage_share=0.15 growing_tree_bias=0.5 weights=equal")
+	lines = append(lines, fmt.Sprintf("# domain-tag=lab-game/maze/v1 seed=%d radius=%d island_share=0.05 extra_passage_share=0.15 growing_tree_bias=0.5 weights=equal", goldenSeed, goldenRadius))
 
 	params := goldenParams()
+	lattice := params.lattice()
 	gen, err := New(goldenSeed, params)
 	if err != nil {
 		panic(err)
@@ -107,11 +109,11 @@ func cellsGoldenLines() []string {
 	belowLeft := hexgrid.Chunk{Q: -1, R: -1}
 	below := hexgrid.Chunk{Q: 0, R: -1}
 	lines = append(lines, algorithmLine(origin, params.Weights))
-	lines = append(lines, dumpChunk(gen, params.Dims, origin)...)
+	lines = append(lines, dumpChunk(gen, lattice, origin)...)
 	lines = append(lines, algorithmLine(belowLeft, params.Weights))
-	lines = append(lines, dumpChunk(gen, params.Dims, belowLeft)...)
+	lines = append(lines, dumpChunk(gen, lattice, belowLeft)...)
 	lines = append(lines, algorithmLine(below, params.Weights))
-	lines = append(lines, dumpBorderRing(gen, params.Dims, below)...)
+	lines = append(lines, dumpBorderRing(gen, lattice, below)...)
 
 	algos := []struct {
 		name  string
@@ -135,7 +137,7 @@ func cellsGoldenLines() []string {
 		}
 		lines = append(lines, "## single-weight-"+a.name)
 		lines = append(lines, algorithmLine(a.chunk, w))
-		lines = append(lines, dumpChunk(g, p.Dims, a.chunk)...)
+		lines = append(lines, dumpChunk(g, p.lattice(), a.chunk)...)
 	}
 
 	return lines
@@ -174,14 +176,13 @@ func TestCellsGolden_EveryIslandCellHasAllSixFacesAsWallInTheMintedTable(t *test
 		t.Fatalf("ReadFile(%s): %v", cellsGoldenPath, err)
 	}
 	params := goldenParams()
-	g := newChunkGraph(params.Dims)
+	lattice := params.lattice()
+	g := newChunkGraph(lattice)
 	origin := hexgrid.Chunk{Q: 0, R: 0}
 	islands := selectIslands(g, newStream(chunkKey(goldenSeed, purposeIsland, origin)), params)
 	islandCoords := map[hexgrid.Coord]bool{}
-	chunkOrigin := params.Dims.Origin(origin)
 	for idx := range islands {
-		lq, lr := g.localCoord(idx)
-		islandCoords[hexgrid.Coord{Q: chunkOrigin.Q + lq, R: chunkOrigin.R + lr}] = true
+		islandCoords[lattice.At(origin, g.localCoord(idx))] = true
 	}
 	if len(islandCoords) == 0 {
 		t.Fatal("test setup: the origin chunk has no island at the golden's own share — nothing to check")

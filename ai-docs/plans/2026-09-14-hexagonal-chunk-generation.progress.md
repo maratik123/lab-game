@@ -11,8 +11,8 @@ _Updated: 2026-09-14 00:33_
 **Spec:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.spec.md
 **Design:** ai-docs/plans/2026-09-14-hexagonal-chunk-generation.design.md
 
-**current_step:** Step 8 — subtask 2 of 9 complete
-**last_passed_gate:** golangci-lint run ./internal/maze/... | 2026-09-14 | (subtask 2 commit)
+**current_step:** Step 8 — subtask 3 of 9 complete
+**last_passed_gate:** go test ./... (full module, race incl. for maze/hexgrid) | 2026-09-14 | (subtask 3 commit)
 
 **entry_args:** 119
 
@@ -26,8 +26,8 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 
 - [x] 1. `hexgrid`: add the super-lattice beside the rhombic API — `Lattice` and its methods, `Chunk.Neighbor`, cell `Distance`; tests for AC1, AC2, AC3, AC5. (Group A) — 3c119a2
 - [x] 2. `maze`: remove the prefab hook on the shipped core; the no-plug-in guard; re-mint `cells.golden`. (Group A)
-- [ ] 3. `maze` onto hexagonal chunks, portal count still one-or-two; `Params.Radius` with `MinRadius`; delete the rhombic `hexgrid` API. (Group A) ← CURRENT
-- [ ] 4. `maze`: the portal rule — shares, count range, non-touching placement; AC6, AC7, AC8's pair-level clause. (Group A)
+- [x] 3. `maze` onto hexagonal chunks, portal count still one-or-two; `Params.Radius` with `MinRadius`; delete the rhombic `hexgrid` API. (Group A)
+- [ ] 4. `maze`: the portal rule — shares, count range, non-touching placement; AC6, AC7, AC8's pair-level clause. (Group A) ← CURRENT
 - [ ] 5. `maze`: the chunk-level core — `ChunkType`, `Version`, `Map`, `Generate(ch, typ)`, `CellSeed`; AC8's type clause. (Group A)
 - [ ] 6. `maze`: stored neighbours — `NewMap` and `neighbors`; AC14; AC8's stored-neighbour clause. (Group A)
 - [ ] 7. `maze`: goldens in their final shape — `chunks.golden`; `derive.golden` byte-identical or stop and report. (Group A)
@@ -44,6 +44,7 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - **Step 7**: design-review round 2 GO with five minor issues and two recommendations, all design-internal; `design-writer` folded them in at ed9a4ba, and design-review did not run again (Step 7 table). The orchestrator read the fold-in diff item by item (§ GO notes).
 - **Step 8**: progress file created; in-flight marker created and owned by this session.
 - **Step 8, subtask 1**: `hexgrid.Lattice` implements the hexagon-of-hexagons mapping via the inverse super-basis in D3, checked against a bounded four-candidate search. `Border`'s path order was derived analytically for the three canonical directions (a "lone" direction's face at the range's minimum, then the secondary-then-lone pair for every following index) and verified by an independent vertex-sharing predicate in the test, not by re-deriving the order from the enumeration itself.
+- **Step 8, subtask 3**: `chunkGraph` now carries a `hexgrid.Lattice` and indexes `LocalCells()` directly, keyed by a `map[hexgrid.Coord]int`, rather than a row-major rectangle. `borderCandidates` derives from `Lattice.Border(dir)` translated by the lesser chunk's own centre — translation is uniform for canonical and opposite directions alike (both reduce to `Center(lesser) + local`), which was verified rather than assumed. The rhombic hex-chunk "diagonal border has exactly one candidate" test category no longer applies: every one of a hex chunk's six neighbours now has the same `2R+1`-face border, so `portal_test.go` was rewritten without it. The golden was re-minted at `MinRadius` (interim shape; subtask 7 moves it to the design's reference radius). One test-only defect found and fixed during this subtask: a flood-fill connectivity test built its region from an arbitrary square coordinate range rather than whole chunks, which is not internally connected at the region's own edge — fixed to build the region from whole chunks via `Lattice.LocalCells`/`At`, matching the pattern the original rhombic test already used. Also observed: `TestCellsGolden` and its cross-check test race on the golden file when both run with `-update-cells` and `t.Parallel()` in the same invocation (pre-existing test-design property, not introduced here) — minting and verifying were run as two separate invocations to avoid it.
 
 ## GO notes
 
@@ -71,7 +72,7 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 | AC1 | PASS (subtask 1) |
 | AC2 | PASS (subtask 1) |
 | AC3 | PASS (subtask 1) |
-| AC4 | NOT_TESTED |
+| AC4 | PASS (subtask 3, `TestParams_ValidateRadiusBound`) |
 | AC5 | PASS (subtask 1) |
 | AC6 | NOT_TESTED |
 | AC7 | NOT_TESTED |
@@ -104,3 +105,6 @@ Titles are the design's `## Decomposition` rows, abridged; the design row is the
 - internal/maze/generate_test.go, bench_test.go, property_test.go, golden_test.go (New is now 2-arg; golden re-minted)
 - internal/maze/guards_test.go (TestGuard_NoPlugInPoint added)
 - internal/maze/testdata/cells.golden (re-minted, prefab marker dropped)
+- internal/hexgrid/chunk.go, chunk_test.go (rhombic Dims/ChunkOf/Origin/Contains deleted)
+- internal/maze/chunkgraph.go, params.go, island.go, portal.go, generate.go (rewritten over hexgrid.Lattice; Params.Radius replaces Params.Dims)
+- internal/maze/{chunkgraph,params,island,portal,property,golden,generate,algorithms,cycles}_test.go (adapted to the hex lattice)

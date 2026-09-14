@@ -13,7 +13,7 @@ import (
 
 func refParams() Params {
 	return Params{
-		Dims:              hexgrid.Dims{Cols: 16, Rows: 16},
+		Radius:            MinRadius,
 		Weights:           AlgorithmWeights{1, 1, 1, 1, 1},
 		IslandShare:       decimal.New(5, -2),
 		ExtraPassageShare: decimal.New(15, -2),
@@ -24,9 +24,9 @@ func refParams() Params {
 func TestNew_RejectsInvalidParams(t *testing.T) {
 	t.Parallel()
 	p := refParams()
-	p.Dims = hexgrid.Dims{Cols: 0, Rows: 16}
+	p.Radius = 0
 	if _, err := New(1, p); err == nil {
-		t.Fatal("New with invalid dims = nil error, want an error")
+		t.Fatal("New with invalid radius = nil error, want an error")
 	}
 }
 
@@ -130,48 +130,50 @@ func TestCell_FaceAgreementOverAMultiChunkRegion(t *testing.T) {
 	}
 }
 
+// TestCell_ConnectivityOverAMultiChunkRegion floods over a region of
+// WHOLE chunks only — the centre chunk and its ring of six neighbours —
+// since a partial chunk slice at the region's own edge is not itself
+// internally connected: its cells' only guaranteed connectivity is
+// through the rest of their own chunk, which a sliver excludes.
 func TestCell_ConnectivityOverAMultiChunkRegion(t *testing.T) {
 	t.Parallel()
 	p := refParams()
+	lattice := p.lattice()
 	gen, err := New(777, p)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	type key struct{ q, r int32 }
-	region := map[key]bool{}
-	// Whole chunks only — (0,0), (1,0), (0,1), (1,1) at 16x16 — since a
-	// partial chunk slice at the region's own edge is not itself
-	// internally connected: its cells' only guaranteed connectivity is
-	// through the rest of their own chunk, which a sliver excludes.
-	const lo, hi = 0, 31
-	for q := int32(lo); q <= hi; q++ {
-		for r := int32(lo); r <= hi; r++ {
-			region[key{q, r}] = true
+	chunks := []hexgrid.Chunk{{}}
+	for _, d := range sixDirections {
+		chunks = append(chunks, hexgrid.Chunk{}.Neighbor(d))
+	}
+	region := map[hexgrid.Coord]bool{}
+	for _, ch := range chunks {
+		for _, local := range lattice.LocalCells() {
+			region[lattice.At(ch, local)] = true
 		}
 	}
 
 	// Determine islands within the region by asking every cell whether
-	// it has any passage at all — an island cell's every face is a
-	// wall (asserted structurally by the golden/property suite in
-	// subtask 9); here we simply flood-fill through open passages and
-	// check every cell that has at least one passage lands in one
-	// component.
-	visited := map[key]bool{}
-	var start key
+	// it has any passage at all; then simply flood-fill through open
+	// passages and check every cell that has at least one passage lands
+	// in one component.
+	visited := map[hexgrid.Coord]bool{}
+	var start hexgrid.Coord
 	found := false
-	cellOf := map[key]Cell{}
-	for k := range region {
-		c := gen.Cell(hexgrid.Coord{Q: k.q, R: k.r})
-		cellOf[k] = c
+	cellOf := map[hexgrid.Coord]Cell{}
+	for c := range region {
+		cell := gen.Cell(c)
+		cellOf[c] = cell
 		hasPassage := false
-		for _, f := range c.Faces {
+		for _, f := range cell.Faces {
 			if f == FacePassage {
 				hasPassage = true
 			}
 		}
 		if hasPassage && !found {
-			start = k
+			start = c
 			found = true
 		}
 	}
@@ -179,7 +181,7 @@ func TestCell_ConnectivityOverAMultiChunkRegion(t *testing.T) {
 		t.Fatal("no cell in the region has any passage at all")
 	}
 
-	stack := []key{start}
+	stack := []hexgrid.Coord{start}
 	visited[start] = true
 	for len(stack) > 0 {
 		cur := stack[len(stack)-1]
@@ -189,48 +191,47 @@ func TestCell_ConnectivityOverAMultiChunkRegion(t *testing.T) {
 			if curCell.Faces[d] != FacePassage {
 				continue
 			}
-			nc := hexgrid.Coord{Q: cur.q, R: cur.r}.Neighbor(d)
-			nk := key{nc.Q, nc.R}
-			if !region[nk] || visited[nk] {
+			n := cur.Neighbor(d)
+			if !region[n] || visited[n] {
 				continue
 			}
-			visited[nk] = true
-			stack = append(stack, nk)
+			visited[n] = true
+			stack = append(stack, n)
 		}
 	}
 
-	for k, c := range cellOf {
+	for c, cell := range cellOf {
 		hasPassage := false
-		for _, f := range c.Faces {
+		for _, f := range cell.Faces {
 			if f == FacePassage {
 				hasPassage = true
 			}
 		}
-		if hasPassage && !visited[k] {
-			t.Errorf("cell %v has a passage but is not reachable from the flood-fill start %v", k, start)
+		if hasPassage && !visited[c] {
+			t.Errorf("cell %v has a passage but is not reachable from the flood-fill start %v", c, start)
 		}
 	}
 }
 
-// TestCell_SeedIsIndependentOfChunkDimensions asserts the sharp form:
-// two generators differing only in chunk dimensions yield the same cell
-// seed for a coordinate, while the faces they yield for it differ. The
-// second half is not decoration — without it the first would hold just
-// as well for two generators that were effectively the same, and a cell
-// seed secretly folding the dimensions in would pass.
-func TestCell_SeedIsIndependentOfChunkDimensions(t *testing.T) {
+// TestCell_SeedIsIndependentOfChunkRadius asserts the sharp form: two
+// generators differing only in chunk radius yield the same cell seed for
+// a coordinate, while the faces they yield for it differ. The second
+// half is not decoration — without it the first would hold just as well
+// for two generators that were effectively the same, and a cell seed
+// secretly folding the radius in would pass.
+func TestCell_SeedIsIndependentOfChunkRadius(t *testing.T) {
 	t.Parallel()
 	a := refParams()
 	b := refParams()
-	b.Dims = hexgrid.Dims{Cols: 12, Rows: 12}
+	b.Radius = MinRadius + 3
 
 	genA, err := New(20260912, a)
 	if err != nil {
-		t.Fatalf("New under %v: %v", a.Dims, err)
+		t.Fatalf("New under radius %d: %v", a.Radius, err)
 	}
 	genB, err := New(20260912, b)
 	if err != nil {
-		t.Fatalf("New under %v: %v", b.Dims, err)
+		t.Fatalf("New under radius %d: %v", b.Radius, err)
 	}
 
 	var facesDiffer bool
@@ -239,8 +240,8 @@ func TestCell_SeedIsIndependentOfChunkDimensions(t *testing.T) {
 			c := hexgrid.Coord{Q: q, R: r}
 			ca, cb := genA.Cell(c), genB.Cell(c)
 			if ca.Seed != cb.Seed {
-				t.Fatalf("cell seed for %v is %d under %v and %d under %v; it must be settled by the world seed and the coordinate alone",
-					c, ca.Seed, a.Dims, cb.Seed, b.Dims)
+				t.Fatalf("cell seed for %v is %d under radius %d and %d under radius %d; it must be settled by the world seed and the coordinate alone",
+					c, ca.Seed, a.Radius, cb.Seed, b.Radius)
 			}
 			if ca.Faces != cb.Faces {
 				facesDiffer = true
@@ -248,17 +249,17 @@ func TestCell_SeedIsIndependentOfChunkDimensions(t *testing.T) {
 		}
 	}
 	if !facesDiffer {
-		t.Fatal("test setup: the two dimension sets yielded identical faces at every sampled coordinate, so the seed assertion above would not discriminate")
+		t.Fatal("test setup: the two radii yielded identical faces at every sampled coordinate, so the seed assertion above would not discriminate")
 	}
 }
 
 func TestChunksConsulted_RelativeOffsetsAgreeAtTheSamePositionInAChunk(t *testing.T) {
 	t.Parallel()
-	dims := hexgrid.Dims{Cols: 16, Rows: 16}
+	lattice := refLattice()
 
 	offsets := func(c hexgrid.Coord) []hexgrid.Chunk {
-		own := dims.ChunkOf(c)
-		set := chunksConsulted(dims, c)
+		own, _ := lattice.Locate(c)
+		set := chunksConsulted(lattice, c)
 		out := make([]hexgrid.Chunk, 0, len(set))
 		for _, ch := range set {
 			out = append(out, hexgrid.Chunk{Q: ch.Q - own.Q, R: ch.R - own.R})
@@ -272,40 +273,24 @@ func TestChunksConsulted_RelativeOffsetsAgreeAtTheSamePositionInAChunk(t *testin
 		return out
 	}
 
-	// Two coordinates at the same position within their own chunks: the
-	// absolute chunk coordinates necessarily differ, so the invariant is
-	// the set of offsets relative to each coordinate's own chunk.
 	near := offsets(hexgrid.Coord{Q: 0, R: 5})
-	far := offsets(hexgrid.Coord{Q: 1_000_000 * 16, R: 1_000_000*16 + 5})
+	far := offsets(hexgrid.Coord{Q: 1_000_000, R: 1_000_005})
 	if !slices.Equal(near, far) {
 		t.Errorf("relative chunk offsets = %v near the origin and %v far from it, want equal", near, far)
 	}
 }
 
-func TestChunksConsulted_SizeInvariantWithDistanceFromOrigin(t *testing.T) {
-	t.Parallel()
-	dims := hexgrid.Dims{Cols: 16, Rows: 16}
-	// Same local offset within the chunk (a border cell), one beside
-	// the origin and one far from it: the set size must match — it is
-	// the coordinate's position within its own chunk that decides the
-	// count, never its distance from the origin.
-	near := chunksConsulted(dims, hexgrid.Coord{Q: 0, R: 5})
-	far := chunksConsulted(dims, hexgrid.Coord{Q: 1_000_000 * 16, R: 1_000_000*16 + 5})
-	if len(near) != len(far) {
-		t.Errorf("chunksConsulted set size = %d near origin, %d far from it, want equal", len(near), len(far))
-	}
-}
-
 func TestChunksConsulted_EveryMemberIsOwnOrANeighboursChunk(t *testing.T) {
 	t.Parallel()
-	dims := hexgrid.Dims{Cols: 16, Rows: 16}
+	lattice := refLattice()
 	c := hexgrid.Coord{Q: 5, R: -3}
-	own := dims.ChunkOf(c)
+	own, _ := lattice.Locate(c)
 	valid := map[hexgrid.Chunk]bool{own: true}
 	for _, d := range sixDirections {
-		valid[dims.ChunkOf(c.Neighbor(d))] = true
+		n, _ := lattice.Locate(c.Neighbor(d))
+		valid[n] = true
 	}
-	for _, ch := range chunksConsulted(dims, c) {
+	for _, ch := range chunksConsulted(lattice, c) {
 		if !valid[ch] {
 			t.Errorf("chunksConsulted returned %v, not the cell's own chunk or a neighbour's", ch)
 		}

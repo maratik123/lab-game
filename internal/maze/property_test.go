@@ -29,25 +29,22 @@ func drawFarCoord(rt *rapid.T) hexgrid.Coord {
 	return hexgrid.Coord{Q: drawAxis("q"), R: drawAxis("r")}
 }
 
-// islandRegionCells returns, for a rectangular block of chunks under
-// dims spanning loChunk..hiChunk inclusive (both axes), the coordinate
-// of every cell in the region and — separately — which of them
-// selectIslands would mark as an island in its own chunk.
-func islandRegionCells(dims hexgrid.Dims, seed int64, params Params, loChunk, hiChunk hexgrid.Chunk) (all []hexgrid.Coord, islandSet map[hexgrid.Coord]bool) {
+// islandRegionCells returns, for a block of chunks spanning loChunk..hiChunk
+// inclusive (both axes), the coordinate of every cell in the region and —
+// separately — which of them selectIslands would mark as an island in its
+// own chunk.
+func islandRegionCells(lattice hexgrid.Lattice, seed int64, params Params, loChunk, hiChunk hexgrid.Chunk) (all []hexgrid.Coord, islandSet map[hexgrid.Coord]bool) {
 	islandSet = map[hexgrid.Coord]bool{}
 	for cq := loChunk.Q; cq <= hiChunk.Q; cq++ {
 		for cr := loChunk.R; cr <= hiChunk.R; cr++ {
 			ch := hexgrid.Chunk{Q: cq, R: cr}
-			g := newChunkGraph(dims)
+			g := newChunkGraph(lattice)
 			islands := selectIslands(g, newStream(chunkKey(seed, purposeIsland, ch)), params)
-			origin := dims.Origin(ch)
-			for lr := int32(0); lr < dims.Rows; lr++ {
-				for lq := int32(0); lq < dims.Cols; lq++ {
-					c := hexgrid.Coord{Q: origin.Q + lq, R: origin.R + lr}
-					all = append(all, c)
-					if islands[g.localIndex(lq, lr)] {
-						islandSet[c] = true
-					}
+			for idx, local := range g.cells {
+				c := lattice.At(ch, local)
+				all = append(all, c)
+				if islands[idx] {
+					islandSet[c] = true
 				}
 			}
 		}
@@ -65,13 +62,14 @@ func islandRegionCells(dims hexgrid.Dims, seed int64, params Params, loChunk, hi
 func TestIslandsAreWalled_EveryIslandFaceIsAWallFromBothSides(t *testing.T) {
 	t.Parallel()
 	params := goldenParams()
+	lattice := params.lattice()
 	gen, err := New(goldenSeed, params)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	lo := hexgrid.Chunk{Q: -2, R: -2}
 	hi := hexgrid.Chunk{Q: 1, R: 1}
-	all, islandSet := islandRegionCells(params.Dims, goldenSeed, params, lo, hi)
+	all, islandSet := islandRegionCells(lattice, goldenSeed, params, lo, hi)
 	if len(islandSet) == 0 {
 		t.Fatal("test setup: expected at least one island over this region")
 	}
@@ -146,14 +144,14 @@ func TestIslandsAreWalled_EveryIslandFaceIsAWallFromBothSides(t *testing.T) {
 }
 
 // TestIslandShare_AchievedShareWithinTolerance pins every part of its
-// instrument: dims 16x16, island share 0.05, the chunk block
+// instrument: the golden radius, island share 0.05, the chunk block
 // (-2,-2)..(1,1), an absolute tolerance of ±0.01 on the achieved share.
 func TestIslandShare_AchievedShareWithinTolerance(t *testing.T) {
 	t.Parallel()
 	params := goldenParams()
 	lo := hexgrid.Chunk{Q: -2, R: -2}
 	hi := hexgrid.Chunk{Q: 1, R: 1}
-	all, islandSet := islandRegionCells(params.Dims, goldenSeed, params, lo, hi)
+	all, islandSet := islandRegionCells(params.lattice(), goldenSeed, params, lo, hi)
 
 	achieved := decimal.NewFromInt(int64(len(islandSet))).Div(decimal.NewFromInt(int64(len(all))))
 	target := params.IslandShare
@@ -198,7 +196,7 @@ func TestConnectivity_MultiChunkRegionOverASeedSweep(t *testing.T) {
 		}
 		lo := hexgrid.Chunk{Q: 0, R: 0}
 		hi := hexgrid.Chunk{Q: 1, R: 1}
-		all, islandSet := islandRegionCells(params.Dims, seed, params, lo, hi)
+		all, islandSet := islandRegionCells(params.lattice(), seed, params, lo, hi)
 		regionSet := map[hexgrid.Coord]bool{}
 		for _, c := range all {
 			regionSet[c] = true

@@ -9,13 +9,19 @@ import (
 	"github.com/maratik123/lab-game/internal/hexgrid"
 )
 
-// Params carries every input a Generator's chunk build reads: the chunk
-// grid's dimensions, the per-algorithm weights, the island share, the
+// MinRadius is the lowest chunk radius this package generates for: the
+// MVP's own lower bound. There is no upper bound — a radius this package
+// makes no promise for exhausts memory long before any coordinate
+// arithmetic would overflow.
+const MinRadius = 6
+
+// Params carries every input a Generator's chunk build reads: the
+// chunk's radius, the per-algorithm weights, the island share, the
 // extra-passage share, and the growing-tree bias. It carries no seed —
 // the seed is New's own argument — and fixes no configuration key name;
 // mapping a biome file onto Params is the composition root's concern.
 type Params struct {
-	Dims              hexgrid.Dims
+	Radius            int32
 	Weights           AlgorithmWeights
 	IslandShare       decimal.Decimal
 	ExtraPassageShare decimal.Decimal
@@ -37,8 +43,8 @@ var (
 // clamped share would go on to under-deliver against the achieved share
 // its caller asked for, and report success while doing it.
 func (p Params) validate() error {
-	if p.Dims.Cols <= 0 || p.Dims.Rows <= 0 {
-		return fmt.Errorf("maze: dims must be positive, got %+v", p.Dims)
+	if p.Radius < MinRadius {
+		return fmt.Errorf("maze: radius must be at least %d, got %d", MinRadius, p.Radius)
 	}
 	if p.Weights.totalWeight() == 0 {
 		return errors.New("maze: weights has no positive entry")
@@ -52,12 +58,12 @@ func (p Params) validate() error {
 	if err := validateShare("growing-tree bias", p.GrowingTreeBias); err != nil {
 		return err
 	}
-	capacity := nonBorderCellCount(p.Dims)
+	capacity := nonBorderCellCount(p.Radius)
 	if capacity == 0 && p.IslandShare.IsPositive() {
-		return fmt.Errorf("maze: island share %s is positive but dims %+v have no non-border cell to draw islands from", p.IslandShare, p.Dims)
+		return fmt.Errorf("maze: island share %s is positive but radius %d has no non-border cell to draw islands from", p.IslandShare, p.Radius)
 	}
 	if target := islandTarget(p); target > capacity {
-		return fmt.Errorf("maze: island share %s rounds to %d islands, more than dims %+v can hold (%d non-border cells)", p.IslandShare, target, p.Dims, capacity)
+		return fmt.Errorf("maze: island share %s rounds to %d islands, more than radius %d can hold (%d non-border cells)", p.IslandShare, target, p.Radius, capacity)
 	}
 	return nil
 }
@@ -71,20 +77,16 @@ func validateShare(name string, v decimal.Decimal) error {
 	return nil
 }
 
-// nonBorderCellCount returns how many of a d-sized chunk's cells have
+// nonBorderCellCount returns how many of a radius-r chunk's cells have
 // every one of their six neighbours inside the same chunk — the
-// capacity the island share's rounded count is drawn from. A 1x1,
-// single-row, or single-column chunk has none.
-func nonBorderCellCount(d hexgrid.Dims) int64 {
-	interiorCols := int64(d.Cols) - 2
-	interiorRows := int64(d.Rows) - 2
-	if interiorCols < 0 {
-		interiorCols = 0
+// capacity the island share's rounded count is drawn from: the cell
+// count of the radius-(r-1) hexagon centred on the same point.
+func nonBorderCellCount(radius int32) int64 {
+	r := int64(radius) - 1
+	if r < 0 {
+		return 0
 	}
-	if interiorRows < 0 {
-		interiorRows = 0
-	}
-	return interiorCols * interiorRows
+	return 3*r*r + 3*r + 1
 }
 
 // roundHalfUp implements this package's pinned rounding: floor(x + ½).
@@ -103,4 +105,9 @@ func roundHalfUp(x decimal.Decimal) int64 {
 //nolint:gosec // G115: bias is validated to [0,1], so bias*2^32 never exceeds 2^32 and always fits uint64
 func biasThreshold(bias decimal.Decimal) uint64 {
 	return uint64(bias.Mul(twoPow32).Floor().IntPart())
+}
+
+// lattice returns the Lattice this Params generates a chunk over.
+func (p Params) lattice() hexgrid.Lattice {
+	return hexgrid.Lattice{Radius: p.Radius}
 }

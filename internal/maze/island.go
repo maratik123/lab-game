@@ -2,13 +2,12 @@ package maze
 
 import "github.com/shopspring/decimal"
 
-// islandTarget returns the number of islands a chunk of p.Dims targets
+// islandTarget returns the number of islands a chunk of p.Radius targets
 // under p.IslandShare: round(islandShare × cellsInChunk), the cell
 // count over the whole chunk, not only its non-border cells — the
 // share's own denominator.
 func islandTarget(p Params) int64 {
-	total := int64(p.Dims.Cols) * int64(p.Dims.Rows)
-	return roundHalfUp(p.IslandShare.Mul(decimal.NewFromInt(total)))
+	return roundHalfUp(p.IslandShare.Mul(decimal.NewFromInt(p.lattice().CellCount())))
 }
 
 // selectIslands returns the set of chunk-local cell indices chosen as

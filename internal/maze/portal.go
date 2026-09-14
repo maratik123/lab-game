@@ -3,29 +3,27 @@ package maze
 import "github.com/maratik123/lab-game/internal/hexgrid"
 
 // borderCandidates enumerates every face crossing the border between
-// chunks a and b, in a deterministic order that depends only on dims
-// and the two chunks: the lexicographically lesser chunk's own cells in
-// row-major order, its own six directions in canonical order, keeping
-// only the faces whose destination lies in the greater chunk. Computing
-// it from either chunk's own call site yields the identical list, since
-// the lesser/greater choice does not depend on which one calls.
-func borderCandidates(dims hexgrid.Dims, a, b hexgrid.Chunk) []hexgrid.Face {
+// chunks a and b, in the lattice's own canonical border-path order:
+// Lattice.Border(d) for d the direction from the lexicographically
+// lesser chunk to the greater one, translated from the lattice's local
+// frame to absolute coordinates by the lesser chunk's own centre.
+// Computing it from either chunk's own call site yields the identical
+// list, since the lesser/greater choice does not depend on which one
+// calls.
+func borderCandidates(lattice hexgrid.Lattice, a, b hexgrid.Chunk) []hexgrid.Face {
 	lesser, greater := canonicalOrder(a, b)
-	origin := dims.Origin(lesser)
-
-	var candidates []hexgrid.Face
-	for lr := int32(0); lr < dims.Rows; lr++ {
-		for lq := int32(0); lq < dims.Cols; lq++ {
-			if lq != 0 && lq != dims.Cols-1 && lr != 0 && lr != dims.Rows-1 {
-				continue // an interior cell can have no face leaving the chunk
-			}
-			c := hexgrid.Coord{Q: origin.Q + lq, R: origin.R + lr}
-			for _, d := range sixDirections {
-				if dims.ChunkOf(c.Neighbor(d)) == greater {
-					candidates = append(candidates, hexgrid.FaceOf(c, d))
-				}
-			}
+	var dir hexgrid.Direction
+	for _, d := range sixDirections {
+		if lesser.Neighbor(d) == greater {
+			dir = d
+			break
 		}
+	}
+	center := lattice.Center(lesser)
+	local := lattice.Border(dir)
+	candidates := make([]hexgrid.Face, len(local))
+	for i, f := range local {
+		candidates[i] = hexgrid.Face{Cell: hexgrid.Coord{Q: center.Q + f.Cell.Q, R: center.R + f.Cell.R}, Dir: f.Dir}
 	}
 	return candidates
 }
