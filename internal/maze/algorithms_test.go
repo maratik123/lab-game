@@ -47,7 +47,7 @@ func assertSpanningTree(t *testing.T, name string, g chunkGraph, islands map[int
 
 func TestAlgorithms_EachBuildsASpanningTree(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 10, Rows: 10})
+	g := newChunkGraph(hexgrid.Lattice{Radius: 6})
 	algos := []Algorithm{AlgorithmBacktracker, AlgorithmKruskal, AlgorithmPrim, AlgorithmGrowingTree, AlgorithmWilson}
 	for _, algo := range algos {
 		for seedByte := range 10 {
@@ -60,10 +60,10 @@ func TestAlgorithms_EachBuildsASpanningTree(t *testing.T) {
 
 func TestAlgorithms_SpanningTreeOverIslandChunk(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 16, Rows: 16})
+	g := newChunkGraph(refLattice())
 	p := validParams()
 	islandStream := newStream([32]byte{55})
-	islands := selectIslands(g, islandStream, p)
+	islands := selectIslands(g, islandStream, p, ChunkTypeFabric)
 	if len(islands) == 0 {
 		t.Fatal("test setup: expected at least one island at the reference share")
 	}
@@ -82,7 +82,7 @@ func TestAlgorithms_SpanningTreeOverIslandChunk(t *testing.T) {
 
 func TestGrowingTree_TwoBiasesProduceDifferentStructures(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 10, Rows: 10})
+	g := newChunkGraph(hexgrid.Lattice{Radius: 6})
 	key := [32]byte{3, 3, 3}
 	low := buildGrowingTree(g, map[int]bool{}, newStream(key), biasThreshold(zeroShare))
 	high := buildGrowingTree(g, map[int]bool{}, newStream(key), biasThreshold(oneShare))
@@ -103,7 +103,7 @@ func TestGrowingTree_TwoBiasesProduceDifferentStructures(t *testing.T) {
 
 func TestKruskal_ComponentTrackingHandlesEveryFace(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 16, Rows: 16})
+	g := newChunkGraph(refLattice())
 	s := newStream([32]byte{8, 8})
 	open := buildKruskal(g, map[int]bool{}, s)
 	assertSpanningTree(t, "kruskal", g, map[int]bool{}, open)
@@ -111,7 +111,7 @@ func TestKruskal_ComponentTrackingHandlesEveryFace(t *testing.T) {
 
 func TestBacktracker_NeverRevisitsACell(t *testing.T) {
 	t.Parallel()
-	g := newChunkGraph(hexgrid.Dims{Cols: 8, Rows: 8})
+	g := newChunkGraph(hexgrid.Lattice{Radius: 6})
 	s := newStream([32]byte{1, 1, 1})
 	open := buildBacktracker(g, map[int]bool{}, s)
 	// A tree has exactly cellCount-1 edges and no cycle; countComponents

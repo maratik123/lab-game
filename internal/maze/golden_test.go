@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,24 +13,30 @@ import (
 	"github.com/maratik123/lab-game/internal/hexgrid"
 )
 
-var updateCellsGolden = flag.Bool("update-cells", false, "update the cells golden file")
+var updateChunksGolden = flag.Bool("update-chunks", false, "update the chunks golden file")
 
-const cellsGoldenPath = "testdata/cells.golden"
+const chunksGoldenPath = "testdata/chunks.golden"
 
-// goldenParams is the pinned Params header for the equal-weight region:
-// dims 16x16, island share 0.05, extra-passage share 0.15, growing-tree
-// bias 0.5, every one of the five algorithms weighted equally.
+// goldenRadius is the pinned chunk radius the chunks golden is minted
+// under: the design's own reference value.
+const goldenRadius = 9
+
+// goldenParams is the pinned Params header: radius goldenRadius, island
+// share 0.05, extra-passage share 0.15, growing-tree bias 0.5, portal
+// shares 0.1/0.2, every one of the five algorithms weighted equally.
 func goldenParams() Params {
 	return Params{
-		Dims:              hexgrid.Dims{Cols: 16, Rows: 16},
+		Radius:            goldenRadius,
 		Weights:           AlgorithmWeights{1, 1, 1, 1, 1},
 		IslandShare:       decimal.New(5, -2),
 		ExtraPassageShare: decimal.New(15, -2),
 		GrowingTreeBias:   half,
+		PortalShareLower:  decimal.New(1, -1),
+		PortalShareUpper:  decimal.New(2, -1),
 	}
 }
 
-// goldenSeed is the pinned world seed the cells golden is minted under.
+// goldenSeed is the pinned world seed the chunks golden is minted under.
 const goldenSeed int64 = 20260912
 
 func faceStateString(f FaceState) string {
@@ -38,82 +45,117 @@ func faceStateString(f FaceState) string {
 		return "wall"
 	case FacePassage:
 		return "passage"
-	case FaceDeferred:
-		return "deferred"
 	default:
 		return "unknown"
 	}
 }
 
-func renderCellLine(coord hexgrid.Coord, c Cell) string {
-	faces := make([]string, len(c.Faces))
-	for i, f := range c.Faces {
-		faces[i] = faceStateString(f)
+func renderCellLine(coord hexgrid.Coord, faces [6]FaceState, seed uint64) string {
+	faceNames := make([]string, len(faces))
+	for i, f := range faces {
+		faceNames[i] = faceStateString(f)
 	}
-	return fmt.Sprintf("cell(%d,%d)=faces:%s seed:%016x prefab:%t", coord.Q, coord.R, strings.Join(faces, ","), c.Seed, c.Prefab)
+	return fmt.Sprintf("cell(%d,%d)=faces:%s seed:%016x", coord.Q, coord.R, strings.Join(faceNames, ","), seed)
 }
 
-// dumpChunk renders every cell of chunk ch under dims, via gen, sorted
-// by (Q,R) for a stable line order.
-func dumpChunk(gen *Generator, dims hexgrid.Dims, ch hexgrid.Chunk) []string {
-	origin := dims.Origin(ch)
-	var lines []string
-	for lr := int32(0); lr < dims.Rows; lr++ {
-		for lq := int32(0); lq < dims.Cols; lq++ {
-			c := hexgrid.Coord{Q: origin.Q + lq, R: origin.R + lr}
-			lines = append(lines, renderCellLine(c, gen.Cell(c)))
+// facePassageFromChunk reports whether face f (a border candidate
+// between ch and some neighbour) is a passage, read from ch's own map
+// m — whichever of f's two endpoints is ch's own local cell.
+func facePassageFromChunk(t *testing.T, m Map, lattice hexgrid.Lattice, ch hexgrid.Chunk, f hexgrid.Face) bool {
+	t.Helper()
+	center := lattice.Center(ch)
+	local := hexgrid.Coord{Q: f.Cell.Q - center.Q, R: f.Cell.R - center.R}
+	if faces, ok := m.Faces(local); ok {
+		return faces[f.Dir] == FacePassage
+	}
+	other := f.Cell.Neighbor(f.Dir)
+	localOther := hexgrid.Coord{Q: other.Q - center.Q, R: other.R - center.R}
+	faces, ok := m.Faces(localOther)
+	if !ok {
+		t.Fatalf("facePassageFromChunk: neither endpoint of %v belongs to chunk %v", f, ch)
+	}
+	return faces[f.Dir.Opposite()] == FacePassage
+}
+
+// directionName renders d as the short compass label its canonical
+// order defines, for golden-file lines.
+func directionName(d hexgrid.Direction) string {
+	names := [6]string{"E", "NE", "NW", "W", "SW", "SE"}
+	return names[d]
+}
+
+// borderPositionsLine renders ch's border with its neighbour in
+// direction d, as the sorted 0-based positions (in borderCandidates'
+// own path order) of every candidate face that is a passage in m.
+func borderPositionsLine(t *testing.T, m Map, lattice hexgrid.Lattice, ch hexgrid.Chunk, d hexgrid.Direction) string {
+	t.Helper()
+	neighborChunk := ch.Neighbor(d)
+	candidates := borderCandidates(lattice, ch, neighborChunk)
+	var positions []string
+	for i, f := range candidates {
+		if facePassageFromChunk(t, m, lattice, ch, f) {
+			positions = append(positions, strconv.Itoa(i))
 		}
 	}
-	return lines
+	return fmt.Sprintf("chunk(%d,%d).border(%s)=%s", ch.Q, ch.R, directionName(d), strings.Join(positions, ","))
 }
 
-// dumpBorderRing renders only ch's own border-ring cells under dims,
-// via gen.
-func dumpBorderRing(gen *Generator, dims hexgrid.Dims, ch hexgrid.Chunk) []string {
-	origin := dims.Origin(ch)
-	var lines []string
-	for lr := int32(0); lr < dims.Rows; lr++ {
-		for lq := int32(0); lq < dims.Cols; lq++ {
-			if lq != 0 && lq != dims.Cols-1 && lr != 0 && lr != dims.Rows-1 {
-				continue
-			}
-			c := hexgrid.Coord{Q: origin.Q + lq, R: origin.R + lr}
-			lines = append(lines, renderCellLine(c, gen.Cell(c)))
-		}
-	}
-	return lines
-}
-
-func algorithmLine(chunk hexgrid.Chunk, weights AlgorithmWeights) string {
-	algo := drawAlgorithm(newStream(chunkKey(goldenSeed, purposeAlgorithm, chunk)), weights)
-	return fmt.Sprintf("chunk(%d,%d).algorithm=%s", chunk.Q, chunk.R, algo.String())
-}
-
-// cellsGoldenLines builds every line the cells golden pins: the
-// equal-weight region (the origin chunk and the chunk diagonally
-// below-left of it in full, plus the border ring of the chunk below the
-// origin), and one single-weight section per algorithm over its own
-// named chunk.
-func cellsGoldenLines() []string {
-	var lines []string
-	lines = append(lines, "# domain-tag=lab-game/maze/v1 seed=20260912 dims=16x16 island_share=0.05 extra_passage_share=0.15 growing_tree_bias=0.5 weights=equal prefab=nil")
-
-	params := goldenParams()
-	gen, err := New(goldenSeed, params, nil)
+// dumpChunkBlock renders one chunk's full golden block: its type and
+// drawn algorithm, its six borders' portal positions in canonical
+// direction order, and every local cell's local coordinate and six
+// face states in LocalCells order. neighbors are passed to Generate
+// directly, so a chunk generated against a stored neighbour renders
+// exactly what that route produces.
+func dumpChunkBlock(t *testing.T, gen *Generator, lattice hexgrid.Lattice, ch hexgrid.Chunk, typ ChunkType, weights AlgorithmWeights, neighbors ...Map) []string {
+	t.Helper()
+	m, err := gen.Generate(ch, typ, neighbors...)
 	if err != nil {
-		panic(err)
+		t.Fatalf("Generate(%v,%v): %v", ch, typ, err)
+	}
+	algo := drawAlgorithm(newStream(chunkKey(goldenSeed, purposeAlgorithm, ch)), weights)
+
+	lines := []string{fmt.Sprintf("chunk(%d,%d).type=%s algorithm=%s", ch.Q, ch.R, typ, algo)}
+	for _, d := range sixDirections {
+		lines = append(lines, borderPositionsLine(t, m, lattice, ch, d))
+	}
+	for _, local := range lattice.LocalCells() {
+		c := lattice.At(ch, local)
+		faces, ok := m.Faces(local)
+		if !ok {
+			t.Fatalf("Faces(%v): ok=false", local)
+		}
+		lines = append(lines, renderCellLine(local, faces, gen.CellSeed(c)))
+	}
+	return lines
+}
+
+// chunksGoldenLines builds every line the chunks golden pins: chunk
+// (0,0) as a gate chunk with all borders derived; chunk (1,0) as
+// fabric, generated against (0,0)'s stored map; and one fabric chunk
+// per algorithm under that algorithm's single weight.
+func chunksGoldenLines(t *testing.T) []string {
+	t.Helper()
+	params := goldenParams()
+	lattice := params.lattice()
+	gen, err := New(goldenSeed, params)
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
 
-	lines = append(lines, "## equal-weight-region")
+	lines := []string{fmt.Sprintf(
+		"# domain-tag=lab-game/maze/v1 version=%d seed=%d radius=%d island_share=0.05 extra_passage_share=0.15 growing_tree_bias=0.5 portal_share_lower=0.1 portal_share_upper=0.2 weights=equal",
+		Version, goldenSeed, goldenRadius,
+	)}
+
 	origin := hexgrid.Chunk{Q: 0, R: 0}
-	belowLeft := hexgrid.Chunk{Q: -1, R: -1}
-	below := hexgrid.Chunk{Q: 0, R: -1}
-	lines = append(lines, algorithmLine(origin, params.Weights))
-	lines = append(lines, dumpChunk(gen, params.Dims, origin)...)
-	lines = append(lines, algorithmLine(belowLeft, params.Weights))
-	lines = append(lines, dumpChunk(gen, params.Dims, belowLeft)...)
-	lines = append(lines, algorithmLine(below, params.Weights))
-	lines = append(lines, dumpBorderRing(gen, params.Dims, below)...)
+	east := hexgrid.Chunk{Q: 1, R: 0}
+
+	originMap, err := gen.Generate(origin, ChunkTypeGate)
+	if err != nil {
+		t.Fatalf("Generate(origin,gate): %v", err)
+	}
+	lines = append(lines, dumpChunkBlock(t, gen, lattice, origin, ChunkTypeGate, params.Weights)...)
+	lines = append(lines, dumpChunkBlock(t, gen, lattice, east, ChunkTypeFabric, params.Weights, storedCopyOf(t, originMap))...)
 
 	algos := []struct {
 		name  string
@@ -131,67 +173,70 @@ func cellsGoldenLines() []string {
 		w[a.algo] = 1
 		p := params
 		p.Weights = w
-		g, err := New(goldenSeed, p, nil)
+		g, err := New(goldenSeed, p)
 		if err != nil {
-			panic(err)
+			t.Fatalf("New: %v", err)
 		}
-		lines = append(lines, "## single-weight-"+a.name)
-		lines = append(lines, algorithmLine(a.chunk, w))
-		lines = append(lines, dumpChunk(g, p.Dims, a.chunk)...)
+		lines = append(lines, dumpChunkBlock(t, g, p.lattice(), a.chunk, ChunkTypeFabric, w)...)
 	}
 
 	return lines
 }
 
-func TestCellsGolden(t *testing.T) {
+func TestChunksGolden(t *testing.T) {
 	t.Parallel()
-	lines := cellsGoldenLines()
+	lines := chunksGoldenLines(t)
 	got := strings.Join(lines, "\n") + "\n"
 
-	if *updateCellsGolden {
-		if err := os.WriteFile(cellsGoldenPath, []byte(got), 0o600); err != nil {
-			t.Fatalf("WriteFile(%s): %v", cellsGoldenPath, err)
+	if *updateChunksGolden {
+		if err := os.WriteFile(chunksGoldenPath, []byte(got), 0o600); err != nil {
+			t.Fatalf("WriteFile(%s): %v", chunksGoldenPath, err)
 		}
 		return
 	}
 
-	want, err := os.ReadFile(cellsGoldenPath)
+	want, err := os.ReadFile(chunksGoldenPath)
 	if err != nil {
-		t.Fatalf("ReadFile(%s): %v (run with -update-cells to mint it)", cellsGoldenPath, err)
+		t.Fatalf("ReadFile(%s): %v (run with -update-chunks to mint it)", chunksGoldenPath, err)
 	}
 	if got != string(want) {
-		t.Errorf("cells golden mismatch — the domain tag, the encoding, the digest, the stream, a reduction, the island rule, an algorithm's traversal, the cycle pass, or the portal rule changed: every world already generated under this seed is now different.\n--- got ---\n%s\n--- want ---\n%s", got, want)
+		t.Errorf("chunks golden mismatch — the key chain, a stream, a reduction, the canonical local order, the border enumeration order, the island rule, the gate exclusion, an algorithm's traversal, the cycle pass, the portal count or placement, or stored-border precedence changed: bump Version if this is a deliberate generation change.\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }
 
-// TestCellsGolden_EveryIslandCellHasAllSixFacesAsWallInTheMintedTable
+// TestChunksGolden_EveryIslandCellHasAllSixFacesAsWallInTheMintedTable
 // reads the minted golden back and cross-checks its own "wall on every
 // face" cells against a live re-derivation of the origin chunk's island
 // set — reviewing the mint against the island rule directly, not only
 // the diff's shape.
-func TestCellsGolden_EveryIslandCellHasAllSixFacesAsWallInTheMintedTable(t *testing.T) {
+func TestChunksGolden_EveryIslandCellHasAllSixFacesAsWallInTheMintedTable(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile(cellsGoldenPath)
+	data, err := os.ReadFile(chunksGoldenPath)
 	if err != nil {
-		t.Fatalf("ReadFile(%s): %v", cellsGoldenPath, err)
+		t.Fatalf("ReadFile(%s): %v", chunksGoldenPath, err)
 	}
 	params := goldenParams()
-	g := newChunkGraph(params.Dims)
+	lattice := params.lattice()
+	g := newChunkGraph(lattice)
 	origin := hexgrid.Chunk{Q: 0, R: 0}
-	islands := selectIslands(g, newStream(chunkKey(goldenSeed, purposeIsland, origin)), params)
+	islands := selectIslands(g, newStream(chunkKey(goldenSeed, purposeIsland, origin)), params, ChunkTypeGate)
 	islandCoords := map[hexgrid.Coord]bool{}
-	chunkOrigin := params.Dims.Origin(origin)
 	for idx := range islands {
-		lq, lr := g.localCoord(idx)
-		islandCoords[hexgrid.Coord{Q: chunkOrigin.Q + lq, R: chunkOrigin.R + lr}] = true
+		islandCoords[g.localCoord(idx)] = true
 	}
 	if len(islandCoords) == 0 {
 		t.Fatal("test setup: the origin chunk has no island at the golden's own share — nothing to check")
 	}
 
 	checked := 0
+	inOriginBlock := false
+	originHeader := fmt.Sprintf("chunk(%d,%d).type=", origin.Q, origin.R)
 	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.HasPrefix(line, "cell(") {
+		if strings.HasPrefix(line, "chunk(") && strings.Contains(line, ".type=") {
+			inOriginBlock = strings.HasPrefix(line, originHeader)
+			continue
+		}
+		if !inOriginBlock || !strings.HasPrefix(line, "cell(") {
 			continue
 		}
 		var q, r int32
@@ -212,5 +257,83 @@ func TestCellsGolden_EveryIslandCellHasAllSixFacesAsWallInTheMintedTable(t *test
 	}
 	if checked != len(islandCoords) {
 		t.Errorf("checked %d island cells against the golden, want %d (some island coordinate was not dumped)", checked, len(islandCoords))
+	}
+}
+
+// TestChunksGolden_EveryPortalLineWithinBoundsAndNonConsecutive reads
+// the minted golden's border(...) lines and re-derives, live, that
+// every position lies in [lo, hi] and holds no consecutive pair — the
+// same cross-check the design pins, re-derived from the generator, not
+// from the file.
+func TestChunksGolden_EveryPortalLineWithinBoundsAndNonConsecutive(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(chunksGoldenPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", chunksGoldenPath, err)
+	}
+	params := goldenParams()
+	borderLength := 2*int(params.Radius) + 1
+	lo, hi := portalBounds(params.PortalShareLower, params.PortalShareUpper, borderLength)
+
+	checked := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.Contains(line, ".border(") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 || parts[1] == "" {
+			continue
+		}
+		checked++
+		var positions []int
+		for _, tok := range strings.Split(parts[1], ",") {
+			v, err := strconv.Atoi(tok)
+			if err != nil {
+				t.Fatalf("line %q: bad position %q: %v", line, tok, err)
+			}
+			positions = append(positions, v)
+		}
+		if len(positions) < lo || len(positions) > hi {
+			t.Errorf("line %q: %d positions, want within [%d,%d]", line, len(positions), lo, hi)
+		}
+		if !nonConsecutiveInPositionList(positions) {
+			t.Errorf("line %q: positions %v are not pairwise non-consecutive", line, positions)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("test setup: no non-empty border(...) line found in the golden — nothing checked")
+	}
+}
+
+// TestChunksGolden_EastChunkBorderWithOriginMatchesOrigin re-derives
+// live that chunk (1,0)'s border with (0,0), generated against (0,0)'s
+// stored map, is identical to (0,0)'s own side of that same border.
+func TestChunksGolden_EastChunkBorderWithOriginMatchesOrigin(t *testing.T) {
+	t.Parallel()
+	params := goldenParams()
+	lattice := params.lattice()
+	gen, err := New(goldenSeed, params)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	origin := hexgrid.Chunk{Q: 0, R: 0}
+	east := hexgrid.Chunk{Q: 1, R: 0}
+
+	originMap, err := gen.Generate(origin, ChunkTypeGate)
+	if err != nil {
+		t.Fatalf("Generate(origin): %v", err)
+	}
+	eastMap, err := gen.Generate(east, ChunkTypeFabric, storedCopyOf(t, originMap))
+	if err != nil {
+		t.Fatalf("Generate(east, with origin): %v", err)
+	}
+
+	candidates := borderCandidates(lattice, origin, east)
+	for _, f := range candidates {
+		originSide := facePassageFromChunk(t, originMap, lattice, origin, f)
+		eastSide := facePassageFromChunk(t, eastMap, lattice, east, f)
+		if originSide != eastSide {
+			t.Errorf("face %v: origin says passage=%v, east (generated against origin) says passage=%v", f, originSide, eastSide)
+		}
 	}
 }

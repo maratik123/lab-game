@@ -68,15 +68,12 @@ func drawAlgorithm(s stream, w AlgorithmWeights) Algorithm {
 	return Algorithm(weightedPick(s, w[:]))
 }
 
-// FaceState is one face's state as Cell reports it: a wall, a passage,
-// or — for a coordinate the prefab hook claims — deferred to the prefab
-// layer. FaceDeferred is deliberately the zero value, so a claimed
-// cell's interior face is honest rather than silently a wall.
+// FaceState is one face's state: a wall or a passage. FaceWall is
+// deliberately the zero value.
 type FaceState int8
 
-// The three face states.
+// The two face states.
 const (
-	FaceDeferred FaceState = iota
-	FaceWall
+	FaceWall FaceState = iota
 	FacePassage
 )

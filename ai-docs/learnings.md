@@ -1027,3 +1027,16 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **What happened:** The plan's § 1 row for DESIGN §10 said "Чаты в новом сезоне добавляются по мере активации (D10)". D10 quotes the owner: "добавляем чаты по мере активации в начале сезона. как это будет в дальнейших сезонах - пока вне скоупа мвп". My row dropped the out-of-scope half and turned the first season's rule into a rule for every season. The design amendment for #118 copied it into §10 as «спираль строится заново». Self-review round 3 flagged the inconsistency with §2.2.3, and only then was the text brought back to D10, in the design, the plan, #117 and #118.
 **Rule:** A row that cites a decision says what the quote says and no more. Before writing it, reread the quote for its limiting clause ("пока", "вне скоупа", "в начале") and carry that clause into the row. A generalisation the owner did not make goes back to the owner as a question.
 **Escalated?** no
+
+### 2026-09-14 — process — gate spawn prompt used the interview's field labels instead of the gate contract's line shapes
+**What happened:** At `/task` Step 7 of the #119 run, the first `design-review` spawn carried the permitted set of inputs (invocation line, spec path, design path, round) but spelled them `spec_path:` / `design_path:` / `round:`, the field vocabulary of the `spec-writer` prompts the orchestrator had just been sending in the interview. The `PreToolUse` spawn hook refused it: the design-review spawn contract permits only `Spec:` / `Design:` / `Progress:` / `Round:` lines. The re-spawn in those shapes passed.
+**Rule:** Before spawning a gate agent (`design-review`, `self-review`), write the prompt in that agent's own spawn-prompt contract line shapes, not in the field vocabulary of the flow just left — the closed list binds the spelling of each line, not only which items appear.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-14 — process — surfaced unreachable numeric extremes to the owner as spec decisions
+**What happened:** In the #119 run, after design-review round 1 returned ITERATE, the orchestrator put two delegate-raised edge cases to the owner as spec-amendment questions — AC4's upper radius at the `int32` cell-count limit, and AC1–AC3 at the `int32` coordinate seam — recommending a spec amendment for each, without first weighing whether either state is reachable at the product's real scale. The owner answered: «Какой бред, это число буду задавать я, и я явно буду делать разумный выбор. Зачем я буду выбирать числа порядка 2^20? Чтобы что?» and «Может, оценивать реально? Зачем закладывать то, что никогда не будет достигнуто? Это телеграм игра, готовим мвп, ты реально считаешь, что к игре подключаться 100500 чатов на старте?»
+**Rule:** Before forwarding a delegate's edge case to the owner, judge whether it is reachable at the product's actual scale (an MVP Telegram game; configuration values the owner sets deliberately). A type-domain extreme no real input reaches is not an owner question and not a spec amendment — at most a design-level note, and the recommendation offered must reflect that weighing, not the delegate's framing.
+**at:** bf20076
+**Kind:** correction
+**Escalated?** no

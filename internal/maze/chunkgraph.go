@@ -8,62 +8,63 @@ var sixDirections = [6]hexgrid.Direction{
 	hexgrid.DirW, hexgrid.DirSW, hexgrid.DirSE,
 }
 
-// chunkGraph is one chunk's cell graph under Dims: the mapping between
-// a chunk-local coordinate and a plain index, and the interior
-// (within-chunk) six-neighbour adjacency the island guard, the
-// spanning-structure algorithms, and the extra-passage pass all read
-// through. It carries no seed and no state beyond the dimensions.
+// chunkGraph is one hexagonal chunk's cell graph under a Lattice: the
+// mapping between a chunk-local coordinate and a plain index — fixed to
+// the lattice's own LocalCells order — and the interior (within-chunk)
+// six-neighbour adjacency the island guard, the spanning-structure
+// algorithms, and the extra-passage pass all read through. It carries no
+// seed and no state beyond the lattice.
 type chunkGraph struct {
-	dims hexgrid.Dims
+	lattice hexgrid.Lattice
+	cells   []hexgrid.Coord
+	index   map[hexgrid.Coord]int
 }
 
-// newChunkGraph builds the cell graph for a chunk of dims — dims itself
-// is assumed already validated (Params.validate), so no error return is
-// needed here.
-func newChunkGraph(dims hexgrid.Dims) chunkGraph {
-	return chunkGraph{dims: dims}
+// newChunkGraph builds the cell graph for a chunk of lattice — lattice's
+// radius is assumed already validated (Params.validate), so no error
+// return is needed here.
+func newChunkGraph(lattice hexgrid.Lattice) chunkGraph {
+	cells := lattice.LocalCells()
+	index := make(map[hexgrid.Coord]int, len(cells))
+	for i, c := range cells {
+		index[c] = i
+	}
+	return chunkGraph{lattice: lattice, cells: cells, index: index}
 }
 
 // cellCount returns how many cells the chunk holds.
 func (g chunkGraph) cellCount() int {
-	return int(g.dims.Cols) * int(g.dims.Rows)
+	return len(g.cells)
 }
 
-// localIndex returns the plain index for the chunk-local coordinate
-// (lq,lr), row-major.
-func (g chunkGraph) localIndex(lq, lr int32) int {
-	return int(lr)*int(g.dims.Cols) + int(lq)
+// localIndex returns the plain index for local coordinate local.
+func (g chunkGraph) localIndex(local hexgrid.Coord) int {
+	return g.index[local]
 }
 
 // localCoord returns idx's chunk-local coordinate — localIndex's
 // inverse.
-//
-//nolint:gosec // G115: idx is always in [0,cellCount()), and cellCount() fits int32 since Dims itself is int32-valued, so both results fit int32
-func (g chunkGraph) localCoord(idx int) (lq, lr int32) {
-	cols := int(g.dims.Cols)
-	return int32(idx % cols), int32(idx / cols)
+func (g chunkGraph) localCoord(idx int) hexgrid.Coord {
+	return g.cells[idx]
 }
 
-// isBorderCell reports whether idx's cell has at least one face
-// leaving the chunk — equivalently, whether it lies on the chunk
-// rectangle's own edge.
+// isBorderCell reports whether idx's cell has at least one face leaving
+// the chunk — equivalently, whether it lies at exactly the lattice's own
+// radius from the chunk's centre.
 func (g chunkGraph) isBorderCell(idx int) bool {
-	lq, lr := g.localCoord(idx)
-	return lq == 0 || lq == g.dims.Cols-1 || lr == 0 || lr == g.dims.Rows-1
+	return hexgrid.Distance(g.cells[idx], hexgrid.Coord{}) == int64(g.lattice.Radius)
 }
 
 // neighbors returns idx's interior neighbours — those of its six
 // hex-lattice neighbours that stay inside the chunk. A border cell may
 // return fewer than six.
 func (g chunkGraph) neighbors(idx int) []int {
-	lq, lr := g.localCoord(idx)
+	local := g.cells[idx]
 	out := make([]int, 0, 6)
 	for _, d := range sixDirections {
-		n := hexgrid.Coord{Q: lq, R: lr}.Neighbor(d)
-		if n.Q < 0 || n.Q >= g.dims.Cols || n.R < 0 || n.R >= g.dims.Rows {
-			continue
+		if j, ok := g.index[local.Neighbor(d)]; ok {
+			out = append(out, j)
 		}
-		out = append(out, g.localIndex(n.Q, n.R))
 	}
 	return out
 }
@@ -77,26 +78,21 @@ type interiorFace struct {
 }
 
 // interiorFaces enumerates every interior face of the chunk exactly
-// once, in a deterministic order depending only on Dims: cell index
-// order, then direction order, keeping each face only from the lower
-// of its two endpoints' iteration. This is the same list the island
-// guard, the spanning-structure algorithms, and the extra-passage pass
-// each build from, so it is built once here rather than re-derived per
-// caller.
+// once, in a deterministic order depending only on the lattice: cell
+// index order, then direction order, keeping each face only from the
+// lower of its two endpoints' iteration. This is the same list the
+// island guard, the spanning-structure algorithms, and the
+// extra-passage pass each build from, so it is built once here rather
+// than re-derived per caller.
 func (g chunkGraph) interiorFaces() []interiorFace {
 	var faces []interiorFace
-	for idx := 0; idx < g.cellCount(); idx++ {
-		lq, lr := g.localCoord(idx)
+	for idx, local := range g.cells {
 		for _, d := range sixDirections {
-			n := hexgrid.Coord{Q: lq, R: lr}.Neighbor(d)
-			if n.Q < 0 || n.Q >= g.dims.Cols || n.R < 0 || n.R >= g.dims.Rows {
+			j, ok := g.index[local.Neighbor(d)]
+			if !ok || j <= idx {
 				continue
 			}
-			nIdx := g.localIndex(n.Q, n.R)
-			if nIdx <= idx {
-				continue
-			}
-			faces = append(faces, interiorFace{a: idx, b: nIdx, dir: d})
+			faces = append(faces, interiorFace{a: idx, b: j, dir: d})
 		}
 	}
 	return faces
