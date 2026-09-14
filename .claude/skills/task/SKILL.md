@@ -116,6 +116,16 @@ First action: confirm the spec exists. Spawn the `design-writer` Subagent (per `
 
 Spawn the `design-review` Subagent with **exactly** these five things: the invocation line (`Read .claude/agents/design-review.md and follow it.`), the spec path, the design path, the progress-file path (when one exists), and the round number — **nothing else**. No `Context:` paragraph, no amendment history, no "verify that X now matches Y", no framing of what changed. Anything beyond the list becomes a `major` `PROMPT-CONTAMINATION` finding against this orchestrator, and the reviewer then ignores the content it flagged. The amended artefacts are on disk; the round number is the only state a gate prompt carries. (Enumerated here rather than left as "per `design-review.md`" because the one in-flow spawn example an orchestrator used to meet — the amendment recipes' template — carried a `Context:` line and shipped the contamination: `ai-docs/harness-gaps.md` 2026-09-02.)
 
+The five things are these lines, spelled exactly so. A `key: value` line in any other spelling — `spec_path:`, `spec:`, `round:`, the field names of the `spec-writer` prompts you sent during the interview — is refused by the `PreToolUse` hook (`.claude/settings.json`, matcher `Task|Agent`). Copy the block, omit the `Progress:` line while no progress file exists, and add nothing:
+
+```
+Read .claude/agents/design-review.md and follow it.
+Spec: ai-docs/plans/<name>.spec.md
+Design: ai-docs/plans/<name>.design.md
+Progress: ai-docs/plans/<name>.progress.md
+Round: <N>
+```
+
 Verdict: GO / ITERATE / STOP. **The verdict alone decides whether design-review runs again** — owner's ruling, 2026-09-11. No judgement of how "trivial" a change is enters it, the orchestrator's included:
 
 | Verdict | Next |
@@ -204,6 +214,16 @@ Then proceed to Step 10.
 ### Step 10: Self-review loop (max 3 rounds)
 
 Spawn the `self-review` Subagent with **exactly**: the invocation line (`Read .claude/agents/self-review.md and follow it.`), the spec path, the design path, the progress-file path, and the commit range — nothing else. A `PreToolUse` hook refuses the spawn on any line outside those shapes and names it (`.claude/settings.json`, matcher `Task|Agent`); a line that reaches the reviewer anyway is a `major` `PROMPT-CONTAMINATION` finding against the orchestrator, discharged only by re-spawning — one whole round (`ai-docs/learnings.md` 2026-09-03, round 2 of that run). **Caps, round history, routing state and priorities never enter a reviewer prompt** — routing is decided after the verdict, not signalled before it. **Reviewer reuse:** warm only to re-verify fixes of its OWN findings; new material (new diff, amended artefact) spawns COLD — `reference.md` § Reviewer reuse. **A warm follow-up is still a gate prompt:** the closed list binds the CONTENT, not the carrier, so a `SendMessage` round carries the same items and nothing else — no fix summary, no gate results, no "no production code changed". The hook's matcher is `Task|Agent` and does not reach that path, so there the rule is the whole enforcement.
+
+The lines, spelled exactly so — `<base-sha>` is a real SHA, and an unsubstituted placeholder line is refused:
+
+```
+Read .claude/agents/self-review.md and follow it.
+Spec: ai-docs/plans/<name>.spec.md
+Design: ai-docs/plans/<name>.design.md
+Progress: ai-docs/plans/<name>.progress.md
+<base-sha>..HEAD
+```
 
 > **Cap arithmetic (binding).** The round cap is an absolute integer; the charter value is 3. A user's raise sets it to an explicit number; a multiplicative raise ("x2", "x3") applies to the CHARTER value, never to a previously raised one — raises do not compound. The turn that applies a raise MUST echo `cap: N (was M)`.
 >

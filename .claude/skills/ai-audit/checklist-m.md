@@ -66,13 +66,13 @@ a character count read lower than the gate does.
 - `ai-docs/agent-writing-style.md`
 - `ai-docs/corrections-log.md`
 
-This list and the recipe are one surface: a change to either updates the other in the same PR per the Propagation Rule. There is no upstream copy to defer to.
+This list and the recipe are one surface: a change to either updates the other in the same PR per the Propagation Rule. There is no upstream copy to defer to. The size-measurement `PreToolUse` hook in `.claude/settings.json` carries the covered set as a path pattern and K1's command as an exact-match exemption; this recipe passes it without one, and the hook's suite pins both of the recipe's forms — a change to the covered set, this recipe or K1's command updates the hook and `ai-docs/scripts/test-size-measure-guard.sh` in the same PR.
 
 **Extraction model.** The canonical pattern for `AGENTS.md`: verbose subsections move into `ai-docs/<topic>.md` reference pages with anchored links from the source file. `/ai-audit` applies the same model in both its extraction passes — K1's routine proposal and M9's mandatory one.
 
 The recipe is `find`-based, not glob-based, and that is load-bearing: a `**` glob resolves only one level deep without `globstar`, so a future `.claude/skills/<skill>/<sub>/*.md` would silently leave the corpus. Pattern 4's explicit-path requirement applies to the *covered-file list* above (so static readers see the set), not to the shell command that consumes it.
 
-Sub-check 9 is the **only** enforcement surface for the byte cap. `.github/workflows/ci.yml` carried a mechanical `≥ 40,000` gate over this corpus until forge-4 retired it: a red PR is a byte budget by another name, and it forced every `/task` to plan around sizes the AXIOM forbids it to know. Nothing else measures now — if this sub-check does not run, or runs and does not record a verdict, the cap is unenforced for that pass.
+Sub-check 9 is the **only** enforcement surface for the byte cap. `.github/workflows/ci.yml` carried a mechanical `≥ 40,000` gate over this corpus until forge-4 retired it: a red PR is a byte budget by another name, and it forced every `/task` to plan around sizes the AXIOM forbids it to know. Nothing else measures now — if this sub-check does not run, or runs and does not record a verdict, the cap is unenforced for that pass. A `PreToolUse` hook refuses the common measuring shapes — `wc`, `du` and `stat` over the covered set — outside this sub-check's recipe and K1's command; it enforces the FORBIDDEN row above, not the cap, and carries no figure.
 
 ### Sub-check 10 — style-guide audit coverage map
 
