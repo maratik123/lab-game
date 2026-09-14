@@ -27,7 +27,7 @@ Groups per the design's `## Handoff plan`.
 - [x] 2. Group A — the next gate and its tests — commit f162d29
 - [x] 3. Group A — `Set`, `NewSet`, `Depth`, with the external tests and the internal AC9 test — commit 7f47611
 - [x] 4. Group A — the reporting-only benchmark — commit adf4c1c
-- [x] 5. Group B — documentation (KD-41, KD-38 consumer sentence, `context.md` layout line)
+- [x] 5. Group B — documentation (KD-41, KD-38 consumer sentence, `context.md` layout line) — commit b33e5a4
 
 ## Decisions log
 
@@ -82,4 +82,4 @@ Groups per the design's `## Handoff plan`.
 - `internal/gate/next.go`, `internal/gate/next_test.go` (subtask 2, commit f162d29)
 - `internal/gate/depth.go`, `internal/gate/depth_test.go`, `internal/gate/depth_internal_test.go` (subtask 3, commit 7f47611)
 - `internal/gate/bench_test.go` (subtask 4)
-- `ai-docs/key-decisions.md`, `ai-docs/context.md` (subtask 5)
+- `ai-docs/key-decisions.md`, `ai-docs/context.md` (subtask 5, commit b33e5a4)
