@@ -1040,3 +1040,10 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** bf20076
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-14 — process — an unvalidated measuring instrument put into a delegate prompt as a conclusion
+**What happened:** During `/interview` round 1 for #120, verifying `spec-writer`'s question about where each ring of the gate spiral starts, the orchestrator judged layout regularity by the residue class `(q-r) mod 3` and sent the delegate the conclusion "three misaligned sub-lattices with seams" for the corner start. The test is valid only for the index-3 lattice (k = 1, mid-side); the corner start produces an index-(k+1)² lattice, which spans all three classes while being perfectly regular. The delegate adopted the instrument, extended it to k = 2, and re-emitted two option descriptions that were false ("neither start gives an even layout for every k", "at k = 2 the corner start does"). A strict coset test — gate set equals one lattice coset over the interior, its not-a-lattice branch and its mismatch branch each seen red on a constructed layout — showed every layout at k = 1, 2, 3 is an exact lattice except mid-side with ceil rounding at k = 2.
+**Rule:** Before a measurement-derived conclusion enters a delegate prompt, run its instrument against a constructed case whose answer is known and that differs from the case the instrument was designed around (here: a regular lattice not aligned with the test's modulus). The outbound phase of delegation binds conclusions the orchestrator derives while verifying a delegate, not only premises it writes at spawn.
+**at:** b7430bd
+**Kind:** correction
+**Escalated?** no
