@@ -25,6 +25,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | [2026-09-12 — item machine: `item`, `item_movement`, and the shared holder address space](done/2026-09-12-item-machine-holder-address-space.spec.md) | ✅ implemented | #25 | the ledger core (2026-09-02) |
 | [2026-09-12 — world generation core: hex topology and the deterministic chunk generator](done/2026-09-12-world-generation-hex-chunk-generator.spec.md) | ✅ implemented | #27 | #18 |
 | [2026-09-14 — world generation rework: hexagonal chunks on a super-lattice](done/2026-09-14-hexagonal-chunk-generation.spec.md) | ✅ implemented | #119 | #118 · #27 |
+| [2026-09-14 — spiral gate placement and nearest-gate depth](done/2026-09-14-spiral-gate-placement-depth.spec.md) | ✅ implemented | #120 | #118 · #119 |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 

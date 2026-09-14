@@ -11,13 +11,13 @@ _Updated: 2026-09-14 10:58_
 **Spec:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.spec.md
 **Design:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.design.md
 
-**current_step:** Step 11 — review fixes complete (Round 2)
+**current_step:** Step 10 — self-review APPROVE (Round 3)
 **last_passed_gate:** golangci-lint run | 2026-09-14T11:41:37Z | 0baf31d
 **entry_args:** 120
 
 ## Next action
 
-**Do this immediately:** Step 10 — spawn a cold `self-review` for Round 3 (the last round under cap 3) with the closed five-item prompt (invocation line, spec, design, progress, `360c61d..HEAD`).
+**Do this immediately:** Step 12 — INDEX row, `git mv` spec and design to `done/`, inbox propagation, task-run record, commit, retire state files, `gh pr create`, fill the PR locator.
 
 ## Subtasks
 
@@ -59,6 +59,8 @@ Groups per the design's `## Handoff plan`.
 - **Step 10**: self-review Round 2 REJECT — one major (SR2-1, `Set`'s cost claim) and two minor (SR2-2 harness-gaps entry, SR2-3 learnings entry) open, three accepted (SR2-A1 … SR2-A3); all six Round 1 rows hold. Re-litigation share: no register row re-opened; SR2-3 alone cites Round 1, 1 of 3 raised rows (below 50%); cap 3, continuing.
 - **Step 11 (Round 2)**: SR2-1 verified (the `Set` comment's cost clause against a lookup count: one centre gate, radius 0, cell 100 chunks out, 30301 lookups) and the package's other cost claims checked by the orchestrator against the code; the one-sentence `.go` fix routed to `code-writer` Mode B, gates re-run by the orchestrator, committed at 0baf31d with coverage ratchet holding. SR2-2 and SR2-3 verified (`AGENTS.md` § Build & Test names `tmp/` for mutation backups; this run's instances were two; `Next` ranges `Spiral()`, which calls `ringChunk`).
 - **Step 11 (Round 2)**: SR2-2 and SR2-3 fixed by new append-only entries rather than by editing the flagged entries in place as the reviewer suggested — `ai-docs/harness-gaps.md` gained a corrected entry and the old entry's `**Superseded by:**` field (the log's own supersession form); `ai-docs/learnings.md` gained a correcting entry, its `Superseded by:` field being subagent-only. A further learnings entry records accepting the Round 1 delegate's negative sweep result without re-running it. Post-fix checks: `grep -c 'cost no more' internal/gate/depth.go` → 0; the new harness-gaps entry carries no "third instance" and quotes the `tmp/` rule; the old entry carries `Superseded by:`; the correcting learnings entry is present.
+- **Step 10**: self-review APPROVE at Round 3 (three rounds: Round 1 REJECT, Round 2 REJECT, Round 3 APPROVE); no open finding at any severity; SR3-A1 and SR3-A2 accepted.
+- **Step 12**: inbox propagation appended the spec's `## Out of scope` bullets to `ai-docs/deferred/_inbox.jsonl`; the spec's `## Deferred` and the design's `## Open questions` each hold only a bulleted `- None.` and emitted no row, matching the #119 run's handling of the same shape although shape rule 1's matcher literally excludes bullet lines (ambiguity logged in `ai-docs/harness-gaps.md`); the spec's `## Open questions` is empty; the dedupe set was empty (no thematic `.jsonl` exists).
 
 ## GO notes
 
@@ -107,6 +109,8 @@ Groups per the design's `## Handoff plan`.
 | SR2-A1 | 2 | — | accepted@2 — `Set.Depth`'s "It stops at the first ring beyond which no chunk centre can lie nearer to cell than the best distance already found" describes the stop rule, but the sentence ends in the caller-visible cost contract AC9 asks for ("the rings it visits are bounded by that distance and the lattice radius, never by the number of gates"), and that contract is true (`TestSearch_StaysWithinBound`); below severity floor | read `internal/gate/depth.go:32-37` |
 | SR2-A2 | 2 | — | accepted@2 — `depthSearch`'s "so the internal test suite can check the stated search bound directly rather than through timing" states why an unexported function exposes `lastRing`; it neither narrates the search nor names a place; below severity floor | read `internal/gate/depth.go:43-46` |
 | SR2-A3 | 2 | — | accepted@2 — `context-status.md`'s doc-comment trap bullet names only the first two false comments, not round 1's further ones; incomplete, not false, and the two 2026-09-14 learnings entries carry the rest | read `ai-docs/context-status.md` § Spiral gate placement and nearest-gate depth → Traps found |
+| SR3-A1 | 3 | — | accepted@3 — `Set`'s rewritten comment ("a Depth query's work does not grow with the number of gates in the snapshot") says more than AC9, which covers only gates far from the cell, but it is true. Adding gates never widens the rings visited: at every ring the best distance found can only fall, so the stop condition fires no later. A hit costs at most one distance per chunk looked up, so the work stays bounded by the chunk count of the rings the smaller set already visits. Not a defect | temporary `package gate` test (deleted after the run) comparing `depthSearch`'s `lastRing` for gates `{(5,-2), (-7,3)}` against the same set plus 43 chunks within ±6, for cells at the centres of every chunk within ±15, radii 0, 1, 3, 6 → `wider 0 narrower 883` / `890` / `895` / `892` of 961 cells each (the non-zero `narrower` counts show the instrument sees a difference) |
+| SR3-A2 | 3 | — | accepted@3 — `doc.go`'s package summary ("Next scans that order for a chunk far enough from every existing gate") leaves out the not-created condition. It is a package overview, incomplete rather than false, and `Next`'s own doc comment states the full contract. Below severity floor | read `internal/gate/doc.go:1-8` beside `internal/gate/next.go:5-9` |
 
 ## Files touched
 
@@ -208,3 +212,38 @@ Groups per the design's `## Handoff plan`.
 - **Objections:** none were recorded in round 1, so there is nothing to evaluate.
 
 **Routing note:** row 1 is a comment-only fix in `internal/gate/depth.go`. The design's § Risks, KD-41 and `Set.Depth`'s own comment already state the cost correctly, so it is not a Spec or Design Amendment trigger. Rows 2 and 3 are prose fixes to log surfaces; row 3 needs a new entry, since the learnings log is append-only.
+
+## Self-Review (Round 3)
+
+**Verdict:** APPROVE
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+
+No finding is open at any severity. The two items examined and ruled not defects are register rows SR3-A1 (`internal/gate/depth.go`) and SR3-A2 (`internal/gate/doc.go`).
+
+**What was checked.**
+- **Spawn prompt:** the five permitted items only (invocation line, `Spec:`, `Design:`, `Progress:`, `360c61d..HEAD`); no contamination.
+- **Range since round 2** (reviewed at 1e33876): e7835b8 (round 2's own record), 0baf31d (the `Set` comment, a harness-gaps entry, two learnings entries) and 258c232 (the progress file). `git diff 1e33876..HEAD --stat` touches only `internal/gate/depth.go` (a comment), `ai-docs/harness-gaps.md`, `ai-docs/learnings.md` and this file, so no production behaviour changed after round 2.
+- **Register, round 2 rows** (re-examined over 0baf31d):
+  - **SR2-1 holds.** `cost no more` no longer occurs in `depth.go`. The comment now claims only that a query's work does not grow with the gate count. I checked that claim by argument and by probe (SR3-A1). `Set.Depth`'s ring bound (by the distance and the radius) is unchanged and still true. A sweep of the other cost words in the package's comments, KD-41, `context.md` and the `context-status.md` entry found every one true: `NewSet`'s "pays the gate count every time", KD-41's "linear in the gate count" for `Next`'s gate check, and "gates beyond its bound add no work". The 30301 figure in the new learnings entry is `1 + 3·100·101`, the chunk count of rings 0..100.
+  - **SR2-2 holds.** The new harness-gaps entry says "second instance in this run", and its quote of `AGENTS.md` § Build & Test is faithful: the ellipsis drops only the tool list and "is not matched by that hook". The old entry carries `**Superseded by:**`, the supersession form the log's header prescribes, and its field order follows the skeleton. I probed the entry's factual claims:
+    - A non-`_` directory under `tmp/` is walked: `go list ./...` listed `…/tmp/sr3walkprobe`.
+    - A `_`-prefixed one is not: 0 `/tmp/` lines.
+    - A lone copy of `depth.go`, `next.go` and `spiral.go` fails on undefined symbols: `undefined: ErrNegativeRadius`.
+    - `tmp/sr1-bak` holds the three `.go.bak` files.
+    - No `*.go` or `go.mod` sits under `tmp/` outside `_` directories.
+  - **SR2-3 holds.** The correcting learnings entry scopes the defect to `SpiralIndex` and records the `Next` → `Spiral` → `ringChunk` chain. The entry it corrects says "neither calls it". Both new entries follow the template, including `**at:**` before `**Kind:**` on the entry with a numeric claim.
+- **Rows SR1-1 to SR1-6 and accepted rows:** unaffected. No code line changed after round 2, and nothing was re-raised.
+- **Spec conformance, AC1–AC9:** `go test -count=1 -race -v ./internal/gate/` at 258c232 (`tmp/sr3-gate-test.log`) ends in `ok` with 20 `--- PASS` lines, which include all 16 AC Status tests. There is no scope creep in the new commits.
+- **Design conformance:** the design file is unchanged in the range. GO notes G1 (`members`, design § D5) and G2 (the "rings 2 and 3" mutant note) are present in the design. The design carries no `AC<N> verified by:` lines: 0 hits, and a control line matched.
+- **Mutants at 258c232,** each built before its result was read, with the backup in the session scratchpad outside the module:
+  - "stop at first hit" (`if found {`) → `TestSetDepth_Table/a_farther-ring_gate_is_nearer_in_cells` red.
+  - `lowerBound` `+ r` → `TestLowerBound_HoldsAndIsAttained` red.
+  - The tree was restored (`git diff --quiet -- internal/gate`), and `git status --porcelain internal/gate` was empty after the probe file was deleted.
+- **Gates at 258c232:** `go build ./...`, `go vet ./internal/gate/...`, `golangci-lint run ./...` (0 issues), `golangci-lint fmt -d`, `make comment-refs` and `make file-limits` all exit 0 (`tmp/sr3-gates.log`). The harness guards also exit 0: `check-ac-shape.sh`, `check-spec-shape.sh`, `check-spec-anchors.sh`, `check-harness-gaps-forge.sh`, `check-citations.sh`, and `check-review-register.sh` on this file. CI's relative-link check, run over the 117 tracked `*.md` files, found 0 broken links.
+- **Safety and domain invariants:** the new commits add no `panic(`, no goroutine, no error path, no ledger, scheduler, outbound-send or migration surface, and no secret.
+- **Doc comments (DOC-1–DOC-4):** `Set`'s rewritten comment is name-first, states a caller-visible property, and names nothing outside its package. The one other item examined is SR3-A2.
+- **Objections:** none recorded in round 2.
+
+**Routing note:** no finding. Nothing here touches a spec or a design.
