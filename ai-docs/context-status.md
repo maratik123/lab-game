@@ -443,7 +443,7 @@ Entry shape:
   - The bounded draw is total — a bound of one or zero returns zero and consumes nothing — so the standard library's panicking form is never reached and the index stays empty.
   - Connectivity is built, never repaired: no stage anywhere on the path depends on the order cells were visited.
 
-## World generation rework — hexagonal chunks on a super-lattice, generated a whole chunk at a time (PR #TBD-at-Step-12, 2026-09-14)
+## World generation rework — hexagonal chunks on a super-lattice, generated a whole chunk at a time (PR #123, 2026-09-14)
 
 - **What landed:** `internal/hexgrid` swaps the rhombic chunk grid (`Dims`, `ChunkOf`, `Origin`, `Contains`) for `Lattice`, the hexagon-of-hexagons super-lattice of radius-R chunks — `Center`, `Locate` and `At` between a cell and its (chunk, local coordinate), `LocalCells` in one canonical order, `Offset`, and `Border`, a border's `2R+1` faces in path order — plus `Chunk.Neighbor` and the cell `Distance` gameplay reads. `internal/maze` stops answering per coordinate: `Generate(ch, typ, neighbors ...Map)` builds one chunk into a `Map` that names its `Version`, `Chunk`, `Type` and `Radius` and answers `Faces` in its own local frame; `NewMap` rebuilds a `Map` from what a stored map holds; `ChunkType` is fabric or gate with a zero value that is refused. The prefab hook, `Cell` and the per-coordinate path are gone. A border draws its portal count between the two portal shares of its `2R+1` faces, rounded up, and places the portals so that none touch. The balance key `world.chunk.radius` replaces `world.chunk.cols` / `rows`, bound below by `maze.MinRadius`. `chunks.golden` replaces `cells.golden`; `derive.golden` did not move. KD-37…KD-40 carry `Amended by #119` clauses.
 
