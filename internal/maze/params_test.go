@@ -1,6 +1,8 @@
 package maze
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -30,8 +32,13 @@ func TestParams_ValidateRadiusBound(t *testing.T) {
 	for _, r := range []int32{5, 0, -1} {
 		p := validParams()
 		p.Radius = r
-		if err := p.validate(); err == nil {
+		err := p.validate()
+		if err == nil {
 			t.Errorf("validate() with radius %d = nil, want an error", r)
+			continue
+		}
+		if got := strconv.Itoa(int(r)); !strings.Contains(err.Error(), got) {
+			t.Errorf("validate() with radius %d = %q, want it to name the radius %s", r, err, got)
 		}
 	}
 	for _, r := range []int32{6, 9, 40} {
@@ -52,24 +59,34 @@ func TestParams_ValidateRejectsAllZeroWeights(t *testing.T) {
 	}
 }
 
+// wantErrNaming fails t unless err is non-nil and its text contains
+// name — the assertion that a refusal names its offending input, not
+// only that validate refused.
+func wantErrNaming(t *testing.T, err error, name string) {
+	t.Helper()
+	if err == nil {
+		t.Errorf("validate() = nil, want an error naming %q", name)
+		return
+	}
+	if !strings.Contains(err.Error(), name) {
+		t.Errorf("validate() = %q, want it to name %q", err, name)
+	}
+}
+
 func TestParams_ValidateRejectsShareOutOfRange(t *testing.T) {
 	t.Parallel()
 	for _, share := range []decimal.Decimal{decimal.NewFromInt(-1), decimal.NewFromInt(2)} {
 		p := validParams()
 		p.IslandShare = share
-		if err := p.validate(); err == nil {
-			t.Errorf("validate() with island share %s = nil, want an error", share)
-		}
+		wantErrNaming(t, p.validate(), "island share")
+
 		p2 := validParams()
 		p2.ExtraPassageShare = share
-		if err := p2.validate(); err == nil {
-			t.Errorf("validate() with extra-passage share %s = nil, want an error", share)
-		}
+		wantErrNaming(t, p2.validate(), "extra-passage share")
+
 		p3 := validParams()
 		p3.GrowingTreeBias = share
-		if err := p3.validate(); err == nil {
-			t.Errorf("validate() with growing-tree bias %s = nil, want an error", share)
-		}
+		wantErrNaming(t, p3.validate(), "growing-tree bias")
 	}
 }
 
@@ -78,14 +95,11 @@ func TestParams_ValidateRejectsPortalShareOutOfRange(t *testing.T) {
 	for _, share := range []decimal.Decimal{decimal.NewFromInt(-1), decimal.NewFromInt(2)} {
 		p := validParams()
 		p.PortalShareLower = share
-		if err := p.validate(); err == nil {
-			t.Errorf("validate() with portal share lower bound %s = nil, want an error", share)
-		}
+		wantErrNaming(t, p.validate(), "portal share lower bound")
+
 		p2 := validParams()
 		p2.PortalShareUpper = share
-		if err := p2.validate(); err == nil {
-			t.Errorf("validate() with portal share upper bound %s = nil, want an error", share)
-		}
+		wantErrNaming(t, p2.validate(), "portal share upper bound")
 	}
 }
 
@@ -94,9 +108,7 @@ func TestParams_ValidateRejectsPortalShareLowerAboveUpper(t *testing.T) {
 	p := validParams()
 	p.PortalShareLower = decimal.New(3, -1)
 	p.PortalShareUpper = decimal.New(2, -1)
-	if err := p.validate(); err == nil {
-		t.Error("validate() with lower portal share above upper = nil, want an error")
-	}
+	wantErrNaming(t, p.validate(), "portal share lower bound")
 }
 
 func TestParams_ValidateRejectsPortalShareLowerRoundingToZero(t *testing.T) {
@@ -105,9 +117,7 @@ func TestParams_ValidateRejectsPortalShareLowerRoundingToZero(t *testing.T) {
 	p.Radius = MinRadius // border length 13
 	p.PortalShareLower = decimal.Zero
 	p.PortalShareUpper = decimal.New(2, -1)
-	if err := p.validate(); err == nil {
-		t.Error("validate() with a zero lower portal share (rounds to 0 guaranteed portals) = nil, want an error")
-	}
+	wantErrNaming(t, p.validate(), "portal share lower bound")
 }
 
 func TestParams_ValidateRejectsPortalShareUpperPastRPlusOne(t *testing.T) {
@@ -115,9 +125,7 @@ func TestParams_ValidateRejectsPortalShareUpperPastRPlusOne(t *testing.T) {
 	p := validParams()
 	p.Radius = MinRadius                       // border length 13, R+1 = 7 non-touching positions max
 	p.PortalShareUpper = decimal.NewFromInt(1) // rounds to 13, far past 7
-	if err := p.validate(); err == nil {
-		t.Error("validate() with an upper portal share rounding past R+1 = nil, want an error")
-	}
+	wantErrNaming(t, p.validate(), "portal share upper bound")
 }
 
 func TestPortalBounds_RoundsUpWithCeiling(t *testing.T) {
@@ -134,8 +142,23 @@ func TestParams_ValidateRejectsIslandShareAboveCapacity(t *testing.T) {
 	p := validParams()
 	p.Radius = MinRadius
 	p.IslandShare = decimal.NewFromInt(1) // every cell — far more than the gate/fabric capacity
-	if err := p.validate(); err == nil {
-		t.Error("validate() with island share 1 at the minimum radius = nil, want an error")
+	wantErrNaming(t, p.validate(), "island share")
+}
+
+// TestParams_ValidateAcceptsIslandShareAtGateCapacity checks the other
+// side of the same bound: a target that lands exactly on the gate
+// chunk's capacity is accepted, not just refused above it.
+func TestParams_ValidateAcceptsIslandShareAtGateCapacity(t *testing.T) {
+	t.Parallel()
+	p := validParams()
+	p.Radius = MinRadius
+	capacity := gateCapacity(p.Radius)
+	p.IslandShare = shareForIslandTarget(capacity, p.lattice().CellCount())
+	if got := islandTarget(p); got != capacity {
+		t.Fatalf("test setup: islandTarget = %d, want the gate capacity %d", got, capacity)
+	}
+	if err := p.validate(); err != nil {
+		t.Errorf("validate() with island share at the gate capacity = %v, want nil", err)
 	}
 }
 

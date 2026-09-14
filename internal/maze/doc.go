@@ -4,8 +4,8 @@
 // the extra-passage pass, border portals, chunk types, and the
 // chunk-level entry point Generate, whose result is a Map. Every value
 // it yields for a chunk is a pure function of the world seed, the
-// generation inputs, the chunk coordinate and its type — no clock, no
-// unseeded random source, and no floating-point arithmetic anywhere on
-// the path, so the same inputs yield the same result across processes
-// and Go versions.
+// generation inputs, the chunk coordinate, its type, and the neighbour
+// maps it is generated against — no clock, no unseeded random source,
+// and no floating-point arithmetic anywhere on the path, so the same
+// inputs yield the same result across processes and Go versions.
 package maze

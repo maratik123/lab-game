@@ -80,11 +80,10 @@ func (p Params) validate() error {
 	}
 	// The gate chunk's capacity is the binding constraint: it excludes
 	// the centre cell on top of every border cell, so an island share
-	// valid against it is valid for a fabric chunk too.
+	// valid against it is valid for a fabric chunk too. At MinRadius or
+	// above a chunk always has non-border, non-centre cells, so there is
+	// no degenerate-capacity case left to reject.
 	capacity := gateCapacity(p.Radius)
-	if capacity == 0 && p.IslandShare.IsPositive() {
-		return fmt.Errorf("maze: island share %s is positive but radius %d has no non-border, non-centre cell to draw islands from", p.IslandShare, p.Radius)
-	}
 	if target := islandTarget(p); target > capacity {
 		return fmt.Errorf("maze: island share %s rounds to %d islands, more than radius %d can hold in a gate chunk (%d cells, excluding the border and the centre)", p.IslandShare, target, p.Radius, capacity)
 	}

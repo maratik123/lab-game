@@ -241,14 +241,14 @@ func TestConnectivity_MultiChunkRegionOverASeedSweep(t *testing.T) {
 	}
 }
 
-// TestCell_FaceAgreementFarFromOriginAcrossWorldSeeds is the rapid
+// TestGenerate_FaceAgreementFarFromOriginAcrossWorldSeeds is the rapid
 // property case the exhaustive face-agreement sweep does not cover: it
 // varies the world seed and reaches coordinates far from the origin,
 // where that sweep exercises one seed over a region straddling zero.
 // The property checked is the same one the sweep checks — a shared
 // border between two cells reads the same wall-or-passage state from
 // both sides.
-func TestCell_FaceAgreementFarFromOriginAcrossWorldSeeds(t *testing.T) {
+func TestGenerate_FaceAgreementFarFromOriginAcrossWorldSeeds(t *testing.T) {
 	t.Parallel()
 	params := refParams()
 	rapid.Check(t, func(rt *rapid.T) {

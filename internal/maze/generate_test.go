@@ -63,12 +63,31 @@ func (c *mapCache) faces(coord hexgrid.Coord) [6]FaceState {
 	return faces
 }
 
-func TestNew_RejectsInvalidParams(t *testing.T) {
+// TestNew_RefusesRadiusBelowSix_AcceptsSixAndGenerates checks that New
+// refuses a radius below MinRadius, returning no generator, and accepts
+// MinRadius and radii above it, each of which then Generates a map.
+func TestNew_RefusesRadiusBelowSix_AcceptsSixAndGenerates(t *testing.T) {
 	t.Parallel()
 	p := refParams()
-	p.Radius = 0
-	if _, err := New(1, p); err == nil {
-		t.Fatal("New with invalid radius = nil error, want an error")
+	p.Radius = MinRadius - 1
+	gen, err := New(1, p)
+	if err == nil {
+		t.Fatal("New with radius below MinRadius = nil error, want an error")
+	}
+	if gen != nil {
+		t.Fatalf("New with radius below MinRadius = %v, want nil generator", gen)
+	}
+
+	for _, r := range []int32{MinRadius, MinRadius + 3, 40} {
+		p := refParams()
+		p.Radius = r
+		gen, err := New(1, p)
+		if err != nil {
+			t.Fatalf("New with radius %d: %v, want nil error", r, err)
+		}
+		if _, err := gen.Generate(hexgrid.Chunk{}, ChunkTypeFabric); err != nil {
+			t.Fatalf("Generate with radius %d: %v, want nil error", r, err)
+		}
 	}
 }
 
@@ -113,6 +132,82 @@ func TestGenerate_RefusesUnknownChunkType(t *testing.T) {
 		if _, err := gen.Generate(hexgrid.Chunk{}, typ); err == nil {
 			t.Errorf("Generate with chunk type %v = nil error, want an error", typ)
 		}
+	}
+}
+
+// allWalled reports whether every one of faces is a wall — the
+// Map.Faces-level definition of an island cell.
+func allWalled(faces [6]FaceState) bool {
+	for _, f := range faces {
+		if f != FaceWall {
+			return false
+		}
+	}
+	return true
+}
+
+// shareForIslandTarget returns an IslandShare whose islandTarget, over a
+// chunk of cellCount cells, is exactly target: target/cellCount rounded
+// to far more decimal places than roundHalfUp's ½ threshold can be
+// sensitive to.
+func shareForIslandTarget(target, cellCount int64) decimal.Decimal {
+	return decimal.NewFromInt(target).DivRound(decimal.NewFromInt(cellCount), 30)
+}
+
+// TestGenerate_IslandsOffEveryBorder_GateCentreNeverAnIsland checks,
+// driven through Generate and Map.Faces and not through selectIslands:
+// island cells (every face a wall) sit at local distance <= R-1 from the
+// chunk's own centre. Over a seed sweep at an island share whose target
+// equals the gate chunk's capacity, the centre is never an island in a
+// gate chunk, while at least one fabric chunk in the same sweep has its
+// centre as an island — so an exclusion applied to every chunk type
+// would go red on that second half.
+func TestGenerate_IslandsOffEveryBorder_GateCentreNeverAnIsland(t *testing.T) {
+	t.Parallel()
+	p := refParams()
+	p.Radius = MinRadius
+	lattice := p.lattice()
+	capacity := gateCapacity(p.Radius)
+	p.IslandShare = shareForIslandTarget(capacity, lattice.CellCount())
+	if got := islandTarget(p); got != capacity {
+		t.Fatalf("test setup: islandTarget = %d, want the gate capacity %d", got, capacity)
+	}
+
+	centreLocal := hexgrid.Coord{}
+	fabricCentreIsland := false
+	for seed := int64(0); seed < 40; seed++ {
+		gen, err := New(seed, p)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		for _, typ := range []ChunkType{ChunkTypeFabric, ChunkTypeGate} {
+			m, err := gen.Generate(hexgrid.Chunk{Q: int32(seed), R: 0}, typ)
+			if err != nil {
+				t.Fatalf("Generate: %v", err)
+			}
+			for _, local := range lattice.LocalCells() {
+				faces, ok := m.Faces(local)
+				if !ok {
+					t.Fatalf("Faces(%v): ok=false", local)
+				}
+				if !allWalled(faces) {
+					continue
+				}
+				if d := hexgrid.Distance(centreLocal, local); d > int64(p.Radius)-1 {
+					t.Errorf("seed %d type %v: island at local %v has distance %d, want <= %d", seed, typ, local, d, p.Radius-1)
+				}
+				if local == centreLocal {
+					if typ == ChunkTypeGate {
+						t.Errorf("seed %d: gate chunk's centre is an island", seed)
+					} else {
+						fabricCentreIsland = true
+					}
+				}
+			}
+		}
+	}
+	if !fabricCentreIsland {
+		t.Fatal("test setup: no fabric chunk in the sweep had its centre as an island — this run cannot discriminate the gate-only exclusion")
 	}
 }
 
@@ -199,7 +294,134 @@ func TestGenerate_TakesSharedBorderFromStoredNeighbour(t *testing.T) {
 		}
 	}
 
-	// C's other five borders equal C's derived ones.
+	assertOtherBordersUnchanged(t, lattice, c, n, derivedC, cWithN)
+
+	// N rebuilt through NewMap with one of its border faces on the C-N
+	// border flipped: C's border carries the flip.
+	t.Run("flipped_border_face_propagates", func(t *testing.T) {
+		t.Parallel()
+		facesCopy := facesArrayOf(t, lattice, nGenerated)
+		flipLocal, flipDir, found := findSharedBorderFace(lattice, n, c)
+		if !found {
+			t.Fatal("test setup: no C-N border face found from N's side")
+		}
+		flipIdx := localIndex(t, lattice, flipLocal)
+		flipped := flipFaceState(facesCopy[flipIdx][flipDir])
+		facesCopy[flipIdx][flipDir] = flipped
+
+		nFlipped, err := NewMap(n, nGenerated.Type(), nGenerated.Version(), facesCopy)
+		if err != nil {
+			t.Fatalf("NewMap: %v", err)
+		}
+		cWithFlippedN, err := gen.Generate(c, ChunkTypeFabric, nFlipped)
+		if err != nil {
+			t.Fatalf("Generate (with flipped N): %v", err)
+		}
+
+		_, cLocal := lattice.Locate(lattice.At(n, flipLocal).Neighbor(flipDir))
+		cWithFlippedFaces, ok := cWithFlippedN.Faces(cLocal)
+		if !ok {
+			t.Fatalf("Faces(%v) in C: ok=false", cLocal)
+		}
+		if got := cWithFlippedFaces[flipDir.Opposite()]; got != flipped {
+			t.Errorf("C's border face at local %v dir %v = %v, want the flipped state %v", cLocal, flipDir.Opposite(), got, flipped)
+		}
+		assertOtherBordersUnchanged(t, lattice, c, n, derivedC, cWithFlippedN)
+	})
+
+	// N rebuilt through NewMap under a version other than Version: C's
+	// border still equals N's.
+	t.Run("neighbour_version_irrelevant", func(t *testing.T) {
+		t.Parallel()
+		facesCopy := facesArrayOf(t, lattice, nGenerated)
+		otherVersion := Version + 41
+		nOtherVersion, err := NewMap(n, nGenerated.Type(), otherVersion, facesCopy)
+		if err != nil {
+			t.Fatalf("NewMap: %v", err)
+		}
+		cWithOtherVersionN, err := gen.Generate(c, ChunkTypeFabric, nOtherVersion)
+		if err != nil {
+			t.Fatalf("Generate (with other-version N): %v", err)
+		}
+		for _, local := range lattice.LocalCells() {
+			global := lattice.At(c, local)
+			for _, d := range sixDirections {
+				neighborGlobal := global.Neighbor(d)
+				neighborChunk, neighborLocal := lattice.Locate(neighborGlobal)
+				if neighborChunk != n {
+					continue
+				}
+				got, _ := cWithOtherVersionN.Faces(local)
+				want, ok := nOtherVersion.Faces(neighborLocal)
+				if !ok {
+					t.Fatalf("Faces(%v) in N: ok=false", neighborLocal)
+				}
+				if got[d] != want[d.Opposite()] {
+					t.Errorf("local %v dir %v = %v, want %v (N's own state, version-independent)", local, d, got[d], want[d.Opposite()])
+				}
+			}
+		}
+		assertOtherBordersUnchanged(t, lattice, c, n, derivedC, cWithOtherVersionN)
+	})
+}
+
+// facesArrayOf extracts m's faces in LocalCells order for lattice — the
+// shape NewMap and a stored-map consumer both take.
+func facesArrayOf(t *testing.T, lattice hexgrid.Lattice, m Map) [][6]FaceState {
+	t.Helper()
+	cells := lattice.LocalCells()
+	faces := make([][6]FaceState, len(cells))
+	for idx, local := range cells {
+		f, ok := m.Faces(local)
+		if !ok {
+			t.Fatalf("Faces(%v): ok=false", local)
+		}
+		faces[idx] = f
+	}
+	return faces
+}
+
+// localIndex returns local's plain index in lattice's LocalCells order.
+func localIndex(t *testing.T, lattice hexgrid.Lattice, local hexgrid.Coord) int {
+	t.Helper()
+	for idx, l := range lattice.LocalCells() {
+		if l == local {
+			return idx
+		}
+	}
+	t.Fatalf("local %v not found in LocalCells", local)
+	return -1
+}
+
+// findSharedBorderFace returns a local coordinate and direction in from's
+// own lattice such that the face at (local, dir) leaves from and lands in
+// to — the first such face found in LocalCells order.
+func findSharedBorderFace(lattice hexgrid.Lattice, from, to hexgrid.Chunk) (local hexgrid.Coord, dir hexgrid.Direction, found bool) {
+	for _, l := range lattice.LocalCells() {
+		global := lattice.At(from, l)
+		for _, d := range sixDirections {
+			neighborChunk, _ := lattice.Locate(global.Neighbor(d))
+			if neighborChunk == to {
+				return l, d, true
+			}
+		}
+	}
+	return hexgrid.Coord{}, 0, false
+}
+
+// flipFaceState returns the other of the two valid FaceStates.
+func flipFaceState(s FaceState) FaceState {
+	if s == FaceWall {
+		return FacePassage
+	}
+	return FaceWall
+}
+
+// assertOtherBordersUnchanged checks that c's five borders other than the
+// one shared with n are identical between derivedC (c generated with no
+// neighbours) and withN (c generated with some form of n supplied).
+func assertOtherBordersUnchanged(t *testing.T, lattice hexgrid.Lattice, c, n hexgrid.Chunk, derivedC, withN Map) {
+	t.Helper()
 	for _, local := range lattice.LocalCells() {
 		global := lattice.At(c, local)
 		for _, d := range sixDirections {
@@ -209,7 +431,7 @@ func TestGenerate_TakesSharedBorderFromStoredNeighbour(t *testing.T) {
 				continue
 			}
 			derivedFaces, _ := derivedC.Faces(local)
-			withNFaces, _ := cWithN.Faces(local)
+			withNFaces, _ := withN.Faces(local)
 			if derivedFaces[d] != withNFaces[d] {
 				t.Errorf("a border unrelated to N changed: local %v dir %v: derived %v, with-N %v", local, d, derivedFaces[d], withNFaces[d])
 			}
@@ -491,10 +713,10 @@ func TestGenerate_SequentialAgainstStoredNeighboursMatchesIndependentGeneration(
 	}
 }
 
-// TestCell_FaceAgreementOverAMultiChunkRegion asserts, over every
+// TestGenerate_FaceAgreementOverAMultiChunkRegion asserts, over every
 // coordinate of a multi-chunk region straddling the origin, that a
 // cell's face and its neighbour's opposite face agree.
-func TestCell_FaceAgreementOverAMultiChunkRegion(t *testing.T) {
+func TestGenerate_FaceAgreementOverAMultiChunkRegion(t *testing.T) {
 	t.Parallel()
 	gen, err := New(20260912, refParams())
 	if err != nil {
@@ -518,12 +740,12 @@ func TestCell_FaceAgreementOverAMultiChunkRegion(t *testing.T) {
 	}
 }
 
-// TestCell_ConnectivityOverAMultiChunkRegion floods over a region of
+// TestGenerate_ConnectivityOverAMultiChunkRegion floods over a region of
 // WHOLE chunks only — the centre chunk and its ring of six neighbours —
 // since a partial chunk slice at the region's own edge is not itself
 // internally connected: its cells' only guaranteed connectivity is
 // through the rest of their own chunk, which a sliver excludes.
-func TestCell_ConnectivityOverAMultiChunkRegion(t *testing.T) {
+func TestGenerate_ConnectivityOverAMultiChunkRegion(t *testing.T) {
 	t.Parallel()
 	p := refParams()
 	lattice := p.lattice()
