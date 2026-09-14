@@ -7,10 +7,9 @@ import (
 )
 
 // Generator is an immutable, concurrency-safe deterministic chunk
-// generator: New validates every input once, and Cell can neither fail
-// nor panic afterwards. It holds no memo — the caching question is a
-// later decision this package defers — so one Cell call builds its
-// coordinate's whole chunk fabric and then reads six faces out of it.
+// generator: New validates every input once, and Generate can neither
+// fail (given a known ChunkType) nor panic afterwards. It holds no
+// memo — the caching question is a later decision this package defers.
 type Generator struct {
 	seed   int64
 	params Params
@@ -25,83 +24,68 @@ func New(seed int64, params Params) (*Generator, error) {
 	return &Generator{seed: seed, params: params}, nil
 }
 
-// chunksConsulted returns the deduplicated set of chunks Cell(coord)
-// reads to answer coord's own six faces: coord's own chunk (always
-// first), plus the chunk of each of coord's six face-neighbours. Cell
-// calls this same function rather than restating the enumeration, so an
-// assertion checked against chunksConsulted is an assertion about the
-// path Cell actually takes.
-func chunksConsulted(lattice hexgrid.Lattice, coord hexgrid.Coord) []hexgrid.Chunk {
-	own, _ := lattice.Locate(coord)
-	seen := map[hexgrid.Chunk]bool{own: true}
-	chunks := []hexgrid.Chunk{own}
-	for _, d := range sixDirections {
-		c, _ := lattice.Locate(coord.Neighbor(d))
-		if !seen[c] {
-			seen[c] = true
-			chunks = append(chunks, c)
-		}
+// CellSeed returns the per-cell content seed the world-config and
+// node-content layers sample their own content from: a pure function of
+// gen's own seed and c alone.
+func (gen *Generator) CellSeed(c hexgrid.Coord) uint64 {
+	return cellSeed(gen.seed, c)
+}
+
+// Generate builds ch's whole map under typ, in a pinned pass order:
+// islands (island stream) → algorithm draw → spanning structure → extra
+// passages → the six borders in canonical direction order. It refuses
+// the zero ChunkType and any value this package does not know, naming
+// it.
+func (gen *Generator) Generate(ch hexgrid.Chunk, typ ChunkType) (Map, error) {
+	if !typ.valid() {
+		return Map{}, fmt.Errorf("maze.Generate: unknown chunk type %v", typ)
 	}
-	return chunks
-}
-
-// Cell is one hex cell's generated content: its six face states in
-// canonical direction order, and its per-cell seed.
-type Cell struct {
-	Faces [6]FaceState
-	Seed  uint64
-}
-
-// Cell generates coord's content: a pure function of gen's own seed and
-// params, and coord alone.
-func (gen *Generator) Cell(coord hexgrid.Coord) Cell {
 	lattice := gen.params.lattice()
-	own := chunksConsulted(lattice, coord)[0]
-	_, ownLocal := lattice.Locate(coord)
+	g := newChunkGraph(lattice)
 
-	var (
-		fabricBuilt bool
-		fabricGraph chunkGraph
-		open        edgeSet
-	)
-	buildOwnFabric := func() {
-		if fabricBuilt {
-			return
+	islands := selectIslands(g, newStream(chunkKey(gen.seed, purposeIsland, ch)), gen.params, typ)
+	algo := drawAlgorithm(newStream(chunkKey(gen.seed, purposeAlgorithm, ch)), gen.params.Weights)
+	open := buildSpanningStructure(g, islands, algo, newStream(chunkKey(gen.seed, purposeStructure, ch)), biasThreshold(gen.params.GrowingTreeBias))
+	addExtraPassages(g, islands, open, newStream(chunkKey(gen.seed, purposeCycle, ch)), gen.params.ExtraPassageShare)
+
+	// A per-neighbour-chunk cache of this chunk's own borders: each
+	// border's portal set depends only on the seed, the two chunks and
+	// the portal shares, so it is computed once per neighbour rather
+	// than once per face.
+	borders := map[hexgrid.Chunk]map[hexgrid.Face]bool{}
+	borderPortals := func(neighborChunk hexgrid.Chunk) map[hexgrid.Face]bool {
+		if p, ok := borders[neighborChunk]; ok {
+			return p
 		}
-		fabricBuilt = true
-		fabricGraph = newChunkGraph(lattice)
-		islands := selectIslands(fabricGraph, newStream(chunkKey(gen.seed, purposeIsland, own)), gen.params)
-		algo := drawAlgorithm(newStream(chunkKey(gen.seed, purposeAlgorithm, own)), gen.params.Weights)
-		open = buildSpanningStructure(fabricGraph, islands, algo, newStream(chunkKey(gen.seed, purposeStructure, own)), biasThreshold(gen.params.GrowingTreeBias))
-		addExtraPassages(fabricGraph, islands, open, newStream(chunkKey(gen.seed, purposeCycle, own)), gen.params.ExtraPassageShare)
+		candidates := borderCandidates(lattice, ch, neighborChunk)
+		p := selectPortals(candidates, newStream(borderKey(gen.seed, ch, neighborChunk)), gen.params.PortalShareLower, gen.params.PortalShareUpper)
+		borders[neighborChunk] = p
+		return p
 	}
 
-	var faces [6]FaceState
-	for _, d := range sixDirections {
-		neighbor := coord.Neighbor(d)
-		neighborChunk, neighborLocal := lattice.Locate(neighbor)
-
-		if neighborChunk == own {
-			buildOwnFabric()
-			a := fabricGraph.localIndex(ownLocal)
-			b := fabricGraph.localIndex(neighborLocal)
-			if open.has(a, b) {
-				faces[d] = FacePassage
-			} else {
-				faces[d] = FaceWall
+	faces := make([][6]FaceState, g.cellCount())
+	for idx, local := range g.cells {
+		for _, d := range sixDirections {
+			n := local.Neighbor(d)
+			if j, ok := g.index[n]; ok {
+				if open.has(idx, j) {
+					faces[idx][d] = FacePassage
+				} else {
+					faces[idx][d] = FaceWall
+				}
+				continue
 			}
-			continue
-		}
-
-		// A border face: the portal rule.
-		candidates := borderCandidates(lattice, own, neighborChunk)
-		portals := selectPortals(candidates, newStream(borderKey(gen.seed, own, neighborChunk)), gen.params.PortalShareLower, gen.params.PortalShareUpper)
-		if portals[hexgrid.FaceOf(coord, d)] {
-			faces[d] = FacePassage
-		} else {
-			faces[d] = FaceWall
+			c := lattice.At(ch, local)
+			globalNeighbor := c.Neighbor(d)
+			neighborChunk, _ := lattice.Locate(globalNeighbor)
+			portals := borderPortals(neighborChunk)
+			if portals[hexgrid.FaceOf(c, d)] {
+				faces[idx][d] = FacePassage
+			} else {
+				faces[idx][d] = FaceWall
+			}
 		}
 	}
 
-	return Cell{Faces: faces, Seed: cellSeed(gen.seed, coord)}
+	return Map{chunk: ch, typ: typ, version: Version, graph: g, faces: faces}, nil
 }

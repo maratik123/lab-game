@@ -1,9 +1,6 @@
 package maze
 
 import (
-	"fmt"
-	"slices"
-	"sort"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -23,6 +20,49 @@ func refParams() Params {
 	}
 }
 
+// mapCache memoizes Generate calls per chunk for tests that read many
+// coordinates against one Generator and one ChunkType: Generate's own
+// determinism and purity are asserted elsewhere (TestGenerate_*), so
+// memoizing here changes nothing about what a caller is testing.
+type mapCache struct {
+	t       *testing.T
+	gen     *Generator
+	lattice hexgrid.Lattice
+	typ     ChunkType
+	maps    map[hexgrid.Chunk]Map
+}
+
+func newMapCache(t *testing.T, gen *Generator, lattice hexgrid.Lattice, typ ChunkType) *mapCache {
+	t.Helper()
+	return &mapCache{t: t, gen: gen, lattice: lattice, typ: typ, maps: map[hexgrid.Chunk]Map{}}
+}
+
+func (c *mapCache) mapOf(ch hexgrid.Chunk) Map {
+	c.t.Helper()
+	if m, ok := c.maps[ch]; ok {
+		return m
+	}
+	m, err := c.gen.Generate(ch, c.typ)
+	if err != nil {
+		c.t.Fatalf("Generate(%v,%v): %v", ch, c.typ, err)
+	}
+	c.maps[ch] = m
+	return m
+}
+
+// faces returns coord's six faces, resolving coord to its own chunk and
+// local coordinate first.
+func (c *mapCache) faces(coord hexgrid.Coord) [6]FaceState {
+	c.t.Helper()
+	ch, local := c.lattice.Locate(coord)
+	m := c.mapOf(ch)
+	faces, ok := m.Faces(local)
+	if !ok {
+		c.t.Fatalf("Faces(%v) in chunk %v: ok=false", local, ch)
+	}
+	return faces
+}
+
 func TestNew_RejectsInvalidParams(t *testing.T) {
 	t.Parallel()
 	p := refParams()
@@ -39,69 +79,174 @@ func TestNew_ValidParamsSucceeds(t *testing.T) {
 	}
 }
 
-func TestCell_RepeatEvaluationIsIdentical(t *testing.T) {
+func TestGenerate_RepeatEvaluationIsIdentical(t *testing.T) {
 	t.Parallel()
 	gen, err := New(20260912, refParams())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	c := hexgrid.Coord{Q: 3, R: -5}
-	a := gen.Cell(c)
-	b := gen.Cell(c)
-	if a != b {
-		t.Fatalf("Cell(%v) not repeatable: %+v != %+v", c, a, b)
+	ch := hexgrid.Chunk{Q: 3, R: -5}
+	a, err := gen.Generate(ch, ChunkTypeFabric)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	b, err := gen.Generate(ch, ChunkTypeFabric)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	for _, local := range refLattice().LocalCells() {
+		fa, _ := a.Faces(local)
+		fb, _ := b.Faces(local)
+		if fa != fb {
+			t.Fatalf("Generate(%v) not repeatable at local %v: %+v != %+v", ch, local, fa, fb)
+		}
 	}
 }
 
-// TestCell_ShuffledEvaluationOrderMatchesSortedOrder evaluates a
-// coordinate table twice — once in sorted order, once in an order
-// shuffled by a test-local fixed key — and asserts every coordinate
-// yields the identical Cell either way: generation is a pure function
-// of the coordinate alone, never of evaluation order.
-//
-// The two passes each get their OWN freshly-constructed Generator, over
-// the same seed and params, rather than sharing one. This is
-// load-bearing, not a style choice: a cross-call memo on Generator that
-// reused an earlier chunk's build for a later chunk is the failure mode
-// this scenario exists to catch, and it would still agree with itself if
-// both passes read through the same warm memo. So the two passes must
-// not be able to share any state that outlives a single Cell call. The
-// repeat-evaluation and the -race multi-goroutine tests above and below
-// cover the other two order-independence shapes.
-func TestCell_ShuffledEvaluationOrderMatchesSortedOrder(t *testing.T) {
+func TestGenerate_RefusesUnknownChunkType(t *testing.T) {
 	t.Parallel()
-
-	var coords []hexgrid.Coord // built in sorted (Q,R) order
-	for q := int32(-5); q <= 5; q++ {
-		for r := int32(-5); r <= 5; r++ {
-			coords = append(coords, hexgrid.Coord{Q: q, R: r})
+	gen, err := New(1, refParams())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for _, typ := range []ChunkType{chunkTypeUnset, ChunkType(99), ChunkType(-1)} {
+		if _, err := gen.Generate(hexgrid.Chunk{}, typ); err == nil {
+			t.Errorf("Generate with chunk type %v = nil error, want an error", typ)
 		}
 	}
+}
 
-	shuffled := append([]hexgrid.Coord(nil), coords...)
-	shuffle(newStream([32]byte{0xab, 0xcd, 0xef}), shuffled)
-	if fmt.Sprint(shuffled) == fmt.Sprint(coords) {
-		t.Fatal("test setup: the shuffle produced the same order as sorted, so this run would not discriminate")
+// TestGenerate_NonIslandCellsConnectedInsideEveryChunk checks that a
+// flood fill over Map.Faces inside the chunk reaches exactly the
+// non-island set, for both types across a seed sweep. In a gate chunk
+// it starts from the centre, which also checks the gate centre is one
+// of the connected cells. In a fabric chunk it starts from a border
+// cell, since a fabric chunk's centre may itself be an island.
+func TestGenerate_NonIslandCellsConnectedInsideEveryChunk(t *testing.T) {
+	t.Parallel()
+	lattice := refLattice()
+	ch := hexgrid.Chunk{Q: 2, R: -1}
+	for seedByte := range 15 {
+		seed := int64(seedByte) * 7919
+		gen, err := New(seed, refParams())
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		for _, typ := range []ChunkType{ChunkTypeFabric, ChunkTypeGate} {
+			m, err := gen.Generate(ch, typ)
+			if err != nil {
+				t.Fatalf("Generate: %v", err)
+			}
+			island := map[hexgrid.Coord]bool{}
+			for _, local := range lattice.LocalCells() {
+				faces, _ := m.Faces(local)
+				isIsland := true
+				for _, f := range faces {
+					if f == FacePassage {
+						isIsland = false
+					}
+				}
+				if isIsland {
+					island[local] = true
+				}
+			}
+			var start hexgrid.Coord
+			if typ == ChunkTypeGate {
+				start = hexgrid.Coord{}
+			} else {
+				for _, local := range lattice.LocalCells() {
+					if hexgrid.Distance(local, hexgrid.Coord{}) == int64(lattice.Radius) {
+						start = local
+						break
+					}
+				}
+			}
+			if island[start] {
+				t.Fatalf("seed %d type %v: start cell %v is itself an island — test setup invalid", seed, typ, start)
+			}
+			visited := map[hexgrid.Coord]bool{start: true}
+			stack := []hexgrid.Coord{start}
+			for len(stack) > 0 {
+				cur := stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+				faces, _ := m.Faces(cur)
+				for _, d := range sixDirections {
+					if faces[d] != FacePassage {
+						continue
+					}
+					n := cur.Neighbor(d)
+					if _, ok := m.Faces(n); !ok || visited[n] {
+						continue
+					}
+					visited[n] = true
+					stack = append(stack, n)
+				}
+			}
+			for _, local := range lattice.LocalCells() {
+				if island[local] == visited[local] {
+					if island[local] {
+						t.Errorf("seed %d type %v: island cell %v was reached by the flood-fill", seed, typ, local)
+					} else {
+						t.Errorf("seed %d type %v: non-island cell %v was not reached by the flood-fill", seed, typ, local)
+					}
+				}
+			}
+		}
 	}
+}
 
-	sortedGen, err := New(20260912, refParams())
+// TestGenerate_MapNamesGenerationVersion checks that every map from
+// every generation path names the current generation version.
+func TestGenerate_MapNamesGenerationVersion(t *testing.T) {
+	t.Parallel()
+	gen, err := New(1, refParams())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	sortedResults := make(map[hexgrid.Coord]Cell, len(coords))
-	for _, c := range coords {
-		sortedResults[c] = sortedGen.Cell(c)
+	for _, typ := range []ChunkType{ChunkTypeFabric, ChunkTypeGate} {
+		m, err := gen.Generate(hexgrid.Chunk{Q: 4, R: 4}, typ)
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		if m.Version() != Version {
+			t.Errorf("Map.Version() = %d, want %d", m.Version(), Version)
+		}
 	}
+}
 
-	shuffledGen, err := New(20260912, refParams())
+// TestGenerate_SettledByItsInputsAlone checks that a second Generator
+// built from equal inputs yields an identical map. The import-allowlist
+// guard checks the database-free clause separately.
+func TestGenerate_SettledByItsInputsAlone(t *testing.T) {
+	t.Parallel()
+	seed := int64(42)
+	params := refParams()
+	ch := hexgrid.Chunk{Q: -3, R: 8}
+
+	gen1, err := New(seed, params)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	for _, c := range shuffled {
-		got := shuffledGen.Cell(c)
-		want := sortedResults[c]
-		if got != want {
-			t.Fatalf("shuffled-order evaluation of %v = %+v, want %+v (the sorted-order value)", c, got, want)
+	gen2, err := New(seed, params)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	m1, err := gen1.Generate(ch, ChunkTypeFabric)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	m2, err := gen2.Generate(ch, ChunkTypeFabric)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if m1.Version() != m2.Version() || m1.Type() != m2.Type() || m1.Radius() != m2.Radius() {
+		t.Fatalf("two Generators from equal inputs disagree on metadata: %+v vs %+v", m1, m2)
+	}
+	for _, local := range refLattice().LocalCells() {
+		f1, _ := m1.Faces(local)
+		f2, _ := m2.Faces(local)
+		if f1 != f2 {
+			t.Fatalf("two Generators from equal inputs disagree at local %v: %v vs %v", local, f1, f2)
 		}
 	}
 }
@@ -115,15 +260,16 @@ func TestCell_FaceAgreementOverAMultiChunkRegion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	cache := newMapCache(t, gen, refLattice(), ChunkTypeFabric)
 	for q := int32(-20); q <= 20; q++ {
 		for r := int32(-20); r <= 20; r++ {
 			c := hexgrid.Coord{Q: q, R: r}
-			cell := gen.Cell(c)
+			faces := cache.faces(c)
 			for _, d := range sixDirections {
 				n := c.Neighbor(d)
-				nCell := gen.Cell(n)
-				got := cell.Faces[d]
-				want := nCell.Faces[d.Opposite()]
+				nFaces := cache.faces(n)
+				got := faces[d]
+				want := nFaces[d.Opposite()]
 				if got != want {
 					t.Fatalf("face agreement fails at %v dir %v: %v vs %v (from %v dir %v)", c, d, got, want, n, d.Opposite())
 				}
@@ -145,6 +291,7 @@ func TestCell_ConnectivityOverAMultiChunkRegion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	cache := newMapCache(t, gen, lattice, ChunkTypeFabric)
 
 	chunks := []hexgrid.Chunk{{}}
 	for _, d := range sixDirections {
@@ -157,19 +304,15 @@ func TestCell_ConnectivityOverAMultiChunkRegion(t *testing.T) {
 		}
 	}
 
-	// Determine islands within the region by asking every cell whether
-	// it has any passage at all; then simply flood-fill through open
-	// passages and check every cell that has at least one passage lands
-	// in one component.
 	visited := map[hexgrid.Coord]bool{}
 	var start hexgrid.Coord
 	found := false
-	cellOf := map[hexgrid.Coord]Cell{}
+	facesOf := map[hexgrid.Coord][6]FaceState{}
 	for c := range region {
-		cell := gen.Cell(c)
-		cellOf[c] = cell
+		faces := cache.faces(c)
+		facesOf[c] = faces
 		hasPassage := false
-		for _, f := range cell.Faces {
+		for _, f := range faces {
 			if f == FacePassage {
 				hasPassage = true
 			}
@@ -188,9 +331,9 @@ func TestCell_ConnectivityOverAMultiChunkRegion(t *testing.T) {
 	for len(stack) > 0 {
 		cur := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		curCell := cellOf[cur]
+		curFaces := facesOf[cur]
 		for _, d := range sixDirections {
-			if curCell.Faces[d] != FacePassage {
+			if curFaces[d] != FacePassage {
 				continue
 			}
 			n := cur.Neighbor(d)
@@ -202,9 +345,9 @@ func TestCell_ConnectivityOverAMultiChunkRegion(t *testing.T) {
 		}
 	}
 
-	for c, cell := range cellOf {
+	for c, faces := range facesOf {
 		hasPassage := false
-		for _, f := range cell.Faces {
+		for _, f := range faces {
 			if f == FacePassage {
 				hasPassage = true
 			}
@@ -215,13 +358,10 @@ func TestCell_ConnectivityOverAMultiChunkRegion(t *testing.T) {
 	}
 }
 
-// TestCell_SeedIsIndependentOfChunkRadius asserts the sharp form: two
-// generators differing only in chunk radius yield the same cell seed for
-// a coordinate, while the faces they yield for it differ. The second
-// half is not decoration — without it the first would hold just as well
-// for two generators that were effectively the same, and a cell seed
-// secretly folding the radius in would pass.
-func TestCell_SeedIsIndependentOfChunkRadius(t *testing.T) {
+// TestGenerate_SeedIsIndependentOfChunkRadius asserts the sharp form:
+// two generators differing only in chunk radius yield the same cell seed
+// for a coordinate, while the faces they yield for it differ.
+func TestGenerate_SeedIsIndependentOfChunkRadius(t *testing.T) {
 	t.Parallel()
 	a := refParams()
 	b := refParams()
@@ -235,17 +375,19 @@ func TestCell_SeedIsIndependentOfChunkRadius(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New under radius %d: %v", b.Radius, err)
 	}
+	cacheA := newMapCache(t, genA, a.lattice(), ChunkTypeFabric)
+	cacheB := newMapCache(t, genB, b.lattice(), ChunkTypeFabric)
 
 	var facesDiffer bool
 	for q := int32(-3); q <= 3; q++ {
 		for r := int32(-3); r <= 3; r++ {
 			c := hexgrid.Coord{Q: q, R: r}
-			ca, cb := genA.Cell(c), genB.Cell(c)
-			if ca.Seed != cb.Seed {
+			seedA, seedB := genA.CellSeed(c), genB.CellSeed(c)
+			if seedA != seedB {
 				t.Fatalf("cell seed for %v is %d under radius %d and %d under radius %d; it must be settled by the world seed and the coordinate alone",
-					c, ca.Seed, a.Radius, cb.Seed, b.Radius)
+					c, seedA, a.Radius, seedB, b.Radius)
 			}
-			if ca.Faces != cb.Faces {
+			if cacheA.faces(c) != cacheB.faces(c) {
 				facesDiffer = true
 			}
 		}
@@ -255,75 +397,48 @@ func TestCell_SeedIsIndependentOfChunkRadius(t *testing.T) {
 	}
 }
 
-func TestChunksConsulted_RelativeOffsetsAgreeAtTheSamePositionInAChunk(t *testing.T) {
-	t.Parallel()
-	lattice := refLattice()
-
-	offsets := func(c hexgrid.Coord) []hexgrid.Chunk {
-		own, _ := lattice.Locate(c)
-		set := chunksConsulted(lattice, c)
-		out := make([]hexgrid.Chunk, 0, len(set))
-		for _, ch := range set {
-			out = append(out, hexgrid.Chunk{Q: ch.Q - own.Q, R: ch.R - own.R})
-		}
-		sort.Slice(out, func(i, j int) bool {
-			if out[i].Q != out[j].Q {
-				return out[i].Q < out[j].Q
-			}
-			return out[i].R < out[j].R
-		})
-		return out
-	}
-
-	near := offsets(hexgrid.Coord{Q: 0, R: 5})
-	far := offsets(hexgrid.Coord{Q: 1_000_000, R: 1_000_005})
-	if !slices.Equal(near, far) {
-		t.Errorf("relative chunk offsets = %v near the origin and %v far from it, want equal", near, far)
-	}
-}
-
-func TestChunksConsulted_EveryMemberIsOwnOrANeighboursChunk(t *testing.T) {
-	t.Parallel()
-	lattice := refLattice()
-	c := hexgrid.Coord{Q: 5, R: -3}
-	own, _ := lattice.Locate(c)
-	valid := map[hexgrid.Chunk]bool{own: true}
-	for _, d := range sixDirections {
-		n, _ := lattice.Locate(c.Neighbor(d))
-		valid[n] = true
-	}
-	for _, ch := range chunksConsulted(lattice, c) {
-		if !valid[ch] {
-			t.Errorf("chunksConsulted returned %v, not the cell's own chunk or a neighbour's", ch)
-		}
-	}
-}
-
-func TestCell_RaceSafeAcrossGoroutines(t *testing.T) {
+func TestGenerate_RaceSafeAcrossGoroutines(t *testing.T) {
 	gen, err := New(20260912, refParams())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	coords := make([]hexgrid.Coord, 0, 64)
-	for q := int32(0); q < 8; q++ {
-		for r := int32(0); r < 8; r++ {
-			coords = append(coords, hexgrid.Coord{Q: q, R: r})
+	chunks := make([]hexgrid.Chunk, 0, 16)
+	for q := int32(0); q < 4; q++ {
+		for r := int32(0); r < 4; r++ {
+			chunks = append(chunks, hexgrid.Chunk{Q: q, R: r})
 		}
 	}
-	want := make([]Cell, len(coords))
-	for i, c := range coords {
-		want[i] = gen.Cell(c)
+	want := make([]Map, len(chunks))
+	for i, ch := range chunks {
+		m, err := gen.Generate(ch, ChunkTypeFabric)
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		want[i] = m
 	}
 
-	done := make(chan bool, len(coords))
-	for i, c := range coords {
-		go func(i int, c hexgrid.Coord) {
-			done <- gen.Cell(c) == want[i]
-		}(i, c)
+	done := make(chan bool, len(chunks))
+	for i, ch := range chunks {
+		go func(i int, ch hexgrid.Chunk) {
+			m, err := gen.Generate(ch, ChunkTypeFabric)
+			if err != nil {
+				done <- false
+				return
+			}
+			same := true
+			for _, local := range refLattice().LocalCells() {
+				fa, _ := m.Faces(local)
+				fb, _ := want[i].Faces(local)
+				if fa != fb {
+					same = false
+				}
+			}
+			done <- same
+		}(i, ch)
 	}
-	for range coords {
+	for range chunks {
 		if !<-done {
-			t.Error("a concurrent Cell call disagreed with the single-goroutine result")
+			t.Error("a concurrent Generate call disagreed with the single-goroutine result")
 		}
 	}
 }

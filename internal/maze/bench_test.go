@@ -6,24 +6,25 @@ import (
 	"github.com/maratik123/lab-game/internal/hexgrid"
 )
 
-// BenchmarkCell reports one cell's generation cost under the equal-weight
-// reference Params — a whole-chunk cost, not a per-face cost, since one
-// Cell call builds its coordinate's whole chunk fabric. No threshold is asserted here:
-// whether a cache is required is a later decision this task defers: the
+// BenchmarkCell reports one chunk's generation cost under the
+// equal-weight reference Params. No threshold is asserted here: whether
+// a cache is required is a later decision this task defers: the
 // measurement is on demand only (go test -run=^$ -bench=. ./internal/maze/).
 func BenchmarkCell(b *testing.B) {
 	gen, err := New(goldenSeed, goldenParams())
 	if err != nil {
 		b.Fatalf("New: %v", err)
 	}
-	coord := hexgrid.Coord{Q: 5, R: 5}
+	ch := hexgrid.Chunk{Q: 5, R: 5}
 	b.ResetTimer()
 	for range b.N {
-		gen.Cell(coord)
+		if _, err := gen.Generate(ch, ChunkTypeFabric); err != nil {
+			b.Fatalf("Generate: %v", err)
+		}
 	}
 }
 
-// BenchmarkCellPerAlgorithm reports one cell's generation cost under a
+// BenchmarkCellPerAlgorithm reports one chunk's generation cost under a
 // single-weight Params for each of the five algorithms in turn, so the
 // deferred caching decision has the spread across algorithms and not
 // only an average — Wilson's loop-erased walk in particular has no
@@ -49,10 +50,12 @@ func BenchmarkCellPerAlgorithm(b *testing.B) {
 			if err != nil {
 				b.Fatalf("New: %v", err)
 			}
-			coord := hexgrid.Coord{Q: 5, R: 5}
+			ch := hexgrid.Chunk{Q: 5, R: 5}
 			b.ResetTimer()
 			for range b.N {
-				gen.Cell(coord)
+				if _, err := gen.Generate(ch, ChunkTypeFabric); err != nil {
+					b.Fatalf("Generate: %v", err)
+				}
 			}
 		})
 	}

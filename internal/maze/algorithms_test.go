@@ -63,7 +63,7 @@ func TestAlgorithms_SpanningTreeOverIslandChunk(t *testing.T) {
 	g := newChunkGraph(refLattice())
 	p := validParams()
 	islandStream := newStream([32]byte{55})
-	islands := selectIslands(g, islandStream, p)
+	islands := selectIslands(g, islandStream, p, ChunkTypeFabric)
 	if len(islands) == 0 {
 		t.Fatal("test setup: expected at least one island at the reference share")
 	}

@@ -51,36 +51,54 @@ func faceStateString(f FaceState) string {
 	}
 }
 
-func renderCellLine(coord hexgrid.Coord, c Cell) string {
-	faces := make([]string, len(c.Faces))
-	for i, f := range c.Faces {
-		faces[i] = faceStateString(f)
+func renderCellLine(coord hexgrid.Coord, faces [6]FaceState, seed uint64) string {
+	faceNames := make([]string, len(faces))
+	for i, f := range faces {
+		faceNames[i] = faceStateString(f)
 	}
-	return fmt.Sprintf("cell(%d,%d)=faces:%s seed:%016x", coord.Q, coord.R, strings.Join(faces, ","), c.Seed)
+	return fmt.Sprintf("cell(%d,%d)=faces:%s seed:%016x", coord.Q, coord.R, strings.Join(faceNames, ","), seed)
 }
 
-// dumpChunk renders every cell of chunk ch under lattice, via gen,
-// sorted by local (Q,R) for a stable line order — the lattice's own
-// LocalCells order.
-func dumpChunk(gen *Generator, lattice hexgrid.Lattice, ch hexgrid.Chunk) []string {
+// dumpChunk renders every cell of chunk ch under lattice, via gen's map
+// and per-cell seed, sorted by local (Q,R) for a stable line order — the
+// lattice's own LocalCells order.
+func dumpChunk(t *testing.T, gen *Generator, lattice hexgrid.Lattice, ch hexgrid.Chunk, typ ChunkType) []string {
+	t.Helper()
+	m, err := gen.Generate(ch, typ)
+	if err != nil {
+		t.Fatalf("Generate(%v,%v): %v", ch, typ, err)
+	}
 	var lines []string
 	for _, local := range lattice.LocalCells() {
 		c := lattice.At(ch, local)
-		lines = append(lines, renderCellLine(c, gen.Cell(c)))
+		faces, ok := m.Faces(local)
+		if !ok {
+			t.Fatalf("Faces(%v): ok=false", local)
+		}
+		lines = append(lines, renderCellLine(c, faces, gen.CellSeed(c)))
 	}
 	return lines
 }
 
 // dumpBorderRing renders only ch's own border-ring cells (those at
-// exactly lattice's radius from the centre) under lattice, via gen.
-func dumpBorderRing(gen *Generator, lattice hexgrid.Lattice, ch hexgrid.Chunk) []string {
+// exactly lattice's radius from the centre) under lattice, via gen's map.
+func dumpBorderRing(t *testing.T, gen *Generator, lattice hexgrid.Lattice, ch hexgrid.Chunk, typ ChunkType) []string {
+	t.Helper()
+	m, err := gen.Generate(ch, typ)
+	if err != nil {
+		t.Fatalf("Generate(%v,%v): %v", ch, typ, err)
+	}
 	var lines []string
 	for _, local := range lattice.LocalCells() {
 		if hexgrid.Distance(local, hexgrid.Coord{}) != int64(lattice.Radius) {
 			continue
 		}
 		c := lattice.At(ch, local)
-		lines = append(lines, renderCellLine(c, gen.Cell(c)))
+		faces, ok := m.Faces(local)
+		if !ok {
+			t.Fatalf("Faces(%v): ok=false", local)
+		}
+		lines = append(lines, renderCellLine(c, faces, gen.CellSeed(c)))
 	}
 	return lines
 }
@@ -95,7 +113,8 @@ func algorithmLine(chunk hexgrid.Chunk, weights AlgorithmWeights) string {
 // below-left of it in full, plus the border ring of the chunk below the
 // origin), and one single-weight section per algorithm over its own
 // named chunk.
-func cellsGoldenLines() []string {
+func cellsGoldenLines(t *testing.T) []string {
+	t.Helper()
 	var lines []string
 	lines = append(lines, fmt.Sprintf("# domain-tag=lab-game/maze/v1 seed=%d radius=%d island_share=0.05 extra_passage_share=0.15 growing_tree_bias=0.5 weights=equal", goldenSeed, goldenRadius))
 
@@ -103,7 +122,7 @@ func cellsGoldenLines() []string {
 	lattice := params.lattice()
 	gen, err := New(goldenSeed, params)
 	if err != nil {
-		panic(err)
+		t.Fatalf("New: %v", err)
 	}
 
 	lines = append(lines, "## equal-weight-region")
@@ -111,11 +130,11 @@ func cellsGoldenLines() []string {
 	belowLeft := hexgrid.Chunk{Q: -1, R: -1}
 	below := hexgrid.Chunk{Q: 0, R: -1}
 	lines = append(lines, algorithmLine(origin, params.Weights))
-	lines = append(lines, dumpChunk(gen, lattice, origin)...)
+	lines = append(lines, dumpChunk(t, gen, lattice, origin, ChunkTypeFabric)...)
 	lines = append(lines, algorithmLine(belowLeft, params.Weights))
-	lines = append(lines, dumpChunk(gen, lattice, belowLeft)...)
+	lines = append(lines, dumpChunk(t, gen, lattice, belowLeft, ChunkTypeFabric)...)
 	lines = append(lines, algorithmLine(below, params.Weights))
-	lines = append(lines, dumpBorderRing(gen, lattice, below)...)
+	lines = append(lines, dumpBorderRing(t, gen, lattice, below, ChunkTypeFabric)...)
 
 	algos := []struct {
 		name  string
@@ -135,11 +154,11 @@ func cellsGoldenLines() []string {
 		p.Weights = w
 		g, err := New(goldenSeed, p)
 		if err != nil {
-			panic(err)
+			t.Fatalf("New: %v", err)
 		}
 		lines = append(lines, "## single-weight-"+a.name)
 		lines = append(lines, algorithmLine(a.chunk, w))
-		lines = append(lines, dumpChunk(g, p.lattice(), a.chunk)...)
+		lines = append(lines, dumpChunk(t, g, p.lattice(), a.chunk, ChunkTypeFabric)...)
 	}
 
 	return lines
@@ -147,7 +166,7 @@ func cellsGoldenLines() []string {
 
 func TestCellsGolden(t *testing.T) {
 	t.Parallel()
-	lines := cellsGoldenLines()
+	lines := cellsGoldenLines(t)
 	got := strings.Join(lines, "\n") + "\n"
 
 	if *updateCellsGolden {
@@ -181,7 +200,7 @@ func TestCellsGolden_EveryIslandCellHasAllSixFacesAsWallInTheMintedTable(t *test
 	lattice := params.lattice()
 	g := newChunkGraph(lattice)
 	origin := hexgrid.Chunk{Q: 0, R: 0}
-	islands := selectIslands(g, newStream(chunkKey(goldenSeed, purposeIsland, origin)), params)
+	islands := selectIslands(g, newStream(chunkKey(goldenSeed, purposeIsland, origin)), params, ChunkTypeFabric)
 	islandCoords := map[hexgrid.Coord]bool{}
 	for idx := range islands {
 		islandCoords[lattice.At(origin, g.localCoord(idx))] = true

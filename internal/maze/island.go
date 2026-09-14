@@ -1,6 +1,10 @@
 package maze
 
-import "github.com/shopspring/decimal"
+import (
+	"github.com/shopspring/decimal"
+
+	"github.com/maratik123/lab-game/internal/hexgrid"
+)
 
 // islandTarget returns the number of islands a chunk of p.Radius targets
 // under p.IslandShare: round(islandShare × cellsInChunk), the cell
@@ -11,20 +15,23 @@ func islandTarget(p Params) int64 {
 }
 
 // selectIslands returns the set of chunk-local cell indices chosen as
-// islands, deterministically from g, s and p: candidates are the
-// chunk's non-border cells in index order, shuffled by s; each
-// candidate is taken tentatively and kept only if the chunk's
-// remaining non-island cells stay connected over the chunk-induced
-// subgraph (interior adjacency only) — a flood fill from the chunk's
-// first border cell. The achieved count can fall short of islandTarget
-// when the guard keeps rejecting candidates; it never exceeds it.
-func selectIslands(g chunkGraph, s stream, p Params) map[int]bool {
+// islands, deterministically from g, s, p and typ: candidates are the
+// chunk's non-border cells in index order — with the centre cell also
+// excluded in a gate chunk, so the gate's centre is never an island —
+// shuffled by s; each candidate is taken tentatively and kept only if
+// the chunk's remaining non-island cells stay connected over the
+// chunk-induced subgraph (interior adjacency only) — a flood fill from
+// the chunk's first border cell. The achieved count can fall short of
+// islandTarget when the guard keeps rejecting candidates; it never
+// exceeds it.
+func selectIslands(g chunkGraph, s stream, p Params, typ ChunkType) map[int]bool {
 	target := islandTarget(p)
 	islands := map[int]bool{}
 	if target <= 0 {
 		return islands
 	}
 
+	centre := g.localIndex(hexgrid.Coord{})
 	var candidates []int
 	firstBorder := -1
 	for idx := 0; idx < g.cellCount(); idx++ {
@@ -32,6 +39,9 @@ func selectIslands(g chunkGraph, s stream, p Params) map[int]bool {
 			if firstBorder < 0 {
 				firstBorder = idx
 			}
+			continue
+		}
+		if typ == ChunkTypeGate && idx == centre {
 			continue
 		}
 		candidates = append(candidates, idx)

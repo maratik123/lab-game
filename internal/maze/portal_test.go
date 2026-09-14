@@ -203,19 +203,45 @@ func TestBorder_IndependentOfChunkTypeAndThirdChunks(t *testing.T) {
 	}
 	seed := int64(20260912)
 	direct := selectPortals(candidatesFromA, newStream(borderKey(seed, a, b)), refLowerShare, refUpperShare)
-	viaCell, err := New(seed, refParams())
+	gen, err := New(seed, refParams())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	for _, d := range sixDirections {
-		if a.Neighbor(d) != b {
-			continue
+
+	// Type clause: A's border with B is identical whether A is typed
+	// fabric or gate, and equals B's side of the same border.
+	for _, aType := range []ChunkType{ChunkTypeFabric, ChunkTypeGate} {
+		mapA, err := gen.Generate(a, aType)
+		if err != nil {
+			t.Fatalf("Generate(a,%v): %v", aType, err)
+		}
+		mapB, err := gen.Generate(b, ChunkTypeFabric)
+		if err != nil {
+			t.Fatalf("Generate(b,fabric): %v", err)
 		}
 		for _, f := range candidatesFromA {
 			want := direct[f]
-			got := viaCell.Cell(f.Cell).Faces[f.Dir] == FacePassage
+			_, aLocal := lattice.Locate(f.Cell)
+			aFaces, ok := mapA.Faces(aLocal)
+			if !ok {
+				t.Fatalf("Faces(%v) in chunk a (type %v): ok=false", aLocal, aType)
+			}
+			got := aFaces[f.Dir] == FacePassage
 			if got != want {
-				t.Errorf("face %v: direct portal rule says %v, Cell says %v", f, want, got)
+				t.Errorf("A typed %v, face %v: direct portal rule says %v, Map says %v", aType, f, want, got)
+			}
+
+			neighborCell := f.Cell.Neighbor(f.Dir)
+			if bChunk, _ := lattice.Locate(neighborCell); bChunk != b {
+				continue
+			}
+			_, bLocal := lattice.Locate(neighborCell)
+			bFaces, ok := mapB.Faces(bLocal)
+			if !ok {
+				t.Fatalf("Faces(%v) in chunk b: ok=false", bLocal)
+			}
+			if bGot := bFaces[f.Dir.Opposite()] == FacePassage; bGot != got {
+				t.Errorf("face %v: A side says %v, B side says %v", f, got, bGot)
 			}
 		}
 	}

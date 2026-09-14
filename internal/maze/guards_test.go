@@ -136,3 +136,58 @@ func TestGuard_NoPlugInPoint_CatchesAReintroducedInterface(t *testing.T) {
 		t.Fatal("no-plug-in-point guard found no problems in a fixture declaring an exported interface")
 	}
 }
+
+// allowedMazeImports is every import path this package's non-test
+// source may use: the standard library it needs, the one third-party
+// decimal package, and this module's own topology vocabulary. Anything
+// else — a database driver or a store package included — is refused,
+// since the import graph is where a database reach would have to enter.
+var allowedMazeImports = map[string]bool{
+	"crypto/sha256":   true,
+	"encoding/binary": true,
+	"errors":          true,
+	"fmt":             true,
+	"math/rand/v2":    true,
+	"sort":            true,
+
+	"github.com/shopspring/decimal":                   true,
+	"github.com/maratik123/lab-game/internal/hexgrid": true,
+}
+
+// importAllowlistProblems reports every non-test import in dir that
+// allowed does not list, one entry per (file, import) pair.
+func importAllowlistProblems(t *testing.T, dir string, allowed map[string]bool) []string {
+	t.Helper()
+	var problems []string
+	for _, path := range srcguard.PackageFiles(t, dir) {
+		f := srcguard.ParseFile(t, path)
+		for _, imp := range srcguard.ImportPaths(t, f) {
+			if !allowed[imp] {
+				problems = append(problems, fmt.Sprintf("%s: disallowed import %q", filepath.Base(path), imp))
+			}
+		}
+	}
+	return problems
+}
+
+// TestGuard_ImportsAllowlist is the structural half of the "reads no
+// database" clause: maze's non-test imports are checked against an
+// allowlist, so a database driver or a store package reaching this
+// package is a failing test.
+func TestGuard_ImportsAllowlist(t *testing.T) {
+	t.Parallel()
+	dir := repotest.RootPath(t, "internal/maze")
+	if problems := importAllowlistProblems(t, dir, allowedMazeImports); len(problems) != 0 {
+		t.Errorf("import allowlist guard found:\n%v", problems)
+	}
+}
+
+// TestGuard_ImportsAllowlist_CatchesADisallowedImport is the guard's own
+// control.
+func TestGuard_ImportsAllowlist_CatchesADisallowedImport(t *testing.T) {
+	t.Parallel()
+	root, _ := srcguard.WriteScratchFile(t, "pkg/db.go", "package pkg\n\nimport \"database/sql\"\n\nvar _ = sql.ErrNoRows\n")
+	if problems := importAllowlistProblems(t, filepath.Join(root, "pkg"), allowedMazeImports); len(problems) == 0 {
+		t.Fatal("import allowlist guard found no problems in a fixture importing database/sql")
+	}
+}

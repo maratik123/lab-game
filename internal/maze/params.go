@@ -78,12 +78,15 @@ func (p Params) validate() error {
 	if hi > int(p.Radius)+1 {
 		return fmt.Errorf("maze: portal share upper bound %s rounds to %d guaranteed portals on a border of %d faces, more non-touching positions than a path of that length has (%d)", p.PortalShareUpper, hi, borderLength, int(p.Radius)+1)
 	}
-	capacity := nonBorderCellCount(p.Radius)
+	// The gate chunk's capacity is the binding constraint: it excludes
+	// the centre cell on top of every border cell, so an island share
+	// valid against it is valid for a fabric chunk too.
+	capacity := gateCapacity(p.Radius)
 	if capacity == 0 && p.IslandShare.IsPositive() {
-		return fmt.Errorf("maze: island share %s is positive but radius %d has no non-border cell to draw islands from", p.IslandShare, p.Radius)
+		return fmt.Errorf("maze: island share %s is positive but radius %d has no non-border, non-centre cell to draw islands from", p.IslandShare, p.Radius)
 	}
 	if target := islandTarget(p); target > capacity {
-		return fmt.Errorf("maze: island share %s rounds to %d islands, more than radius %d can hold (%d non-border cells)", p.IslandShare, target, p.Radius, capacity)
+		return fmt.Errorf("maze: island share %s rounds to %d islands, more than radius %d can hold in a gate chunk (%d cells, excluding the border and the centre)", p.IslandShare, target, p.Radius, capacity)
 	}
 	return nil
 }
@@ -107,6 +110,17 @@ func nonBorderCellCount(radius int32) int64 {
 		return 0
 	}
 	return 3*r*r + 3*r + 1
+}
+
+// gateCapacity returns how many candidate cells a gate chunk of radius r
+// offers to the island draw: nonBorderCellCount(r), less the one centre
+// cell a gate chunk also excludes — 3r²−3r.
+func gateCapacity(radius int32) int64 {
+	capacity := nonBorderCellCount(radius) - 1
+	if capacity < 0 {
+		return 0
+	}
+	return capacity
 }
 
 // roundHalfUp implements this package's pinned rounding: floor(x + ½).

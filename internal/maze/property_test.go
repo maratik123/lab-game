@@ -30,16 +30,16 @@ func drawFarCoord(rt *rapid.T) hexgrid.Coord {
 }
 
 // islandRegionCells returns, for a block of chunks spanning loChunk..hiChunk
-// inclusive (both axes), the coordinate of every cell in the region and —
-// separately — which of them selectIslands would mark as an island in its
-// own chunk.
+// inclusive (both axes), every generated as ChunkTypeFabric, the coordinate
+// of every cell in the region and — separately — which of them selectIslands
+// would mark as an island in its own chunk.
 func islandRegionCells(lattice hexgrid.Lattice, seed int64, params Params, loChunk, hiChunk hexgrid.Chunk) (all []hexgrid.Coord, islandSet map[hexgrid.Coord]bool) {
 	islandSet = map[hexgrid.Coord]bool{}
 	for cq := loChunk.Q; cq <= hiChunk.Q; cq++ {
 		for cr := loChunk.R; cr <= hiChunk.R; cr++ {
 			ch := hexgrid.Chunk{Q: cq, R: cr}
 			g := newChunkGraph(lattice)
-			islands := selectIslands(g, newStream(chunkKey(seed, purposeIsland, ch)), params)
+			islands := selectIslands(g, newStream(chunkKey(seed, purposeIsland, ch)), params, ChunkTypeFabric)
 			for idx, local := range g.cells {
 				c := lattice.At(ch, local)
 				all = append(all, c)
@@ -54,11 +54,11 @@ func islandRegionCells(lattice hexgrid.Lattice, seed int64, params Params, loChu
 
 // TestIslandsAreWalled_EveryIslandFaceIsAWallFromBothSides asserts the
 // island-walled property at the only entry point that can fail here:
-// Cell, not the island selector. Connectivity (asserting the non-island
-// set is one component) is blind to a face wrongly carved into an
-// island, and face agreement is blind to a passage into an island that
-// both sides happen to agree on — this scenario needs its own
-// assertion for exactly that reason.
+// Generate, not the island selector. Connectivity (asserting the
+// non-island set is one component) is blind to a face wrongly carved
+// into an island, and face agreement is blind to a passage into an
+// island that both sides happen to agree on — this scenario needs its
+// own assertion for exactly that reason.
 func TestIslandsAreWalled_EveryIslandFaceIsAWallFromBothSides(t *testing.T) {
 	t.Parallel()
 	params := goldenParams()
@@ -67,6 +67,7 @@ func TestIslandsAreWalled_EveryIslandFaceIsAWallFromBothSides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	cache := newMapCache(t, gen, lattice, ChunkTypeFabric)
 	lo := hexgrid.Chunk{Q: -2, R: -2}
 	hi := hexgrid.Chunk{Q: 1, R: 1}
 	all, islandSet := islandRegionCells(lattice, goldenSeed, params, lo, hi)
@@ -75,17 +76,17 @@ func TestIslandsAreWalled_EveryIslandFaceIsAWallFromBothSides(t *testing.T) {
 	}
 
 	for c := range islandSet {
-		cell := gen.Cell(c)
-		for _, f := range cell.Faces {
+		faces := cache.faces(c)
+		for _, f := range faces {
 			if f != FaceWall {
-				t.Errorf("island cell %v has a non-wall face: %+v", c, cell.Faces)
+				t.Errorf("island cell %v has a non-wall face: %+v", c, faces)
 			}
 		}
 		for _, d := range sixDirections {
 			n := c.Neighbor(d)
-			nCell := gen.Cell(n)
-			if nCell.Faces[d.Opposite()] != FaceWall {
-				t.Errorf("island cell %v's neighbour %v (dir %v) reads a non-wall face into it: %v", c, n, d.Opposite(), nCell.Faces[d.Opposite()])
+			nFaces := cache.faces(n)
+			if nFaces[d.Opposite()] != FaceWall {
+				t.Errorf("island cell %v's neighbour %v (dir %v) reads a non-wall face into it: %v", c, n, d.Opposite(), nFaces[d.Opposite()])
 			}
 		}
 	}
@@ -115,9 +116,9 @@ func TestIslandsAreWalled_EveryIslandFaceIsAWallFromBothSides(t *testing.T) {
 	for len(stack) > 0 {
 		cur := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		curCell := gen.Cell(cur)
+		curFaces := cache.faces(cur)
 		for _, d := range sixDirections {
-			if curCell.Faces[d] != FacePassage {
+			if curFaces[d] != FacePassage {
 				continue
 			}
 			n := cur.Neighbor(d)
@@ -194,6 +195,7 @@ func TestConnectivity_MultiChunkRegionOverASeedSweep(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
+		cache := newMapCache(t, gen, params.lattice(), ChunkTypeFabric)
 		lo := hexgrid.Chunk{Q: 0, R: 0}
 		hi := hexgrid.Chunk{Q: 1, R: 1}
 		all, islandSet := islandRegionCells(params.lattice(), seed, params, lo, hi)
@@ -218,9 +220,9 @@ func TestConnectivity_MultiChunkRegionOverASeedSweep(t *testing.T) {
 		for len(stack) > 0 {
 			cur := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
-			curCell := gen.Cell(cur)
+			curFaces := cache.faces(cur)
 			for _, d := range sixDirections {
-				if curCell.Faces[d] != FacePassage {
+				if curFaces[d] != FacePassage {
 					continue
 				}
 				n := cur.Neighbor(d)
@@ -256,12 +258,29 @@ func TestCell_FaceAgreementFarFromOriginAcrossWorldSeeds(t *testing.T) {
 		if err != nil {
 			rt.Fatalf("New: %v", err)
 		}
-		cell := gen.Cell(c)
+		lattice := params.lattice()
+		ch, local := lattice.Locate(c)
+		m, err := gen.Generate(ch, ChunkTypeFabric)
+		if err != nil {
+			rt.Fatalf("Generate: %v", err)
+		}
+		faces, ok := m.Faces(local)
+		if !ok {
+			rt.Fatalf("Faces(%v) in chunk %v: ok=false", local, ch)
+		}
 		for _, d := range sixDirections {
 			n := c.Neighbor(d)
-			nCell := gen.Cell(n)
-			got := cell.Faces[d]
-			want := nCell.Faces[d.Opposite()]
+			nCh, nLocal := lattice.Locate(n)
+			nMap, err := gen.Generate(nCh, ChunkTypeFabric)
+			if err != nil {
+				rt.Fatalf("Generate: %v", err)
+			}
+			nFaces, ok := nMap.Faces(nLocal)
+			if !ok {
+				rt.Fatalf("Faces(%v) in chunk %v: ok=false", nLocal, nCh)
+			}
+			got := faces[d]
+			want := nFaces[d.Opposite()]
 			if got != want {
 				rt.Fatalf("face agreement fails at %v dir %v: %v vs %v (from %v dir %v)", c, d, got, want, n, d.Opposite())
 			}
