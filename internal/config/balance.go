@@ -24,10 +24,10 @@ type WorldBalance struct {
 	Chunk ChunkBalance
 }
 
-// ChunkBalance is the hex-chunk grid size.
+// ChunkBalance is the hex-chunk radius: how many cells out from a
+// chunk's centre its own cells reach.
 type ChunkBalance struct {
-	Cols int
-	Rows int
+	Radius int
 }
 
 // RaidBalance holds every raid-mechanic constant.

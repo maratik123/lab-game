@@ -9,6 +9,8 @@ import (
 
 	"github.com/shopspring/decimal"
 	"go.yaml.in/yaml/v3"
+
+	"github.com/maratik123/lab-game/internal/maze"
 )
 
 // schemaEntry is one leaf of the balance schema: a dotted key path and a
@@ -33,8 +35,6 @@ type schemaNode struct {
 // bindInt returns a binder that accepts only a "!!int" node (rejecting a
 // "!!null" node and a truncating "!!float" node alike), decodes it into
 // dst, and checks predicate.
-//
-//nolint:unparam // want is always "positive" today because every int-typed key in the schema happens to be positive; kept symmetric with bindDuration/bindDecimal for the next int key that isn't
 func bindInt(dst *int, predicate func(int) bool, want string) func(*yaml.Node) error {
 	return func(n *yaml.Node) error {
 		if n.Tag != "!!int" {
@@ -109,9 +109,11 @@ func balanceSchema(b *Balance) []schemaEntry { //nolint:funlen // one row per ba
 	openUnitFraction := func(v decimal.Decimal) bool { return v.GreaterThan(zero) && v.LessThan(one) }
 	halfOpenUnitFraction := func(v decimal.Decimal) bool { return v.GreaterThan(zero) && v.LessThanOrEqual(one) }
 
+	radiusAtLeastMin := func(v int) bool { return v >= maze.MinRadius }
+	radiusWant := fmt.Sprintf("at least %d", maze.MinRadius)
+
 	return []schemaEntry{
-		entry("world.chunk.cols", bindInt(&b.World.Chunk.Cols, positiveInt, "positive")),
-		entry("world.chunk.rows", bindInt(&b.World.Chunk.Rows, positiveInt, "positive")),
+		entry("world.chunk.radius", bindInt(&b.World.Chunk.Radius, radiusAtLeastMin, radiusWant)),
 
 		entry("raid.stamina.cap", bindDecimal(&b.Raid.Stamina.Cap, positiveDecimal, "positive")),
 		entry("raid.stamina.step_cost", bindDecimal(&b.Raid.Stamina.StepCost, positiveDecimal, "positive")),

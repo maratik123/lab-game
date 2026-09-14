@@ -9,16 +9,16 @@
 # obviously-placeholder number.
 
 world:
-  # World-generation constants: the hex-chunk grid a maze is generated in
+  # World-generation constants: the hexagonal chunk a maze is generated in
   # units of.
   chunk:
-    # cols/rows: the hex-chunk grid's size — the reference value is 16x16
-    # hexes. A chunk is the unit of the world's connectivity guarantee: a
-    # spanning structure plus extra passages inside it guarantees internal
-    # connectivity, and one or two guaranteed portals per border connect
-    # it to its neighbours.
-    cols: 16
-    rows: 16
+    # radius: how many cells out from a chunk's own centre its cells
+    # reach — the reference value is 9. A chunk is the unit of the
+    # world's connectivity guarantee: a spanning structure plus extra
+    # passages inside it guarantees internal connectivity, and a
+    # guaranteed range of non-touching portals per border connects it to
+    # its neighbours.
+    radius: 9
 
 raid:
   # Every raid-mechanic constant: stamina, the noise-standing escalation,

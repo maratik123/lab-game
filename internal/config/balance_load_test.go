@@ -17,8 +17,7 @@ import (
 // near-miss with no relation to the others.
 const validBalanceYAML = `world:
   chunk:
-    cols: 16
-    rows: 16
+    radius: 9
 raid:
   stamina:
     cap: 100
@@ -71,7 +70,7 @@ func validBalance() *Balance {
 		return d
 	}
 	return &Balance{
-		World: WorldBalance{Chunk: ChunkBalance{Cols: 16, Rows: 16}},
+		World: WorldBalance{Chunk: ChunkBalance{Radius: 9}},
 		Raid: RaidBalance{
 			Stamina: StaminaBalance{Cap: dec("100"), StepCost: dec("1")},
 			Standing: StandingBalance{
@@ -219,10 +218,10 @@ func TestLoadBalance_NullValue_ZeroAdmittingKeys(t *testing.T) {
 
 func TestLoadBalance_IntGivenFloat(t *testing.T) {
 	t.Parallel()
-	yaml := strings.Replace(validBalanceYAML, "    cols: 16\n", "    cols: 16.5\n", 1)
+	yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 9.5\n", 1)
 	path := writeBalanceFile(t, yaml)
 	_, err := loadBalance(path)
-	assertKeyError(t, err, ErrInvalidValue, "world.chunk.cols")
+	assertKeyError(t, err, ErrInvalidValue, "world.chunk.radius")
 }
 
 func TestLoadBalance_DecimalGivenQuotedNumber(t *testing.T) {
@@ -248,8 +247,8 @@ func TestLoadBalance_PredicateFailures(t *testing.T) {
 		old, new string
 		key      string
 	}{
-		{"non_positive", "    cols: 16\n", "    cols: 0\n", "world.chunk.cols"},
-		{"negative", "    cols: 16\n", "    cols: -1\n", "world.chunk.cols"},
+		{"below_min_radius", "    radius: 9\n", "    radius: 5\n", "world.chunk.radius"},
+		{"negative", "    radius: 9\n", "    radius: -1\n", "world.chunk.radius"},
 		{"above_upper_bound", "    cruelty: 0.5\n", "    cruelty: 1.5\n", "raid.afk.cruelty"},
 		{"at_excluded_bound", "    sell_rate: 0.25\n", "    sell_rate: 1\n", "economy.shop.sell_rate"},
 	}
@@ -299,10 +298,10 @@ func TestLoadBalance_ShapeMismatch_MappingWhereScalarExpected(t *testing.T) {
 
 func TestLoadBalance_Alias(t *testing.T) {
 	t.Parallel()
-	yaml := strings.Replace(validBalanceYAML, "    cols: 16\n    rows: 16\n", "    cols: &n 16\n    rows: *n\n", 1)
+	yaml := strings.Replace(validBalanceYAML, "  hit_die_sides: 20\n  base_defence: 10\n", "  hit_die_sides: &n 20\n  base_defence: *n\n", 1)
 	path := writeBalanceFile(t, yaml)
 	_, err := loadBalance(path)
-	assertKeyError(t, err, ErrInvalidValue, "world.chunk.rows")
+	assertKeyError(t, err, ErrInvalidValue, "combat.base_defence")
 }
 
 func TestLoadBalance_MergeKey(t *testing.T) {
@@ -316,7 +315,7 @@ func TestLoadBalance_MergeKey(t *testing.T) {
 
 func TestLoadBalance_DuplicateKey(t *testing.T) {
 	t.Parallel()
-	yaml := strings.Replace(validBalanceYAML, "    cols: 16\n", "    cols: 16\n    cols: 17\n", 1)
+	yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 9\n    radius: 10\n", 1)
 	path := writeBalanceFile(t, yaml)
 	_, err := loadBalance(path)
 	if err == nil {
