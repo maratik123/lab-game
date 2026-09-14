@@ -11,8 +11,8 @@ _Updated: 2026-09-14 10:29_
 **Spec:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.spec.md
 **Design:** ai-docs/plans/2026-09-14-spiral-gate-placement-depth.design.md
 
-**current_step:** Step 8 — subtask 1 of 5 complete
-**last_passed_gate:** golangci-lint run ./internal/gate/... | 2026-09-14 | a2fa3d8
+**current_step:** Step 8 — subtask 4 of 5 complete, Group A done
+**last_passed_gate:** golangci-lint run ./internal/gate/... | 2026-09-14 | (subtask 4 commit)
 **entry_args:** 120
 
 ## Next action
@@ -25,9 +25,9 @@ Groups per the design's `## Handoff plan`.
 
 - [x] 1. Group A — package scaffold and the spiral order (`internal/gate`: doc, errors, spiral, main_test, guards_test, spiral tests) — commit a2fa3d8
 - [x] 2. Group A — the next gate and its tests — commit f162d29
-- [x] 3. Group A — `Set`, `NewSet`, `Depth`, with the external tests and the internal AC9 test — commit (pending)
-- [ ] 4. Group A — the reporting-only benchmark  ← CURRENT
-- [ ] 5. Group B — documentation (KD-41, KD-38 consumer sentence, `context.md` layout line)
+- [x] 3. Group A — `Set`, `NewSet`, `Depth`, with the external tests and the internal AC9 test — commit 7f47611
+- [x] 4. Group A — the reporting-only benchmark — commit (pending)
+- [ ] 5. Group B — documentation (KD-41, KD-38 consumer sentence, `context.md` layout line)  ← CURRENT
 
 ## Decisions log
 
@@ -73,4 +73,5 @@ Groups per the design's `## Handoff plan`.
 
 - `internal/gate/doc.go`, `internal/gate/errors.go`, `internal/gate/spiral.go`, `internal/gate/spiral_test.go`, `internal/gate/main_test.go`, `internal/gate/guards_test.go` (subtask 1, commit a2fa3d8)
 - `internal/gate/next.go`, `internal/gate/next_test.go` (subtask 2, commit f162d29)
-- `internal/gate/depth.go`, `internal/gate/depth_test.go`, `internal/gate/depth_internal_test.go` (subtask 3)
+- `internal/gate/depth.go`, `internal/gate/depth_test.go`, `internal/gate/depth_internal_test.go` (subtask 3, commit 7f47611)
+- `internal/gate/bench_test.go` (subtask 4)
