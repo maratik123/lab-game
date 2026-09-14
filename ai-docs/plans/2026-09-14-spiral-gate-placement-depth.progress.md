@@ -24,9 +24,9 @@ _Updated: 2026-09-14 10:29_
 Groups per the design's `## Handoff plan`.
 
 - [x] 1. Group A — package scaffold and the spiral order (`internal/gate`: doc, errors, spiral, main_test, guards_test, spiral tests) — commit a2fa3d8
-- [x] 2. Group A — the next gate and its tests — commit (pending)
-- [ ] 3. Group A — `Set`, `NewSet`, `Depth`, with the external tests and the internal AC9 test  ← CURRENT
-- [ ] 4. Group A — the reporting-only benchmark
+- [x] 2. Group A — the next gate and its tests — commit f162d29
+- [x] 3. Group A — `Set`, `NewSet`, `Depth`, with the external tests and the internal AC9 test — commit (pending)
+- [ ] 4. Group A — the reporting-only benchmark  ← CURRENT
 - [ ] 5. Group B — documentation (KD-41, KD-38 consumer sentence, `context.md` layout line)
 
 ## Decisions log
@@ -36,6 +36,7 @@ Groups per the design's `## Handoff plan`.
 - **Step 6**: design-writer's scratch probe under `tmp/spiralprobe` was walked by `./...` and failed module-wide lint; moved to `tmp/_spiralprobe` with a symlink while the design cited it, deleted once round 2 dropped the citations — recurrence logged in `ai-docs/harness-gaps.md` 2026-09-14.
 - **Step 7**: design-review round 1 ITERATE (three major, two minor); round 2 GO with one minor and one recommendation, both design-internal, folded by design-writer at 360c61d; design-review not re-run.
 - **Step 8, subtask 1**: the pre-commit comment-refs gate (run over the staged diff) caught a decision-anchor ("D9") in a `//nolint` comment and a package-qualified symbol (`hexgrid.Chunk.Neighbor`) in a test-helper doc comment that `make comment-refs` (run before staging) had not yet seen against these files; both reworded to name no decision id and no cross-package symbol, and the commit succeeded on retry.
+- **Step 8, subtask 3**: `TestSetDepth_Table`'s later-ring row (a ring-2 gate nearer in cells than a ring-1 gate, to red-flag a "stop at first ring with a hit" search) was found by a scratch Go program under `tmp/_probe/gatedepth` that brute-forced radius-6 chunk centres for an inversion, then deleted once the concrete cell/gate/distance values were copied into the test; radius-8 gates and two far chunk directions (corner and mid-side) were used the same way for `TestSetDepth_FarBeyondEveryGate`. Both `lowerBound`'s "+R" mutant and the "stop at first hit" mutant were run against `depth.go` and seen to fail the relevant test before being reverted, per the AC9/AC7 mutant notes in the design's Test Design section.
 
 ## GO notes
 
@@ -59,9 +60,9 @@ Groups per the design's `## Handoff plan`.
 | AC4 | PASS (next_test.go) |
 | AC5 | PASS (next_test.go) |
 | AC6 | PASS (next_test.go) |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
+| AC7 | PASS (depth_test.go) |
+| AC8 | PASS (depth_test.go) |
+| AC9 | PASS (depth_internal_test.go) |
 
 ## Review register
 
@@ -71,4 +72,5 @@ Groups per the design's `## Handoff plan`.
 ## Files touched
 
 - `internal/gate/doc.go`, `internal/gate/errors.go`, `internal/gate/spiral.go`, `internal/gate/spiral_test.go`, `internal/gate/main_test.go`, `internal/gate/guards_test.go` (subtask 1, commit a2fa3d8)
-- `internal/gate/next.go`, `internal/gate/next_test.go` (subtask 2)
+- `internal/gate/next.go`, `internal/gate/next_test.go` (subtask 2, commit f162d29)
+- `internal/gate/depth.go`, `internal/gate/depth_test.go`, `internal/gate/depth_internal_test.go` (subtask 3)
