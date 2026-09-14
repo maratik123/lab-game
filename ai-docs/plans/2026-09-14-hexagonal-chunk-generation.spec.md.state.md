@@ -63,9 +63,9 @@ gh_issue:
   linked_issues: ["#27", "#118", "#29", "#120", "#28", "#47", "#117"]
   issue_body_status: current
   linked_prs: []
-round_cap: 4
+round_cap: 5
 questions_per_round_cap: 3
-round: 4
+round: 5
 agent_id: ae266ab21629f092a
 prior_qa:
   - round: 1
@@ -86,4 +86,16 @@ prior_qa:
   - round: 4
     question: "Approve and post cross-link comment?"
     answer: "Approve"
+  - round: 5
+    question: "AC4 — верхняя граница радиуса → spec amendment via spec-writer + design-review re-run (при выборе правки спеки). Замечание design-writer, дословно: «AC4 says \"a chunk radius of six or more is accepted\". D12 refuses radii above `MaxRadius`, the largest R whose cell count fits `int32`. Above it, slice lengths and local indices stop being representable and generation would panic, which the zero-production-panic target forbids. The design reads AC4 as \"every radius from six up to that representability bound\", and its test accepts `MaxRadius`. If the owner wants a lower practical cap, that is a new policy number for the balance configuration, not this design's to pick.» Ревью (issue 2) добавляет: около MaxRadius один Generate выделяет граф ~2.1×10⁹ клеток — это нехватка памяти. Как поступить? (options: Amend the spec (Recommended) / Fix design only / Leave it)"
+    answer: "Какой бред, это число буду задавать я, и я явно буду делать разумный выбор. Зачем я буду выбирать числа порядка 2^20? Чтобы что?"
+  - round: 5
+    question: "AC1–AC3 на шве int32 → spec amendment via spec-writer + design-review re-run (при выборе правки спеки). Замечание ревью (issue 3), дословно: «At the `int32` seam, D4 quietly narrows AC1, AC2 and AC3. N is always odd, so it never divides 2³². At the seam, AC2's \"neighbours exactly when some face joins\" fails, AC1's \"every chunk holds exactly the cells within distance R of its centre\" fails for chunks that straddle the seam, and AC3's step count and `Distance` disagree. D4 states a reading, but unlike the AC4 upper end it is not raised as an Open question.» (Шов лежит дальше 2³¹ клеток от центра мира.) Как поступить? (options: Amend the spec (Recommended) / Fix design only / Leave it)"
+    answer: "Аналогичный вопрос. Может, оценивать реально? Зачем закладывать то, что никогда не будет достигнуто? Это телеграм игра, готовим мвп, ты реально считаешь, что к игре подключаться 100500 чатов на старте?"
+  - round: 5
+    question: "AC18 пересказывает общее правило → spec amendment via spec-writer + design-review re-run (при выборе правки спеки). Замечание design-writer, дословно: «`SPEC-REMIT: AC18` — the clause \"per AGENTS.md § *Propagation Rule* step 4\" restates a standing rule. The outcome it protects is that no live document carries the rhombic-chunk claim. It blocks nothing: the design implements that outcome in subtask 10's recipe.» Как поступить? (options: Amend the spec (Recommended) / Fix design only / Leave it)"
+    answer: "Amend the spec (Recommended)"
+  - round: 5
+    question: "docs/world-topology-redesign-plan.md, строка 45: «у текущих чанков-параллелограммов тоже шесть соседей…» — после переделки фраза станет ложной. Дизайн считает файл историей (заголовок файла: план, решения живут в DESIGN.md) и не правит его. Считать документ живым? (options: История, не править (Recommended) / Живой, править)"
+    answer: "Живой, править"
 ```
