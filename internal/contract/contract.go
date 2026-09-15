@@ -22,8 +22,9 @@ const (
 // DocumentType identifies the basis document a journal entry references,
 // together with the entry's type within that basis's table when the
 // basis carries one. The zero DocumentType is not a valid type: build one
-// with ManualCorrection, Event, DeferredTask or RecurrentTask. There is no
-// constructor for a player operation — see NewRegistry.
+// with ManualCorrection, Event, DeferredTask or RecurrentTask. A player
+// operation has no exported constructor: it carries no type column of its
+// own, so no registry may hold a declaration under that basis.
 type DocumentType struct {
 	basis string
 	code  string
@@ -78,8 +79,12 @@ func (d DocumentType) known() bool {
 }
 
 // String renders d as "event/shop_sale", "deferred_task/<code>",
-// "manual_correction" or "player_operation".
+// "manual_correction" or "player_operation". The zero DocumentType, and
+// any basis this package does not recognise, render as "unknown_basis".
 func (d DocumentType) String() string {
+	if d.basis == "" {
+		return "unknown_basis"
+	}
 	if d.code == "" {
 		return d.basis
 	}

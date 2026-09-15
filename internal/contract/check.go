@@ -12,10 +12,9 @@ import (
 	"github.com/maratik123/lab-game/internal/store"
 )
 
-// Queryer is the reading contract NewMark and (*Registry).Check need,
-// satisfied by both pgx.Tx and *pgxpool.Pool. It is declared here, by
-// this package's own consumers, per this project's
-// interfaces-declared-by-the-consumer rule.
+// Queryer is the reading contract NewMark and (*Registry).Check need:
+// enough of pgx.Tx and *pgxpool.Pool to run a query and a single-row
+// query. Both types satisfy it.
 type Queryer interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
@@ -220,25 +219,19 @@ func renderFailures(failures []entryFailure) string {
 	return strings.Join(parts, "; ")
 }
 
-// Check judges every journal entry with an id greater than mark's: for
-// each, it reads the entry's own type — event.type, deferred_task's or
-// recurrent_task's task_type, or the referenced table alone for a manual
-// correction or a player operation — the Signature that type declares in
-// r, and the entry's actual postings and item movements, then compares
-// them.
+// Check judges every journal entry with an id greater than mark's, each
+// by its own type's declared Signature — never by want's.
 //
-// It returns ErrNoSignature immediately, before reading anything, if
-// want itself has no declared Signature in r. Otherwise it reads every
-// entry, posting and item movement past mark before judging any of
-// them, and returns a joined error (errors.Join) carrying one wrap per
-// class of failure present: ErrNoDocument if no entry of type want
-// exists past mark, ErrNoSignature naming every entry whose own type has
-// no declared Signature (including every player-operation entry, and an
-// entry whose basis this package does not recognise), and
-// ErrNonconforming naming every entry whose actual postings or item
-// movements do not match its own type's Signature — including a set
-// that does not sum to zero per kind, which only a write that bypasses
-// this project's write path can produce.
+// It returns ErrNoSignature immediately if want itself has no declared
+// Signature in r. Otherwise it returns a joined error (errors.Join)
+// carrying one wrap per class of failure present: ErrNoDocument if no
+// entry of type want exists past mark, ErrNoSignature naming every entry
+// whose own type has no declared Signature (including every
+// player-operation entry, and an entry whose basis this package does not
+// recognise), and ErrNonconforming naming every entry whose actual
+// postings or item movements do not match its own type's Signature —
+// including a set that does not sum to zero per kind, which only a write
+// that bypasses this project's write path can produce.
 //
 // Check's precondition: no other writer adds a journal entry to the
 // schema q reads from between the call to NewMark that produced mark and

@@ -401,6 +401,37 @@ func TestCheck_judgesByOwnType(t *testing.T) {
 	if err := reg.Check(ctx, tx, mark2, contract.Event(store.EventShopSale)); err != nil {
 		t.Errorf("Check(want=shop_sale, after mark2) = %v, want nil (the control)", err)
 	}
+
+	// A third window holds the shop_sale-shaped shop_purchase entry
+	// beside a conforming shop_sale entry, checked with want = shop_sale.
+	// Own-type judging judges the shop_purchase entry by its own
+	// shop_purchase signature and reports ErrNonconforming for it; a
+	// Check that instead judged every entry by want's signature would
+	// pass it, because the postings are shop_sale-shaped and want is
+	// shop_sale.
+	mark3, err := contract.NewMark(ctx, tx)
+	if err != nil {
+		t.Fatalf("NewMark: %v", err)
+	}
+	if err := store.Post(ctx, tx, &store.Event{Type: store.EventShopPurchase},
+		store.Posting{AccountID: playerMoney, Amount: decimal.NewFromInt(-10)},
+		store.Posting{AccountID: store.WorldMoney, Amount: decimal.NewFromInt(10)},
+	); err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	if err := store.Post(ctx, tx, &store.Event{Type: store.EventShopSale},
+		store.Posting{AccountID: playerMoney, Amount: decimal.NewFromInt(-1)},
+		store.Posting{AccountID: store.WorldMoney, Amount: decimal.NewFromInt(1)},
+	); err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	err = reg.Check(ctx, tx, mark3, contract.Event(store.EventShopSale))
+	if !errors.Is(err, contract.ErrNonconforming) {
+		t.Errorf("Check(want=shop_sale, mixed window) error = %v, want errors.Is ErrNonconforming (the shop_purchase entry judged by its own type)", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "shop_purchase") {
+		t.Errorf("Check(want=shop_sale, mixed window) error = %v, want it to name the shop_purchase entry", err)
+	}
 }
 
 func TestCheck_unsignedTypeFails(t *testing.T) {
@@ -547,12 +578,7 @@ ALTER TABLE journal_entry
 
 		reg := testRegistry(t)
 		err = reg.Check(ctx, tx, mark, contract.Event(store.EventShopSale))
-		if !errors.Is(err, contract.ErrNoSignature) {
-			t.Fatalf("Check() error = %v, want errors.Is ErrNoSignature", err)
-		}
-		if errors.Is(err, contract.ErrNonconforming) {
-			t.Errorf("Check() error = %v, want it not to match ErrNonconforming", err)
-		}
+		assertUnsigned(t, err, "unknown_basis")
 	})
 
 	t.Run("want itself has no declared signature", func(t *testing.T) {
@@ -656,6 +682,24 @@ func TestCheck_manualCorrectionAdmitsAnyBalancedSet(t *testing.T) {
 		if err := reg.Check(ctx, tx, mark, contract.Event(store.EventShopSale)); !errors.Is(err, contract.ErrNoDocument) {
 			t.Errorf("Check(want=shop_sale) error = %v, want errors.Is ErrNoDocument", err)
 		}
+
+		// The same shape, posted as a shop_sale event instead of a
+		// manual correction: the direction (world debited, player
+		// credited) is the direction shop_sale's own signature does not
+		// declare, so own-type judging must reject it.
+		mark2, err := contract.NewMark(ctx, tx)
+		if err != nil {
+			t.Fatalf("NewMark: %v", err)
+		}
+		if err := store.Post(ctx, tx, &store.Event{Type: store.EventShopSale},
+			store.Posting{AccountID: store.WorldMoney, Amount: decimal.NewFromInt(-10)},
+			store.Posting{AccountID: playerMoney, Amount: decimal.NewFromInt(10)},
+		); err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		if err := reg.Check(ctx, tx, mark2, contract.Event(store.EventShopSale)); !errors.Is(err, contract.ErrNonconforming) {
+			t.Errorf("Check(want=shop_sale, same shape as a shop_sale entry) error = %v, want errors.Is ErrNonconforming", err)
+		}
 	})
 
 	t.Run("money and experience pairs together", func(t *testing.T) {
@@ -684,6 +728,25 @@ func TestCheck_manualCorrectionAdmitsAnyBalancedSet(t *testing.T) {
 		if err := reg.Check(ctx, tx, mark, contract.ManualCorrection()); err != nil {
 			t.Errorf("Check(want=ManualCorrection) = %v, want nil", err)
 		}
+
+		// The same shape, posted as a shop_sale event: the extra
+		// experience legs, undeclared by shop_sale's signature, must be
+		// rejected.
+		mark2, err := contract.NewMark(ctx, tx)
+		if err != nil {
+			t.Fatalf("NewMark: %v", err)
+		}
+		if err := store.Post(ctx, tx, &store.Event{Type: store.EventShopSale},
+			store.Posting{AccountID: store.WorldMoney, Amount: decimal.NewFromInt(-10)},
+			store.Posting{AccountID: playerMoney, Amount: decimal.NewFromInt(10)},
+			store.Posting{AccountID: store.WorldExperience, Amount: decimal.NewFromInt(-5)},
+			store.Posting{AccountID: playerExperience, Amount: decimal.NewFromInt(5)},
+		); err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		if err := reg.Check(ctx, tx, mark2, contract.Event(store.EventShopSale)); !errors.Is(err, contract.ErrNonconforming) {
+			t.Errorf("Check(want=shop_sale, same shape as a shop_sale entry) error = %v, want errors.Is ErrNonconforming", err)
+		}
 	})
 
 	t.Run("a slot grant", func(t *testing.T) {
@@ -702,6 +765,25 @@ func TestCheck_manualCorrectionAdmitsAnyBalancedSet(t *testing.T) {
 		reg := testRegistry(t)
 		if err := reg.Check(ctx, tx, mark, contract.ManualCorrection()); err != nil {
 			t.Errorf("Check(want=ManualCorrection) = %v, want nil", err)
+		}
+
+		// The same shape, posted as a shop_sale event: shop_sale's
+		// signature declares no slot legs, so the postings must be
+		// rejected.
+		mark2, err := contract.NewMark(ctx, tx)
+		if err != nil {
+			t.Fatalf("NewMark: %v", err)
+		}
+		free := accountID(t, ctx, tx, player.ID, "backpack", "slots_free")
+		worldFree := accountID(t, ctx, tx, worldOwnerID, "world", "slots_free")
+		if err := store.Post(ctx, tx, &store.Event{Type: store.EventShopSale},
+			store.Posting{AccountID: free, Amount: decimal.NewFromInt(5)},
+			store.Posting{AccountID: worldFree, Amount: decimal.NewFromInt(-5)},
+		); err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		if err := reg.Check(ctx, tx, mark2, contract.Event(store.EventShopSale)); !errors.Is(err, contract.ErrNonconforming) {
+			t.Errorf("Check(want=shop_sale, same shape as a shop_sale entry) error = %v, want errors.Is ErrNonconforming", err)
 		}
 	})
 
@@ -730,6 +812,24 @@ func TestCheck_manualCorrectionAdmitsAnyBalancedSet(t *testing.T) {
 		reg := testRegistry(t)
 		if err := reg.Check(ctx, tx, mark, contract.ManualCorrection()); err != nil {
 			t.Errorf("Check(want=ManualCorrection) = %v, want nil", err)
+		}
+
+		// The same shape, posted as a shop_sale event: shop_sale's
+		// signature declares no movement leg and no world/money leg, so
+		// the mint-plus-money-pair set must be rejected.
+		mark2, err := contract.NewMark(ctx, tx)
+		if err != nil {
+			t.Fatalf("NewMark: %v", err)
+		}
+		if _, err := store.Move(ctx, tx, &store.Event{Type: store.EventShopSale},
+			[]store.Movement{{ItemID: store.NewItem, From: store.WorldHolder, To: backpack}},
+			store.Posting{AccountID: store.WorldMoney, Amount: decimal.NewFromInt(-10)},
+			store.Posting{AccountID: playerMoney, Amount: decimal.NewFromInt(10)},
+		); err != nil {
+			t.Fatalf("move: %v", err)
+		}
+		if err := reg.Check(ctx, tx, mark2, contract.Event(store.EventShopSale)); !errors.Is(err, contract.ErrNonconforming) {
+			t.Errorf("Check(want=shop_sale, same shape as a shop_sale entry) error = %v, want errors.Is ErrNonconforming", err)
 		}
 	})
 }
