@@ -3,18 +3,14 @@ package main
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/maratik123/lab-game/internal/store"
-	"github.com/maratik123/lab-game/internal/testdb"
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 func TestReadiness_NeitherLatchSet(t *testing.T) {
 	t.Parallel()
-	pool := newBotPool(t)
+	pool := storetest.Pool(t)
 	r := newReadiness(pool)
 
 	if err := r.Ready(context.Background()); !errors.Is(err, errNotReadyMigrating) {
@@ -24,7 +20,7 @@ func TestReadiness_NeitherLatchSet(t *testing.T) {
 
 func TestReadiness_MigratedNotDrainingPoolAnswers(t *testing.T) {
 	t.Parallel()
-	pool := newBotPool(t)
+	pool := storetest.Pool(t)
 	r := newReadiness(pool)
 	r.setMigrated()
 
@@ -35,7 +31,7 @@ func TestReadiness_MigratedNotDrainingPoolAnswers(t *testing.T) {
 
 func TestReadiness_Draining_EvenAfterMigrationAndPoolAnswers(t *testing.T) {
 	t.Parallel()
-	pool := newBotPool(t)
+	pool := storetest.Pool(t)
 	r := newReadiness(pool)
 	r.setMigrated()
 	r.setDraining()
@@ -47,7 +43,7 @@ func TestReadiness_Draining_EvenAfterMigrationAndPoolAnswers(t *testing.T) {
 
 func TestReadiness_DrainingLatchIsOneWay(t *testing.T) {
 	t.Parallel()
-	pool := newBotPool(t)
+	pool := storetest.Pool(t)
 	r := newReadiness(pool)
 	r.setMigrated()
 	r.setDraining()
@@ -63,7 +59,7 @@ func TestReadiness_DrainingLatchIsOneWay(t *testing.T) {
 
 func TestReadiness_MigratedPoolUnreachable(t *testing.T) {
 	t.Parallel()
-	pool := newBotPool(t)
+	pool := storetest.Pool(t)
 	r := newReadiness(pool)
 	r.setMigrated()
 	pool.Close()
@@ -71,23 +67,4 @@ func TestReadiness_MigratedPoolUnreachable(t *testing.T) {
 	if err := r.Ready(context.Background()); !errors.Is(err, errNotReadyDatabase) {
 		t.Errorf("Ready() = %v, want errNotReadyDatabase", err)
 	}
-}
-
-// newBotPool builds a fresh, migrated schema-scoped pool for tb, closed
-// on cleanup.
-func newBotPool(tb testing.TB) *pgxpool.Pool {
-	tb.Helper()
-	ctx := context.Background()
-	cfg := testdb.Schema(tb)
-
-	pool, err := store.NewPool(ctx, cfg)
-	if err != nil {
-		tb.Fatalf("new pool: %v", err)
-	}
-	tb.Cleanup(pool.Close)
-
-	if err := store.Migrate(ctx, pool, slog.New(slog.DiscardHandler)); err != nil {
-		tb.Fatalf("migrate: %v", err)
-	}
-	return pool
 }

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 // panickingHandler always panics with a fixed, recognisable value.
@@ -142,7 +144,7 @@ func waitForPanicLogEntry(t *testing.T, logs *recordingLogHandler, timeout time.
 func TestPanic_AC1_workerSurvivesAndNextCycleRunsNormally(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := testConfig()
 
@@ -184,7 +186,7 @@ func TestPanic_AC1_workerSurvivesAndNextCycleRunsNormally(t *testing.T) {
 func TestPanic_AC2_oneShotAlwaysPanickingGivesUpWithinCap(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := testConfig()
 
@@ -226,7 +228,7 @@ func TestPanic_AC2_oneShotAlwaysPanickingGivesUpWithinCap(t *testing.T) {
 func TestPanic_AC3_observationCarriesPanicFailureKind(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := testConfig()
 
@@ -272,7 +274,7 @@ func TestPanic_AC3_observationCarriesPanicFailureKind(t *testing.T) {
 func TestPanic_AC6_rowAndLogBothCarryStack(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := testConfig()
 
@@ -329,7 +331,7 @@ func TestPanic_AC6_rowAndLogBothCarryStack(t *testing.T) {
 func TestPanic_AC6_logOnlySurface_blockedPastDeadlineThenPanics(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	cfg.RetryMaxAttempts = 1
@@ -400,7 +402,7 @@ func TestPanic_AC6_logOnlySurface_blockedPastDeadlineThenPanics(t *testing.T) {
 func TestPanic_D4_rowsLeftOpen_unusableTransactionStillSettlesThroughDrain(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := testConfig()
 
@@ -452,7 +454,7 @@ func TestPanic_D4_rowsLeftOpen_unusableTransactionStillSettlesThroughDrain(t *te
 func TestPanic_recoversOnRetryAfterOnePanic(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := testConfig()
 

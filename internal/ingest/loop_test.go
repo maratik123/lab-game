@@ -20,6 +20,7 @@ import (
 	"github.com/maratik123/lab-game/internal/backoff"
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/store"
+	"github.com/maratik123/lab-game/internal/storetest"
 	"github.com/maratik123/lab-game/internal/tg"
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
@@ -181,7 +182,7 @@ func TestPollOnce_requestShape(t *testing.T) {
 
 	t.Run("empty_router_transmits_the_D3_sentinel_and_no_offset", func(t *testing.T) {
 		t.Parallel()
-		pool := newIngestPool(t)
+		pool := storetest.Pool(t)
 		capReq := &requestCapture{}
 		srv := tgtest.New(t, capturing(capReq, tgtest.Success(updatesJSON(t, nil))))
 		router, err := NewRouter()
@@ -214,7 +215,7 @@ func TestPollOnce_requestShape(t *testing.T) {
 
 	t.Run("populated_router_transmits_every_registered_kind", func(t *testing.T) {
 		t.Parallel()
-		pool := newIngestPool(t)
+		pool := storetest.Pool(t)
 		capReq := &requestCapture{}
 		srv := tgtest.New(t, capturing(capReq, tgtest.Success(updatesJSON(t, nil))))
 		router, err := NewRouter(
@@ -244,7 +245,7 @@ func TestPollOnce_requestShape(t *testing.T) {
 
 func TestLoop_happyPath(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -293,7 +294,7 @@ func TestLoop_happyPath(t *testing.T) {
 
 func TestLoop_transmittedOffsetAfterSettlement(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	capReq := &requestCapture{}
 	srv := tgtest.New(t, nil)
 
@@ -328,7 +329,7 @@ func TestLoop_transmittedOffsetAfterSettlement(t *testing.T) {
 
 func TestLoop_unrouted(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -380,7 +381,7 @@ func TestLoop_unrouted(t *testing.T) {
 // carries the error onto the resulting Observation.
 func TestLoop_malformedUpdateReportsDerivationError(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -421,7 +422,7 @@ func TestLoop_malformedUpdateReportsDerivationError(t *testing.T) {
 
 func TestLoop_duplicate(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -484,7 +485,7 @@ func TestNew_optionValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRouter: %v", err)
 	}
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	srv := tgtest.New(t, tgtest.Success(updatesJSON(t, nil)))
 	client := newTestClient(t, srv)
 	validConfig := testIngestConfig()

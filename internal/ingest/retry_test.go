@@ -16,6 +16,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/maratik123/lab-game/internal/store"
+	"github.com/maratik123/lab-game/internal/storetest"
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
 
@@ -136,7 +137,7 @@ func (deferredConstraintHandler) Handle(ctx context.Context, tx pgx.Tx, _ Update
 
 func TestLoop_failureAndRetryGivesUp(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -210,7 +211,7 @@ func TestLoop_failureAndRetryGivesUp(t *testing.T) {
 
 func TestLoop_panicIsRecoveredAndRetried(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -273,7 +274,7 @@ func TestLoop_panicIsRecoveredAndRetried(t *testing.T) {
 // contains the same frame.
 func TestLoop_panicRowAndLogBothCarryStack(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -332,7 +333,7 @@ func TestLoop_panicRowAndLogBothCarryStack(t *testing.T) {
 // alone.
 func TestLoop_panicLogOnlySurface_supersededAttemptLeavesNoRow(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -387,7 +388,7 @@ func TestLoop_panicLogOnlySurface_supersededAttemptLeavesNoRow(t *testing.T) {
 // observation.
 func TestLoop_advanceOffsetFailureReportsFailed(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -432,7 +433,7 @@ func TestLoop_advanceOffsetFailureReportsFailed(t *testing.T) {
 // commit time.
 func TestLoop_commitFailureReportsFailed(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -480,7 +481,7 @@ func TestLoop_commitFailureReportsFailed(t *testing.T) {
 // does.
 func TestLoop_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -526,7 +527,7 @@ func TestLoop_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 
 func TestRun_pollFailureDoesNotStopTheLoop(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 
 	const failCycles = 3
@@ -610,7 +611,7 @@ func TestRun_pollFailureDoesNotStopTheLoop(t *testing.T) {
 
 func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, nil)
 
@@ -702,7 +703,7 @@ func TestRun_cancellationLeavesTheUpdateUnsettled(t *testing.T) {
 
 func TestPollOnce_cancellationDuringLongPollReturnsPromptly(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	srv := tgtest.New(t, tgtest.Delayed(5*time.Second, tgtest.Success(updatesJSON(t, nil))))
 
 	router, err := NewRouter()

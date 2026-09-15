@@ -15,6 +15,7 @@ import (
 
 	"github.com/maratik123/lab-game/internal/backoff"
 	"github.com/maratik123/lab-game/internal/config"
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 // errBoom is a fixed handler-error test double.
@@ -236,7 +237,7 @@ func errText(s *string) string {
 func TestRunOnce_batchBoundedAndSkipNotWait(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	h := &writingHandler{outcome: OutcomeDone, reason: "batch-bound"}
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
@@ -277,7 +278,7 @@ func TestRunOnce_batchBoundedAndSkipNotWait(t *testing.T) {
 func TestRunOnce_twoWorkersConcurrent_exactlyOnceUnderRace(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	h := &writingHandler{outcome: OutcomeDone, reason: "concurrent"}
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
@@ -321,7 +322,7 @@ func TestRunOnce_twoWorkersConcurrent_exactlyOnceUnderRace(t *testing.T) {
 func TestRunOnce_rowTakenBeforeReclaim_skippedSilently(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	h := &writingHandler{outcome: OutcomeDone, reason: "taken-before-reclaim"}
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
@@ -350,7 +351,7 @@ func TestRunOnce_rowTakenBeforeReclaim_skippedSilently(t *testing.T) {
 func TestRunOnce_failedHandler_writesRolledBack_attemptRecorded(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	reason := "failed-handler"
 	h := &writingHandler{outcome: OutcomeFailed, err: errBoom, reason: reason}
@@ -382,7 +383,7 @@ func TestRunOnce_failedHandler_writesRolledBack_attemptRecorded(t *testing.T) {
 func TestRunOnce_noop_writesAbsent_rowSettled(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	reason := "noop"
 	h := &writingHandler{outcome: OutcomeNoop, reason: reason}
@@ -413,7 +414,7 @@ func TestRunOnce_noop_writesAbsent_rowSettled(t *testing.T) {
 func TestRunOnce_swallowedDatabaseError_settlesAsFailure(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	h := &swallowingHandler{instanceKey: "swallow-1"}
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
@@ -449,7 +450,7 @@ func TestRunOnce_swallowedDatabaseError_settlesAsFailure(t *testing.T) {
 func TestRunOnce_deleteOnDone_bothDirections(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	h := &writingHandler{outcome: OutcomeDone, reason: "delete-on-done"}
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
@@ -497,7 +498,7 @@ func TestRunOnce_deleteOnDone_bothDirections(t *testing.T) {
 func TestRunOnce_recurrence_singleLiveRow(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	h := &writingHandler{outcome: OutcomeDone, reason: "recurrence-single-row"}
 	reg, err := NewRegistry(Declaration{

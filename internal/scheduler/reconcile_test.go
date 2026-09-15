@@ -12,6 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 func recurrentRegistry(t *testing.T, typ Type, period time.Duration) *Registry {
@@ -32,7 +34,7 @@ func recurrentRegistry(t *testing.T, typ Type, period time.Duration) *Registry {
 func TestReconcile_seedsMissingRow(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	period := time.Hour
 	reg := recurrentRegistry(t, "recon.seed", period)
@@ -66,7 +68,7 @@ func TestReconcile_seedsMissingRow(t *testing.T) {
 func TestReconcile_seedsAgainstDeadRow(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	reg := recurrentRegistry(t, "recon.dead", time.Hour)
 	w, err := New(Options{Pool: pool, Registry: reg, Config: contentionSafeConfig()})
@@ -103,7 +105,7 @@ func TestReconcile_seedsAgainstDeadRow(t *testing.T) {
 func TestReconcile_correction(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	longPeriod := 2 * time.Hour
 
@@ -193,7 +195,7 @@ func TestReconcile_correction(t *testing.T) {
 func TestReconcile_concurrentCallsProduceOneRow(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	reg := recurrentRegistry(t, "recon.concurrent", time.Hour)
 	w1, err := New(Options{Pool: pool, Registry: reg, Config: contentionSafeConfig()})
@@ -241,7 +243,7 @@ func TestReconcile_concurrentCallsProduceOneRow(t *testing.T) {
 func TestReconcile_leavesImminentAndInFlightAlone(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	t.Run("imminent", func(t *testing.T) {
@@ -329,7 +331,7 @@ func TestReconcile_leavesImminentAndInFlightAlone(t *testing.T) {
 func TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	reg := recurrentRegistry(t, "recon.run", time.Hour)
 	cfg := contentionSafeConfig()
 	cfg.PollInterval = 20 * time.Millisecond
@@ -396,7 +398,7 @@ func TestRun_reconcilesBeforeFirstCycle_RunOnceDoesNot(t *testing.T) {
 
 	t.Run("Run_stops_if_Reconcile_fails", func(t *testing.T) {
 		t.Parallel()
-		badPool := newScheduler(t)
+		badPool := storetest.Pool(t)
 		badPool.Close()
 		reg3 := recurrentRegistry(t, "recon.run3", time.Hour)
 		w, err := New(Options{Pool: badPool, Registry: reg3, Config: cfg})
@@ -419,7 +421,7 @@ func TestRun_cancelledMidReconcileReturnsCtxErr(t *testing.T) {
 	runCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var fired atomic.Bool
-	pool := cancelOnWritePool(t, newScheduler(t), cancel, &fired)
+	pool := cancelOnWritePool(t, storetest.Pool(t), cancel, &fired)
 	w, err := New(Options{Pool: pool, Registry: recurrentRegistry(t, "stop.reconcile", time.Hour), Config: testConfig()})
 	if err != nil {
 		t.Fatalf("New: %v", err)

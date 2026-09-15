@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/maratik123/lab-game/internal/config"
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 // shortDeadlineConfig returns a Scheduler config tuned for the deadline
@@ -108,7 +109,7 @@ func waitLockFree(t *testing.T, pool *pgxpool.Pool, id TaskID, timeout time.Dura
 func TestDeadline_blockedHandler_rowClaimableWithinBound(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	h := newBlockingHandler()
@@ -145,7 +146,7 @@ func TestDeadline_blockedHandler_rowClaimableWithinBound(t *testing.T) {
 func TestDeadline_breachIsSettledNotMerelyAbandoned(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	h := newBlockingHandler()
@@ -195,7 +196,7 @@ func TestDeadline_breachIsSettledNotMerelyAbandoned(t *testing.T) {
 func TestDeadline_successiveBreaches_growingDelay(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	// RetryBaseDelay is raised locally to 200ms (the ceiling here is
@@ -289,7 +290,7 @@ func TestDeadline_successiveBreaches_growingDelay(t *testing.T) {
 func TestDeadline_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	cfg.RetryBaseDelay = 200 * time.Millisecond
@@ -366,7 +367,7 @@ func TestDeadline_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 func TestDeadline_recurrenceSettlesIntoFuture(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	h := newBlockingHandler()
@@ -414,7 +415,7 @@ func TestDeadline_recurrenceSettlesIntoFuture(t *testing.T) {
 func TestDeadline_oneShotGivesUpWithinCap(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 
@@ -459,7 +460,7 @@ func TestDeadline_oneShotGivesUpWithinCap(t *testing.T) {
 func TestDeadline_recurrenceNeverGivesUp(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	period := 200 * time.Millisecond
@@ -514,7 +515,7 @@ func TestDeadline_recurrenceNeverGivesUp(t *testing.T) {
 func TestDeadline_deferredGuard_rowAlreadyMoved(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	h := newBlockingHandler()
@@ -560,7 +561,7 @@ func TestDeadline_deferredGuard_rowAlreadyMoved(t *testing.T) {
 func TestDeadline_drainDoesNotBlockOnLockedRow(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	// RetryBaseDelay/RetryMaxDelay are both raised locally so that the
@@ -629,7 +630,7 @@ func TestDeadline_drainDoesNotBlockOnLockedRow(t *testing.T) {
 func TestDeadline_neighboursSurvive(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	// TaskTimeout is raised locally to 1s: blockingHandler blocks on
@@ -712,7 +713,7 @@ func findObservationByType(tasks []Observation, typ Type) (Observation, bool) {
 func TestDeadline_ctxIgnoringHandler_rowReclaimedDespiteIgnoredCtx(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 	h := &ctxIgnoringHandler{release: make(chan struct{})}

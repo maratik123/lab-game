@@ -10,6 +10,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 // sqlstateTerminatingConnection is the SQLSTATE Postgres reports when
@@ -111,7 +113,7 @@ func waitBackendGone(t *testing.T, pool *pgxpool.Pool, pid uint32, timeout time.
 func TestReclaim_AC7_rowClaimableWithoutWaitingForHandlerReturn(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 
@@ -165,7 +167,7 @@ func TestReclaim_AC7_rowClaimableWithoutWaitingForHandlerReturn(t *testing.T) {
 func TestReclaim_AC8_handlerReturnsAfterTerminate(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := shortDeadlineConfig()
 

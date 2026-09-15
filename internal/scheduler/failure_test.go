@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/maratik123/lab-game/internal/config"
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 // alwaysFailHandler always returns OutcomeFailed with a fixed error.
@@ -115,7 +116,7 @@ func forceDue(t *testing.T, pool *pgxpool.Pool, id TaskID) {
 func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := backoffProbeConfig()
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: &slowFirstAttemptHandler{firstDelay: 400 * time.Millisecond, err: errBoom}})
@@ -210,7 +211,7 @@ func TestFailurePolicy_oneShotAttemptsGrowAndGiveUp(t *testing.T) {
 func TestFailurePolicy_nonDefaultFactorReachesTheCallSite(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := backoffProbeConfig()
 	cfg.RetryFactor = 3
@@ -279,7 +280,7 @@ func forceDueAndCapture(t *testing.T, pool *pgxpool.Pool, id TaskID) time.Time {
 func TestFailurePolicy_decodeFailure(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := contentionSafeConfig()
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: decodeFailHandler{}})
@@ -338,7 +339,7 @@ func TestFailurePolicy_decodeFailure(t *testing.T) {
 func TestFailurePolicy_recurrenceNeverTerminal(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := contentionSafeConfig()
 	period := 20 * time.Millisecond
@@ -383,7 +384,7 @@ func TestFailurePolicy_recurrenceNeverTerminal(t *testing.T) {
 func TestFailurePolicy_counterRisesAndResets(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := contentionSafeConfig()
 	h := &writingHandler{outcome: OutcomeFailed, err: errBoom, reason: "counter-rises"}
@@ -464,7 +465,7 @@ func TestFailurePolicy_counterRisesAndResets(t *testing.T) {
 func TestFailurePolicy_undeclaredType_keepsComingDue(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := contentionSafeConfig()
 	// An empty registry: "undeclared.type" has no Declaration.
