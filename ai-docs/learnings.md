@@ -1128,3 +1128,15 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** Read the recipe that governs a routing step before the first write it prescribes — a record on an append-only surface cannot be corrected in place.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-15 — process — read an exit status after a pipeline in a propagation sweep
+**What happened:** In #26's Group B documentation subtask, the Propagation Rule sweep was issued as a recursive `grep -rni` piped into a filtering `grep -v`, followed by an echo of the shell's last status. That status would have been the filter's, not the sweep's, so a sweep that errored or matched nothing could have recorded as clean. The pipe-status `PreToolUse` hook refused the command before it ran; the sweep was re-run captured to a file under `tmp/`, its own status read, and the saved log filtered in a separate step.
+**Rule:** When a probe's exit status is part of its answer, capture the measured command to a file under `tmp/`, read that command's own status, and filter the saved log afterwards — never read the status of a pipeline whose last stage is not the command being measured.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-15 — process — measured a named instruction page's size to decide how to read it
+**What happened:** In the same subtask, a line count of `ai-docs/agent-writing-style.md` was issued beside a heading grep, to decide whether to read the page whole. Sizing that page belongs to `/ai-audit` alone (`.claude/skills/ai-audit/checklist-m.md` § *Sub-check 9*), whatever the purpose, deciding how to read a file included; the size-measurement `PreToolUse` hook refused the command, and the heading grep was re-run alone.
+**Rule:** To decide how to read an instruction page, take its structure from `grep -n '^#'` and read it by `sed -n` ranges — never run `wc`, `du` or `stat` over a covered page outside an `/ai-audit` pass.
+**Kind:** correction
+**Escalated?** no

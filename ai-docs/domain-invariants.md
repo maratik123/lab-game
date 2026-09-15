@@ -56,6 +56,26 @@ A session is a row: `(id, maze_id, position, state, leader, participants, arrive
 
 The product dashboard reads the raw `event` log, never pre-aggregated counters — what you did not record, you cannot ask later. The ledger and the event log are **different tables** (strict schema vs JSONB, different retention, different readers); postings reference an event as one of their basis types.
 
+### How a mechanic declares and checks its posting signature
+
+The rule above stands as written; this is its mechanics. The vocabulary, the declared set and the check live in `internal/contract`, a package only tests import ([`key-decisions.md`](key-decisions.md) KD-42). A balance-moving mechanic does three things, in its own pull request.
+
+1. **Add its type's row to the declared set** — the `declarations` literal in `internal/contract/declared.go`. The row pairs the type — `contract.Event(store.EventShopSale)`, `contract.DeferredTask("<code>")` or `contract.RecurrentTask("<code>")` — with `contract.Expect(...)`, **one leg per line**: `contract.PostingLeg(scope, account, kind, sign, cardinality)` for each posting shape, `contract.MovementLeg(from, to, cardinality)` for each movement shape, spelled with catalog codes, a named `contract.Positive` / `contract.Negative`, and `contract.Exactly(n)` / `contract.AtLeast(n)`. No loop, helper or computed leg: a signature change must read in the diff as a changed line naming what changed. The row goes in the set's order — the manual correction, then event types in the event-log migration's declaration order, then deferred-task and recurrent-task types by code. **The capacity postings `store.Move` derives for a movement are declared like any other posting**; the check derives nothing from a movement, so a defect in the derivation cannot pass it.
+2. **Check a real transaction in its contract test.** Take a migrated pool from `storetest.Pool(t)`, begin a transaction, set up the fixtures (players, funding, slot grants), and only then call `contract.NewMark(ctx, tx)`. Run the mechanic. Call `contract.Declared()`, and on the registry it returns call `Check(ctx, tx, mark, <the mechanic's type>)`, which must return nil.
+3. **Read a failure by its class.** `Check` returns one joined error, and `errors.Is` matches every class present:
+
+| `errors.Is` matches | What it means | Where the fix goes |
+|---|---|---|
+| `contract.ErrNonconforming` | An entry past the mark differs from its **own** type's row: a declared leg's count is off, an actual row matches no leg, or a kind does not sum to zero. A row that differs from a leg in one dimension (account, kind or sign) reports as a pair — the declared key short, the actual key unexpected — and the message prints both keys whole. | The mechanic or its row, whichever is wrong. |
+| `contract.ErrNoSignature` | An entry past the mark has a type with no row — every player-operation entry included, and an entry under a basis table `contract` does not know. | Add the row. A player operation cannot have one until a mechanic gives that table a type within it and `contract` a constructor for that type. |
+| `contract.ErrNoDocument` | No entry of the wanted type exists past the mark. | The mechanic wrote nothing, wrote under another type (a deferred task declared as a recurrent one is this case), or the mark was taken after the write. |
+
+**Three limits a mechanic author must be told.**
+
+- **Nothing else may write to the schema between the mark and the check.** `Check` judges every entry past the mark, so a conforming entry committed there by another writer can pass a mechanic that wrote nothing. A schema per test meets this by construction; `Check` therefore belongs in a single-writer contract test, never in a concurrency test.
+- **Every entry past the mark is judged by its own type, fixtures included.** Funding taken before the mark is not judged at all; a manual correction written after it is judged against the manual correction's row, `AnyBalanced()`, which admits any balanced postings and any movements. `NewRegistry` refuses `AnyBalanced()` for every other type, so that permission loosens nothing else.
+- **Nothing forces a mechanic to call `Check`.** No gate asks whether every balance-moving type has a row; the review checklists rate a balance-moving mechanic with no posting signature or no contract test `major`.
+
 ### The payload rule — four dimensions are columns, everything else is JSONB
 
 **The §13.4 dimensions — player, chat, maze, depth — are columns on `event`; everything else about an event is `payload` JSONB.** The rule is uniform across types, so it is one paragraph and not one per type. Four reasons, and they are why the line falls exactly there:
