@@ -235,10 +235,9 @@ const (
 	// started with this project's tmpfs and fsync settings and this value
 	// as max_connections was driven to hold every one of those connections
 	// at once, and it served all of them. The provisioning path that starts
-	// such a container sets no pids limit, so the process count a server at
-	// full use reaches is bounded only by the runtime's own default, not by
-	// anything this project asks for. What bounds the value is therefore
-	// host memory at full use, not the server's own start-up footprint,
+	// such a container sets no pids limit, and nothing else caps the
+	// process count a server at full use reaches. What bounds the value is
+	// therefore host memory at full use, not the server's own start-up footprint,
 	// which stays small regardless of the configured maximum. Raising this
 	// value again needs the same at-capacity measurement on the host meant
 	// to carry it; editing the number alone is not enough.
