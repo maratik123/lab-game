@@ -1140,3 +1140,9 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** To decide how to read an instruction page, take its structure from `grep -n '^#'` and read it by `sed -n` ranges — never run `wc`, `du` or `stat` over a covered page outside an `/ai-audit` pass.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-15 — process — piped a load-bearing `git pull` into `tail` inside a `/pr-merged` chain
+**What happened:** Running `/pr-merged` after PR #131, the orchestrator composed one `&&` chain: checkout `main`, then `git pull` piped into `tail -n 5`, then the cleanup script, then `git branch -d`, closing with an echo of the shell's last status. A pipeline binds tighter than `&&`, so the step after the pull read `tail`'s status: a failed pull would still have run the cleanup and the branch deletion against a stale `main`. The pipe-status `PreToolUse` hook refused the command before it ran; the re-run captured each step to its own log under `tmp/` with `pipefail` set, read every step's own exit code, and stopped on the first non-zero.
+**Rule:** A step whose success gates the next one — above all a `git pull` before a destructive `git branch -d` — is never piped into `tail` or `head`: capture it to a file under `tmp/`, read its own exit code, then print the log.
+**Kind:** correction
+**Escalated?** no
