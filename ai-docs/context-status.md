@@ -495,7 +495,7 @@ Entry shape:
   - `Next` never returns a created chunk or a chunk nearer than `k+1` to a gate, and it returns for every finite input and every `k ≥ 0`.
   - `Set.Depth` equals the least hex distance from the cell to any gate chunk's centre however far that gate lies, and gates beyond its search bound add no work.
 
-## Posting-signature contract tests — `internal/contract`: declare a basis-document type's postings and movements, and check a real transaction against them (#TBD-at-Step-12, 2026-09-15)
+## Posting-signature contract tests — `internal/contract`: declare a basis-document type's postings and movements, and check a real transaction against them (#131, 2026-09-15)
 
 - **What landed:**
   - A test-only package, `internal/contract`. A `DocumentType` names a basis document by its table and, for events and tasks, its type code (`ManualCorrection`, `Event`, `DeferredTask`, `RecurrentTask`). A `Signature` is `AnyBalanced` or `Expect` over `PostingLeg` (scope, account, kind, sign, cardinality) and `MovementLeg` (from scope, to scope, cardinality) values. `NewRegistry` refuses every malformed declaration, and `AnyBalanced` on any type other than the manual correction.
