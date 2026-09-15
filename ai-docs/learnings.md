@@ -1146,3 +1146,21 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** A step whose success gates the next one — above all a `git pull` before a destructive `git branch -d` — is never piped into `tail` or `head`: capture it to a file under `tmp/`, read its own exit code, then print the log.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — process — recited the surface-language rule and broke it in the same message
+**What happened:** Invoked as `/task 28`, I opened the session with the required CLAUDE.md summary —
+which itself states "Russian for two surfaces only: conversation with the product owner" — and then
+wrote that summary, and every status turn after it, in English, until reading the owner's memory file
+prompted the check. Third instance of the same slip: 2026-09-06 (escalated to `AGENTS.md`) and
+2026-09-12 (unescalated), and the second sharing the trigger 2026-09-12 already named — a bare
+slash-command carries no natural-language cue, so the English issue body, Go sources and instruction
+files chose the reply language instead of the rule choosing it. What is new here is that the rule was
+not merely available: it was quoted, by me, in the offending message. Availability was never the
+failing, so a fix shaped as "remember the rule" would address nothing.
+**Rule:** Reciting a rule is not applying it. When a turn's own text states a rule about the surface
+being written, check that turn against it before sending — the recitation and the reply carrying it
+are the same surface, and a summary of the language rule written in the wrong language is the clearest
+possible evidence that recall and application are separate acts.
+**at:** 52fdb4a
+**Kind:** correction
+**Escalated?** no
