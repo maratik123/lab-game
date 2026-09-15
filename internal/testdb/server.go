@@ -223,7 +223,7 @@ func Probe(ctx context.Context, dsn string) (int, error) {
 // build`'s -p). A new database-backed package must update this constant; a
 // manifest test keeps it honest against the tree rather than against
 // memory.
-const Binaries = 5
+const Binaries = 6
 
 const (
 	// imageDefaultCeiling is Image's own max_connections default — the floor
