@@ -57,7 +57,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 4
+round: 5
 agent_id: ae858b7d19a9300e8
 prior_qa:
   - round: 1
@@ -78,4 +78,7 @@ prior_qa:
   - round: 3
     question: "Гейт полноты по всем типам — надстройка issue #26 над DESIGN.md (§13.4 ограничивает обязанность механиками, двигающими балансы, и отдаёт проверку харнессу), а ответы 1.2 и 2.1 его расширили. Как поступить со скоупом #26? Варианты: «Сузить (Recommended)» — → spec amendment via spec-writer + design-review re-run. Убрать гейт полноты по всем типам и всё, что на нём держится: явно пустые сигнатуры, строку операции игрока, ось тасок в cmd/bot. Остаётся: форма, проверка по транзакции, гранулярность по типу, коррекция AnyBalanced, дифф, провал при записи под типом без сигнатуры. Тело #26 обновляется под новый скоуп. Замечания ревью #1 и #5 уходят вместе с гейтом. / «Отложить #26» / «Оставить скоуп»."
     answer: "Сузить (Recommended)"
+  - round: 5
+    question: "Design-review (раунд 2, GO) заметил: хелпер «мигрированный пул схемы» уже скопирован в 4 пакета, #26 добавил бы пятую копию. Design-writer решил: новый тест-пакет internal/storetest с Pool(), contract берёт его оттуда; копию store перенести нельзя (import cycle, проверено). Вопрос: переводить ли в этом PR три остальные копии (newScheduler в internal/scheduler, newIngestPool в internal/ingest, newBotPool в cmd/bot) на storetest.Pool? Задача этого не просит. Варианты: «Нет (Recommended)» — дизайн как есть, три копии остаются / «Да, перевести» — → design amendment via design-writer: решение с вашими словами в дизайне, плюс одна code-подзадача в группе A (правки scheduler_test.go, ingest main_test.go, cmd/bot readiness_test.go). Спека не меняется."
+    answer: "Да, перевести"
 ```
