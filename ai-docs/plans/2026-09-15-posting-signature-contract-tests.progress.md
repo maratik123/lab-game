@@ -10,13 +10,13 @@ _Updated: 2026-09-15 16:20 UTC_
 **Issue:** #26
 **Spec:** ai-docs/plans/2026-09-15-posting-signature-contract-tests.spec.md
 
-**current_step:** Step 9.5 — docs updated
+**current_step:** Step 10 — self-review REJECT (Round 1), addressing findings
 **last_passed_gate:** golangci-lint run | 2026-09-15T16:29:45Z | 26ff543
 **entry_args:** 26
 
 ## Next action
 
-**Do this immediately:** Step 10 — spawn self-review with the closed prompt list over `47b42e978cafc9f0a991ce3267f5b6612de44ec4..HEAD`.
+**Do this immediately:** Step 11 — fix self-review Round 1 findings R1-1..R1-7 (1–6 in `internal/contract` via code-writer Mode B, 7 in `ai-docs/context-status.md` in-thread), move each register row to fixed@<sha>, re-run gates, then Step 10 Round 2.
 
 ## Subtasks
 
@@ -57,6 +57,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 9**: Group B flagged the `ceilingMax` comment's "bounded only by the runtime's own default" as false; orchestrator re-measured a `testpg`-provisioned container: `PidsLimit=0`, `pids.max=max`, while `/usr/share/containers/containers.conf` carries only a commented `#pids_limit = 2048` — routed to code-writer Mode B as a comment-only fix.
 - **Step 9**: code-writer Mode B's `ceilingMax` comment fix reviewed (comment-only: nothing caps a provisioned server's process count) and committed as 26ff543 — its pre-commit coverage ratchet passed; after it `go build ./...`, `go vet ./...`, `golangci-lint fmt -d` (no diff), `golangci-lint run`, `make comment-refs`, `make import-guard`, `make file-limits` and `go test -count=1 ./internal/testdb/` all exit 0. No new production panic (panic-index unchanged); no posting-signature or event-dictionary addition (this task ships the framework, not a balance-moving mechanic). Step 9 ALL PASS.
 - **Step 9.5**: `context-status.md` entry appended with the `#TBD-at-Step-12` locator (8b5006e); `context.md` Code bullet names `internal/contract` and `internal/storetest`, Status date bumped. No `context.md` open question resolved by this task; no repo-root user-facing doc exists to contradict. AC9 row set to PASS from the Step 9 scratch-edit measurement; AC1–AC8 rows already PASS, re-confirmed by `go test -count=1 -v ./internal/contract/`.
+- **Step 10**: self-review Round 1 REJECT — 7 findings: 3 major (a DOC-4 "see" pointer in `DocumentType`'s comment; an unknown-basis entry named by id only; `TestCheck_judgesByOwnType` blind to AC5's mechanism), 4 minor (manual-correction shapes never checked under `shop_sale`; two further DOC-4 comment issues in `check.go`; `context-status.md` "many-core host" overclaims past 28 cores). None touches the spec or design. Re-litigation share 0 (Round 1).
 
 ## GO notes
 
@@ -98,6 +99,17 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 | id | raised | severity | status | verifying command |
 |----|--------|----------|--------|-------------------|
+| R1-1 | round 1 | major | open | `grep -n -i -E '//.*\bsee\b' internal/contract/*.go` prints nothing (control: `printf '// see NewRegistry\n' \| grep -c -i -E '//.*\bsee\b'` → 1) |
+| R1-2 | round 1 | major | open | `go test -count=1 -v -run '^TestCheck_unsignedTypeFails$/^unknown_basis$' ./internal/contract/` passes with a message assertion naming the unknown basis; with the zero-type rendering reverted to the empty string (cp-backup under `tmp/`, restore after) the same subtest goes RED |
+| R1-3 | round 1 | major | open | Mutate the `r.byType[e.docType]` lookup in `(*Registry).Check` to `r.byType[want]` (cp-backup under `tmp/`), run `go test -count=1 -v -run '^TestCheck_judgesByOwnType$' ./internal/contract/` → must print `--- FAIL: TestCheck_judgesByOwnType`; restore and `git diff --quiet -- internal/contract/check.go`. The AC5 row of `## AC Status` names a test that passes this probe RED |
+| R1-4 | round 1 | minor | open | `awk '/^func TestCheck_manualCorrectionAdmitsAnyBalancedSet/,/^}/' internal/contract/check_test.go > tmp/mc.txt; grep -c 'store.Event{Type: store.EventShopSale}' tmp/mc.txt` → ≥ 4, each paired with an `ErrNonconforming` assertion |
+| R1-5 | round 1 | minor | open | `grep -n 'per this project' internal/contract/check.go` prints nothing |
+| R1-6 | round 1 | minor | open | `sed -n '/^\/\/ Check judges/,/^func (r \*Registry) Check/p' internal/contract/check.go` carries no read-order sentence and no step walk |
+| R1-7 | round 1 | minor | open | `grep -n 'many-core' ai-docs/context-status.md` prints nothing |
+| R1-8 | round 1 | nit | accepted@1 — design D1 spells `(Registry).Check`; the code ships `NewRegistry(...) (*Registry, error)` and `(*Registry).Check`, which KD-42 records. A receiver spelling; no design decision changed; below severity floor | `go doc ./internal/contract Registry.Check` |
+| R1-9 | round 1 | nit | accepted@1 — `_ = tx.Rollback(ctx)` in `beginTx`'s cleanup (`internal/contract/helpers_test.go`) discards a test transaction's rollback result on teardown; established precedent in `internal/ingest/*_test.go`; below severity floor | `rg -n '_ = tx.Rollback' --type go . < /dev/null` |
+| R1-10 | round 1 | nit | accepted@1 — the `ceilingMax` comment's "nothing else caps the process count a server at full use reaches": measured `ulimit -u` 127945 and `kernel.pid_max` 4194304 against D16's 2905 processes at capacity; not a defect | `ulimit -u; cat /proc/sys/kernel/pid_max` |
+| R1-11 | round 1 | nit | accepted@1 — `conform` sends every non-`Expect` form down the balance-only path with no default arm; unreachable, because `validateSignature`'s default arm refuses an unknown form when the registry is built, and D12's switch rule does not govern an `if`; not a defect | `grep -n 'unknown signature form' internal/contract/registry.go` |
 
 ## Files touched
 
@@ -114,3 +126,65 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `internal/contract/declared.go`, `internal/contract/declared_test.go` (new — subtask 6)
 - `internal/testdb/server.go`, `internal/testdb/server_test.go` (`ceilingMax` 1000→2000 and its comment, two-client `TestCeiling_formula` case, refusal case's comment value — subtask 8)
 - `ai-docs/key-decisions.md` (KD-42 added; KD-20 count-free `Binaries`, `ceilingMax` 2000 and its basis, *Amended by #26*), `ai-docs/domain-invariants.md` (§ 5 mechanics subsection), `ai-docs/context.md` (layout line), `ai-docs/learnings.md` (two correction entries) — subtask 7
+
+## Self-Review (Round 1)
+
+**Verdict:** REJECT
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | internal/contract/contract.go:25-26 | major | DOC-4, review-judged half (a bare unqualified name used as a pointer): the `DocumentType` doc comment ends "There is no constructor for a player operation — see NewRegistry." That is the "see such-and-such" form DOC-4 bans by name; `NewRegistry` is not this comment's contract symbol, it is where the reader is sent. State the fact itself (a player operation has no constructor, and a declaration under that basis is refused) or drop the clause. | ⬜ Open |
+| 2 | internal/contract/contract.go:82-87, internal/contract/check.go:203-212, internal/contract/check_test.go:548-555 | major | D6 ("each wrap names its entries by id and type") and the Test Design for `TestCheck_unsignedTypeFails` ("Each case asserts … a message naming the unsigned type"; `unknown_basis`: "The entry is named as having no known basis"). The zero `DocumentType` renders as the empty string, so an entry under an unknown basis is named by id alone. Measured with a `t.Logf` inserted after `check_test.go:549` and then restored: `check_test.go:550: UNKNOWN_BASIS_ERR: contract: document type has no declared signature: #2 `. The `unknown_basis` subtest asserts only `ErrNoSignature` and `!ErrNonconforming`, and skips the message assertion the other three cases make through `assertUnsigned` (lines 437, 468, 499). Fix in code: an entry with no known basis gets a rendering that says so, and the subtest asserts it. | ⬜ Open |
+| 3 | internal/contract/check_test.go:364-404; `## AC Status` AC5 | major | AC5's named verifier cannot detect AC5's mechanism. Mutant: the `r.byType[e.docType]` lookup in `(*Registry).Check` (check.go:272) becomes `r.byType[want]`, i.e. every entry is judged by the wanted type's signature, which is the alternative D6 rejects. `go test -count=1 -v -run '^(TestCheck_judgesByOwnType\|TestCheck_joinsEveryClass\|TestCheck_unsignedTypeFails)$' ./internal/contract/` printed `--- PASS: TestCheck_judgesByOwnType`, while `--- FAIL: TestCheck_joinsEveryClass` and four `TestCheck_unsignedTypeFails` subtests failed. Both of its checks pass a `want` equal to the entry's own type, so own-type and want-type judging coincide. The Test Design's third bullet (the first window checked with `want = Event(shop_sale)`) is absent too, and would not discriminate either. The AC Status row cites only this test. AC5 is still guarded by the two tests that went red. The fix: make the test discriminate. For example, check a window that holds the shop_sale-shaped `shop_purchase` entry beside a conforming `shop_sale` entry, with `want = Event(shop_sale)`. Own-type judging returns `ErrNonconforming` there, and want-type judging returns nil. Then cite a discriminating test in the AC5 row. | ⬜ Open |
+| 4 | internal/contract/check_test.go:627-735; Decisions log, Step 8 subtask 5 | minor | Test Design, `TestCheck_manualCorrectionAdmitsAnyBalancedSet` (AC7): each shape "returns nil under `ManualCorrection`, and returns `ErrNonconforming` under `Event(shop_sale)`", with every money pair in "the direction the test registry's `shop_sale` does not declare". That means the same shape written under a `shop_sale` event. The shipped test writes no shape under `shop_sale`. The `money pair` case instead checks the manual-correction window with `want = shop_sale` and asserts `ErrNoDocument`, and the other three shapes have no second half. The decisions log calls this an authoring bug fixed by "re-deriving the correct expectation" and says the suite covers "every Test Design case"; both claims misread the design. AC7's second clause stays guarded by `TestNewRegistry_refuses` (its AnyBalanced cases) and by `TestCheck_failsOnUndeclaredWrite`. | ⬜ Open |
+| 5 | internal/contract/check.go:15-18 | minor | DOC-4: "It is declared here, by this package's own consumers, per this project's interfaces-declared-by-the-consumer rule." The sentence exists only to justify the placement by appeal to a rule outside the comment, and DOC-4 says "Where a sentence exists only to carry the reference, the sentence goes with it." The precedent at `internal/store/owner.go:13` is not a waiver. | ⬜ Open |
+| 6 | internal/contract/check.go:223-233 | minor | DOC-4, narration: `Check`'s doc comment walks the implementation. It says "for each, it reads the entry's own type … the Signature that type declares in r, and the entry's actual postings and item movements, then compares them", and "it reads every entry, posting and item movement past mark before judging any of them". The contract parts stay: own-type judging, `ErrNoSignature` before any read, the joined classes and the precondition. The read order is implementation. | ⬜ Open |
+| 7 | ai-docs/context-status.md (#26 entry, *What landed*, fifth bullet) | minor | The bullet says the change lets "`make test-contention` and `make test-db-up CLIENTS=2` provision again on a many-core host". That holds on the 16-core host measured. But the two-client ceiling `2 × 7 × p × 5 + 32` exceeds 2000 once p ≥ 29, so a 32-core host still refuses. KD-20's #26 amendment correctly says "On a 16-core host". Name the measured host instead of "many-core". | ⬜ Open |
+
+**Recorded, not raised:** R1-8 to R1-11 in `## Review register`, each `accepted@1` with its reason.
+
+**What was checked.**
+- **Prompt:** the invocation line, Spec, Design, Progress and the commit range, and nothing else. No contamination.
+- **Spec (task source: the state file's `gh_issue` body, `issue_body_status: current`, plus `prior_qa` rounds 1–6):**
+  - Scope 1–8 and AC1–AC9 were traced to the diff.
+  - The narrowed scope holds (answer 3.2): no completeness gate, no empty signature, no player-operation row.
+  - D14 is on the owner's words (answers 5.1 and 6.1). Nothing outside the spec and design scope.
+- **Design conformance:**
+  - D1–D8 and D10–D16 checked against `contract.go`, `registry.go`, `conform.go`, `check.go`, `declared.go`, `errors.go`, `storetest.go`, and `testdb/server.go` with its test.
+  - Every decomposition file is present.
+  - GO notes G1–G12 are all `folded`, and each fold is visible in the design (the D6 zero mark, D8 "each leg on its own line", the D1 citation at `errors.go:11`, subtask 8's run condition and dependencies, subtask 7(a)'s two phrases).
+- **Design verification re-run against the shipped tree:**
+  - `go list -deps ./cmd/bot`: 346 lines, 0 match `internal/(contract|storetest)` (control 1). PASS.
+  - Go paths changed outside `internal/contract/` and `internal/storetest/`: exactly subtask 2's 19 `_test.go` files plus D15's `internal/testdb/server.go`, `server_test.go` and `cmd/testpg/run_test.go`. PASS.
+  - No `internal/store/migrations` path in the diff (count 0). PASS.
+  - `rg -n 'func new(Scheduler|IngestPool|BotPool)\(' --type go .`: exit 1, no output (control 1). PASS.
+  - The scheduler/ingest diff is purely the mechanical move: the only non-call-site lines are the two deleted helpers and their imports. PASS.
+  - AC9 scratch edit: an added `Expect` row shows one `+` line per leg naming scope, account, kind, sign and cardinality, and a sign change shows exactly one `-`/`+` pair. `declared.go` was restored byte-identical (`git diff --quiet`). PASS.
+  - The sibling `TestRun_upCreatesContainer_persistsThisInvocationsClientCount` does pass `"--parallel", "1"`. PASS.
+- **Gates at HEAD, all run by this review:**
+  - `go vet ./...` 0; `golangci-lint run` 0 issues; `golangci-lint fmt -d` empty.
+  - `make comment-refs` 0; `make file-limits` 0; `make import-guard` 0.
+  - `go test -race -count=1 ./internal/contract/ ./internal/storetest/ ./internal/testdb/`: all `ok`, 0 `DATA RACE`.
+  - `make test` and `make test-race` over the moved suites are recorded green in Step 9. Since then only a comment and docs changed in Go-adjacent files.
+- **Mutants, one shared server via `cmd/testpg`, originals restored clean:**
+  - judge-by-want: `TestCheck_judgesByOwnType` stays GREEN (finding 3); `joinsEveryClass` and `unsignedTypeFails` go RED.
+  - An unknown basis classified as a manual correction: `unsignedTypeFails/unknown_basis` goes RED.
+  - An empty-journal mark of 1: `TestNewMark_emptyJournal` goes RED.
+  - `>=` in the entries read's mark predicate: `TestCheck_ignoresEntriesBeforeMark` goes RED.
+- **Safety:**
+  - Panic audit over the 8 changed non-test files: 0 hits (control 1). No panic-index row is owed.
+  - No `_ = err` in production code. Errors are wrapped with `%w` and operation context. The only `context.Background()` outside tests is `storetest.Pool`'s own root, which carries a reasoned `//nolint:forbidigo`.
+  - No `go` statement added. `Unchecked`: none.
+- **Domain invariants:**
+  - The raw-SQL ledger writes are in `_test.go` fixtures only (`unknown_basis`, unbalanced manual correction).
+  - No `UPDATE account_balance`, `time.Now()` or `math/rand` in changed non-test files (0 hits, control 1).
+  - No balance constant, no schema change, no outbound send, no secret.
+  - Telemetry: no mechanic added.
+- **Tests:**
+  - A leak-checking `TestMain` in both new packages.
+  - Table and property tests present, and conform-level assertions exact.
+  - Postgres invariants are tested against Postgres.
+  - Coverage ratchet 91.78 → 91.90.
+- **Documentation:**
+  - KD-42, the new `domain-invariants.md` § 5 subsection, the KD-20 #26 amendment, `context.md` and `context-status.md` were checked claim by claim. The 1152 arithmetic, the six pins, § 5 being the telemetry section, the Sub-check 9 citation in the new learnings entry, `learnings.md` append-only, and "neither write path returns an id" all hold. One inaccurate claim was found (finding 7).
+  - Progress file: `current_step`, `last_passed_gate` and `entry_args` are present. `parent_skill` is correctly absent, because `/task` is the parent flow.
