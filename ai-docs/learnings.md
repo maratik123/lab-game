@@ -1116,3 +1116,15 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** A question put to the owner is an assertion like any spec row. A claim that a construct does not exist needs a raw read of the package that would own it, or an `ast-index` lookup for the concept (`ast-index class "Registry"`), never a miss on one guessed identifier — and an option's description is exactly where the owner reads the cost of choosing it.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-15 — process — relayed interview questions that took an issue's completeness gate as given, without checking it against the design corpus
+**What happened:** The #26 issue body required "a registry completeness check: a basis-document type with no declared signature fails the suite … a gate, not a disposition". Round-1 question 2 of its `/interview` presupposed that gate («Что проверка полноты требует от такого типа?»), and the orchestrator forwarded it after verifying only the §11 quotes the questions cited. `~/lab-private/DESIGN.md` §13.4 binds the signature to a mechanic that moves balances and gives the declaration check to the harness, whose review checklists already carry it. The answers built on the presupposition added explicitly-empty signatures for every event type, a task-type axis in `cmd/bot` and a player-operation row; design rounds 1–2 grew a catalog audit, a scheduler accessor and a rewritten assembly test around it, and two design-review notes existed only because of it. After the first design GO the owner asked whether the scope was inflated, and narrowed it.
+**Rule:** Before forwarding a question whose options presuppose a scope item, check that item against its source of authority — the design corpus for a mechanic, not the issue body that restates it. A gate an issue adds beyond the design is surfaced to the owner as such before any question builds on it.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-15 — process — recorded Step-7 owner answers under the closed interview round instead of the next round number
+**What happened:** While routing #26's design-review GO note, the orchestrator appended the owner's two answers to `prior_qa` under `round: 3` — the round `spec-writer` had already closed with `ready` — before reading `.claude/skills/task/reference.md` § Spec Amendment recipe, whose step 4 records under the next round number and advances `round`. The entries were left as `3.1` and `3.2`, because `prior_qa` is append-only and anchors resolve against either numbering; `round` was advanced to 4 for the amendment.
+**Rule:** Read the recipe that governs a routing step before the first write it prescribes — a record on an append-only surface cannot be corrected in place.
+**Kind:** correction
+**Escalated?** no

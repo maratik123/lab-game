@@ -30,17 +30,18 @@ gh_issue:
 
     - A signature declaration form: per basis-document type, the expected postings (which account definitions, which kinds, which signs, which cardinality) and the expected item movements.
     - A test harness that, given a document type and a real transaction, asserts the actual postings and movements conform — including that nothing unexpected was written.
-    - A registry completeness check: a basis-document type with no declared signature fails the suite. **It runs in CI as part of the test gate `make verify` already carries, and it fails the build** — `docs/DESIGN.md:430` (§13.4) states the declaration as a process invariant and `:328` (§11) defines what is declared, so this is a gate, not a disposition. A check that runs only when someone remembers is the disposition.
-    - Application to every document type that exists when this lands.
+    - A write under a basis-document type that has no declared signature fails the check.
+    - The manual correction's signature — any balanced set — declared as the design states it.
 
     ## Out of scope
 
     - Signatures for mechanics that do not exist yet — each ships with its mechanic, which is the point.
     - The event-dictionary half of the obligation — #21 owns the registry; this issue owns the postings half.
+    - A completeness gate that requires a declared signature for every existing basis-document type. `DESIGN.md` §13.4 binds the signature to a mechanic that moves balances and gives the declaration check to the harness, whose review checklists already rate a balance-moving mechanic without a posting signature or a contract test as `major`. Narrowed by the owner during the spec interview, 2026-09-15.
 
     ## Telemetry obligation
 
-    This issue is the enforcement mechanism for the posting half of the telemetry axiom.
+    This issue is the check mechanism for the posting half of the telemetry axiom; each balance-moving mechanic declares its signature and exercises the check in its own PR.
 
     ## Open questions to close in the spec
 
@@ -56,7 +57,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 3
+round: 4
 agent_id: ae858b7d19a9300e8
 prior_qa:
   - round: 1
@@ -74,4 +75,7 @@ prior_qa:
   - round: 3
     question: "Design-review дал GO, но одно замечание упирается в спеку. Дословно (#5, note): «AC11 requires \"every existing type that no balance-moving mechanic writes under\" to be explicitly empty. On the merged tree no production code writes under the manual correction either, yet D10 gives it `AnyBalanced`. That follows from Scope 6 and AC8, but the design never says so. A literal Step 9 check of AC11 against the `TestDeclared_forms` log could flag it.» Предложение ревьюера: «In D10, and in the `TestDeclared_forms` bullet, state that Scope 6 carves the manual correction out of AC11. This only records the design's reading. Scope 6 is the more specific row, so the spec itself doesn't contradict.» Как поступить?"
     answer: "Давай почитай issue, смежные issue и DESiGN.md, может, тут в спеке искусственно раздут скоуп, в том числе и мной?"
+  - round: 3
+    question: "Гейт полноты по всем типам — надстройка issue #26 над DESIGN.md (§13.4 ограничивает обязанность механиками, двигающими балансы, и отдаёт проверку харнессу), а ответы 1.2 и 2.1 его расширили. Как поступить со скоупом #26? Варианты: «Сузить (Recommended)» — → spec amendment via spec-writer + design-review re-run. Убрать гейт полноты по всем типам и всё, что на нём держится: явно пустые сигнатуры, строку операции игрока, ось тасок в cmd/bot. Остаётся: форма, проверка по транзакции, гранулярность по типу, коррекция AnyBalanced, дифф, провал при записи под типом без сигнатуры. Тело #26 обновляется под новый скоуп. Замечания ревью #1 и #5 уходят вместе с гейтом. / «Отложить #26» / «Оставить скоуп»."
+    answer: "Сузить (Recommended)"
 ```
