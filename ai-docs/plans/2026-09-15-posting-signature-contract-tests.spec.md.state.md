@@ -71,4 +71,7 @@ prior_qa:
   - round: 2
     question: "Выбран «тип в таблице», но у операции игрока нет типа внутри таблицы: колонки вида действия нет, и продовый код сейчас не создаёт ни одной операции игрока. Как операция игрока входит в проверку полноты? (Поправка к раунду 1: реестр типов тасок есть — scheduler.Registry; неверным было только это замечание в описании варианта.)"
     answer: "Целиком, пусто"
+  - round: 3
+    question: "Design-review дал GO, но одно замечание упирается в спеку. Дословно (#5, note): «AC11 requires \"every existing type that no balance-moving mechanic writes under\" to be explicitly empty. On the merged tree no production code writes under the manual correction either, yet D10 gives it `AnyBalanced`. That follows from Scope 6 and AC8, but the design never says so. A literal Step 9 check of AC11 against the `TestDeclared_forms` log could flag it.» Предложение ревьюера: «In D10, and in the `TestDeclared_forms` bullet, state that Scope 6 carves the manual correction out of AC11. This only records the design's reading. Scope 6 is the more specific row, so the spec itself doesn't contradict.» Как поступить?"
+    answer: "Давай почитай issue, смежные issue и DESiGN.md, может, тут в спеке искусственно раздут скоуп, в том числе и мной?"
 ```
