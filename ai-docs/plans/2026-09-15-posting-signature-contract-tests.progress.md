@@ -10,13 +10,13 @@ _Updated: 2026-09-15 16:20 UTC_
 **Issue:** #26
 **Spec:** ai-docs/plans/2026-09-15-posting-signature-contract-tests.spec.md
 
-**current_step:** Step 11 — review fixes complete (Round 1)
+**current_step:** Step 10 — self-review APPROVE (Round 2)
 **last_passed_gate:** golangci-lint run | 2026-09-15T16:54:34Z | 7a9458b
 **entry_args:** 26
 
 ## Next action
 
-**Do this immediately:** Step 10 Round 2 — re-verify R1-1..R1-7 with the Round 1 reviewer over `47b42e978cafc9f0a991ce3267f5b6612de44ec4..HEAD`.
+**Do this immediately:** Step 12 — finalise INDEX.md, move spec/design to done/, inbox propagation, task-run record, commit, push, retire state files, open the PR.
 
 ## Subtasks
 
@@ -59,6 +59,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 9.5**: `context-status.md` entry appended with the `#TBD-at-Step-12` locator (8b5006e); `context.md` Code bullet names `internal/contract` and `internal/storetest`, Status date bumped. No `context.md` open question resolved by this task; no repo-root user-facing doc exists to contradict. AC9 row set to PASS from the Step 9 scratch-edit measurement; AC1–AC8 rows already PASS, re-confirmed by `go test -count=1 -v ./internal/contract/`.
 - **Step 10**: self-review Round 1 REJECT — 7 findings: 3 major (a DOC-4 "see" pointer in `DocumentType`'s comment; an unknown-basis entry named by id only; `TestCheck_judgesByOwnType` blind to AC5's mechanism), 4 minor (manual-correction shapes never checked under `shop_sale`; two further DOC-4 comment issues in `check.go`; `context-status.md` "many-core host" overclaims past 28 cores). None touches the spec or design. Re-litigation share 0 (Round 1).
 - **Step 11**: Round 1 findings R1-1..R1-6 authored by code-writer Mode B and R1-7 in-thread, reviewed and committed as 7a9458b (coverage ratchet 91.90% holds). Measurement pass run by the orchestrator: R1-1 `see` pointer grep clean (control 1); R1-5 and R1-6 comment greps clean; R1-7 `many-core` absent; R1-4 four `shop_sale` writes in the manual-correction test; R1-2 `unknown_basis` subtest PASS, and with the `unknown_basis` rendering removed it FAILs on the message assertion (mutant built, restored byte-identical); R1-3 with `r.byType[want]` the mutant builds and `TestCheck_judgesByOwnType` FAILs on the mixed window (restored byte-identical). Gates after the fix: build, vet, fmt -d, lint, comment-refs, `go test -race -count=1 ./internal/contract/` all exit 0, no data race. No objection raised; no design or spec amendment.
+- **Step 10**: self-review Round 2 APPROVE — two rounds; R1-1..R1-7 verified fixed by the reviewer's own re-runs and mutants; R2-1 and R2-2 (test-comment wording) accepted@2 below the severity floor. Re-litigation share 0 (no row re-opened).
 
 ## GO notes
 
@@ -111,6 +112,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | R1-9 | round 1 | nit | accepted@1 — `_ = tx.Rollback(ctx)` in `beginTx`'s cleanup (`internal/contract/helpers_test.go`) discards a test transaction's rollback result on teardown; established precedent in `internal/ingest/*_test.go`; below severity floor | `rg -n '_ = tx.Rollback' --type go . < /dev/null` |
 | R1-10 | round 1 | nit | accepted@1 — the `ceilingMax` comment's "nothing else caps the process count a server at full use reaches": measured `ulimit -u` 127945 and `kernel.pid_max` 4194304 against D16's 2905 processes at capacity; not a defect | `ulimit -u; cat /proc/sys/kernel/pid_max` |
 | R1-11 | round 1 | nit | accepted@1 — `conform` sends every non-`Expect` form down the balance-only path with no default arm; unreachable, because `validateSignature`'s default arm refuses an unknown form when the registry is built, and D12's switch rule does not govern an `if`; not a defect | `grep -n 'unknown signature form' internal/contract/registry.go` |
+| R2-1 | round 2 | minor | accepted@2 — below severity floor. The comments on three of R1-4's new `shop_sale` halves (`internal/contract/check_test.go:732-734`, `770-772`, `817-819`) attribute the rejection to undeclared experience, slot and movement legs. Measured: with the unexpected-row pass disabled in `conform`, all four subtests of `TestCheck_manualCorrectionAdmitsAnyBalancedSet` still PASS, because the world→player money pair, or the missing declared legs, already trips cardinality. The assertions match the Test Design; only the stated cause is wrong. The unexpected-row pass is guarded by `TestConform_undeclaredRows` and `TestCheck_failsOnUndeclaredWrite` | Disable both `if !declared…[key]` branches in `conform` (cp-backup under `tmp/`), run `go test -count=1 -v -run '^TestCheck_manualCorrectionAdmitsAnyBalancedSet$' ./internal/contract/` → PASS, restore |
+| R2-2 | round 2 | minor | accepted@2 — below severity floor. `assertUnsigned`'s doc comment (`internal/contract/check_test.go:602-604`) says it asserts the error names "want" and matches no `ErrNoDocument`. Its body asserts `ErrNoSignature`, the given substring (the unsigned type, not want) and `!ErrNonconforming` only; the Test Design asks for exactly those three | `awk '/^\/\/ assertUnsigned/,/^}/' internal/contract/check_test.go` |
 
 ## Files touched
 
@@ -189,3 +192,35 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Documentation:**
   - KD-42, the new `domain-invariants.md` § 5 subsection, the KD-20 #26 amendment, `context.md` and `context-status.md` were checked claim by claim. The 1152 arithmetic, the six pins, § 5 being the telemetry section, the Sub-check 9 citation in the new learnings entry, `learnings.md` append-only, and "neither write path returns an id" all hold. One inaccurate claim was found (finding 7).
   - Progress file: `current_step`, `last_passed_gate` and `entry_args` are present. `parent_skill` is correctly absent, because `/task` is the parent flow.
+
+## Self-Review (Round 2)
+
+**Verdict:** APPROVE
+
+| # | File:line | Severity | Finding | Status |
+|---|-----------|----------|---------|--------|
+| 1 | internal/contract/contract.go:22-27 | major | R1-1 — fix verified: the "see NewRegistry" pointer is gone, replaced by the fact itself. `grep -n -i -E '//.*\bsee\b' internal/contract/*.go` exit 1, no output (control 1). | ✅ Fixed |
+| 2 | internal/contract/contract.go:81-91, check_test.go:581 | major | R1-2 — fix verified: the zero `DocumentType` renders `unknown_basis`, and the subtest asserts it through `assertUnsigned`. Mutant with the rendering set back to `""`: `check_test.go:581: Check() error = contract: document type has no declared signature: #2 , want it to name "unknown_basis"`, `--- FAIL: TestCheck_unsignedTypeFails/unknown_basis`. | ✅ Fixed |
+| 3 | internal/contract/check_test.go:405-434 | major | R1-3 — fix verified: the mixed window now discriminates. Mutant `r.byType[want]`: `check_test.go:430: Check(want=shop_sale, mixed window) error = <nil>, want errors.Is ErrNonconforming`, `--- FAIL: TestCheck_judgesByOwnType`. The AC5 row's cited test is now a real verifier. | ✅ Fixed |
+| 4 | internal/contract/check_test.go:686-835 | minor | R1-4 — fix verified: 4 `shop_sale` writes and 8 `ErrNonconforming` references in the test. Mutant where every signature takes the balance-only path: all four new halves go RED (`check_test.go:701`, `748`, `786`, `832` report `error = <nil>`). | ✅ Fixed |
+| 5 | internal/contract/check.go:15-17 | minor | R1-5 — fix verified: `grep -n 'per this project' internal/contract/check.go` exit 1 (control 1). | ✅ Fixed |
+| 6 | internal/contract/check.go:222-240 | minor | R1-6 — fix verified: the doc comment keeps own-type judging, the early `ErrNoSignature`, the joined classes and the precondition; the read-order sentence and the step walk are gone. | ✅ Fixed |
+| 7 | ai-docs/context-status.md (#26 entry) | minor | R1-7 — fix verified: `grep -n 'many-core' ai-docs/context-status.md` exit 1 (control 1); the bullet now names "the sixteen-core host where they refused". | ✅ Fixed |
+
+**Below the severity floor:** 2 minor items, both in `internal/contract/check_test.go`: misattributed causes in three new `shop_sale`-half comments (R2-1), and `assertUnsigned`'s doc comment overstating its assertions (R2-2). Both are in `## Review register` as `accepted@2`.
+
+**What was checked.**
+- **Prompt:** exactly the closed list, no contamination. Round number taken from the one existing `## Self-Review` section.
+- **Scope of the round:** the diff since round 1, `99c649c..HEAD`: fix commit `7a9458b` (`check.go`, `check_test.go`, `contract.go`, `context-status.md`) and the progress-file commits `a5579df` and `1a99c27`. Every R1 row's verifying command was run by this review. The round-1 table's `✅ Fixed` cells agree with the register's `fixed@7a9458b` rows.
+- **New code introduced by the fix:**
+  - The `String()` branch for an empty basis is reachable only through `classify`'s default arm and the zero value. `NewRegistry`'s refusal of the zero type now reads `unknown_basis: not a declarable document type`, and `TestNewRegistry_refuses` asserts no substring for that case.
+  - The new test windows each take their own mark.
+  - `check_test.go` is 985 lines, under the 1500 test hard limit.
+- **Gates at HEAD:**
+  - `go vet ./...` 0; `golangci-lint run` 0 issues; `golangci-lint fmt -d` empty.
+  - `make comment-refs` 0; `make file-limits` 0.
+  - `go test -race -count=1 ./internal/contract/` `ok`, 0 `DATA RACE`.
+- **Mutants:** four ran and every original was restored (`git diff --quiet` clean).
+  - The R1-2, R1-3 and balance-only mutants go RED as recorded above.
+  - The unexpected-pass-skipped mutant stays GREEN on `TestCheck_manualCorrectionAdmitsAnyBalancedSet`, which is what grounds R2-1. It does not undercut R1-4, because the Test Design's shapes reject on the money pair's direction.
+- **Accepted rows R1-8 to R1-11:** nothing in the fix commit touches their subjects, so none was re-raised.
