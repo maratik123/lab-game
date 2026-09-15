@@ -10,13 +10,13 @@ _Updated: 2026-09-15 16:20 UTC_
 **Issue:** #26
 **Spec:** ai-docs/plans/2026-09-15-posting-signature-contract-tests.spec.md
 
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** golangci-lint run | 2026-09-15T16:29:45Z | 26ff543
 **entry_args:** 26
 
 ## Next action
 
-**Do this immediately:** Step 9.5 — append the context-status.md entry (PR locator `#TBD-at-Step-12`) and bump context.md's Code status bullet; then Step 10 self-review.
+**Do this immediately:** Step 10 — spawn self-review with the closed prompt list over `47b42e978cafc9f0a991ce3267f5b6612de44ec4..HEAD`.
 
 ## Subtasks
 
@@ -56,6 +56,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 9**: gates at `c8abffa` — `go build ./...`, `go vet ./...`, `golangci-lint fmt -d`, `golangci-lint run`, `make comment-refs`, `make import-guard`, `make file-limits`, `make test`, `make test-race` all exit 0; fresh `go test -race -count=1` over `internal/contract`, `internal/storetest`, `internal/testdb`, `internal/scheduler`, `internal/ingest`, `cmd/bot`, `cmd/testpg` all ok, no data race. Panic-index sync: no `panic(`/`log.Fatal`/`func Must` in changed production files (controls matched) — no row. Domain sweep: posting/movement writes and `time.Now()` hits are all in `_test.go` fixtures (contract tests' own writes, raw-SQL unbalanced-row test, moved scheduler/ingest call sites) — legitimate; no balance UPDATE, balance constant or secret. AC9 scratch edit: an added `Expect` row shows one added line per leg naming scope, account, kind, sign and cardinality, a sign change shows one changed line, `declared.go` restored byte-identical.
 - **Step 9**: Group B flagged the `ceilingMax` comment's "bounded only by the runtime's own default" as false; orchestrator re-measured a `testpg`-provisioned container: `PidsLimit=0`, `pids.max=max`, while `/usr/share/containers/containers.conf` carries only a commented `#pids_limit = 2048` — routed to code-writer Mode B as a comment-only fix.
 - **Step 9**: code-writer Mode B's `ceilingMax` comment fix reviewed (comment-only: nothing caps a provisioned server's process count) and committed as 26ff543 — its pre-commit coverage ratchet passed; after it `go build ./...`, `go vet ./...`, `golangci-lint fmt -d` (no diff), `golangci-lint run`, `make comment-refs`, `make import-guard`, `make file-limits` and `go test -count=1 ./internal/testdb/` all exit 0. No new production panic (panic-index unchanged); no posting-signature or event-dictionary addition (this task ships the framework, not a balance-moving mechanic). Step 9 ALL PASS.
+- **Step 9.5**: `context-status.md` entry appended with the `#TBD-at-Step-12` locator (8b5006e); `context.md` Code bullet names `internal/contract` and `internal/storetest`, Status date bumped. No `context.md` open question resolved by this task; no repo-root user-facing doc exists to contradict. AC9 row set to PASS from the Step 9 scratch-edit measurement; AC1–AC8 rows already PASS, re-confirmed by `go test -count=1 -v ./internal/contract/`.
 
 ## GO notes
 
@@ -91,7 +92,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 | AC6 | PASS — `TestCheck_unsignedTypeFails`, `TestNewRegistry_refusesPlayerOperation` |
 | AC7 | PASS — `TestConform_anyBalanced`, `TestNewRegistry_refuses` (AnyBalanced-on-non-ManualCorrection cases), `TestCheck_manualCorrectionAdmitsAnyBalancedSet` |
 | AC8 | PASS — `TestConform_anyBalanced`, `TestCheck_manualCorrectionAdmitsAnyBalancedSet` |
-| AC9 | NOT_TESTED — deferred to Step 9's scratch-edit measurement (design § AC9), after subtask 6 ships `declared.go` |
+| AC9 | PASS — Step 9 scratch edit of `declared.go`: an added `Expect` row shows one added line per leg naming scope, account, kind, sign and cardinality; a sign change shows one changed line; file restored byte-identical |
 
 ## Review register
 
