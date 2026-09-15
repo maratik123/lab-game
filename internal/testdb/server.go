@@ -231,10 +231,18 @@ const (
 	// server already offers.
 	imageDefaultCeiling = 100
 	// ceilingMax is the largest ceiling this project will ask a container to
-	// start with, measured against Image with this project's tmpfs and
-	// fsync settings: `podman run` with `-c max_connections=1000` starts and
-	// serves on those settings.
-	ceilingMax = 1000
+	// start with. It is measured at capacity, not at start-up: a server
+	// started with this project's tmpfs and fsync settings and this value
+	// as max_connections was driven to hold every one of those connections
+	// at once, and it served all of them. The provisioning path that starts
+	// such a container sets no pids limit, so the process count a server at
+	// full use reaches is bounded only by the runtime's own default, not by
+	// anything this project asks for. What bounds the value is therefore
+	// host memory at full use, not the server's own start-up footprint,
+	// which stays small regardless of the configured maximum. Raising this
+	// value again needs the same at-capacity measurement on the host meant
+	// to carry it; editing the number alone is not enough.
+	ceilingMax = 2000
 	// ceilingSlack covers the server's own reserved connection slots
 	// (superuser_reserved_connections, measured at 3 on Image) plus the one
 	// test that raises its pool cap above schemaMaxConns.
