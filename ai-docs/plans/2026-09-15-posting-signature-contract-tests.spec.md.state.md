@@ -57,7 +57,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 5
+round: 6
 agent_id: ae858b7d19a9300e8
 prior_qa:
   - round: 1
@@ -81,4 +81,7 @@ prior_qa:
   - round: 5
     question: "Design-review (раунд 2, GO) заметил: хелпер «мигрированный пул схемы» уже скопирован в 4 пакета, #26 добавил бы пятую копию. Design-writer решил: новый тест-пакет internal/storetest с Pool(), contract берёт его оттуда; копию store перенести нельзя (import cycle, проверено). Вопрос: переводить ли в этом PR три остальные копии (newScheduler в internal/scheduler, newIngestPool в internal/ingest, newBotPool в cmd/bot) на storetest.Pool? Задача этого не просит. Варианты: «Нет (Recommended)» — дизайн как есть, три копии остаются / «Да, перевести» — → design amendment via design-writer: решение с вашими словами в дизайне, плюс одна code-подзадача в группе A (правки scheduler_test.go, ingest main_test.go, cmd/bot readiness_test.go). Спека не меняется."
     answer: "Да, перевести"
+  - round: 6
+    question: "Уточнение к «Да, перевести»: в варианте я назвал 3 файла, но это только определения хелперов. Вызовы newScheduler есть ещё в 10 тестовых файлах internal/scheduler, newIngestPool — в 6 файлах internal/ingest (newBotPool — только внутри readiness_test.go). Правка механическая: newX(t) → storetest.Pool(t) + импорт; оставить старые имена однострочными обёртками нельзя (AGENTS.md: имя, которое только делегирует, удаляется). Переводим со всеми вызовами? Варианты: «Да, со всеми вызовами» — D14 как есть: хелперы удаляются, все тестовые вызовы в internal/scheduler, internal/ingest и cmd/bot переходят на storetest.Pool; подзадача 2 группы A с гейтами build/test/race. Дизайн уже так написан — сразу в Step 8. / «Нет, не переводить» — → design amendment via design-writer: D14 снимается, подзадача 2 уходит, три копии остаются; storetest пока использует только contract."
+    answer: "Да, со всеми вызовами"
 ```
