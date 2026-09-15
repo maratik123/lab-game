@@ -13,7 +13,7 @@ gh_issue:
   body: |
     ## What
 
-    The design promises that every basis-document type has an expected posting set, and that a contract test checks actual postings against it. That check does not exist. This issue builds the framework and applies it to the document types that exist by then.
+    The design promises that every basis-document type has an expected posting set, and that a contract test checks actual postings against it. That check does not exist. This issue builds the framework; each balance-moving mechanic applies it to its own document types in its own PR.
 
     ## Design refs
 
