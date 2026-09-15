@@ -15,6 +15,7 @@
 7. A manual correction's signature admits any item movements as well. [answer 1.3: "Любые"]
 8. A change to a document type's signature is visible to a reviewer in the pull request's diff. [task: "how a reviewer sees a signature change in a diff"]
 9. Signatures are declared for every basis-document type that exists when this task lands. [task: "Application to every document type that exists when this lands"]
+10. A player operation, which has no type within its table, is one basis-document type as a whole, and it declares an explicitly empty signature. [answer 2.1: "Целиком, пусто"]
 
 ## Out of scope
 
@@ -23,7 +24,7 @@
 
 ## Deferred
 
-None.
+- A player operation's action kind, and a signature per kind | the first mechanic that writes under a player operation introduces both in its own pull request, replacing the whole-table empty signature this task declares | no — ships with that mechanic
 
 ## Key decisions
 
@@ -32,7 +33,7 @@ None.
 | What is a basis-document type that carries a signature of its own: each basis table, or each type within one? See § Source conflicts. | A type within a basis table: each event type (such as `shop_sale`), each task type, and the manual correction carries its own signature. [answer 1.1: "Тип в таблице"] |
 | What does a type that exists but has no balance-moving mechanic yet declare, and does the completeness check require a declaration from it? | It declares an explicitly empty signature — nothing may be written under it — and the completeness check requires that declaration like any other; the mechanic's own pull request replaces it. [answer 1.2: "Явно пустая"] |
 | Does a manual correction's "any balanced set" extend to the item movements written under it? | Yes: a manual correction admits any item movements. [answer 1.3: "Любые"] |
-| A player operation has no type within its table. How does it enter the completeness check? | TBD |
+| A player operation has no type within its table. How does it enter the completeness check? | As a whole: the player-operation table is one type with an explicitly empty signature until a mechanic gives player operations an action kind. [answer 2.1: "Целиком, пусто"] |
 
 ## Source conflicts
 
@@ -56,7 +57,7 @@ Site C — task types are named as basis documents:
 
 [source: 48f7c2e:~/lab-private/DESIGN.md § 11. Технические решения · grep -n 'Типы тасок = документы-основания' ~/lab-private/DESIGN.md]
 
-Resolution: the owner chose the type within a table (round 1, answer 1.1): each event type, each task type and the manual correction carries its own signature. How a player operation, which has no type within its table, is covered is still open (Key decisions row 4).
+Resolution: the owner chose the type within a table (round 1, answer 1.1): each event type, each task type and the manual correction carries its own signature. A player operation, which has no type within its table, is one type as a whole with an explicitly empty signature (round 2, answer 2.1).
 
 ## Acceptance Criteria
 
@@ -74,6 +75,7 @@ Resolution: the owner chose the type within a table (round 1, answer 1.1): each 
 | AC10 | Every basis-document type that exists on the merged tree has a declared signature, and the completeness check passes there. [task: "Application to every document type that exists when this lands"] |
 | AC11 | On the merged tree, every existing type that no balance-moving mechanic writes under declares an explicitly empty signature. [answer 1.2: "Явно пустая"] |
 | AC12 | A change to a document type's declared signature shows in a pull request's diff as a change a reviewer can read as a change in the postings or item movements that type expects. [task: "how a reviewer sees a signature change in a diff"] |
+| AC13 | On the merged tree, a player operation is one basis-document type as a whole with an explicitly empty signature, so a transaction that writes any posting or any item movement under a player operation fails the contract check. [answer 2.1: "Целиком, пусто"] |
 
 ## Open questions
 
