@@ -10,8 +10,8 @@ _Updated: 2026-09-15 12:21 UTC_
 **Issue:** #26
 **Spec:** ai-docs/plans/2026-09-15-posting-signature-contract-tests.spec.md
 
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** none yet
+**current_step:** Step 8 — subtask 1 of 6 complete
+**last_passed_gate:** go build ./...; go vet ./...; golangci-lint fmt -d; golangci-lint run; go test ./internal/testdb/...; make comment-refs (all green at 9c23758)
 **entry_args:** 26
 
 ## Next action
@@ -21,8 +21,8 @@ _Updated: 2026-09-15 12:21 UTC_
 ## Subtasks
 
 Group A — code, `sonnet`/`medium` via `code-writer`:
-- [ ] 1. The shared pool fixture — `internal/storetest` (D13)  ← CURRENT
-- [ ] 2. Move the scheduler, ingest and bot suites onto `storetest.Pool` (D14)
+- [x] 1. The shared pool fixture — `internal/storetest` (D13)
+- [ ] 2. Move the scheduler, ingest and bot suites onto `storetest.Pool` (D14)  ← CURRENT
 - [ ] 3. Package scaffold, vocabulary and registry — `internal/contract` (D1–D5, D12)
 - [ ] 4. The pure matcher (D4, D7, D11)
 - [ ] 5. The contract check against real transactions (D6, D11)
@@ -38,6 +38,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: design-review round 1 GO; its notes 1–4 folded (e6bced8); note 5 put to the owner, whose answers 3.1 and 3.2 narrowed the scope — spec amended in interview round 4 (7883ed1), issue #26 body updated.
 - **Step 7**: design reconciled with the amended spec (b4b1240); design-review round 2 GO; its notes and recommendations folded (4fc6316).
 - **Step 7**: GO note 3 (pool-helper duplication) raised an owner-scope question; owner answers 5.1 «Да, перевести» and 6.1 «Да, со всеми вызовами» — D14 and subtask 2 (3e5762b, 47b42e9). Pre-amendment round-1 GO notes are no longer authoritative (Spec Amendment recipe step 7).
+- **Step 8, subtask 1** (9c23758): built `internal/storetest` per D13 exactly as designed (`Pool`, its own `TestMain` via `leaktest.Main(m, testdb.Main)`, and `TestPool_migratedAndEmpty`). `Pool`'s root context is `context.Background()` with a `//nolint:forbidigo` in the same shape as `testdb.Schema`'s own root, since `storetest.go` is a non-test file forbidigo's `_test.go` exclusion does not cover. Adding `storetest` as a new `testdb.Main` caller made `internal/testdb`'s own `TestBinaries_matchesTree` fail; `Binaries` moved 5→6 and `TestCeiling_formula`'s fixture (comments and `want` values) were recomputed for the new constant — both in the same commit, in `internal/testdb`, outside subtask 1's own file list, because the manifest test ties them together.
 
 ## GO notes
 
@@ -77,4 +78,5 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## Files touched
 
-- (none yet)
+- `internal/storetest/storetest.go`, `internal/storetest/storetest_test.go`, `internal/storetest/main_test.go` (new — subtask 1)
+- `internal/testdb/server.go`, `internal/testdb/server_test.go` (Binaries 5→6, `TestCeiling_formula` fixture — subtask 1, forced by `TestBinaries_matchesTree`)
