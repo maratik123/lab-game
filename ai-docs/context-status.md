@@ -494,3 +494,25 @@ Entry shape:
   - `Spiral` lists every chunk exactly once, ring by ring, and `SpiralIndex` inverts it exactly.
   - `Next` never returns a created chunk or a chunk nearer than `k+1` to a gate, and it returns for every finite input and every `k ≥ 0`.
   - `Set.Depth` equals the least hex distance from the cell to any gate chunk's centre however far that gate lies, and gates beyond its search bound add no work.
+
+## Posting-signature contract tests — `internal/contract`: declare a basis-document type's postings and movements, and check a real transaction against them (#131, 2026-09-15)
+
+- **What landed:**
+  - A test-only package, `internal/contract`. A `DocumentType` names a basis document by its table and, for events and tasks, its type code (`ManualCorrection`, `Event`, `DeferredTask`, `RecurrentTask`). A `Signature` is `AnyBalanced` or `Expect` over `PostingLeg` (scope, account, kind, sign, cardinality) and `MovementLeg` (from scope, to scope, cardinality) values. `NewRegistry` refuses every malformed declaration, and `AnyBalanced` on any type other than the manual correction.
+  - `NewMark` and `(*Registry).Check`: every journal entry past the mark is judged by the signature of its own type, and the check fails with `ErrNoDocument`, `ErrNoSignature` or `ErrNonconforming` — joined, so a test can assert which class fired. A pure matcher classifies each mismatch as cardinality, unexpected or unbalanced.
+  - `declared.go`, the shipped declared set: the manual correction's any-balanced signature, and nothing else, because no production code writes under any other basis yet.
+  - A test-support package, `internal/storetest`, whose `Pool` gives a test a fresh, migrated, schema-scoped pool. The scheduler, ingest and bot suites dropped their own copies of that helper and call it.
+  - `testdb.Binaries` follows the tree to the two new database-backed packages, and `testdb`'s `ceilingMax` rose from 1000 to 2000, measured at capacity, so `make test-contention` and `make test-db-up CLIENTS=2` provision again on the sixteen-core host where they refused.
+- **Decisions worth keeping:**
+  - **The owner narrowed the task during the interview.** The issue's completeness gate — a signature required for every existing basis-document type — was removed: the design corpus binds a signature to a mechanic that moves balances and gives the declaration check to the harness review. There are no explicitly empty signatures, and the player operation cannot be declared until a mechanic gives it a type column; a write under it fails the check.
+  - **A signature is one Go slice literal, one leg per line**, so a signature change reads in a diff as the account, kind, sign or cardinality that changed. A YAML file and a migration-seeded table were rejected.
+  - **"The transaction" is every journal entry past a mark**, not an id the write paths return (neither returns one) and not `xmin` (a scheduler handler writes inside a savepoint). An empty journal gives the zero mark.
+  - **The matcher never re-derives the capacity postings `store.Move` writes**; a signature declares them, so a defect in `Move` cannot pass by construction.
+- **Traps found:**
+  - **Every new `testdb.Main` caller moves `testdb.Binaries`**, and with it the connection ceiling of every two-client run: the bump made `make test-contention` refuse on a sixteen-core host before anything was provisioned, while `make test` stayed green. The next database-backed package meets the same arithmetic.
+  - **`cmd/testpg` tests that pass `--clients 2` without `--parallel` depend on the host's core count** through the ceiling; they now pin `--parallel 1` like their siblings.
+  - **The completeness gate looked like enforcement and was not**: it proved a row existed for a type, not that a mechanic's pull request updated the row or wrote the contract test.
+- **Invariants this now relies on:**
+  - A mechanic that moves balances declares its type's signature in `declared.go` and calls `Check` in its contract test, in its own pull request; `Check` fails a write under a type with no declared signature.
+  - `AnyBalanced` exists only on the manual correction, enforced at registry construction.
+  - Raising `ceilingMax` again needs the same at-capacity measurement on the host meant to carry it.

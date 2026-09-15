@@ -223,7 +223,7 @@ func Probe(ctx context.Context, dsn string) (int, error) {
 // build`'s -p). A new database-backed package must update this constant; a
 // manifest test keeps it honest against the tree rather than against
 // memory.
-const Binaries = 5
+const Binaries = 7
 
 const (
 	// imageDefaultCeiling is Image's own max_connections default — the floor
@@ -231,10 +231,17 @@ const (
 	// server already offers.
 	imageDefaultCeiling = 100
 	// ceilingMax is the largest ceiling this project will ask a container to
-	// start with, measured against Image with this project's tmpfs and
-	// fsync settings: `podman run` with `-c max_connections=1000` starts and
-	// serves on those settings.
-	ceilingMax = 1000
+	// start with. It is measured at capacity, not at start-up: a server
+	// started with this project's tmpfs and fsync settings and this value
+	// as max_connections was driven to hold every one of those connections
+	// at once, and it served all of them. The provisioning path that starts
+	// such a container sets no pids limit, and nothing else caps the
+	// process count a server at full use reaches. What bounds the value is
+	// therefore host memory at full use, not the server's own start-up footprint,
+	// which stays small regardless of the configured maximum. Raising this
+	// value again needs the same at-capacity measurement on the host meant
+	// to carry it; editing the number alone is not enough.
+	ceilingMax = 2000
 	// ceilingSlack covers the server's own reserved connection slots
 	// (superuser_reserved_connections, measured at 3 on Image) plus the one
 	// test that raises its pool cap above schemaMaxConns.

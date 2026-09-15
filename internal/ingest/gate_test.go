@@ -16,6 +16,7 @@ import (
 	"github.com/maratik123/lab-game/internal/backoff"
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/store"
+	"github.com/maratik123/lab-game/internal/storetest"
 	"github.com/maratik123/lab-game/internal/tg"
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
@@ -157,7 +158,7 @@ func TestGate_positiveResultIsCachedWithNoSecondLookup(t *testing.T) {
 // AllowCall on the SAME Gate — no restart, no new instance — see it.
 func TestGate_uncommittedOwnerRowIsInvisible(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	const telegramID = int64(9001)
 

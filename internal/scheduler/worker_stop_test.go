@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 // TestWorker_StopSeam is the shared stop-contract scenario list this
@@ -15,7 +17,7 @@ func TestWorker_StopSeam(t *testing.T) {
 
 	t.Run("stop_before_run_returns_nil_without_a_cycle", func(t *testing.T) {
 		t.Parallel()
-		pool := newScheduler(t)
+		pool := storetest.Pool(t)
 		reg, err := NewRegistry()
 		if err != nil {
 			t.Fatalf("NewRegistry: %v", err)
@@ -44,7 +46,7 @@ func TestWorker_StopSeam(t *testing.T) {
 
 	t.Run("stop_during_inter_cycle_wait_returns_nil_promptly", func(t *testing.T) {
 		t.Parallel()
-		pool := newScheduler(t)
+		pool := storetest.Pool(t)
 		reg, err := NewRegistry()
 		if err != nil {
 			t.Fatalf("NewRegistry: %v", err)
@@ -73,7 +75,7 @@ func TestWorker_StopSeam(t *testing.T) {
 
 	t.Run("stop_called_twice_no_panic", func(t *testing.T) {
 		t.Parallel()
-		pool := newScheduler(t)
+		pool := storetest.Pool(t)
 		w := newWorker(t, pool, mustRegistry(t))
 		w.Stop()
 		w.Stop()
@@ -81,7 +83,7 @@ func TestWorker_StopSeam(t *testing.T) {
 
 	t.Run("context_cancelled_returns_ctx_err", func(t *testing.T) {
 		t.Parallel()
-		pool := newScheduler(t)
+		pool := storetest.Pool(t)
 		reg, err := NewRegistry()
 		if err != nil {
 			t.Fatalf("NewRegistry: %v", err)
@@ -126,7 +128,7 @@ func mustRegistry(t *testing.T) *Registry {
 // ctx.Err().
 func TestWorker_StopLetsInFlightCycleFinish(t *testing.T) {
 	t.Parallel()
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	h := newBlockingHandler()
 	reg, err := NewRegistry(Declaration{Type: "block.stop", Handler: h})
 	if err != nil {

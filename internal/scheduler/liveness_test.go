@@ -16,6 +16,7 @@ import (
 	"github.com/maratik123/lab-game/internal/repotest"
 	"github.com/maratik123/lab-game/internal/srcguard"
 	"github.com/maratik123/lab-game/internal/store"
+	"github.com/maratik123/lab-game/internal/storetest"
 	"github.com/maratik123/lab-game/internal/testdb"
 )
 
@@ -87,7 +88,7 @@ func ledgerRowCounts(tb testing.TB, pool *pgxpool.Pool) map[string]int {
 // never-run-before state: the fresh migration seeds seen_at NULL.
 func TestAbsorbDowntime_NoStoredInstantSeedsAndMovesNothing(t *testing.T) {
 	t.Parallel()
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	l := newLiveness(t, pool, time.Second, 5*time.Minute)
 
 	id := insertScheduledTask(t, pool, "t", "now() - interval '1 hour'", "pending")
@@ -126,7 +127,7 @@ func TestAbsorbDowntime_NoStoredInstantSeedsAndMovesNothing(t *testing.T) {
 // two overdue rows move.
 func TestAbsorbDowntime_OverdueRowsShiftedByTheGap(t *testing.T) {
 	t.Parallel()
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	l := newLiveness(t, pool, time.Second, time.Minute)
 
 	setLivenessSeenAt(t, pool, "now() - interval '1 hour'")
@@ -180,7 +181,7 @@ func absDuration(d time.Duration) time.Duration {
 // row due in the future are both left alone.
 func TestAbsorbDowntime_DeadAndFutureRowsUntouched(t *testing.T) {
 	t.Parallel()
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	l := newLiveness(t, pool, time.Second, time.Minute)
 
 	setLivenessSeenAt(t, pool, "now() - interval '1 hour'")
@@ -210,7 +211,7 @@ func TestAbsorbDowntime_DeadAndFutureRowsUntouched(t *testing.T) {
 // row alone.
 func TestAbsorbDowntime_WithinThresholdMovesNothing(t *testing.T) {
 	t.Parallel()
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	l := newLiveness(t, pool, time.Second, time.Hour)
 
 	setLivenessSeenAt(t, pool, "now() - interval '1 minute'")
@@ -234,7 +235,7 @@ func TestAbsorbDowntime_WithinThresholdMovesNothing(t *testing.T) {
 // gap at or below the threshold.
 func TestAbsorbDowntime_RunTwiceSecondCallMovesNothing(t *testing.T) {
 	t.Parallel()
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	l := newLiveness(t, pool, time.Second, time.Minute)
 
 	setLivenessSeenAt(t, pool, "now() - interval '1 hour'")
@@ -261,7 +262,7 @@ func TestAbsorbDowntime_RunTwiceSecondCallMovesNothing(t *testing.T) {
 // shift writes scheduled_task only.
 func TestAbsorbDowntime_LedgerAndBasisTablesUntouched(t *testing.T) {
 	t.Parallel()
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	l := newLiveness(t, pool, time.Second, time.Minute)
 
 	setLivenessSeenAt(t, pool, "now() - interval '1 hour'")
@@ -308,7 +309,7 @@ func TestAbsorbDowntime_LedgerAndBasisTablesUntouched(t *testing.T) {
 // arithmetic, that this test cannot control.
 func TestAbsorbDowntime_TwoConcurrentCallsShiftOnce(t *testing.T) {
 	t.Parallel()
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	l1 := newLiveness(t, pool, time.Second, time.Minute)
 	l2 := newLiveness(t, pool, time.Second, time.Minute)
 
@@ -370,7 +371,7 @@ func TestAbsorbDowntime_TwoConcurrentCallsShiftOnce(t *testing.T) {
 // near-zero gap, and correctly shifts nothing.
 func TestAbsorbDowntime_LockBlocksConcurrentSelect(t *testing.T) {
 	t.Parallel()
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	// Patience budgets, not the subjects under test: blockedPatience is
@@ -516,7 +517,7 @@ func TestLiveness_StopSeam(t *testing.T) {
 
 	t.Run("stop_before_run_returns_nil_without_a_cycle", func(t *testing.T) {
 		t.Parallel()
-		pool := newScheduler(t)
+		pool := storetest.Pool(t)
 		l := newLiveness(t, pool, time.Hour, time.Hour)
 		l.Stop()
 
@@ -534,7 +535,7 @@ func TestLiveness_StopSeam(t *testing.T) {
 
 	t.Run("stop_during_inter_heartbeat_wait_returns_nil_promptly", func(t *testing.T) {
 		t.Parallel()
-		pool := newScheduler(t)
+		pool := storetest.Pool(t)
 		l := newLiveness(t, pool, time.Hour, time.Hour)
 
 		done := make(chan error, 1)
@@ -554,7 +555,7 @@ func TestLiveness_StopSeam(t *testing.T) {
 
 	t.Run("stop_called_twice_no_panic", func(t *testing.T) {
 		t.Parallel()
-		pool := newScheduler(t)
+		pool := storetest.Pool(t)
 		l := newLiveness(t, pool, time.Hour, time.Hour)
 		l.Stop()
 		l.Stop()
@@ -562,7 +563,7 @@ func TestLiveness_StopSeam(t *testing.T) {
 
 	t.Run("context_cancelled_returns_ctx_err", func(t *testing.T) {
 		t.Parallel()
-		pool := newScheduler(t)
+		pool := storetest.Pool(t)
 		l := newLiveness(t, pool, time.Hour, time.Hour)
 		runCtx, cancel := context.WithCancel(context.Background())
 
@@ -589,7 +590,7 @@ func TestLiveness_StopSeam(t *testing.T) {
 // (nil).
 func TestLiveness_FailingHeartbeatReturnsAfterToleranceSpent(t *testing.T) {
 	t.Parallel()
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 
 	// Close the pool immediately so every subsequent Refresh fails —
 	// the simplest reliable "always fails" fixture.

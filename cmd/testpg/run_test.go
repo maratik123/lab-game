@@ -517,7 +517,7 @@ func TestRun_upOnAnUndersizedExistingServer_failsNamingTheCapacity(t *testing.T)
 	// have the caller believe a larger client count was granted.
 	stub := &stubSeam{provisionDSN: "postgres://shared/db", probeMaxConns: 8, containerPresent: true}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	code := run([]string{"--up", "--clients", "2", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("run(--up --clients 2) = 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -545,7 +545,7 @@ func TestRun_upOnAServerSizedForFewerClients_failsNamingTheMount(t *testing.T) {
 		containerPresent: true, // reattached, not created by this invocation: the mount check applies
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	code := run([]string{"--up", "--clients", "2", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("run(--up --clients 2) = 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -596,7 +596,7 @@ func TestRun_upReattachesWithoutVouching_refusesAndDoesNotRecordAskedCount(t *te
 		// no locator at all: locateOK stays false.
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	code := run([]string{"--up", "--clients", "2", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("run(--up --clients 2) = 0, want non-zero: a reattach nothing vouches for must be refused; stderr: %s", stderr.String())
 	}
@@ -625,7 +625,7 @@ func TestRun_upContainerExistsCheckFails_treatedAsAlreadyExisted_doesNotRecordAs
 		// no locator at all: locateOK stays false.
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	code := run([]string{"--up", "--clients", "2", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("run(--up --clients 2) = 0, want non-zero: an unanswerable existence check must not be read as this invocation created the container; stderr: %s", stderr.String())
 	}
@@ -726,7 +726,7 @@ func TestRun_upRefusedOnMount_doesNotRaiseRecordedClients(t *testing.T) {
 		containerPresent: true, // reattached, not created by this invocation: the mount check applies
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	code := run([]string{"--up", "--clients", "2", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("run(--up --clients 2) = 0, want non-zero; stderr: %s", stderr.String())
 	}
@@ -803,7 +803,7 @@ func TestRun_upStaleLocatorNamesAnotherServer_notRefused_recordsThisCount(t *tes
 		locateClients: 1, // would refuse a 2-client run if wrongly trusted
 	}
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"--up", "--clients", "2"}, noLookup, stub.seam(), &stdout, &stderr)
+	code := run([]string{"--up", "--clients", "2", "--parallel", "1"}, noLookup, stub.seam(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run(--up --clients 2) = %d, want 0; a stale locator naming a different server must not refuse this: stderr: %s", code, stderr.String())
 	}

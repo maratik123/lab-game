@@ -3,11 +3,13 @@ package ingest
 import (
 	"context"
 	"testing"
+
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 func TestReadOffset_freshSchemaReadsSeededZero(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	tx, err := pool.Begin(ctx)
@@ -27,7 +29,7 @@ func TestReadOffset_freshSchemaReadsSeededZero(t *testing.T) {
 
 func TestAdvanceOffset_higherValueIsStoredAndReadBackByANewReader(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	tx, err := pool.Begin(ctx)
@@ -60,7 +62,7 @@ func TestAdvanceOffset_higherValueIsStoredAndReadBackByANewReader(t *testing.T) 
 
 func TestAdvanceOffset_atOrBelowStoredValueIsANoop(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	tx, err := pool.Begin(ctx)
@@ -104,7 +106,7 @@ func TestAdvanceOffset_atOrBelowStoredValueIsANoop(t *testing.T) {
 
 func TestReadOffset_errorSurfacesOnAClosedTransaction(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	tx, err := pool.Begin(ctx)
@@ -122,7 +124,7 @@ func TestReadOffset_errorSurfacesOnAClosedTransaction(t *testing.T) {
 
 func TestAdvanceOffset_errorSurfacesOnAClosedTransaction(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	tx, err := pool.Begin(ctx)
@@ -140,7 +142,7 @@ func TestAdvanceOffset_errorSurfacesOnAClosedTransaction(t *testing.T) {
 
 func TestAdvanceOffset_rolledBackLeavesStoredValueUntouched(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	tx, err := pool.Begin(ctx)

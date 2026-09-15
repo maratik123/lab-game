@@ -6,6 +6,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 func testRegistry(tb testing.TB) *Registry {
@@ -29,7 +31,7 @@ func testRegistry(tb testing.TB) *Registry {
 func TestSchedule_payloadRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	handler := &fixedOutcomeHandler{outcome: OutcomeDone}
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: handler})
 	if err != nil {
@@ -102,7 +104,7 @@ func TestSchedule_payloadRoundTrip(t *testing.T) {
 func TestSchedule_unregisteredType_writesNoRow(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	reg := testRegistry(t)
 	ctx := context.Background()
 
@@ -129,7 +131,7 @@ func TestSchedule_unregisteredType_writesNoRow(t *testing.T) {
 func TestSchedule_negativeDelay_returnsErrInvalidDelay(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	reg := testRegistry(t)
 	ctx := context.Background()
 
@@ -154,7 +156,7 @@ func TestSchedule_negativeDelay_returnsErrInvalidDelay(t *testing.T) {
 func TestSchedule_duplicateLiveIdentity_returnsErrDuplicateTask(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	reg := testRegistry(t)
 	ctx := context.Background()
 
@@ -183,7 +185,7 @@ func TestSchedule_duplicateLiveIdentity_returnsErrDuplicateTask(t *testing.T) {
 func TestSchedule_keylessOneShots_coexist(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	reg := testRegistry(t)
 	ctx := context.Background()
 
@@ -211,7 +213,7 @@ func TestSchedule_keylessOneShots_coexist(t *testing.T) {
 func TestSchedule_reschedulingDeadIdentity_succeeds(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	reg := testRegistry(t)
 	ctx := context.Background()
 
@@ -247,7 +249,7 @@ func TestSchedule_reschedulingDeadIdentity_succeeds(t *testing.T) {
 func TestDeadTasks_returnsGiveUpRowsOnly(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	if _, err := pool.Exec(ctx,

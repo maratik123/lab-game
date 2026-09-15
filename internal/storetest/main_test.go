@@ -1,4 +1,4 @@
-package ingest
+package storetest_test
 
 import (
 	"os"

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 // TestObserve_collectsOneObservationPerExecutedTask asserts that a
@@ -15,7 +17,7 @@ import (
 func TestObserve_collectsOneObservationPerExecutedTask(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := contentionSafeConfig()
 
@@ -94,7 +96,7 @@ func TestObserve_collectsOneObservationPerExecutedTask(t *testing.T) {
 func TestObserve_oneShotGiveUp_carriesFinalFailureCount(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := contentionSafeConfig()
 	h := &writingHandler{outcome: OutcomeFailed, err: errBoom, reason: "obs-giveup"}
@@ -128,7 +130,7 @@ func TestObserve_oneShotGiveUp_carriesFinalFailureCount(t *testing.T) {
 func TestObserve_repeatedlyFailingRecurrence(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	cfg := contentionSafeConfig()
 	h := &writingHandler{outcome: OutcomeFailed, err: errBoom, reason: "obs-recurrent-fail"}
@@ -171,7 +173,7 @@ func TestObserve_repeatedlyFailingRecurrence(t *testing.T) {
 func TestObserve_nilObserver(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	h := &writingHandler{outcome: OutcomeDone, reason: "no-observer"}
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
@@ -200,7 +202,7 @@ func TestObserve_nilObserver(t *testing.T) {
 func TestObserve_nonDefaultTuning_changesObservedBehaviour(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 	h := &writingHandler{outcome: OutcomeDone, reason: "tuning"}
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
@@ -255,7 +257,7 @@ func TestObserve_nonDefaultTuning_changesObservedBehaviour(t *testing.T) {
 func TestRun_shortPollInterval_picksUpFreshlyInsertedTask(t *testing.T) {
 	t.Parallel()
 
-	pool := newScheduler(t)
+	pool := storetest.Pool(t)
 	h := &writingHandler{outcome: OutcomeDone, reason: "run-loop"}
 	reg, err := NewRegistry(Declaration{Type: "test.oneshot", Handler: h})
 	if err != nil {

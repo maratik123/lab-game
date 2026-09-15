@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"log/slog"
 	"os"
 	"sync"
 	"testing"
@@ -11,34 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/maratik123/lab-game/internal/leaktest"
-	"github.com/maratik123/lab-game/internal/store"
 	"github.com/maratik123/lab-game/internal/testdb"
 )
 
 func TestMain(m *testing.M) {
 	os.Exit(leaktest.Main(m, testdb.Main))
-}
-
-// newScheduler builds a fresh, migrated schema-scoped pool for tb and
-// closes it on cleanup — this package's own fixture, shaped like the
-// ledger package's own newStore.
-func newScheduler(tb testing.TB) *pgxpool.Pool {
-	tb.Helper()
-
-	ctx := context.Background()
-	cfg := testdb.Schema(tb)
-
-	pool, err := store.NewPool(ctx, cfg)
-	if err != nil {
-		tb.Fatalf("new pool: %v", err)
-	}
-	tb.Cleanup(pool.Close)
-
-	if err := store.Migrate(ctx, pool, slog.New(slog.DiscardHandler)); err != nil {
-		tb.Fatalf("migrate: %v", err)
-	}
-
-	return pool
 }
 
 // dueNow inserts req through reg.Schedule inside a committed transaction

@@ -1110,3 +1110,33 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **at:** 743f79b
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-15 — search — told the owner a registry does not exist after a search miss, without reading the source
+**What happened:** In round 1 of the `/interview` for #26, the spec-writer searched non-test Go for the identifier `TaskType`, found only the store's basis structs, and wrote into an option of a question to the owner that task types have no registry («у типов тасок нет реестра») — as the cost of the option the owner then chose. `internal/scheduler/registry.go` declares `Registry` and `Declaration`, which name a task type by its `Type` field rather than by any `TaskType` identifier, and `cmd/bot` builds a `Registry`. Round 2 found it by listing the scheduler package's files.
+**Rule:** A question put to the owner is an assertion like any spec row. A claim that a construct does not exist needs a raw read of the package that would own it, or an `ast-index` lookup for the concept (`ast-index class "Registry"`), never a miss on one guessed identifier — and an option's description is exactly where the owner reads the cost of choosing it.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-15 — process — relayed interview questions that took an issue's completeness gate as given, without checking it against the design corpus
+**What happened:** The #26 issue body required "a registry completeness check: a basis-document type with no declared signature fails the suite … a gate, not a disposition". Round-1 question 2 of its `/interview` presupposed that gate («Что проверка полноты требует от такого типа?»), and the orchestrator forwarded it after verifying only the §11 quotes the questions cited. `~/lab-private/DESIGN.md` §13.4 binds the signature to a mechanic that moves balances and gives the declaration check to the harness, whose review checklists already carry it. The answers built on the presupposition added explicitly-empty signatures for every event type, a task-type axis in `cmd/bot` and a player-operation row; design rounds 1–2 grew a catalog audit, a scheduler accessor and a rewritten assembly test around it, and two design-review notes existed only because of it. After the first design GO the owner asked whether the scope was inflated, and narrowed it.
+**Rule:** Before forwarding a question whose options presuppose a scope item, check that item against its source of authority — the design corpus for a mechanic, not the issue body that restates it. A gate an issue adds beyond the design is surfaced to the owner as such before any question builds on it.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-15 — process — recorded Step-7 owner answers under the closed interview round instead of the next round number
+**What happened:** While routing #26's design-review GO note, the orchestrator appended the owner's two answers to `prior_qa` under `round: 3` — the round `spec-writer` had already closed with `ready` — before reading `.claude/skills/task/reference.md` § Spec Amendment recipe, whose step 4 records under the next round number and advances `round`. The entries were left as `3.1` and `3.2`, because `prior_qa` is append-only and anchors resolve against either numbering; `round` was advanced to 4 for the amendment.
+**Rule:** Read the recipe that governs a routing step before the first write it prescribes — a record on an append-only surface cannot be corrected in place.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-15 — process — read an exit status after a pipeline in a propagation sweep
+**What happened:** In #26's Group B documentation subtask, the Propagation Rule sweep was issued as a recursive `grep -rni` piped into a filtering `grep -v`, followed by an echo of the shell's last status. That status would have been the filter's, not the sweep's, so a sweep that errored or matched nothing could have recorded as clean. The pipe-status `PreToolUse` hook refused the command before it ran; the sweep was re-run captured to a file under `tmp/`, its own status read, and the saved log filtered in a separate step.
+**Rule:** When a probe's exit status is part of its answer, capture the measured command to a file under `tmp/`, read that command's own status, and filter the saved log afterwards — never read the status of a pipeline whose last stage is not the command being measured.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-15 — process — measured a named instruction page's size to decide how to read it
+**What happened:** In the same subtask, a line count of `ai-docs/agent-writing-style.md` was issued beside a heading grep, to decide whether to read the page whole. Sizing that page belongs to `/ai-audit` alone (`.claude/skills/ai-audit/checklist-m.md` § *Sub-check 9*), whatever the purpose, deciding how to read a file included; the size-measurement `PreToolUse` hook refused the command, and the heading grep was re-run alone.
+**Rule:** To decide how to read an instruction page, take its structure from `grep -n '^#'` and read it by `sed -n` ranges — never run `wc`, `du` or `stat` over a covered page outside an `/ai-audit` pass.
+**Kind:** correction
+**Escalated?** no

@@ -3,11 +3,13 @@ package ingest
 import (
 	"context"
 	"testing"
+
+	"github.com/maratik123/lab-game/internal/storetest"
 )
 
 func TestDeadUpdates_deterministicOrderAndLimit(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	chatA := int64(111)
@@ -70,7 +72,7 @@ func TestDeadUpdates_deterministicOrderAndLimit(t *testing.T) {
 
 func TestWriteDeadUpdate_errorSurfacesOnAClosedTransaction(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	tx, err := pool.Begin(ctx)
@@ -89,7 +91,7 @@ func TestWriteDeadUpdate_errorSurfacesOnAClosedTransaction(t *testing.T) {
 
 func TestDeadUpdates_errorSurfacesOnAClosedTransaction(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	tx, err := pool.Begin(ctx)
@@ -107,7 +109,7 @@ func TestDeadUpdates_errorSurfacesOnAClosedTransaction(t *testing.T) {
 
 func TestDeadUpdates_neitherCommitsNorRollsBackTheCallersTx(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	ctx := context.Background()
 
 	tx, err := pool.Begin(ctx)

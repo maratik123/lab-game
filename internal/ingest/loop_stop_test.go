@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/mymmrac/telego"
 
+	"github.com/maratik123/lab-game/internal/storetest"
 	"github.com/maratik123/lab-game/internal/tgtest"
 )
 
@@ -38,7 +39,7 @@ func TestLoop_StopSeam(t *testing.T) {
 
 	t.Run("stop_before_run_returns_nil_without_a_cycle", func(t *testing.T) {
 		t.Parallel()
-		pool := newIngestPool(t)
+		pool := storetest.Pool(t)
 		srv := tgtest.New(t, tgtest.Success(updatesJSON(t, nil)))
 		router, err := NewRouter()
 		if err != nil {
@@ -65,7 +66,7 @@ func TestLoop_StopSeam(t *testing.T) {
 
 	t.Run("stop_during_inter_cycle_wait_returns_nil_promptly", func(t *testing.T) {
 		t.Parallel()
-		pool := newIngestPool(t)
+		pool := storetest.Pool(t)
 		srv := tgtest.New(t, tgtest.Success(updatesJSON(t, nil)))
 		router, err := NewRouter()
 		if err != nil {
@@ -91,7 +92,7 @@ func TestLoop_StopSeam(t *testing.T) {
 
 	t.Run("stop_called_twice_no_panic", func(t *testing.T) {
 		t.Parallel()
-		pool := newIngestPool(t)
+		pool := storetest.Pool(t)
 		srv := tgtest.New(t, tgtest.Success(updatesJSON(t, nil)))
 		router, err := NewRouter()
 		if err != nil {
@@ -104,7 +105,7 @@ func TestLoop_StopSeam(t *testing.T) {
 
 	t.Run("context_cancelled_returns_ctx_err", func(t *testing.T) {
 		t.Parallel()
-		pool := newIngestPool(t)
+		pool := storetest.Pool(t)
 		srv := tgtest.New(t, tgtest.Success(updatesJSON(t, nil)))
 		router, err := NewRouter()
 		if err != nil {
@@ -138,7 +139,7 @@ func TestLoop_StopSeam(t *testing.T) {
 // same PollOnce that was cut short — is unchanged.
 func TestPollOnce_StopDiscardsAParkedLongPoll(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	rec := &recordingObserver{}
 	srv := tgtest.New(t, tgtest.Delayed(5*time.Second, tgtest.Success(updatesJSON(t, nil))))
 	router, err := NewRouter()
@@ -187,7 +188,7 @@ func TestPollOnce_StopDiscardsAParkedLongPoll(t *testing.T) {
 // and PollOnce returns nil, not an error.
 func TestPollOnce_StopMidBatchSettlesEveryUpdate(t *testing.T) {
 	t.Parallel()
-	pool := newIngestPool(t)
+	pool := storetest.Pool(t)
 	h := newBlockingHandler()
 	router, err := NewRouter(Route{Kind: KindMessage, Handler: h})
 	if err != nil {
