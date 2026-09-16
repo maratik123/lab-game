@@ -41,7 +41,7 @@ the repository.
 **MUST — the control string is CONSTRUCTED, never borrowed from the artefact under test**, and least
 of all from a line this change edits: a borrowed control fails silently in exactly the runs where the
 edit worked, so its empty output is equally consistent with a working instrument. **NEVER** put
-`2>/dev/null` on a probe whose emptiness is the verdict — a tool refusing to run and a genuine
+`2>/dev/null` on a grep whose emptiness is the verdict — a tool refusing to run and a genuine
 absence produce the same empty stdout, and the redirect is what makes them indistinguishable. Prefer
 several simple patterns over one long alternation: a regex engine has complexity limits, and its
 failure mode is an error you have arranged not to see. An enumeration in prose has no canonical
