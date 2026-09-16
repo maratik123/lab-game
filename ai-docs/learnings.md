@@ -1213,3 +1213,22 @@ you have arranged not to see.
 **at:** 7425736
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — search — wrote one phrasing of an enumeration into a pattern and reported the other's absence
+**What happened:** Re-measuring a delegate's report that a restart-enumeration doc comment appears at
+two sites, I searched the literal `a changed balance file or environment variable`. It matched one
+file, so I recorded "measurement found one, with no such sentence in `doc.go`" in the progress
+journal, told the owner the delegate's report "was half wrong", and a self-review round accepted the
+claim. The second site was there all along, at `doc.go:20`, phrased with the enumeration's members
+swapped — `a changed environment variable or balance file`. A positive control had run and passed
+against the file that did match, which is exactly why the result looked earned: the instrument was
+working, and was written against one of two orders prose is free to choose between.
+**Rule:** An enumeration in prose has no canonical order, so a literal phrase carrying one is a
+pattern for one variant, not for the claim. Search the stable part (`reload path`, `restarts`) or the
+members separately and read the hits, and never let a positive control on a matching file stand in
+for coverage of the phrasings that did not match — the control proves the pattern runs, never that
+the pattern spans the variants. Hardest where the measurement contradicts a delegate: overturning
+someone else's report is the case that most deserves a second encoding before it is written down.
+**at:** a1c07c0
+**Kind:** correction
+**Escalated?** no
