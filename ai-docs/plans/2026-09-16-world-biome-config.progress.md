@@ -10,13 +10,13 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — Group B running (subtask 10)
+**current_step:** Step 8 — Group B running (subtask 11)
 **last_passed_gate:** go build ./... | 2026-09-16T08:05:13Z | 1a02253
 **entry_args:** 28
 
 ## Next action
 
-**Do this immediately:** Group B is running. Subtask 9 is done and committed in `~/lab-private` (outside this repository, outside the PR, outside CI). Next: subtask 10 (the key-decisions entries and amendments), then subtask 11 (the documentation half of the AC3 sweep). On Group B's return, re-validate state and go to Step 9 (Verify).
+**Do this immediately:** Group B is running. Subtasks 9 and 10 are done; subtask 9's own artefact lives in `~/lab-private` (outside this repository, outside the PR, outside CI). Next: subtask 11, the documentation half of the AC3 sweep. On Group B's return, re-validate state and go to Step 9 (Verify).
 
 ## Subtasks
 
@@ -29,8 +29,8 @@ _Updated: 2026-09-16 04:30_
 - [x] 7. Remove the chunk radius from the balance side
 - [x] 8. Tracked-set gates + the CODE half of the AC3 propagation sweep
 - [x] 9. Design corpus (`~/lab-private`): promote the sketch, amend the sketch-count sentence, re-file §16 item 5
-- [ ] 10. Key decisions: new entries and the KD amendments  ← CURRENT
-- [ ] 11. Documentation half of the AC3 sweep over `ai-docs/**`
+- [x] 10. Key decisions: new entries and the KD amendments
+- [ ] 11. Documentation half of the AC3 sweep over `ai-docs/**`  ← CURRENT
 
 ## Decisions log
 
@@ -64,6 +64,11 @@ _Updated: 2026-09-16 04:30_
 - **Subtask 9**: §2.2.5 deliberately carries **no number** — seed, R, the shares, the algorithm weights, k and the resource weights are configuration, and §16.5's standing rule keeps them there. What the section fixes is what is *designed*: the imagery and tone, the three resource kinds as permanent ledger enum members, the bestiary with its three roles, the naming-style and lexicon shape, and the language split (content Russian, keys and identifiers English).
 - **Subtask 9**: the §16.5 re-filing strikes R, the three shares and k from the balance-number list and adds one sentence stating they are the world's own and live in the world config (2.2, 2.2.2), leaving «Все балансовые константы — в конфиг, не в код» untouched — exactly the owner's round-3 answer. The other half of D13's "re-file them where §2.2 and §2.2.2 already own them" is that §2.2.2's two bare «конфиг» mentions (the chunk radius, the portal-share bounds) and the algorithm-weights line now spell «конфиг мира»; §2.2's k sentence and §2.2.1's island-share line already said «параметр мира» / «параметр биома» and needed no edit.
 - **Subtask 9**: the corpus sweep reached **two sites beyond the three D13 names**, both inside AC3's class and both edited: §14 item 2 («Один лабиринт, один биом») now names the world, and §16 item 2's «авторинг … конфигов миров (эскизы миров — IDEAS.md)» narrows to «помимо MVP-мира», since this task authors the MVP world's config and its sketch is no longer in the backlog. Two further hits were read and left: §1's «эскизы миров в IDEAS.md» carries no count, and IDEAS.md's own section heading and intro carry none either — so the only count sentence was §2.2's.
+- **Subtask 10**: three new entries, not two and not six — KD-43 (the format's home, the directory-of-files layout, the explicit `id`: D1, D2, D3, D7, D10), KD-44 (the `maze.Params` binding, `maze.New` as the single source of every cross-field refusal, the lifted walker and the per-algorithm weight leaf: D4, D5, D6), KD-45 (the resource kinds as permanent enum members and the agreement gate: D8, D9). The design's grouping ("D1/D2/D4/D6 … and D8/D9") names decisions rather than an entry count; D3, D5, D7 and D10 have no entry of their own in that list and were folded into the entry whose subject they belong to rather than left unrecorded.
+- **Subtask 10**: all six amendments follow the file's existing convention — the original sentence stands and an `*Amended by #28*` clause corrects it, the shape KD-20 and KD-38 already use for superseded claims. Three of them name the dead clause in as many words (KD-23's "not decoded by the loader at all", KD-40's "`New` and the balance loader both read", KD-22's "imported from the balance-loading file alone"), so a reader who meets the old sentence first is told inside the same entry that it is dead. That is why AC3's "no live document states something this task falsifies" is read as satisfied here rather than requiring the original prose to be rewritten: the entry as a whole is the unit that states the decision.
+- **Subtask 10**: KD-27's amendment records that **no sixth member joins** the optional-with-default class — a world value is a file-sourced authored constant, not operational tuning. Written explicitly because the tempting reading of "the class gains the world set" is the opposite one, and it would hand every world key a compiled-in default, which is the exact defect KD-22 and KD-24 exist to forbid.
+- **Subtask 10**: KD-22's amendment records a **widened** blast radius rather than a preserved one — the parser is now named by five non-test files in `internal/config` where the entry claimed one. Measured (`grep -rln "go.yaml.in/yaml/v3" --include=*.go .` → `balance_load.go`, `schema.go`, `world_schema.go`, `world_content.go`, `world_load.go`), not inferred from the design.
+- **Subtask 10**: every symbol the new entries name was resolved before it was written — `TestEnums_mirror_database`, `Kinds()`, `Algorithm.String()`, `TestBalanceFile_LoadsAndAgrees`, `Config.Worlds` — because a key-decisions entry is read later as authority. `check-citations.sh` passes: `#28`, `#29`, `#34` and `#35` all resolve below the local high-water mark (#132).
 - **Subtask 9**: committed in `~/lab-private` as `4200ebc`, with `git -C ~/lab-private` per the AXIOM — outside this repository, so neither the PR diff, the review agents nor CI sees it. Both files were bracketed by `ai-docs/scripts/doc-edit-guard.sh`; both reported `shape held` and both `.bak` files were removed by the verify step.
 
 ## GO notes
@@ -115,4 +120,5 @@ _Updated: 2026-09-16 04:30_
 - Subtask 6: `internal/config/world_load.go` (new: `loadWorldSet`, `loadWorldFile`), `internal/config/world_load_test.go` (new); `internal/config/world.go` (`resolveWorldPath` rewritten to directory-only via `os.Stat`); `internal/config/world_test.go` (regular-file-succeeds case removed, regular-file-refused case added); `internal/config/config.go` (`Config.WorldPath` removed, `Config.Worlds []World` added, `Load` wired through `loadWorldSet`); `internal/config/config_test.go` (`validConfigEnv` now writes one valid world file instead of an empty directory; `WorldPath` assertion replaced with a `Worlds` assertion); `internal/config/env.go` (`envKeys` doc comment reworded); `internal/config/doc.go` (package comment reworded — the world set is now decoded, not merely probed)
 - Subtask 7: `internal/config/balance.go` (`WorldBalance`/`ChunkBalance` and the `Balance.World` field removed), `internal/config/balance_load.go` (`world.chunk.radius` schema entry and the now-unused `maze` import removed), `internal/config/balance_load_test.go` (radius fixtures/tests removed; `TestLoadBalance_IntGivenFloat`/`TestLoadBalance_DuplicateKey`/one `TestLoadBalance_PredicateFailures` row retargeted onto `combat.hit_die_sides`/`raid.stamina.cap`; new `TestLoadBalance_LeftoverWorldBlockIsUnknown`), `config/balance.yaml` (`world:` block removed)
 - Subtask 8: `internal/config/world_file_test.go` (new: `TestWorldFile_LoadsAndAgrees`, `TestWorldFile_ResourceKindsAreLedgerMembers`, `internal/store` imported from this `_test.go` file only). Code-surface AC3 sweep: no residue found beyond the two sites the design already assessed still-true (`transport.go`, `env_test.go`) — confirmed, not edited.
+- Subtask 10: `ai-docs/key-decisions.md` (new § *World and biome configuration (2026-09-16)* carrying KD-43, KD-44 and KD-45; `*Amended by #28*` clauses on KD-22, KD-23, KD-24, KD-27, KD-38 and KD-40)
 - Subtask 9 (**outside this repository** — `~/lab-private` @ `4200ebc`, not in the PR diff): `DESIGN.md` (new §2.2.5; §2.2, §2.2.2 ×3, §14 item 2, §16 item 2 and §16 item 5 amended), `IDEAS.md` (the cotton-candy sketch removed from the starting-world list, the remaining two renumbered, a note recording where it went)
