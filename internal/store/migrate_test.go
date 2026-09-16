@@ -55,7 +55,7 @@ func TestMigrate_shape_and_seeds(t *testing.T) {
 	// Enums.
 	for enum, wantMembers := range map[string][]string{
 		"owner_kind":           {"world", "player", "chat"},
-		"ledger_kind":          {"money", "experience", "slots", "weight"},
+		"ledger_kind":          {"money", "experience", "slots", "weight", "spun_sugar", "pastel_fleece", "glitter_dust"},
 		"operation_source":     {"telegram"},
 		"scheduled_task_state": {"pending", "dead"},
 		"event_volume_class":   {"low_volume", "high_volume"},
@@ -139,8 +139,8 @@ func TestMigrate_noop_reapply(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM goose_db_version`).Scan(&count); err != nil {
 		t.Fatalf("count goose_db_version: %v", err)
 	}
-	if count != 8 {
-		t.Fatalf("goose_db_version rows = %d, want 8", count)
+	if count != 9 {
+		t.Fatalf("goose_db_version rows = %d, want 9", count)
 	}
 }
 
