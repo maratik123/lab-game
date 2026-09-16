@@ -1318,3 +1318,29 @@ mistaken for application.
 **at:** 6ef235a
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — process — escalated a rule one word wider than its source, and skipped the sweep the same diff was adding
+**What happened:** Escalating a probe-hygiene pattern into `.claude/rules/ast-index.md`, I copied the
+source entry's "Never put `2>/dev/null` on a grep whose emptiness is the verdict" as "on a **probe**
+whose emptiness is the verdict". One word, and it changed the rule's scope from a single tool to
+every probe. Measured after the third self-review REJECT raised it: `grep -rn '2>/dev/null'` over
+`.claude/`, `AGENTS.md` and `ai-docs/` returns 14 lines, of which 13 are prescribed commands in eight
+live instruction files — the compaction-recovery preamble glob of six re-entrant skills, each
+documented as "no matches → fresh invocation", plus two `grep -l … 2>/dev/null` calls that set
+`SPEC_PATH` from an empty result and therefore contradict even the unwidened wording. So the
+escalated text made eight instruction files non-conforming on arrival. The same commit added
+`AGENTS.md` § *Propagation Rule* item 5 — grep the doc set for the key term of the behaviour being
+changed, before `git add` — so the diff both introduced the sweep obligation and skipped it. A
+smaller repeat rode along: three attempts to read the source entry's own wording returned empty with
+a passing control, twice because the phrase wraps across a line break and once because I searched for
+emphasis markers the source does not carry.
+**Rule:** An escalated rule is quoted, not paraphrased. Copy the source entry's scope word for word;
+wanting a wider scope is a new decision that needs the owner, never a copy edit made in passing —
+and the widened word is exactly where recurrence stops licensing anything. Before committing a
+prohibition, run the prohibition against the tree: grep the forbidden construct across the
+instruction set and read every hit, because a **NEVER** that the repository's own prescribed commands
+violate does not tighten anything — it teaches the next reader that the rules are approximate. The
+tell is a diff that adds a sweep obligation and does not perform it.
+**at:** ca9e262
+**Kind:** correction
+**Escalated?** no
