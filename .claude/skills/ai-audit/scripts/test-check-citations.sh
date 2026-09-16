@@ -32,6 +32,7 @@ guard=".claude/skills/ai-audit/scripts/check-citations.sh"
 target="ai-docs/corrections-log.md"
 backup=$(mktemp)
 probe=".claude/zz-citation-namespace-probe.md"
+probedir=".claude/zz-citation-unreadable-probe"
 failures=0
 
 # Restore the pristine file however we exit — including on interrupt. A stray
@@ -40,11 +41,11 @@ failures=0
 # only cleans up lets the script resume with its backup already deleted, so
 # every later restore silently fails and the target is left mutated.
 # shellcheck disable=SC2064  # intentional: expand $backup/$target now, not at trap time
-trap "cp '$backup' '$target'; rm -f '$backup' '$probe'" EXIT
+trap "cp '$backup' '$target'; rm -f '$backup' '$probe'; chmod 755 '$probedir' 2>/dev/null; rmdir '$probedir' 2>/dev/null" EXIT
 # shellcheck disable=SC2064  # same
-trap "cp '$backup' '$target'; rm -f '$backup' '$probe'; exit 130" INT
+trap "cp '$backup' '$target'; rm -f '$backup' '$probe'; chmod 755 '$probedir' 2>/dev/null; rmdir '$probedir' 2>/dev/null; exit 130" INT
 # shellcheck disable=SC2064  # same
-trap "cp '$backup' '$target'; rm -f '$backup' '$probe'; exit 143" TERM
+trap "cp '$backup' '$target'; rm -f '$backup' '$probe'; chmod 755 '$probedir' 2>/dev/null; rmdir '$probedir' 2>/dev/null; exit 143" TERM
 cp "$target" "$backup"
 mode_before=$(stat -c '%a' "$target")
 
@@ -185,6 +186,29 @@ printf 'Recorded in ~/.claude/projects/*-lab-game/memory/%s as feedback.\n' "$me
 run_guard
 report "case 10: a citation under another project's namespace is still RED" "$?" 1
 rm -f "$probe"
+
+# --- Case 11: a corpus the guard cannot read is an instrument error ----------
+# The three scan greps once redirected stderr and fed a process substitution, so
+# an unreadable path yielded no rows, the failure counter stayed zero, and the
+# guard printed its clean verdict over a corpus it never saw. The probe must be
+# shown to have landed: under a uid that ignores the mode bits the directory
+# stays readable, and a green case would then be about the probe, not the guard.
+mkdir -p "$probedir" && chmod 000 "$probedir"
+if ls "$probedir" >/dev/null 2>&1; then
+  printf '  ....  case 11 skipped: %s is still readable, so the probe never landed\n' "$probedir"
+else
+  run_guard
+  rc=$?
+  if [ "$rc" -eq 1 ] && printf '%s' "$guard_out" | grep -q 'Instrument failure'; then
+    printf '  PASS  case 11: an unreadable corpus is an instrument error, not a pass\n'
+  else
+    printf '  FAIL  case 11: an unreadable corpus gave exit %s without the instrument error\n' "$rc"
+    printf '%s\n' "$guard_out" | sed 's/^/        | /'
+    failures=$((failures + 1))
+  fi
+fi
+chmod 755 "$probedir" 2>/dev/null
+rmdir "$probedir" 2>/dev/null
 
 # --- Case 4: this test must not mutate the tracked file's MODE ---------------
 # `git status` cannot see a permission change, so a test that quietly drops
