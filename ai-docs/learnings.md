@@ -1344,3 +1344,25 @@ tell is a diff that adds a sweep obligation and does not perform it.
 **at:** ca9e262
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — search — two greps came back falsely empty in one turn, from metacharacters and from a clipped line range
+**What happened:** Splicing the fix into the two spec-lookup sites, I located the line with
+`grep -n 'SPEC_PATH=$(grep -l'`. It reported 0 occurrences in a file I had just read and whose text
+plainly contains that string: the pattern reached the regex engine, where `$` is an anchor and `(`
+opens a group, so it matched nothing. The splice guard refused to write rather than mangling both
+files, and `grep -F` found the line at once. Minutes later I syntax-checked the new block by
+extracting `sed -n '105,122p'`, a range that swallowed the opening code fence and clipped the closing
+`fi`; `bash -n` then reported an unterminated backtick, and I printed that failure before diagnosing
+that my range, not the code, was wrong. Reading the four boundary lines showed the code occupies
+106..123, and the check passed with exit 0.
+**Rule:** A pattern carrying regex or shell metacharacters — `$`, `(`, `)`, `[`, `*`, `.` — is a
+literal search or it is a different question than the one you asked: reach for `grep -F` first
+whenever the target is a command line, and read a 0-hit on text you have just seen with your own eyes
+as a defect in the pattern, never as absence. Before extracting a fenced block by line range, print
+its four boundaries — the opening fence, the first and last code lines, the closing fence — because
+an off-by-one at either end converts a syntax check into a report about the extraction. Both misses
+here were caught by a guard that refused to act and by a control that had to match; neither was
+caught by reading the output, which is the part that felt like checking.
+**at:** 951588f
+**Kind:** correction
+**Escalated?** no
