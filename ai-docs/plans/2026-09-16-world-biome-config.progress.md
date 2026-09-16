@@ -10,7 +10,7 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** build; vet; lint; fmt -d; comment-refs; import-guard; file-limits; make test; make test-race; cover-ratchet | 2026-09-16T08:35:13Z | 4f76f14
 **entry_args:** 28
 
@@ -85,6 +85,9 @@ _Updated: 2026-09-16 04:30_
 - **Step 9**: no posting signature and no event are owed; the diff adds zero `store.Post` / `store.Move` / posting lines, matching the spec's Out-of-scope statement.
 - **Step 9**: per-AC verification ran one command per AC with `-count=1`, and a control on a non-existent test name returned "no tests to run", so the `-run` filters were shown to filter rather than pass vacuously.
 - **Step 9**: subtask 11's reported code-comment observation was re-measured and is **half wrong** — the restart-enumeration sentence exists at `internal/config/config.go:93` only; `doc.go` carries no such sentence. The claim there stays true ("there is no reload path") while its enumeration is now incomplete, so it is outside AC3's falsified class. Left for `self-review` to rule on rather than fixed silently: a predominantly-`.go` fix is `code-writer` Mode B's to author.
+
+- **Step 9.5**: `context.md` needed no further edit — Group B's subtask 11 had already bumped its layout line, both Status bullets and the Status heading date. The remaining Step-9.5 work was the `context-status.md` entry, written with the literal `#TBD-at-Step-12` locator (zero other occurrences in that file, so Step 12's substitution is unambiguous). No counts were written into either page.
+- **Step 9.5**: the removed-name sweep (`WorldBalance`, `ChunkBalance`, `Config.WorldPath`, `.gitkeep`) over both pages found no live claim to correct — a diff that removes has a wider doc surface than one that adds.
 
 ## GO notes
 

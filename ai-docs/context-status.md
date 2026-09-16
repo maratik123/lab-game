@@ -516,3 +516,32 @@ Entry shape:
   - A mechanic that moves balances declares its type's signature in `declared.go` and calls `Check` in its contract test, in its own pull request; `Check` fails a write under a type with no declared signature.
   - `AnyBalanced` exists only on the manual correction, enforced at registry construction.
   - Raising `ceilingMax` again needs the same at-capacity measurement on the host meant to carry it.
+
+## World and biome config — the world set decodes like the balance file, and the MVP world is authored (#TBD-at-Step-12, 2026-09-16)
+
+- **What landed:**
+  - `internal/config` gains the world set: `LAB_GAME_WORLD_PATH` names a **directory**, each `*.yaml` in it is one world, and the loader sorts the file names itself so a joined error's order is a property of this code rather than of the directory read. A subdirectory and any non-`.yaml` entry are ignored; an empty directory and a duplicate `id` are refusals that name what they refuse.
+  - The YAML schema walker left `balance_load.go` for `schema.go` byte-for-byte and gained a non-scalar leaf kind, so sequences and open maps bind through the same absent-versus-zero machinery the balance file uses. The unknown-key cause became a per-schema noun, so a world file's typo is refused as an unrecognised *world* key.
+  - A world's generation inputs decode into the generator's own input struct, and the loader calls the generator's constructor once per world and discards it — the cross-field refusals live in one place instead of being restated in a schema. The radius binds through an `int32` destination, so the decoder itself refuses an out-of-range value and no narrowing conversion exists.
+  - `config/world/cotton_candy.yaml`: the MVP world, promoted from the design corpus' idea backlog into its decisions by the owner. Its three resource kinds joined `ledger_kind` by one forward migration, with no account definition, and a test holds the authored profile against the enum.
+  - The balance side gave up the chunk radius entirely, and `Config.WorldPath` went with it — the resolved path had no production reader once the set is decoded.
+  - `~/lab-private/DESIGN.md` gained the authored world as §2.2.5 and re-filed the radius, the shares and k out of its open balance-number list; `IDEAS.md` no longer offers the sketch. That edit lives in a separate repository: it is in no PR diff and no CI run.
+
+- **Decisions worth keeping:**
+  - **`k: 0` and `seed: 0` are authored values, not absent keys.** This is why the world set rides the node-tree walker rather than a struct binder: a binder that cannot separate absent from zero would admit a silently valid world, and `k = 0` is the corpus' concentric-ring packing.
+  - **The generator's constructor is the single source of every cross-field refusal.** Its validation is unexported and reachable only through it, so restating those predicates in the schema would be two copies of one rule drifting past a green build.
+  - **The agreement between the authored profile and the ledger enum is a test, not a start-up check** — the world set is tracked in this repository, so it is a repository fact a gate holds, and the production package keeps its database-free import graph.
+  - **A resource kind is permanent after merge.** The owner approved the token triple knowing a rename later is a new member plus a dead one, never an edit.
+  - **The configuration's `id` is the canonical world identifier** — maze persistence inherits it rather than minting its own, which makes it a shared data contract rather than a local name.
+
+- **Traps found:**
+  - **A doc-comment sweep that names a phrase cannot reach a site that spells the key.** The rule asserting the chunk radius ships in the balance file sat in an instruction file, where left standing it would have told future work to put the radius back; the sweep only reached it once the pattern spelled `world.chunk.radius`.
+  - **`errors.Join` results must not be re-wrapped in a single `%w`.** The helper that walks for a keyed error descends through a joined list, not through a further single-unwrap layer, so one outer wrap makes a real refusal invisible to the test that looks for it.
+  - **Stale gate logs in `tmp/` collide with a later run's names.** Files dated days earlier were within one careless glob of being counted as this run's evidence; mtimes are what separated them.
+  - **A per-schema error string shared by two schemas names the wrong schema.** The walker hard-coded "not a recognised balance key" for both sides until it became a noun the caller supplies.
+
+- **Invariants this now relies on:**
+  - No world key has a compiled-in fallback: every one is required, and an authored zero is distinguishable from an absent key.
+  - A world that loads is a world a generator can be built from — stronger than "the file parses".
+  - The balance configuration carries no world value, and no world's generation input or `k` is read from it.
+  - A later content layer (prefabs, the entrance prefab, boss areas, ruins, NPC outposts) adds its own section and redefines nothing this format already states.
