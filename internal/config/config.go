@@ -90,8 +90,8 @@ type Config struct {
 // (errors.Join), so one call reports every problem rather than the first.
 //
 // Configuration is read once, at start-up: there is no reload path and no
-// mechanism to pick up a changed balance file or environment variable
-// without restarting the process.
+// mechanism to pick up a changed balance file, world set, or environment
+// variable without restarting the process.
 //
 // Every returned error wraps one or more *KeyError, each naming the
 // environment variable or dotted balance-file path it belongs to and

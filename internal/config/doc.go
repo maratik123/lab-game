@@ -17,6 +17,6 @@
 //     decoded and validated the same way the balance file is.
 //
 // Configuration is read once, at process start-up, through Load. There is
-// no reload path: a changed environment variable or balance file has no
-// effect until the process restarts.
+// no reload path: a changed environment variable, balance file, or world
+// set has no effect until the process restarts.
 package config

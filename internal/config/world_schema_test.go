@@ -193,6 +193,20 @@ func TestWorldScalarSchema_WeightBelowZero(t *testing.T) {
 	assertKeyError(t, err, ErrInvalidValue, "generation.weights.backtracker")
 }
 
+func TestWorldScalarSchema_RadiusIsFloat(t *testing.T) {
+	t.Parallel()
+	yaml := strings.Replace(validWorldScalarYAML, "  radius: 9\n", "  radius: 9.5\n", 1)
+	_, err := decodeWorldScalar(t, yaml)
+	assertKeyError(t, err, ErrInvalidValue, "generation.radius")
+}
+
+func TestWorldScalarSchema_WeightIsFloat(t *testing.T) {
+	t.Parallel()
+	yaml := strings.Replace(validWorldScalarYAML, "    backtracker: 1\n", "    backtracker: 1.5\n", 1)
+	_, err := decodeWorldScalar(t, yaml)
+	assertKeyError(t, err, ErrInvalidValue, "generation.weights.backtracker")
+}
+
 // TestWorldScalarSchema_WeightKeyAgreement asserts that every
 // generation.weights.* entry's last path segment equals that algorithm's
 // own rendered name, over every exported Algorithm constant — so a weight

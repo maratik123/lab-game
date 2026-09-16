@@ -292,6 +292,57 @@ func TestLoadWorldSet_NamingStyleSlotMismatchIsRefused(t *testing.T) {
 	assertKeyError(t, err, ErrInvalidValue, "naming_style.templates")
 }
 
+// TestLoadWorldSet_IDNotLowerSnakeCase drives the public loadWorldSet
+// entry point over a world file whose id is not a lower_snake_case
+// token, so the assertion covers bindLowerSnakeCaseString's token check
+// as wired by the loader, not just the regexp itself.
+func TestLoadWorldSet_IDNotLowerSnakeCase(t *testing.T) {
+	t.Parallel()
+	yaml := strings.Replace(validWorldYAML, "id: validation_world\n", "id: NotSnakeCase\n", 1)
+	if yaml == validWorldYAML {
+		t.Fatal("fixture line not found")
+	}
+	dir := writeWorldDir(t, yaml)
+	_, err := loadWorldSet(dir)
+	assertKeyError(t, err, ErrInvalidValue, "id")
+}
+
+// TestLoadWorldSet_ResourceProfileElementUnrecognisedKey drives the
+// public loadWorldSet entry point over a resource-profile element that
+// carries a key closedMappingFields does not declare.
+func TestLoadWorldSet_ResourceProfileElementUnrecognisedKey(t *testing.T) {
+	t.Parallel()
+	yaml := strings.Replace(validWorldYAML, "  - kind: spun_sugar\n    weight: 1\n",
+		"  - kind: spun_sugar\n    weight: 1\n    bogus: 1\n", 1)
+	if yaml == validWorldYAML {
+		t.Fatal("fixture line not found")
+	}
+	dir := writeWorldDir(t, yaml)
+	_, err := loadWorldSet(dir)
+	assertKeyError(t, err, ErrInvalidValue, "resource_profile")
+	if !strings.Contains(err.Error(), `unrecognised key "bogus"`) {
+		t.Errorf("error %q does not name the unrecognised key", err)
+	}
+}
+
+// TestLoadWorldSet_BestiaryElementUnrecognisedKey drives the public
+// loadWorldSet entry point over a bestiary element that carries a key
+// closedMappingFields does not declare.
+func TestLoadWorldSet_BestiaryElementUnrecognisedKey(t *testing.T) {
+	t.Parallel()
+	yaml := strings.Replace(validWorldYAML, "  - id: cotton_wolf\n    name: Cotton Wolf\n    role: common\n",
+		"  - id: cotton_wolf\n    name: Cotton Wolf\n    role: common\n    bogus: 1\n", 1)
+	if yaml == validWorldYAML {
+		t.Fatal("fixture line not found")
+	}
+	dir := writeWorldDir(t, yaml)
+	_, err := loadWorldSet(dir)
+	assertKeyError(t, err, ErrInvalidValue, "bestiary")
+	if !strings.Contains(err.Error(), `unrecognised key "bogus"`) {
+		t.Errorf("error %q does not name the unrecognised key", err)
+	}
+}
+
 func TestLoadWorldSet_LoadPopulatesConfigWorlds(t *testing.T) {
 	t.Parallel()
 	env := validConfigEnv(t)
