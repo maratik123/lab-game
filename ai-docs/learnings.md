@@ -1253,3 +1253,21 @@ position.
 **at:** 1246bb4
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — process — read four lines of a PR body and reported on the whole of it
+**What happened:** After the push that followed PR creation, the unconditional rule is to read the
+PR body. I ran `gh pr view --json body | head -4`, saw the opening paragraph, and wrote "the body
+does not contradict the new commits — no edit needed" into my own report. Four lines of roughly
+forty. The conclusion happened to be right, which is the least useful kind of right: the single new
+commit was a locator substitution the body never mentions, so any reading would have reached it. The
+`pr-sync` hook caught the gap and named the command with both fields. Reading the body in full then
+took one call. This is the fourth time in one run that I converted a partial look into a statement
+about the whole — after three entries already recording that shape in controls, in a search pattern,
+and in a mutant's placement.
+**Rule:** `head` is a preview, never a read. When a rule says read an artefact, the artefact ends
+where the file ends, and a truncating filter in the command is the tell that the claim will outrun
+the evidence. Where the conclusion is probably right anyway, the cost of doing it properly is one
+call, and paying it is what keeps "I checked" distinguishable from "I expected".
+**at:** 10a6c41
+**Kind:** correction
+**Escalated?** no
