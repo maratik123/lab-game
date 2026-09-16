@@ -10,13 +10,13 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — Group B running (subtasks 9-11)
+**current_step:** Step 8 — Group B running (subtask 10)
 **last_passed_gate:** go build ./... | 2026-09-16T08:05:13Z | 1a02253
 **entry_args:** 28
 
 ## Next action
 
-**Do this immediately:** Group B (subtasks 9-11) is running: the design-corpus edit in `~/lab-private`, the key-decisions entries, and the documentation half of the AC3 sweep. On its return, re-validate state and go to Step 9 (Verify).
+**Do this immediately:** Group B is running. Subtask 9 is done and committed in `~/lab-private` (outside this repository, outside the PR, outside CI). Next: subtask 10 (the key-decisions entries and amendments), then subtask 11 (the documentation half of the AC3 sweep). On Group B's return, re-validate state and go to Step 9 (Verify).
 
 ## Subtasks
 
@@ -28,8 +28,8 @@ _Updated: 2026-09-16 04:30_
 - [x] 6. World-set loader and wiring; `resolveWorldPath` to directory-only; `Config.WorldPath` removed
 - [x] 7. Remove the chunk radius from the balance side
 - [x] 8. Tracked-set gates + the CODE half of the AC3 propagation sweep
-- [ ] 9. Design corpus (`~/lab-private`): promote the sketch, amend the sketch-count sentence, re-file §16 item 5  ← CURRENT (Group B — handoff pending)
-- [ ] 10. Key decisions: new entries and the KD amendments
+- [x] 9. Design corpus (`~/lab-private`): promote the sketch, amend the sketch-count sentence, re-file §16 item 5
+- [ ] 10. Key decisions: new entries and the KD amendments  ← CURRENT
 - [ ] 11. Documentation half of the AC3 sweep over `ai-docs/**`
 
 ## Decisions log
@@ -60,6 +60,11 @@ _Updated: 2026-09-16 04:30_
 - **Subtask 8**: the code-surface AC3 sweep (`grep -rn "world\.chunk\.radius\|ChunkBalance\|WorldBalance\|\.WorldPath\b" --include=*.go --include=*.sql --include=*.yaml --include=*.yml .` plus a second pass for "nothing inside it is read"/"a file or a directory"/"open/close") found nothing beyond the two sites the design's own decomposition table already names and assesses still-true (`transport.go`'s "mirroring envBalancePath/envWorldPath's shape" and `env_test.go`'s `TestEnvKeys_IncludesPathVariables` comment) — both re-read and confirmed accurate as written; neither edited. `ai-docs/code-style.md`'s chunk-size row and `ai-docs/key-decisions.md`/`ai-docs/context-status.md`'s hits are Group B's (subtasks 10/11), out of this group's scope by the design's own split.
 - **Subtask 8**: Group A is complete (all 8 subtasks committed). Per the design's Handoff plan, the parent orchestrator now spawns `/context-reset` to hand off into Group B (subtasks 9-11, instructions/harness change-type) with fresh context — this session does not itself perform that handoff or continue into Group B.
 - **Subtask 8**: `make comment-refs` initially failed on `world_file_test.go` for repo-path findings on the literal tokens `_test.go` and `internal/config` inside a doc comment — reworded to prose with neither token; re-ran clean.
+- **Subtask 9**: the promotion lands as a new `#### 2.2.5. Мир MVP: мир сахарной ваты` at the end of §2.2 — after §2.2.4, before §2.3. The design says "where §2.2 and §14 describe the world"; §2.2's existing subsections are the world's own structure, so the authored world sits with them, and §14 item 2 names it and points at 2.2.5 rather than carrying the content twice. The `####` level matches §2.2.1–2.2.4.
+- **Subtask 9**: §2.2.5 deliberately carries **no number** — seed, R, the shares, the algorithm weights, k and the resource weights are configuration, and §16.5's standing rule keeps them there. What the section fixes is what is *designed*: the imagery and tone, the three resource kinds as permanent ledger enum members, the bestiary with its three roles, the naming-style and lexicon shape, and the language split (content Russian, keys and identifiers English).
+- **Subtask 9**: the §16.5 re-filing strikes R, the three shares and k from the balance-number list and adds one sentence stating they are the world's own and live in the world config (2.2, 2.2.2), leaving «Все балансовые константы — в конфиг, не в код» untouched — exactly the owner's round-3 answer. The other half of D13's "re-file them where §2.2 and §2.2.2 already own them" is that §2.2.2's two bare «конфиг» mentions (the chunk radius, the portal-share bounds) and the algorithm-weights line now spell «конфиг мира»; §2.2's k sentence and §2.2.1's island-share line already said «параметр мира» / «параметр биома» and needed no edit.
+- **Subtask 9**: the corpus sweep reached **two sites beyond the three D13 names**, both inside AC3's class and both edited: §14 item 2 («Один лабиринт, один биом») now names the world, and §16 item 2's «авторинг … конфигов миров (эскизы миров — IDEAS.md)» narrows to «помимо MVP-мира», since this task authors the MVP world's config and its sketch is no longer in the backlog. Two further hits were read and left: §1's «эскизы миров в IDEAS.md» carries no count, and IDEAS.md's own section heading and intro carry none either — so the only count sentence was §2.2's.
+- **Subtask 9**: committed in `~/lab-private` as `4200ebc`, with `git -C ~/lab-private` per the AXIOM — outside this repository, so neither the PR diff, the review agents nor CI sees it. Both files were bracketed by `ai-docs/scripts/doc-edit-guard.sh`; both reported `shape held` and both `.bak` files were removed by the verify step.
 
 ## GO notes
 
@@ -110,3 +115,4 @@ _Updated: 2026-09-16 04:30_
 - Subtask 6: `internal/config/world_load.go` (new: `loadWorldSet`, `loadWorldFile`), `internal/config/world_load_test.go` (new); `internal/config/world.go` (`resolveWorldPath` rewritten to directory-only via `os.Stat`); `internal/config/world_test.go` (regular-file-succeeds case removed, regular-file-refused case added); `internal/config/config.go` (`Config.WorldPath` removed, `Config.Worlds []World` added, `Load` wired through `loadWorldSet`); `internal/config/config_test.go` (`validConfigEnv` now writes one valid world file instead of an empty directory; `WorldPath` assertion replaced with a `Worlds` assertion); `internal/config/env.go` (`envKeys` doc comment reworded); `internal/config/doc.go` (package comment reworded — the world set is now decoded, not merely probed)
 - Subtask 7: `internal/config/balance.go` (`WorldBalance`/`ChunkBalance` and the `Balance.World` field removed), `internal/config/balance_load.go` (`world.chunk.radius` schema entry and the now-unused `maze` import removed), `internal/config/balance_load_test.go` (radius fixtures/tests removed; `TestLoadBalance_IntGivenFloat`/`TestLoadBalance_DuplicateKey`/one `TestLoadBalance_PredicateFailures` row retargeted onto `combat.hit_die_sides`/`raid.stamina.cap`; new `TestLoadBalance_LeftoverWorldBlockIsUnknown`), `config/balance.yaml` (`world:` block removed)
 - Subtask 8: `internal/config/world_file_test.go` (new: `TestWorldFile_LoadsAndAgrees`, `TestWorldFile_ResourceKindsAreLedgerMembers`, `internal/store` imported from this `_test.go` file only). Code-surface AC3 sweep: no residue found beyond the two sites the design already assessed still-true (`transport.go`, `env_test.go`) — confirmed, not edited.
+- Subtask 9 (**outside this repository** — `~/lab-private` @ `4200ebc`, not in the PR diff): `DESIGN.md` (new §2.2.5; §2.2, §2.2.2 ×3, §14 item 2, §16 item 2 and §16 item 5 amended), `IDEAS.md` (the cotton-candy sketch removed from the starting-world list, the remaining two renumbered, a note recording where it went)
