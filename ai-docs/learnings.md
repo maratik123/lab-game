@@ -1390,3 +1390,29 @@ the sentence describing the result.
 **at:** 3ef3ba0
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-17 — search — a corrective entry carried three new false claims while correcting one true defect
+**What happened:** The entry pinned `ca9e262` recorded its sweep under a command it had not run. That
+defect was real and remains so. The entry written to correct it, pinned `3ef3ba0`, then got three
+things wrong. (1) It said the narrowed sweep "returns 13, not 14, so the number was not reproducible
+from any recipe the entry carries". Measured at that pin, the narrowing returns **14** — and the
+source entry's own sentence already reads "returns 14 lines, of which 13 are prescribed commands", so
+13 and 14 are two different figures it states correctly, and the correction inverted them into a
+contradiction that does not exist. The original defect was the **unstated scope**, never
+irreproducibility. (2) It said "69 of the 90 hits are in shell scripts". Partitioned by suffix at the
+same pin: `.sh` **63**, `.md` **20**, `.json` **7**, summing to 90; no partition yields 69. (3) It
+opens "The entry above it states its evidence as…", but the entry immediately above carries no sweep
+count at all; the one it means sits two above. Every figure here was measured in the turn that wrote
+it, by `git grep -n '2>/dev/null' ca9e262 -- .claude AGENTS.md ai-docs` and a suffix partition over
+that output, with the extractor first run against a constructed line.
+**Rule:** A learnings entry carries the **command**, not a count derived from it. Where a figure
+appears it is the raw output of one command printed in the same entry — never a partition, a
+difference, or an "of which N", because each of those is a second computation done after the
+measuring command has scrolled away, and this log now holds two corrections that each botched exactly
+that second step while fixing the first. Name a neighbouring entry by its `at:` pin, never by
+position: "the entry above" is a coordinate any later append invalidates, and it was already wrong
+when written. And re-read the sentence being corrected in full before correcting it — the
+contradiction here was manufactured by reading "14 lines, of which 13" as two competing totals.
+**at:** d745061
+**Kind:** correction
+**Escalated?** no
