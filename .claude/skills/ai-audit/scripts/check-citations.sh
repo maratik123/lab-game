@@ -77,6 +77,28 @@ fi
 LOCAL_MAX=$(( PR_MAX > ISSUE_MAX ? PR_MAX : ISSUE_MAX ))
 fail=0
 
+# A scan grep that cannot read its corpus prints nothing, and nothing is what a
+# clean tree prints too -- so the rows and the status are taken separately and an
+# unreadable corpus stops the run instead of passing. grep exits 1 when it simply
+# found nothing and 2 or more when it could not look; only the latter is an
+# instrument failure. The status cannot be read from inside `done < <(...)`: that
+# is a subshell, so an exit there would end the substitution and leave the guard
+# reporting a clean scan over rows it never saw.
+scan() {
+  local out rc
+  out=$(grep -rnoE "$@")
+  rc=$?
+  printf '%s' "$out"
+  [ "$rc" -le 1 ]
+}
+
+scan_failed() {
+  echo "ERROR: the citation scan could not read its corpus (grep exit 2 or more)." >&2
+  echo "       Instrument failure, not a citation finding -- an empty result here would be" >&2
+  echo "       the tool refusing to run, not a tree without citations." >&2
+  exit 1
+}
+
 echo "== local high-water mark: #${LOCAL_MAX} (newest pull request #${PR_MAX}, newest issue #${ISSUE_MAX}) =="
 echo
 echo "--- (1) unqualified 'PR #N' / bare '#N' claiming to be local but exceeding it ---"
@@ -92,7 +114,14 @@ echo "--- (1) unqualified 'PR #N' / bare '#N' claiming to be local but exceeding
 # be a real local ref.
 # Hex colours need TWO defences, not one -- see (c). Do not "simplify" that
 # to `\b` alone; it looks sufficient and is not.
+rows1=$(scan '(^|[^a-zA-Z0-9/_-])#[0-9]+\b' .claude/ AGENTS.md ai-docs/) || scan_failed
+rows1=$(printf '%s\n' "$rows1" \
+           | grep -v learnings.md | grep -v '^ai-docs/bugfix/' \
+           | grep -v '^ai-docs/plans/' | grep -v '^ai-docs/deferred/' \
+           | grep -v '/scripts/test-[a-z-]*\.sh:' \
+           | sed -E 's/:([^:]*)(#[0-9]+)$/:\2/')
 while IFS=: read -r file line cite; do
+  [ -z "$file" ] && continue
   n=${cite##*#}
   [ "$n" -le "$LOCAL_MAX" ] 2>/dev/null && continue
   txt=$(sed -n "${line}p" "$file")
@@ -142,11 +171,7 @@ while IFS=: read -r file line cite; do
   case "$n" in [0-9][0-9][0-9][0-9][0-9][0-9]) continue ;; esac
   printf '  RED  %s:%s  -> %s (local max %s; does not resolve here)\n' "$file" "$line" "$cite" "$LOCAL_MAX"
   fail=$((fail + 1))
-done < <(grep -rnoE '(^|[^a-zA-Z0-9/_-])#[0-9]+\b' .claude/ AGENTS.md ai-docs/ 2>/dev/null \
-           | grep -v learnings.md | grep -v '^ai-docs/bugfix/' \
-           | grep -v '^ai-docs/plans/' | grep -v '^ai-docs/deferred/' \
-           | grep -v '/scripts/test-[a-z-]*\.sh:' \
-           | sed -E 's/:([^:]*)(#[0-9]+)$/:\2/')
+done <<< "$rows1"
 
 echo
 echo "--- (2) 'learnings.md <date>' citations outside this log's range ---"
@@ -154,7 +179,10 @@ echo "--- (2) 'learnings.md <date>' citations outside this log's range ---"
 # CITATION only: require a 'see|entry|validated|recurrence|added' cue on the
 # line, so an illustrative example filename shaped date-then-slug does not
 # fire.
+rows2=$(scan '2026-(0[1-7]-[0-9]{2}|08-([01][0-9]|2[0-8]))' .claude/ AGENTS.md ai-docs/) || scan_failed
+rows2=$(printf '%s\n' "$rows2" | grep -v learnings.md | grep -v '^ai-docs/bugfix/')
 while IFS=: read -r file line _; do
+  [ -z "$file" ] && continue
   txt=$(sed -n "${line}p" "$file")
   # Targeted exclusion: the `Superseded by:` field-spec row illustrates the
   # same-date disambiguation syntax — `YYYY-MM-DD ("slug")` — so its date is a
@@ -175,16 +203,18 @@ while IFS=: read -r file line _; do
   echo "$txt" | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z]' && continue  # example filename
   printf '  RED  %s:%s  -> cites a learnings.md date this log never had\n' "$file" "$line"
   fail=$((fail + 1))
-done < <(grep -rnoE '2026-(0[1-7]-[0-9]{2}|08-([01][0-9]|2[0-8]))' .claude/ AGENTS.md ai-docs/ 2>/dev/null | grep -v learnings.md | grep -v '^ai-docs/bugfix/')
+done <<< "$rows2"
 
 echo
 echo "--- (3) 'feedback_*.md' cited without its owning namespace ---"
+rows3=$(scan 'feedback_[a-z_]+\.md' .claude/ AGENTS.md) || scan_failed
 while IFS=: read -r file line _; do
+  [ -z "$file" ] && continue
   txt=$(sed -n "${line}p" "$file")
   echo "$txt" | grep -qE 'projects/[^/[:space:]]*-(quartzite|graphite-gp)/memory/' && continue
   printf '  RED  %s:%s  -> cites a memory file without naming whose namespace holds it\n' "$file" "$line"
   fail=$((fail + 1))
-done < <(grep -rnoE 'feedback_[a-z_]+\.md' .claude/ AGENTS.md 2>/dev/null)
+done <<< "$rows3"
 
 echo
 if [ "$fail" -gt 0 ]; then
