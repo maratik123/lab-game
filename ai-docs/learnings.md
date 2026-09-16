@@ -1232,3 +1232,24 @@ someone else's report is the case that most deserves a second encoding before it
 **at:** a1c07c0
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — testing — repeated the misplaced-probe failure in the same run that recorded it
+**What happened:** Verifying four review findings by mutation, two of the four probes did not land
+where they aimed, hours after I had appended an entry about exactly that class. The first named the
+wrong variable in its anchor (`MatchString(s)` for `MatchString(v)`), so the mutation never applied
+— and because the probe was chained behind it with `&&`, the skip was silent and the finding was
+simply unverified. The second disabled the wrong `if` inside the right function: the mapping-kind
+guard instead of the unrecognised-key refusal, which changes nothing for an input that is already a
+mapping. Its green would have been recorded as "the test does not catch it" — a second false
+accusation of a delegate in one run, the first having been the doc-comment enumeration earlier the
+same day. Both were re-staged after reading the source region rather than recalling it, and both then
+went red on the intended tests.
+**Rule:** Read the region before writing the mutant, never after. A mutation is a claim about a
+specific line, so the probe must assert that the line changed — print the mutated line, or diff it —
+before the test result is read; and never chain a probe behind its own mutation with `&&`, which
+converts a failed mutation into a skipped verification that looks like nothing happened. Where a
+function contains more than one refusal, name the one under test by its condition, not by its
+position.
+**at:** 1246bb4
+**Kind:** correction
+**Escalated?** no
