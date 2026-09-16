@@ -10,8 +10,8 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — subtask 7 of 8 complete
-**last_passed_gate:** go build ./... ; go test ./... (whole repo) ; golangci-lint run ./... ; golangci-lint fmt -d ; go vet ./... ; make comment-refs ; make file-limits | 2026-09-16 | (pending commit)
+**current_step:** Step 8 — Group A complete (subtasks 1-8 of 8)
+**last_passed_gate:** go build ./... ; go test ./... (whole repo) ; golangci-lint run ./... ; golangci-lint fmt -d ; go vet ./... ; make comment-refs ; make file-limits ; make import-guard | 2026-09-16 | (pending commit)
 **entry_args:** 28
 
 ## Next action
@@ -27,8 +27,8 @@ _Updated: 2026-09-16 04:30_
 - [x] 5. Author the MVP world; delete the placeholder; re-word both falsified `.env.example` clauses
 - [x] 6. World-set loader and wiring; `resolveWorldPath` to directory-only; `Config.WorldPath` removed
 - [x] 7. Remove the chunk radius from the balance side
-- [ ] 8. Tracked-set gates + the CODE half of the AC3 propagation sweep  ← CURRENT
-- [ ] 9. Design corpus (`~/lab-private`): promote the sketch, amend the sketch-count sentence, re-file §16 item 5
+- [x] 8. Tracked-set gates + the CODE half of the AC3 propagation sweep
+- [ ] 9. Design corpus (`~/lab-private`): promote the sketch, amend the sketch-count sentence, re-file §16 item 5  ← CURRENT (Group B — handoff pending)
 - [ ] 10. Key decisions: new entries and the KD amendments
 - [ ] 11. Documentation half of the AC3 sweep over `ai-docs/**`
 
@@ -57,6 +57,9 @@ _Updated: 2026-09-16 04:30_
 - **Subtask 7**: Test Design's own removal note ("the radius cases go; the radius's balance tests moving to the world loader's") is already satisfied — subtask 3's `world_schema_test.go` (`TestWorldScalarSchema_RadiusBelowMinStatesTheBound`, `TestWorldScalarSchema_RadiusAboveInt32IsRefusedByTheDecoder`) already carries the radius coverage this subtask's removal leaves behind; no new radius test was added here.
 - **Subtask 7**: `TestLoadBalance_PredicateFailures`'s `below_min_radius`/`negative` rows (both keyed to the removed `world.chunk.radius`) are collapsed into one `below_min_positive_int` row on `combat.hit_die_sides` (a `positiveInt` predicate, so a value below 1 — including a negative one — is one case, not two), preserving the row count's intent (one row per distinct predicate-failure shape) without inventing a second int-lower-bound key the schema doesn't have.
 - **Subtask 7**: `make comment-refs` initially failed on the new `TestLoadBalance_LeftoverWorldBlockIsUnknown` doc comment for a decision-anchor reference (`D11`) — reworded to prose; re-ran clean.
+- **Subtask 8**: the code-surface AC3 sweep (`grep -rn "world\.chunk\.radius\|ChunkBalance\|WorldBalance\|\.WorldPath\b" --include=*.go --include=*.sql --include=*.yaml --include=*.yml .` plus a second pass for "nothing inside it is read"/"a file or a directory"/"open/close") found nothing beyond the two sites the design's own decomposition table already names and assesses still-true (`transport.go`'s "mirroring envBalancePath/envWorldPath's shape" and `env_test.go`'s `TestEnvKeys_IncludesPathVariables` comment) — both re-read and confirmed accurate as written; neither edited. `ai-docs/code-style.md`'s chunk-size row and `ai-docs/key-decisions.md`/`ai-docs/context-status.md`'s hits are Group B's (subtasks 10/11), out of this group's scope by the design's own split.
+- **Subtask 8**: Group A is complete (all 8 subtasks committed). Per the design's Handoff plan, the parent orchestrator now spawns `/context-reset` to hand off into Group B (subtasks 9-11, instructions/harness change-type) with fresh context — this session does not itself perform that handoff or continue into Group B.
+- **Subtask 8**: `make comment-refs` initially failed on `world_file_test.go` for repo-path findings on the literal tokens `_test.go` and `internal/config` inside a doc comment — reworded to prose with neither token; re-ran clean.
 
 ## GO notes
 
@@ -106,3 +109,4 @@ _Updated: 2026-09-16 04:30_
 - Subtask 5: `config/world/cotton_candy.yaml` (new), `config/world/.gitkeep` (deleted), `.env.example` (both falsified world-path clauses reworded)
 - Subtask 6: `internal/config/world_load.go` (new: `loadWorldSet`, `loadWorldFile`), `internal/config/world_load_test.go` (new); `internal/config/world.go` (`resolveWorldPath` rewritten to directory-only via `os.Stat`); `internal/config/world_test.go` (regular-file-succeeds case removed, regular-file-refused case added); `internal/config/config.go` (`Config.WorldPath` removed, `Config.Worlds []World` added, `Load` wired through `loadWorldSet`); `internal/config/config_test.go` (`validConfigEnv` now writes one valid world file instead of an empty directory; `WorldPath` assertion replaced with a `Worlds` assertion); `internal/config/env.go` (`envKeys` doc comment reworded); `internal/config/doc.go` (package comment reworded — the world set is now decoded, not merely probed)
 - Subtask 7: `internal/config/balance.go` (`WorldBalance`/`ChunkBalance` and the `Balance.World` field removed), `internal/config/balance_load.go` (`world.chunk.radius` schema entry and the now-unused `maze` import removed), `internal/config/balance_load_test.go` (radius fixtures/tests removed; `TestLoadBalance_IntGivenFloat`/`TestLoadBalance_DuplicateKey`/one `TestLoadBalance_PredicateFailures` row retargeted onto `combat.hit_die_sides`/`raid.stamina.cap`; new `TestLoadBalance_LeftoverWorldBlockIsUnknown`), `config/balance.yaml` (`world:` block removed)
+- Subtask 8: `internal/config/world_file_test.go` (new: `TestWorldFile_LoadsAndAgrees`, `TestWorldFile_ResourceKindsAreLedgerMembers`, `internal/store` imported from this `_test.go` file only). Code-surface AC3 sweep: no residue found beyond the two sites the design already assessed still-true (`transport.go`, `env_test.go`) — confirmed, not edited.
