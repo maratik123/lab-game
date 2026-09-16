@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -223,6 +224,22 @@ func TestLoadWorldSet_CrossFieldFold_PortalShareLowerAboveUpper(t *testing.T) {
 	}
 }
 
+func TestLoadWorldSet_CrossFieldFold_AllWeightsZero(t *testing.T) {
+	t.Parallel()
+	yaml := strings.Replace(validWorldYAML,
+		"  weights:\n    backtracker: 1\n    kruskal: 1\n    prim: 1\n    growing_tree: 1\n    wilson_walk: 1\n",
+		"  weights:\n    backtracker: 0\n    kruskal: 0\n    prim: 0\n    growing_tree: 0\n    wilson_walk: 0\n", 1)
+	if yaml == validWorldYAML {
+		t.Fatal("fixture line not found")
+	}
+	dir := writeWorldDir(t, yaml)
+	_, err := loadWorldSet(dir)
+	assertKeyError(t, err, ErrInvalidValue, "generation")
+	if !strings.Contains(err.Error(), "weights has no positive entry") {
+		t.Errorf("error %q does not carry the generator's own wording", err)
+	}
+}
+
 func TestLoadWorldSet_TwoMalformedWorldsProduceBothFailuresInFileOrder(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -237,6 +254,42 @@ func TestLoadWorldSet_TwoMalformedWorldsProduceBothFailuresInFileOrder(t *testin
 	_, err := loadWorldSet(dir)
 	assertKeyError(t, err, ErrMissing, "id")
 	assertKeyError(t, err, ErrInvalidValue, "seed")
+
+	// The loader sorts file names itself, so the joined error's order is a
+	// property of that code, not of the directory read: the first file's
+	// failure ("id") must precede the second file's ("seed").
+	u, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		t.Fatalf("loadWorldSet: error %v is not a joined error", err)
+	}
+	joined := u.Unwrap()
+	if len(joined) != 2 {
+		t.Fatalf("loadWorldSet: joined error has %d members, want 2: %v", len(joined), joined)
+	}
+	var first, second *KeyError
+	if !errors.As(joined[0], &first) || !errors.As(joined[1], &second) {
+		t.Fatalf("loadWorldSet: joined members are not *KeyError: %v", joined)
+	}
+	if first.Key != "id" || second.Key != "seed" {
+		t.Errorf("loadWorldSet: order = [%s, %s], want [id, seed] (a.yaml's failure before b.yaml's)",
+			first.Key, second.Key)
+	}
+}
+
+// TestLoadWorldSet_NamingStyleSlotMismatchIsRefused drives the public
+// loadWorldSet entry point (not checkNamingStyleSlots directly) over a
+// world file whose naming style violates the slot cross-check, so the
+// assertion covers the loader's wiring of that check, not just the check
+// itself.
+func TestLoadWorldSet_NamingStyleSlotMismatchIsRefused(t *testing.T) {
+	t.Parallel()
+	yaml := strings.Replace(validWorldYAML, "\"{adjective} {noun}\"", "\"{adjective} {undefined_slot}\"", 1)
+	if yaml == validWorldYAML {
+		t.Fatal("fixture line not found")
+	}
+	dir := writeWorldDir(t, yaml)
+	_, err := loadWorldSet(dir)
+	assertKeyError(t, err, ErrInvalidValue, "naming_style.templates")
 }
 
 func TestLoadWorldSet_LoadPopulatesConfigWorlds(t *testing.T) {
