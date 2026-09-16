@@ -1270,7 +1270,7 @@ the evidence. Where the conclusion is probably right anyway, the cost of doing i
 call, and paying it is what keeps "I checked" distinguishable from "I expected".
 **at:** 10a6c41
 **Kind:** correction
-**Escalated?** rules:ast-index
+**Escalated?** no
 
 ### 2026-09-16 — process — asserted a corpus count in a delegate prompt before running the command that measures it
 **What happened:** Opening an `/improve` run, I wrote into the `self-improve` spawn prompt that "the
