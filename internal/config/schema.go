@@ -52,6 +52,7 @@ type schemaNode struct {
 const (
 	tagInt   = "!!int"
 	tagFloat = "!!float"
+	tagStr   = "!!str"
 )
 
 // bindInt returns a binder that accepts only a "!!int" node (rejecting a
@@ -79,7 +80,7 @@ func bindInt(dst *int, predicate func(int) bool, want string) func(*yaml.Node) e
 // checks predicate on the decoded value.
 func bindDuration(dst *time.Duration, predicate func(time.Duration) bool, want string) func(*yaml.Node) error {
 	return func(n *yaml.Node) error {
-		if n.Tag != "!!str" {
+		if n.Tag != tagStr {
 			return fmt.Errorf("must be a duration string, got %s", n.Tag)
 		}
 		var v time.Duration

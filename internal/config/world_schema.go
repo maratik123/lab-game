@@ -29,6 +29,21 @@ type World struct {
 	// directly onto them so the generator's own constructor stays the
 	// sole source of every cross-field refusal.
 	Generation maze.Params
+
+	// ResourceProfile is the biome's resource kinds and their draw
+	// weights — no biome closes every need, so a later mechanic reads
+	// this to know what a raid node in this world can yield.
+	ResourceProfile []ResourceEntry
+	// NamingStyle is the location-naming templates and their slot
+	// vocabulary, cross-checked against each other so neither side can
+	// silently go unused.
+	NamingStyle NamingStyle
+	// Lexicon is an open map of slot name to a non-empty phrase list: the
+	// tone vocabulary a later template engine draws from. The slot names
+	// are this world's own authored vocabulary, not this schema's.
+	Lexicon map[string][]string
+	// Bestiary is this world's monster roster: id, display name and role.
+	Bestiary []BestiaryEntry
 }
 
 // lowerSnakeCaseToken matches a token this format uses as authored
@@ -40,7 +55,7 @@ var lowerSnakeCaseToken = regexp.MustCompile(`^[a-z0-9]+(_[a-z0-9]+)*$`)
 // node matching lowerSnakeCaseToken, decodes it into dst.
 func bindLowerSnakeCaseString(dst *string) func(*yaml.Node) error {
 	return func(n *yaml.Node) error {
-		if n.Tag != "!!str" {
+		if n.Tag != tagStr {
 			return fmt.Errorf("must be a string, got %s", n.Tag)
 		}
 		var v string

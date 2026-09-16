@@ -10,7 +10,7 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — subtask 3 of 8 complete
+**current_step:** Step 8 — subtask 4 of 8 complete
 **last_passed_gate:** go test ./internal/config/... ; golangci-lint run ; golangci-lint fmt -d ; go vet ./... ; make comment-refs ; make file-limits | 2026-09-16 | (pending commit)
 **entry_args:** 28
 
@@ -23,8 +23,8 @@ _Updated: 2026-09-16 04:30_
 - [x] 1. Biome resource kinds in the ledger — migration 00008, Go mirror, member accessor
 - [x] 2. Lift the YAML schema walker into its own file; add the non-scalar leaf kind
 - [x] 3. World value types + scalar half of the world schema (id, seed, generation inputs, k)
-- [ ] 4. Content half of the world schema (resource profile, naming style, lexicon, bestiary)  ← CURRENT
-- [ ] 5. Author the MVP world; delete the placeholder; re-word both falsified `.env.example` clauses
+- [x] 4. Content half of the world schema (resource profile, naming style, lexicon, bestiary)
+- [ ] 5. Author the MVP world; delete the placeholder; re-word both falsified `.env.example` clauses  ← CURRENT
 - [ ] 6. World-set loader and wiring; `resolveWorldPath` to directory-only; `Config.WorldPath` removed
 - [ ] 7. Remove the chunk radius from the balance side
 - [ ] 8. Tracked-set gates + the CODE half of the AC3 propagation sweep
@@ -43,6 +43,9 @@ _Updated: 2026-09-16 04:30_
 - **Subtask 3**: adding `bindInt32`/`bindInt64`/`bindUint64` pushed the repo-wide count of the `"!!int"` string literal to 5, tripping `goconst`. Fixed by naming `tagInt`/`tagFloat` constants in `schema.go` and using them from both files — a minimal, non-behavioural touch to the subtask-2 lift, not a design deviation.
 - **Subtask 3**: `World`'s doc comment on the `Generation maze.Params` field states that a later file adds further fields on this same struct — flagging ahead of time that subtask 4 necessarily also touches `world_schema.go` (to add those fields to `World`), even though the design's subtask-4 file list names only `world_content.go`/`world_content_test.go`. `World` is a single struct declaration; Go does not allow splitting a struct's field list across files.
 - **Subtask 3**: `make comment-refs` (run before staging, per the per-subtask gate list) initially failed on `world_schema.go`/`world_schema_test.go`: several doc comments named package-qualified symbols of this module's own other packages (`maze.New`, `maze.Params`, `maze.Algorithm`, `gate.Next`) and one comment carried a decision anchor (`D3`) and a repo path (`world_content.go`) — all banned by D12/DOC-4. Reworded every comment to describe the contract in prose with no qualified symbol, anchor, or path; re-ran `make comment-refs` clean before committing.
+- **Subtask 4**: the naming-style slot cross-check (`checkNamingStyleSlots`) is implemented as a separate function over the already-decoded `NamingStyle`, called after a successful `worldContentSchema` walk — not inside either leaf's own binder, since a single leaf's binder only ever sees its own subtree and the check needs both `templates` and `parts` populated first. This mirrors how the generator's own cross-field validation runs after its scalar inputs are bound (design's own "single source of every cross-field refusal" shape for the generation inputs), and keeps the two leaf binders independently testable. The world-set loader (subtask 6) is where this function is wired into the full per-file decode; this subtask's own test file calls it directly against `worldContentSchema`'s output.
+- **Subtask 4**: resource-profile weights and the compound leaves are validated with a manual per-element decode (checking each field's YAML tag before `Decode`) rather than a single `n.Decode` into a tagged Go struct — preserving the same "absent key vs. authored zero" and "no quoted-string number" distinctions the scalar binders enforce, which a naive whole-node `Decode` would silently lose.
+- **Subtask 4**: `make comment-refs` initially failed on `world_content.go` for two decision-anchor references (`D7`) left in doc comments — reworded to prose with no anchor and re-ran clean before committing.
 
 ## GO notes
 
@@ -88,3 +91,4 @@ _Updated: 2026-09-16 04:30_
 - Subtask 1: `internal/store/migrations/00008_biome_resource_kinds.sql` (new), `internal/store/enums.go`, `internal/store/enums_test.go`, `internal/store/migrate_test.go`, `internal/store/migrate_process_test.go`
 - Subtask 2: `internal/config/schema.go` (new, lifted), `internal/config/balance_load.go` (trimmed to `balanceSchema`/`loadBalance`), `internal/config/schema_test.go` (new)
 - Subtask 3: `internal/config/world_schema.go` (new: `World` struct, `bindInt32`/`bindInt64`/`bindUint64`/`bindLowerSnakeCaseString`, `worldScalarSchema`), `internal/config/world_schema_test.go` (new); `internal/config/schema.go` touched to add the shared `tagInt`/`tagFloat` constants (goconst, five `"!!int"` literals across the two files)
+- Subtask 4: `internal/config/world_content.go` (new: `ResourceEntry`, `NamingStyle`, `BestiaryEntry`, the compound-leaf binders, `worldContentSchema`, `checkNamingStyleSlots`), `internal/config/world_content_test.go` (new); `internal/config/world_schema.go` touched to add `ResourceProfile`/`NamingStyle`/`Lexicon`/`Bestiary` fields to `World` (flagged as a necessary deviation in subtask 3's own decisions-log entry); `internal/config/schema.go` touched to add the shared `tagStr` constant (goconst, three `"!!str"` literals across three files)
