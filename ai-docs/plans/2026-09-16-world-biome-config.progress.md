@@ -10,8 +10,8 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — subtask 4 of 8 complete
-**last_passed_gate:** go test ./internal/config/... ; golangci-lint run ; golangci-lint fmt -d ; go vet ./... ; make comment-refs ; make file-limits | 2026-09-16 | (pending commit)
+**current_step:** Step 8 — subtask 5 of 8 complete
+**last_passed_gate:** go build ./... ; go test ./... (whole repo) ; make comment-refs ; make file-limits | 2026-09-16 | (pending commit)
 **entry_args:** 28
 
 ## Next action
@@ -24,8 +24,8 @@ _Updated: 2026-09-16 04:30_
 - [x] 2. Lift the YAML schema walker into its own file; add the non-scalar leaf kind
 - [x] 3. World value types + scalar half of the world schema (id, seed, generation inputs, k)
 - [x] 4. Content half of the world schema (resource profile, naming style, lexicon, bestiary)
-- [ ] 5. Author the MVP world; delete the placeholder; re-word both falsified `.env.example` clauses  ← CURRENT
-- [ ] 6. World-set loader and wiring; `resolveWorldPath` to directory-only; `Config.WorldPath` removed
+- [x] 5. Author the MVP world; delete the placeholder; re-word both falsified `.env.example` clauses
+- [ ] 6. World-set loader and wiring; `resolveWorldPath` to directory-only; `Config.WorldPath` removed  ← CURRENT
 - [ ] 7. Remove the chunk radius from the balance side
 - [ ] 8. Tracked-set gates + the CODE half of the AC3 propagation sweep
 - [ ] 9. Design corpus (`~/lab-private`): promote the sketch, amend the sketch-count sentence, re-file §16 item 5
@@ -46,6 +46,10 @@ _Updated: 2026-09-16 04:30_
 - **Subtask 4**: the naming-style slot cross-check (`checkNamingStyleSlots`) is implemented as a separate function over the already-decoded `NamingStyle`, called after a successful `worldContentSchema` walk — not inside either leaf's own binder, since a single leaf's binder only ever sees its own subtree and the check needs both `templates` and `parts` populated first. This mirrors how the generator's own cross-field validation runs after its scalar inputs are bound (design's own "single source of every cross-field refusal" shape for the generation inputs), and keeps the two leaf binders independently testable. The world-set loader (subtask 6) is where this function is wired into the full per-file decode; this subtask's own test file calls it directly against `worldContentSchema`'s output.
 - **Subtask 4**: resource-profile weights and the compound leaves are validated with a manual per-element decode (checking each field's YAML tag before `Decode`) rather than a single `n.Decode` into a tagged Go struct — preserving the same "absent key vs. authored zero" and "no quoted-string number" distinctions the scalar binders enforce, which a naive whole-node `Decode` would silently lose.
 - **Subtask 4**: `make comment-refs` initially failed on `world_content.go` for two decision-anchor references (`D7`) left in doc comments — reworded to prose with no anchor and re-ran clean before committing.
+- **Subtask 5**: verified the authored `config/world/cotton_candy.yaml` end to end before committing it — a throwaway, unstaged `_test.go` in `internal/config` (deleted before commit, never staged) decoded it through `worldScalarSchema`/`worldContentSchema`/`checkNamingStyleSlots` and called the generator's own constructor on the decoded seed and generation params; all green, so the tracked file is known to satisfy the schema and the generator's cross-field checks even though the loader wiring (subtask 6) does not exist yet to exercise it end-to-end itself.
+- **Subtask 5**: chose `k: 0` deliberately for the MVP world — the design's own Approach section names `k = 0` as the "concentric rings from the centre" case the whole node-tree/absent-vs-zero property exists to keep distinguishable from an absent key; the tracked file now carries that exact case live.
+- **Subtask 5**: `make comment-refs` initially failed on the reworded `.env.example` line for a repo-path finding on the token `*.yaml` (the gate's extension-based repo-path check, not a markdown-path finding) — reworded to say "YAML" instead of `*.yaml`; re-ran clean.
+- **Subtask 5**: resource-profile weights (spun_sugar 3, pastel_fleece 2, glitter_dust 1) and the bestiary/naming-style/lexicon content are placeholder-shaped like the tracked balance file's own numbers — loadable and internally consistent, not balance-tuned; the design supplies no numeric guidance for these (D8/D10 fix only the resource-kind tokens and the shape, not weights or rates).
 
 ## GO notes
 
@@ -92,3 +96,4 @@ _Updated: 2026-09-16 04:30_
 - Subtask 2: `internal/config/schema.go` (new, lifted), `internal/config/balance_load.go` (trimmed to `balanceSchema`/`loadBalance`), `internal/config/schema_test.go` (new)
 - Subtask 3: `internal/config/world_schema.go` (new: `World` struct, `bindInt32`/`bindInt64`/`bindUint64`/`bindLowerSnakeCaseString`, `worldScalarSchema`), `internal/config/world_schema_test.go` (new); `internal/config/schema.go` touched to add the shared `tagInt`/`tagFloat` constants (goconst, five `"!!int"` literals across the two files)
 - Subtask 4: `internal/config/world_content.go` (new: `ResourceEntry`, `NamingStyle`, `BestiaryEntry`, the compound-leaf binders, `worldContentSchema`, `checkNamingStyleSlots`), `internal/config/world_content_test.go` (new); `internal/config/world_schema.go` touched to add `ResourceProfile`/`NamingStyle`/`Lexicon`/`Bestiary` fields to `World` (flagged as a necessary deviation in subtask 3's own decisions-log entry); `internal/config/schema.go` touched to add the shared `tagStr` constant (goconst, three `"!!str"` literals across three files)
+- Subtask 5: `config/world/cotton_candy.yaml` (new), `config/world/.gitkeep` (deleted), `.env.example` (both falsified world-path clauses reworded)
