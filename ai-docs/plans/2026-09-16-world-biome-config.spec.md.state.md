@@ -61,7 +61,16 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: null
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: "Ресурсы биома — это члены перечисления ledger_kind, содержимое конфига мира, или предметы item-машины? Задача #34 реализует любой ответ, но не выбирает его."
+    answer: "Члены enum"
+  - round: 1
+    question: "Где живут входы генерации (радиус чанка R, веса алгоритмов, смещение growing tree, доли островков, дополнительных проходов и порталов) и параметр k? Сейчас balance-файл несёт world.chunk.radius, а DESIGN 2.2/2.2.2 и 16.5 расходятся."
+    answer: "В конфиг мира"
+  - round: 1
+    question: "Каким должен быть контент MVP-мира — лексикон, стиль названий, бестиарий — в этой задаче?"
+    answer: "из IDEAS сахарная вата"
 ```
