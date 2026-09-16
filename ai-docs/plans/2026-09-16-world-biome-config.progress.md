@@ -10,8 +10,8 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — subtask 5 of 8 complete
-**last_passed_gate:** go build ./... ; go test ./... (whole repo) ; make comment-refs ; make file-limits | 2026-09-16 | (pending commit)
+**current_step:** Step 8 — subtask 6 of 8 complete
+**last_passed_gate:** go build ./... ; go test ./... (whole repo) ; golangci-lint run ./... ; golangci-lint fmt -d ; go vet ./... ; make comment-refs ; make file-limits ; make import-guard | 2026-09-16 | (pending commit)
 **entry_args:** 28
 
 ## Next action
@@ -25,8 +25,8 @@ _Updated: 2026-09-16 04:30_
 - [x] 3. World value types + scalar half of the world schema (id, seed, generation inputs, k)
 - [x] 4. Content half of the world schema (resource profile, naming style, lexicon, bestiary)
 - [x] 5. Author the MVP world; delete the placeholder; re-word both falsified `.env.example` clauses
-- [ ] 6. World-set loader and wiring; `resolveWorldPath` to directory-only; `Config.WorldPath` removed  ← CURRENT
-- [ ] 7. Remove the chunk radius from the balance side
+- [x] 6. World-set loader and wiring; `resolveWorldPath` to directory-only; `Config.WorldPath` removed
+- [ ] 7. Remove the chunk radius from the balance side  ← CURRENT
 - [ ] 8. Tracked-set gates + the CODE half of the AC3 propagation sweep
 - [ ] 9. Design corpus (`~/lab-private`): promote the sketch, amend the sketch-count sentence, re-file §16 item 5
 - [ ] 10. Key decisions: new entries and the KD amendments
@@ -50,6 +50,10 @@ _Updated: 2026-09-16 04:30_
 - **Subtask 5**: chose `k: 0` deliberately for the MVP world — the design's own Approach section names `k = 0` as the "concentric rings from the centre" case the whole node-tree/absent-vs-zero property exists to keep distinguishable from an absent key; the tracked file now carries that exact case live.
 - **Subtask 5**: `make comment-refs` initially failed on the reworded `.env.example` line for a repo-path finding on the token `*.yaml` (the gate's extension-based repo-path check, not a markdown-path finding) — reworded to say "YAML" instead of `*.yaml`; re-ran clean.
 - **Subtask 5**: resource-profile weights (spun_sugar 3, pastel_fleece 2, glitter_dust 1) and the bestiary/naming-style/lexicon content are placeholder-shaped like the tracked balance file's own numbers — loadable and internally consistent, not balance-tuned; the design supplies no numeric guidance for these (D8/D10 fix only the resource-kind tokens and the shape, not weights or rates).
+- **Subtask 6**: per-file schema/cross-check errors (`loadWorldFile`) are joined flat via `errors.Join`, never re-wrapped in an outer `fmt.Errorf("...%w", …)` around that join — only the loader-level duplicate-id and empty-set refusals, and the read/parse failures (not `*KeyError`s), get path context added directly in their own message. A single `%w` wrap around an already-joined error breaks `containsKeyError`'s tree walk (it only descends via `Unwrap() []error`, not through a further single `Unwrap() error` layer), so nesting was avoided by construction rather than by extending that test helper.
+- **Subtask 6**: the generation-inputs cross-field fold (the generator's own constructor) is reported as a `*KeyError` keyed `"generation"` — the design's own wording is "naming the generation subtree" — carrying the generator's own error text verbatim via `%s` so the message states the actual bound/reason.
+- **Subtask 6**: `TestLoadWorldSet_TwoMalformedWorldsProduceBothFailuresInFileOrder` deliberately uses two *different* failure classes (a missing `id` in one file, an invalid `seed` in the other) rather than the same key twice, since two `*KeyError`s sharing one `Key` are indistinguishable to `containsKeyError` — this is a test-design choice, not a loader limitation.
+- **Subtask 6**: `make comment-refs` initially failed on `world_load_test.go` for a repo-path finding on the literal filename `b.yaml` in a comment — reworded to avoid naming a bare `*.yaml` token; re-ran clean.
 
 ## GO notes
 
@@ -97,3 +101,4 @@ _Updated: 2026-09-16 04:30_
 - Subtask 3: `internal/config/world_schema.go` (new: `World` struct, `bindInt32`/`bindInt64`/`bindUint64`/`bindLowerSnakeCaseString`, `worldScalarSchema`), `internal/config/world_schema_test.go` (new); `internal/config/schema.go` touched to add the shared `tagInt`/`tagFloat` constants (goconst, five `"!!int"` literals across the two files)
 - Subtask 4: `internal/config/world_content.go` (new: `ResourceEntry`, `NamingStyle`, `BestiaryEntry`, the compound-leaf binders, `worldContentSchema`, `checkNamingStyleSlots`), `internal/config/world_content_test.go` (new); `internal/config/world_schema.go` touched to add `ResourceProfile`/`NamingStyle`/`Lexicon`/`Bestiary` fields to `World` (flagged as a necessary deviation in subtask 3's own decisions-log entry); `internal/config/schema.go` touched to add the shared `tagStr` constant (goconst, three `"!!str"` literals across three files)
 - Subtask 5: `config/world/cotton_candy.yaml` (new), `config/world/.gitkeep` (deleted), `.env.example` (both falsified world-path clauses reworded)
+- Subtask 6: `internal/config/world_load.go` (new: `loadWorldSet`, `loadWorldFile`), `internal/config/world_load_test.go` (new); `internal/config/world.go` (`resolveWorldPath` rewritten to directory-only via `os.Stat`); `internal/config/world_test.go` (regular-file-succeeds case removed, regular-file-refused case added); `internal/config/config.go` (`Config.WorldPath` removed, `Config.Worlds []World` added, `Load` wired through `loadWorldSet`); `internal/config/config_test.go` (`validConfigEnv` now writes one valid world file instead of an empty directory; `WorldPath` assertion replaced with a `Worlds` assertion); `internal/config/env.go` (`envKeys` doc comment reworded); `internal/config/doc.go` (package comment reworded — the world set is now decoded, not merely probed)

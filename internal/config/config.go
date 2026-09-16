@@ -56,10 +56,9 @@ type Config struct {
 	// write to (LAB_GAME_ALLOWED_CHAT_IDS), in the order the operator
 	// wrote them.
 	AllowedChatIDs []int64
-	// WorldPath is the world-set target (LAB_GAME_WORLD_PATH) — the path
-	// only. This package declares no type describing the world set's
-	// interior; nothing inside it is read here.
-	WorldPath string
+	// Worlds is every world decoded from the LAB_GAME_WORLD_PATH
+	// directory, in the sorted order of their file names.
+	Worlds []World
 	// Balance holds every game constant, decoded from LAB_GAME_BALANCE_PATH.
 	Balance Balance
 	// Transport holds the Telegram client's retry and rate-limit tuning
@@ -84,11 +83,11 @@ type Config struct {
 
 // Load reads and validates lab-game's whole configuration through lookup —
 // the process environment (secrets, runtime settings, the balance-file and
-// world-set paths), the balance YAML file, and the world-set path's
-// readability — and returns a populated *Config, or an error naming every
-// rejected or missing key. All three sources are validated independently
-// against the same lookup and their failures are joined (errors.Join), so
-// one call reports every problem rather than the first.
+// world-set paths), the balance YAML file, and every world file inside
+// the world-set directory — and returns a populated *Config, or an error
+// naming every rejected or missing key. All three sources are validated
+// independently against the same lookup and their failures are joined
+// (errors.Join), so one call reports every problem rather than the first.
 //
 // Configuration is read once, at start-up: there is no reload path and no
 // mechanism to pick up a changed balance file or environment variable
@@ -147,9 +146,13 @@ func Load(lookup Lookup) (*Config, error) {
 		}
 	}
 
-	worldPath, err := resolveWorldPath(lookup)
-	if err != nil {
+	var worlds []World
+	if worldDir, err := resolveWorldPath(lookup); err != nil {
 		errs = append(errs, err)
+	} else if ws, err := loadWorldSet(worldDir); err != nil {
+		errs = append(errs, err)
+	} else {
+		worlds = ws
 	}
 
 	var balance *Balance
@@ -170,7 +173,7 @@ func Load(lookup Lookup) (*Config, error) {
 		DSN:            Secret(env.DSN),
 		BotAPIBaseURL:  env.BotAPIBaseURL,
 		AllowedChatIDs: env.AllowedChatIDs,
-		WorldPath:      worldPath,
+		Worlds:         worlds,
 		Balance:        *balance,
 		Transport:      *transport,
 		Scheduler:      *scheduler,
