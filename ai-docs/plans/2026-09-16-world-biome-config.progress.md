@@ -5,13 +5,13 @@ _Updated: 2026-09-16 04:30_
 
 **Branch:** feat/2026-09-16-world-biome-config
 **base_commit:** da3e6a8e755fb91129f795e2b73aa4cccf828b19
-**Last build:** not run
+**Last build:** PASS
 
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — not started (Group A not yet spawned)
-**last_passed_gate:** check-spec-anchors.sh + check-spec-shape.sh + check-ac-shape.sh | 2026-09-16T00:25Z | f5a5963
+**current_step:** Step 8 — Group A spawning (subtasks 1-8)
+**last_passed_gate:** go build ./... | 2026-09-16T07:28:50Z | 986d240
 **entry_args:** 28
 
 ## Next action
