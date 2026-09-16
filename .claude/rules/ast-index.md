@@ -38,6 +38,27 @@ string it MUST match, and seen to match.** One control line per probe, **before*
 not after being challenged. This binds a probe you write for yourself exactly as it binds a guard in
 the repository.
 
+**MUST — the control string is CONSTRUCTED, never borrowed from the artefact under test**, and least
+of all from a line this change edits: a borrowed control fails silently in exactly the runs where the
+edit worked, so its empty output is equally consistent with a working instrument. **NEVER** put
+`2>/dev/null` on a probe whose emptiness is the verdict — a tool refusing to run and a genuine
+absence produce the same empty stdout, and the redirect is what makes them indistinguishable. Prefer
+several simple patterns over one long alternation: a regex engine has complexity limits, and its
+failure mode is an error you have arranged not to see. An enumeration in prose has no canonical
+order, so a literal phrase carrying one is a pattern for one variant, never for the claim.
+
+**MUST — before reading a probe's result, assert that the probe LANDED where the instrument looks,
+and report where that is.** A control proves the pattern RUNS; it never proves the pattern REACHED
+the subject. So the probe reports two things or it reports nothing: the region the instrument
+actually judges — read from its section parser, its glob, or its index walk, never assumed — and the
+evidence that the mutation or the pattern is inside that region (print the mutated line, or diff it).
+Never chain a probe behind its own mutation with `&&`, which converts a failed mutation into a
+skipped verification that looks like nothing happened. A probe that relocates or reshapes the
+artefact tests the harness, not the subject, and a degradation notice on stderr **voids** the probe
+rather than decorating it. An instrument's silence becomes evidence only after one probe has been
+seen to FAIL **and** one genuine case has been seen to PASS — the second half is the one skipped once
+the first probe finally fails.
+
 **MUST — a hit proves a STRING occurs; it NEVER proves a BEHAVIOUR exists.** That a script *handles*
 a flag, that a gate *fires*, that a function *does* X — each is established by running the thing,
 never by matching its name.

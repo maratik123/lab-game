@@ -155,6 +155,12 @@ On any error → REJECT with the exact tool message as the finding.
 - **Preconditions stated** on an `…Unchecked` variant, with the guarantor named.
 - **Concurrency safety stated** where the type is meant to be used from several goroutines; absent that, the reader assumes it is not safe.
 - **No outward reference in any comment**, in any file of the gated set — not a markdown path, not a design-section number, not an acceptance-criterion id or decision anchor, not a review-register finding id, not an issue number outside `TODO(#…)`, not a repository path, not a URL, not a package-qualified symbol of this module named outside the comment's own package. `make comment-refs` decides those lexically and CI refuses them; what it cannot decide is yours, and both halves are REJECTs: a comment that **narrates** what the code does step by step or how it is implemented, and a comment that points the reader elsewhere by a **bare unqualified name** ("see such-and-such"). The rule and its exemptions: [`ai-docs/doc-convention.md`](../../ai-docs/doc-convention.md) § DOC-4.
+- **No unchecked behavioural claim in any comment** (`ai-docs/doc-convention.md` § DOC-5). Every
+  behavioural word a comment in this diff asserts — a bound, a cost, a reachability, "never",
+  "least", "shared" — is checked against the code or its tests, and a claim that X does not use Y
+  through the whole call chain. A false one is a REJECT (`major`): no gate can see it. When one is
+  found, sweep every comment of that class the same author wrote in the same change before the fix
+  is routed — a defect report scoped to one line is evidence about that line only.
 - **No `TODO` without an issue reference**, no commented-out code, no comment that restates the code.
 
 ### 7. Objection quality (round > 1 only)
