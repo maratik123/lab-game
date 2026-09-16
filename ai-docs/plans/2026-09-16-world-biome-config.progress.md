@@ -10,8 +10,8 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — Group A spawning (subtasks 1-8)
-**last_passed_gate:** go build ./... | 2026-09-16T07:28:50Z | 986d240
+**current_step:** Step 8 — subtask 1 of 8 complete
+**last_passed_gate:** go run ./cmd/testpg -- go test ./internal/store/... ; golangci-lint run ; go vet ./... ; make comment-refs ; make file-limits | 2026-09-16 | e65b0ef
 **entry_args:** 28
 
 ## Next action
@@ -20,8 +20,8 @@ _Updated: 2026-09-16 04:30_
 
 ## Subtasks
 
-- [ ] 1. Biome resource kinds in the ledger — migration 00008, Go mirror, member accessor  ← CURRENT
-- [ ] 2. Lift the YAML schema walker into its own file; add the non-scalar leaf kind
+- [x] 1. Biome resource kinds in the ledger — migration 00008, Go mirror, member accessor
+- [ ] 2. Lift the YAML schema walker into its own file; add the non-scalar leaf kind  ← CURRENT
 - [ ] 3. World value types + scalar half of the world schema (id, seed, generation inputs, k)
 - [ ] 4. Content half of the world schema (resource profile, naming style, lexicon, bestiary)
 - [ ] 5. Author the MVP world; delete the placeholder; re-word both falsified `.env.example` clauses
@@ -37,6 +37,8 @@ _Updated: 2026-09-16 04:30_
 - **Step 7**: design-review reached GO on round 3; rounds 1 and 2 returned ITERATE. All four GO notes and both recommendations are design-internal — none met a spec-amending trigger — so they were folded by `design-writer` and design-review did not run again, per the Step 7 table.
 - **Step 7**: the owner's three answers (round 3 of `prior_qa`) were recorded in the design under the decision each question's stated route named — D8, D13, D3 — and added no spec row. Verified independently: the spec is byte-unchanged across all five design rounds.
 - **Step 7**: the orchestrator's fourth `design-writer` pass carried the owner's decisions rather than review findings, and was not counted against the design-review round cap; the cap is attached to design-review cycles. Surfaced to the owner as an interpretation open to correction.
+- **Subtask 1**: `migrate_test.go` and `migrate_process_test.go` hard-code the migration count (`want 8`) and `migrate_test.go` hard-codes the `ledger_kind` member set as an exact list — both needed updating for migration 00008 (count 9, three new members). Not called out by the design's decomposition table; found by running the store package's tests after adding the migration and fixed in the same commit, since it is a mechanical consequence of D8/D9, not a design deviation.
+- **Subtask 1**: named the exported member-list accessor `store.Kinds()` (design leaves the name open — decomposition subtask 1 says only "the exported member-list accessor"). Returns a fresh copy each call, matching the existing `stringsOf`/copy-out convention already used for the DB comparison in `enums_test.go`.
 
 ## GO notes
 
@@ -79,4 +81,4 @@ _Updated: 2026-09-16 04:30_
 
 ## Files touched
 
-- (none yet — Step 8 not started)
+- Subtask 1: `internal/store/migrations/00008_biome_resource_kinds.sql` (new), `internal/store/enums.go`, `internal/store/enums_test.go`, `internal/store/migrate_test.go`, `internal/store/migrate_process_test.go`
