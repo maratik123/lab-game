@@ -137,6 +137,14 @@ it does anything else. A script with no invocation grammar gains no flag.
 - No commented-out code — the history holds it.
 - No `TODO` without an issue reference: `// TODO(#<issue>): …`. A `TODO` without an owner is a lie about future work.
 - No stale comment: changing behaviour without updating the comment above it is the same defect class as a broken test.
+- **No unchecked behavioural claim.** A comment asserting a bound, a cost or complexity, a
+  reachability, a "never", a "least", or that some other item uses or shares this one, is a claim
+  about the code — and it is checked against the code or its tests **before the commit**, the same as
+  a design claim. Nothing else checks it: a false comment compiles, `go vet` is silent, a stale
+  `t.Errorf` string never prints on a green run, and `make comment-refs` decides references, not
+  truth. A comment that paraphrases a design's proof in **stronger** words than the proof establishes
+  is the likeliest false one. A claim that X does **not** use Y is checked through the whole call
+  chain, not from direct call sites.
 
 ## DOC-6 — Examples
 

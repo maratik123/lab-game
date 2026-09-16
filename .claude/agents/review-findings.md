@@ -98,6 +98,12 @@ For every exported item, flag each of:
 - **Any outward reference in a comment** — a markdown path, a design-section number, an acceptance-criterion id or decision anchor, a review-register finding id, an issue number outside `TODO(#…)`, a repository path, a URL, or a package-qualified symbol of this module named outside the comment's own package. `make comment-refs` decides those; you decide the two halves it cannot — a comment that narrates the implementation step by step, and one that points elsewhere by a bare unqualified name.
 - **A `TODO` without an issue reference**, commented-out code, or a comment that restates the code.
 - **A stale comment** — behaviour changed, the comment above it did not.
+- **An unchecked behavioural claim** — a comment asserting a bound, a cost or complexity, a
+  reachability, a "never", a "least", or that another item uses or shares this one. Check each against
+  the code or its tests before recording the file as clean; a claim that X does **not** use Y is
+  checked through the whole call chain, not from direct call sites. A false one is `major`: no gate
+  can see it, and a comment paraphrasing a design's proof in stronger words than the proof
+  establishes is the likeliest false one.
 
 ## What you do NOT check
 

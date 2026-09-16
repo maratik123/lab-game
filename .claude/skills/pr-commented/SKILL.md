@@ -101,7 +101,18 @@ The `/task` progress file persists from `/task` Step 8 through the life of the P
 
 ```bash
 PR_NUM=<N>   # from preconditions
-SPEC_PATH=$(grep -l "Tracked in:.*#${PR_NUM}\b" ai-docs/plans/done/*.spec.md ai-docs/plans/*.spec.md 2>/dev/null | head -n1)
+shopt -s nullglob
+SPECS=(ai-docs/plans/done/*.spec.md ai-docs/plans/*.spec.md)
+shopt -u nullglob
+SPEC_PATH=""
+if [ ${#SPECS[@]} -gt 0 ]; then
+  MATCHES=$(grep -l "Tracked in:.*#${PR_NUM}\b" "${SPECS[@]}"); rc=$?
+  if [ "$rc" -ge 2 ]; then
+    echo "grep exit $rc: an empty SPEC_PATH here would be the tool refusing to run, not an absent spec" >&2
+    exit 1
+  fi
+  SPEC_PATH=${MATCHES%%$'\n'*}
+fi
 if [ -n "$SPEC_PATH" ]; then
   SPEC_BASE=$(basename "$SPEC_PATH" .spec.md)
   PROGRESS="ai-docs/plans/ignored/${SPEC_BASE}.progress.md"

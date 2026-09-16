@@ -235,7 +235,7 @@ test — the guard carries targeted exclusions, and the test is what keeps them
 
 ```bash
 .claude/skills/ai-audit/scripts/check-citations.sh
-.claude/skills/ai-audit/scripts/test-check-citations.sh   # must stay 4/4
+.claude/skills/ai-audit/scripts/test-check-citations.sh   # must stay green — every case it defines passes
 ```
 
 > **Why the test is part of this checklist, not optional.** Exclusion by
