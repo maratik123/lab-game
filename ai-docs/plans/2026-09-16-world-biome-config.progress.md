@@ -10,8 +10,8 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — subtask 1 of 8 complete
-**last_passed_gate:** go run ./cmd/testpg -- go test ./internal/store/... ; golangci-lint run ; go vet ./... ; make comment-refs ; make file-limits | 2026-09-16 | e65b0ef
+**current_step:** Step 8 — subtask 2 of 8 complete
+**last_passed_gate:** go test ./internal/config/... ; golangci-lint run ; golangci-lint fmt -d ; go vet ./... ; make comment-refs ; make file-limits | 2026-09-16 | (pending commit)
 **entry_args:** 28
 
 ## Next action
@@ -21,8 +21,8 @@ _Updated: 2026-09-16 04:30_
 ## Subtasks
 
 - [x] 1. Biome resource kinds in the ledger — migration 00008, Go mirror, member accessor
-- [ ] 2. Lift the YAML schema walker into its own file; add the non-scalar leaf kind  ← CURRENT
-- [ ] 3. World value types + scalar half of the world schema (id, seed, generation inputs, k)
+- [x] 2. Lift the YAML schema walker into its own file; add the non-scalar leaf kind
+- [ ] 3. World value types + scalar half of the world schema (id, seed, generation inputs, k)  ← CURRENT
 - [ ] 4. Content half of the world schema (resource profile, naming style, lexicon, bestiary)
 - [ ] 5. Author the MVP world; delete the placeholder; re-word both falsified `.env.example` clauses
 - [ ] 6. World-set loader and wiring; `resolveWorldPath` to directory-only; `Config.WorldPath` removed
@@ -82,3 +82,4 @@ _Updated: 2026-09-16 04:30_
 ## Files touched
 
 - Subtask 1: `internal/store/migrations/00008_biome_resource_kinds.sql` (new), `internal/store/enums.go`, `internal/store/enums_test.go`, `internal/store/migrate_test.go`, `internal/store/migrate_process_test.go`
+- Subtask 2: `internal/config/schema.go` (new, lifted), `internal/config/balance_load.go` (trimmed to `balanceSchema`/`loadBalance`), `internal/config/schema_test.go` (new)
