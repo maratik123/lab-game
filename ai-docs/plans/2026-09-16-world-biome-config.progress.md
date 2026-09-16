@@ -10,13 +10,13 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — Group A complete (subtasks 1-8 of 8)
+**current_step:** Step 8 — Group B running (subtasks 9-11)
 **last_passed_gate:** go build ./... | 2026-09-16T08:05:13Z | 1a02253
 **entry_args:** 28
 
 ## Next action
 
-**Do this immediately:** spawn Group A (subtasks 1–8) through `/context-reset` into `code-writer`, per the design's `## Handoff plan`; no inline model override — the subagent's sonnet/medium is frontmatter-pinned.
+**Do this immediately:** Group B (subtasks 9-11) is running: the design-corpus edit in `~/lab-private`, the key-decisions entries, and the documentation half of the AC3 sweep. On its return, re-validate state and go to Step 9 (Verify).
 
 ## Subtasks
 
