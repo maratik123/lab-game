@@ -11,7 +11,7 @@ _Updated: 2026-09-16 04:30_
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
 **current_step:** Step 8 — Group A complete (subtasks 1-8 of 8)
-**last_passed_gate:** go build ./... ; go test ./... (whole repo) ; golangci-lint run ./... ; golangci-lint fmt -d ; go vet ./... ; make comment-refs ; make file-limits ; make import-guard | 2026-09-16 | (pending commit)
+**last_passed_gate:** go build ./... | 2026-09-16T08:05:13Z | 1a02253
 **entry_args:** 28
 
 ## Next action
