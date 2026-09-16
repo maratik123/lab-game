@@ -134,7 +134,8 @@ Two different rules, and conflating them is the common mistake:
 | Kind of value | Where it belongs |
 |---|---|
 | A structural constant (the number of edges of a hex, a protocol limit) | A named Go constant next to the code that owns it |
-| A **balance** value (stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice) — and **chunk size**, which `~/lab-private/DESIGN.md` §2.2.2 makes configuration (the radius R of a hexagonal chunk; *ориентир* attaches to its reference value R = 9, not to R being configurable) and which ships in `config/balance.yaml` as `world.chunk.radius` | **Configuration**, per `~/lab-private/DESIGN.md` §16.5 — never a Go literal, never a Go constant |
+| A **balance** value (stamina cap, step cost, timers, shop rates, door price curve, `budget(dist)`, combat dice) | **Configuration**, per `~/lab-private/DESIGN.md` §16.5 — the tracked balance YAML, never a Go literal, never a Go constant |
+| A **world** value: a world's seed, its generation inputs (**chunk size** — the radius R of a hexagonal chunk, where *ориентир* attaches to its reference value R = 9 and not to R being configurable — the algorithm weights, the growing-tree bias, and the island, extra-passage and portal shares), its gate-spacing parameter k, and its resource profile, naming style, lexicon and bestiary | **Configuration**, in the tracked **world set** — one YAML file per world, authored per world per `~/lab-private/DESIGN.md` §2.2 / §2.2.2. Not the balance file, and not among §16.5's balance numbers; never a Go literal, never a Go constant |
 | A test fixture value | Inline in the test, named only when it aids reading |
 
 ## Determinism

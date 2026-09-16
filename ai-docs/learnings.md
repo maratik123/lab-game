@@ -1187,3 +1187,29 @@ at everything, and it is the half most easily skipped once the first probe final
 **at:** f5a5963
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — search — read a grep's silence as "no residue" when the grep had never run
+
+**What happened:** Running the propagation sweep for a task whose acceptance criterion is exactly
+"no live document states something these changes falsify", I wrote the residue check as one
+`grep -rniE` alternation carrying several `{0,30}` quantifiers, with `2>/dev/null` on the subject
+invocation. It printed nothing, and I reported "(empty above = clean)" in the same message. It had
+never run: `ugrep` exited with `error: exceeds complexity limits`, and the stderr redirect swallowed
+that. A control had been placed beside it, so the positive-control rule looked satisfied — but the
+control was void, because the must-match string I chose was a phrase my own edit had just removed
+from the file under test, so its empty output was equally consistent with a working instrument and I
+read past it. The failure surfaced only when a later control ran the same pattern against a
+constructed string and errored in plain sight. Re-run as six simple patterns, each with its own
+control and stderr left visible, the sweep returned real verdicts — including two hits the first
+"clean" run had reported as absent.
+
+**Rule:** A control string must be one the subject cannot have removed: construct it, never borrow
+it from the artefact under test, and least of all from a line this change edits — a borrowed control
+fails silently in exactly the runs where the edit worked. Never put `2>/dev/null` on a grep whose
+emptiness is the verdict, because a tool refusing to run and a genuine absence produce the same
+empty stdout and the redirect is what makes them indistinguishable. Prefer several simple patterns
+over one long alternation: a regex engine has complexity limits, and its failure mode is an error
+you have arranged not to see.
+**at:** 7425736
+**Kind:** correction
+**Escalated?** no
