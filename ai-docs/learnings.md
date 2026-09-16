@@ -1366,3 +1366,27 @@ caught by reading the output, which is the part that felt like checking.
 **at:** 951588f
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — search — recorded a sweep's count under a command that does not produce it, and the unstated narrowing hid the defect
+**What happened:** The entry above it states its evidence as "`grep -rn '2>/dev/null'` over `.claude/`,
+`AGENTS.md` and `ai-docs/` returns 14 lines". Re-measured at that entry's own `at:` pin: the command
+as written returns **90**. The figure 14 came from a narrower scope I ran but never wrote down —
+markdown files only, minus the plans directory and the append-only log — and re-running even that
+narrowing at the pin returns 13, not 14, so the number was not reproducible from any recipe the entry
+carries. The consequence was not cosmetic. The unstated `--include='*.md'` is exactly what hid the
+defect: **69** of the 90 hits are in shell scripts, five of them in `.claude/skills/ai-audit/scripts/
+check-citations.sh`, a live CI guard whose three scan greps redirect stderr into a `while … done <
+<(…)` — so an unreadable path yields no rows, its failure counter stays zero, and it prints its clean
+verdict and exits 0. The rule I had just escalated says in its own paragraph that it binds a guard in
+the repository exactly as it binds a probe; my sweep for violations could not see guards at all. A
+later review round found it by running the recipe the entry recorded rather than the command I ran.
+**Rule:** Write down the command that produced the number, not the command you meant — and re-run the
+written one before recording it, because a scope narrowed in the shell and widened in the prose is a
+claim no reader can reproduce and no future sweep will repeat. When the sweep is looking for
+violations of a rule, its file-type scope is part of the claim: `--include='*.md'` answers "which
+documents mention this", never "what violates this", and a rule that binds executable code needs a
+sweep that reads executable code. The tell is a filter added for noise reduction that never reaches
+the sentence describing the result.
+**at:** 3ef3ba0
+**Kind:** correction
+**Escalated?** no
