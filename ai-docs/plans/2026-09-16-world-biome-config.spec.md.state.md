@@ -61,7 +61,7 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 2
+round: 3
 agent_id: null
 prior_qa:
   - round: 1
@@ -73,4 +73,10 @@ prior_qa:
   - round: 1
     question: "Каким должен быть контент MVP-мира — лексикон, стиль названий, бестиарий — в этой задаче?"
     answer: "из IDEAS сахарная вата"
+  - round: 2
+    question: "Эскиз «Мир сахарной ваты» лежит в IDEAS.md, а по аксиоме IDEAS не реализуется без явного промоута в DESIGN.md. Как записать это решение в корпусе ~/lab-private?"
+    answer: "Перенести"
+  - round: 2
+    question: "Эскиз не расписывает ресурсы («не спеки — ресурсы/статы не расписаны»), а ресурсы — члены ledger_kind, которые вводит #34. Кто авторит профиль ресурсов MVP-биома?"
+    answer: "Здесь целиком"
 ```
