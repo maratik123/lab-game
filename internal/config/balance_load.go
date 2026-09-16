@@ -9,8 +9,6 @@ import (
 
 	"github.com/shopspring/decimal"
 	"go.yaml.in/yaml/v3"
-
-	"github.com/maratik123/lab-game/internal/maze"
 )
 
 // balanceSchema returns the balance file's key-path schema — path,
@@ -30,12 +28,7 @@ func balanceSchema(b *Balance) []schemaEntry { //nolint:funlen // one row per ba
 	openUnitFraction := func(v decimal.Decimal) bool { return v.GreaterThan(zero) && v.LessThan(one) }
 	halfOpenUnitFraction := func(v decimal.Decimal) bool { return v.GreaterThan(zero) && v.LessThanOrEqual(one) }
 
-	radiusAtLeastMin := func(v int) bool { return v >= maze.MinRadius }
-	radiusWant := fmt.Sprintf("at least %d", maze.MinRadius)
-
 	return []schemaEntry{
-		entry("world.chunk.radius", bindInt(&b.World.Chunk.Radius, radiusAtLeastMin, radiusWant)),
-
 		entry("raid.stamina.cap", bindDecimal(&b.Raid.Stamina.Cap, positiveDecimal, "positive")),
 		entry("raid.stamina.step_cost", bindDecimal(&b.Raid.Stamina.StepCost, positiveDecimal, "positive")),
 

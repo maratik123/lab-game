@@ -10,8 +10,8 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — subtask 6 of 8 complete
-**last_passed_gate:** go build ./... ; go test ./... (whole repo) ; golangci-lint run ./... ; golangci-lint fmt -d ; go vet ./... ; make comment-refs ; make file-limits ; make import-guard | 2026-09-16 | (pending commit)
+**current_step:** Step 8 — subtask 7 of 8 complete
+**last_passed_gate:** go build ./... ; go test ./... (whole repo) ; golangci-lint run ./... ; golangci-lint fmt -d ; go vet ./... ; make comment-refs ; make file-limits | 2026-09-16 | (pending commit)
 **entry_args:** 28
 
 ## Next action
@@ -26,8 +26,8 @@ _Updated: 2026-09-16 04:30_
 - [x] 4. Content half of the world schema (resource profile, naming style, lexicon, bestiary)
 - [x] 5. Author the MVP world; delete the placeholder; re-word both falsified `.env.example` clauses
 - [x] 6. World-set loader and wiring; `resolveWorldPath` to directory-only; `Config.WorldPath` removed
-- [ ] 7. Remove the chunk radius from the balance side  ← CURRENT
-- [ ] 8. Tracked-set gates + the CODE half of the AC3 propagation sweep
+- [x] 7. Remove the chunk radius from the balance side
+- [ ] 8. Tracked-set gates + the CODE half of the AC3 propagation sweep  ← CURRENT
 - [ ] 9. Design corpus (`~/lab-private`): promote the sketch, amend the sketch-count sentence, re-file §16 item 5
 - [ ] 10. Key decisions: new entries and the KD amendments
 - [ ] 11. Documentation half of the AC3 sweep over `ai-docs/**`
@@ -54,6 +54,9 @@ _Updated: 2026-09-16 04:30_
 - **Subtask 6**: the generation-inputs cross-field fold (the generator's own constructor) is reported as a `*KeyError` keyed `"generation"` — the design's own wording is "naming the generation subtree" — carrying the generator's own error text verbatim via `%s` so the message states the actual bound/reason.
 - **Subtask 6**: `TestLoadWorldSet_TwoMalformedWorldsProduceBothFailuresInFileOrder` deliberately uses two *different* failure classes (a missing `id` in one file, an invalid `seed` in the other) rather than the same key twice, since two `*KeyError`s sharing one `Key` are indistinguishable to `containsKeyError` — this is a test-design choice, not a loader limitation.
 - **Subtask 6**: `make comment-refs` initially failed on `world_load_test.go` for a repo-path finding on the literal filename `b.yaml` in a comment — reworded to avoid naming a bare `*.yaml` token; re-ran clean.
+- **Subtask 7**: Test Design's own removal note ("the radius cases go; the radius's balance tests moving to the world loader's") is already satisfied — subtask 3's `world_schema_test.go` (`TestWorldScalarSchema_RadiusBelowMinStatesTheBound`, `TestWorldScalarSchema_RadiusAboveInt32IsRefusedByTheDecoder`) already carries the radius coverage this subtask's removal leaves behind; no new radius test was added here.
+- **Subtask 7**: `TestLoadBalance_PredicateFailures`'s `below_min_radius`/`negative` rows (both keyed to the removed `world.chunk.radius`) are collapsed into one `below_min_positive_int` row on `combat.hit_die_sides` (a `positiveInt` predicate, so a value below 1 — including a negative one — is one case, not two), preserving the row count's intent (one row per distinct predicate-failure shape) without inventing a second int-lower-bound key the schema doesn't have.
+- **Subtask 7**: `make comment-refs` initially failed on the new `TestLoadBalance_LeftoverWorldBlockIsUnknown` doc comment for a decision-anchor reference (`D11`) — reworded to prose; re-ran clean.
 
 ## GO notes
 
@@ -102,3 +105,4 @@ _Updated: 2026-09-16 04:30_
 - Subtask 4: `internal/config/world_content.go` (new: `ResourceEntry`, `NamingStyle`, `BestiaryEntry`, the compound-leaf binders, `worldContentSchema`, `checkNamingStyleSlots`), `internal/config/world_content_test.go` (new); `internal/config/world_schema.go` touched to add `ResourceProfile`/`NamingStyle`/`Lexicon`/`Bestiary` fields to `World` (flagged as a necessary deviation in subtask 3's own decisions-log entry); `internal/config/schema.go` touched to add the shared `tagStr` constant (goconst, three `"!!str"` literals across three files)
 - Subtask 5: `config/world/cotton_candy.yaml` (new), `config/world/.gitkeep` (deleted), `.env.example` (both falsified world-path clauses reworded)
 - Subtask 6: `internal/config/world_load.go` (new: `loadWorldSet`, `loadWorldFile`), `internal/config/world_load_test.go` (new); `internal/config/world.go` (`resolveWorldPath` rewritten to directory-only via `os.Stat`); `internal/config/world_test.go` (regular-file-succeeds case removed, regular-file-refused case added); `internal/config/config.go` (`Config.WorldPath` removed, `Config.Worlds []World` added, `Load` wired through `loadWorldSet`); `internal/config/config_test.go` (`validConfigEnv` now writes one valid world file instead of an empty directory; `WorldPath` assertion replaced with a `Worlds` assertion); `internal/config/env.go` (`envKeys` doc comment reworded); `internal/config/doc.go` (package comment reworded — the world set is now decoded, not merely probed)
+- Subtask 7: `internal/config/balance.go` (`WorldBalance`/`ChunkBalance` and the `Balance.World` field removed), `internal/config/balance_load.go` (`world.chunk.radius` schema entry and the now-unused `maze` import removed), `internal/config/balance_load_test.go` (radius fixtures/tests removed; `TestLoadBalance_IntGivenFloat`/`TestLoadBalance_DuplicateKey`/one `TestLoadBalance_PredicateFailures` row retargeted onto `combat.hit_die_sides`/`raid.stamina.cap`; new `TestLoadBalance_LeftoverWorldBlockIsUnknown`), `config/balance.yaml` (`world:` block removed)
