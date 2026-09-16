@@ -10,13 +10,13 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — Group B complete (subtasks 9-11 done)
-**last_passed_gate:** go build ./... | 2026-09-16T08:05:13Z | 1a02253
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** build; vet; lint; fmt -d; comment-refs; import-guard; file-limits; make test; make test-race; cover-ratchet | 2026-09-16T08:35:13Z | 4f76f14
 **entry_args:** 28
 
 ## Next action
 
-**Do this immediately:** Group B is complete — every subtask of both groups is done. Subtask 9's own artefact lives in `~/lab-private` (outside this repository, so outside the PR diff and outside CI); subtasks 10 and 11 are in this repository. Re-validate state and go to Step 9 (Verify). One low-severity code-comment observation is parked for the orchestrator in the subtask-11 decisions below — Group B edits no code file, so it is reported rather than fixed.
+**Do this immediately:** Step 9 is ALL PASS with every gate run by this orchestrator. Next: Step 9.5 — append this task's entry to `ai-docs/context-status.md` with the literal `#TBD-at-Step-12` locator, bump `ai-docs/context.md`'s summary bullets, then Step 10 (self-review).
 
 ## Subtasks
 
@@ -77,6 +77,15 @@ _Updated: 2026-09-16 04:30_
 - **Subtask 10**: every symbol the new entries name was resolved before it was written — `TestEnums_mirror_database`, `Kinds()`, `Algorithm.String()`, `TestBalanceFile_LoadsAndAgrees`, `Config.Worlds` — because a key-decisions entry is read later as authority. `check-citations.sh` passes: `#28`, `#29`, `#34` and `#35` all resolve below the local high-water mark (#132).
 - **Subtask 9**: committed in `~/lab-private` as `4200ebc`, with `git -C ~/lab-private` per the AXIOM — outside this repository, so neither the PR diff, the review agents nor CI sees it. Both files were bracketed by `ai-docs/scripts/doc-edit-guard.sh`; both reported `shape held` and both `.bak` files were removed by the verify step.
 
+- **Step 9**: every gate was run by this orchestrator rather than read from a delegate's report — build, vet, lint, fmt -d, comment-refs, import-guard, file-limits, make test, make test-race, cover-ratchet. All PASS; 0 DATA RACE, 0 FAIL.
+- **Step 9**: `-race` was run even though nothing here touches a goroutine directly, because `migrate_process_test.go` (the process-lock test, i.e. concurrency) changed. `internal/config` 1.371s and `internal/store` 12.594s ran uncached.
+- **Step 9**: stale `tmp/s9-*.log` files dated 2026-09-13 and 2026-09-09 were nearly counted as this run's evidence; their mtimes exposed them as belonging to another tree. Own runs went to `tmp/step9-own-*.log` to keep the namespaces apart.
+- **Step 9**: coverage measured 91.73% against the recorded 91.94% — inside the 0.60 pp tolerance, so the gate passes with 0.39 pp of headroom before CI could draw red. The mark was NOT lowered: no block occurred, and moving an unasked-for bound in either direction is the same overreach.
+- **Step 9**: panic-index needs no row — the one `panic(` in the changed set (`internal/config/balance_load_test.go:65`) is pre-existing at the base commit and sits in a `_test.go` file, which the index does not cover.
+- **Step 9**: no posting signature and no event are owed; the diff adds zero `store.Post` / `store.Move` / posting lines, matching the spec's Out-of-scope statement.
+- **Step 9**: per-AC verification ran one command per AC with `-count=1`, and a control on a non-existent test name returned "no tests to run", so the `-run` filters were shown to filter rather than pass vacuously.
+- **Step 9**: subtask 11's reported code-comment observation was re-measured and is **half wrong** — the restart-enumeration sentence exists at `internal/config/config.go:93` only; `doc.go` carries no such sentence. The claim there stays true ("there is no reload path") while its enumeration is now incomplete, so it is outside AC3's falsified class. Left for `self-review` to rule on rather than fixed silently: a predominantly-`.go` fix is `code-writer` Mode B's to author.
+
 ## GO notes
 
 | # | round | note | kind | route | resolution |
@@ -94,22 +103,23 @@ _Updated: 2026-09-16 04:30_
 - The design corpus `~/lab-private` is a separate repository, outside the PR and outside CI. Subtask 9 edits it in place with `git -C ~/lab-private`. Verified untouched by every design round so far.
 - `go.yaml.in/yaml/v3 v3.0.5` refuses an out-of-range value into an `int32` destination and accepts it silently into `int` — the reason D4 binds the radius through `int32` and no G115 conversion exists.
 - The owner's three round-3 answers are in the interview state file's `prior_qa` as round 3; design tags `[answer 3.1]`–`[answer 3.3]` resolve against them.
+- `tmp/` holds stale gate logs from earlier sessions under names a later run can collide with (`s9-*`). Read mtimes before treating any log in there as this run's evidence.
 
 ## AC Status
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
-| AC10 | NOT_TESTED |
-| AC11 | NOT_TESTED |
+| AC1 | PASS |
+| AC2 | PASS |
+| AC3 | PASS |
+| AC4 | PASS |
+| AC5 | PASS |
+| AC6 | PASS |
+| AC7 | PASS |
+| AC8 | PASS |
+| AC9 | PASS |
+| AC10 | PASS |
+| AC11 | PASS |
 
 ## Review register
 
@@ -129,3 +139,4 @@ _Updated: 2026-09-16 04:30_
 - Subtask 11: `ai-docs/context.md` (layout line ×2, Status bullets ×2, Status heading date), `ai-docs/domain-invariants.md` (§ 8 reload sentence; new world-values paragraph), `ai-docs/code-style.md` (§ *Magic numbers vs balance constants*: the balance row loses its chunk-size clause, a new world-value row gains it)
 - Subtask 10: `ai-docs/key-decisions.md` (new § *World and biome configuration (2026-09-16)* carrying KD-43, KD-44 and KD-45; `*Amended by #28*` clauses on KD-22, KD-23, KD-24, KD-27, KD-38 and KD-40)
 - Subtask 9 (**outside this repository** — `~/lab-private` @ `4200ebc`, not in the PR diff): `DESIGN.md` (new §2.2.5; §2.2, §2.2.2 ×3, §14 item 2, §16 item 2 and §16 item 5 amended), `IDEAS.md` (the cotton-candy sketch removed from the starting-world list, the remaining two renumbered, a note recording where it went)
+- Orchestrator (Step 9): `ai-docs/coverage-ratchet.txt` (91.90 → 91.94, raised by the per-subtask pre-commit hook), `ai-docs/learnings.md` (three entries: two by this orchestrator, one by Group B)
