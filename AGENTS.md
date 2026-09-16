@@ -234,7 +234,7 @@ When changing dependencies: **never hand-edit a version in `go.mod`** — `go ge
 > | A feature branch | Proceed with edits |
 > | `main` AND you've already made commits (recovery) | `git stash` → `git checkout -b <feature>` → `git checkout main && git reset --soft origin/main && git restore --staged .` → push feature branch → open PR. Pop stash on feature branch if needed. |
 >
-> The first action of any skill/workflow that produces commits is `git branch --show-current`; if `main`, switch **before** any `Edit`/`Write`. Before any `git push`, confirm again — if it is `main`, stop and apply recovery. **`origin` will not stop you** (§ Permissions) — this hook and this rule are the whole enforcement.
+> The first action of any skill/workflow that produces commits is `git branch --show-current`; if `main`, switch **before** any `Edit`/`Write`. Before any `git push`, confirm again — if it is `main`, stop and apply recovery. **`origin` now refuses a direct push and a force-push to `main`** (§ Permissions — the `pull_request` and `non_fast_forward` rules), but never treat that as the enforcement: a bypass actor exists, a ruleset is a live setting that can be relaxed without this file changing, and this hook plus this rule are what you actually follow.
 
 - Merge PRs via merge commit (`gh pr merge --merge`); never squash/rebase-merge.
 - Run `go build ./...` before commit; run `go mod tidy` and check `git diff go.mod go.sum` whenever dependencies moved.
