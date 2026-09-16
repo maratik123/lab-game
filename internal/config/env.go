@@ -28,8 +28,9 @@ const (
 
 // envKeys returns the four variables loadEnv itself validates. envBalancePath
 // and envWorldPath are validated by their own dedicated readers instead
-// (resolveWorldPath and Load) — each owns both the presence check and the
-// richer validation for its path (open/close for the world set, YAML
+// (resolveWorldPath plus loadWorldSet, and loadBalance) — each owns both
+// the presence check and the richer validation for its path (a directory
+// read plus a per-file YAML decode for the world set, a single YAML
 // decode for the balance file), so no variable's presence is checked in
 // two places.
 func envKeys() []string {

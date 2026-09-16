@@ -10,12 +10,14 @@ import (
 
 // validConfigEnv returns a fresh, fully valid environment: validEnv()'s
 // token/DSN/base-URL/chat-ids, plus a real temp balance file and a real
-// temp world directory (validEnv()'s own placeholder paths do not exist).
+// temp world directory holding one valid world file (validEnv()'s own
+// placeholder paths do not exist, and an empty world directory is itself
+// a refusal now that the world set is decoded, not merely probed).
 func validConfigEnv(t *testing.T) map[string]string {
 	t.Helper()
 	env := validEnv()
 	env[envBalancePath] = writeBalanceFile(t, validBalanceYAML)
-	env[envWorldPath] = t.TempDir()
+	env[envWorldPath] = writeWorldDir(t, validWorldYAML)
 	return env
 }
 
@@ -37,8 +39,11 @@ func TestLoad_HappyPath(t *testing.T) {
 	if len(cfg.AllowedChatIDs) != 2 {
 		t.Errorf("AllowedChatIDs = %v", cfg.AllowedChatIDs)
 	}
-	if cfg.WorldPath == "" {
-		t.Error("WorldPath is empty")
+	if len(cfg.Worlds) != 1 {
+		t.Fatalf("Worlds = %+v, want exactly one", cfg.Worlds)
+	}
+	if cfg.Worlds[0].ID != "validation_world" {
+		t.Errorf("Worlds[0].ID = %q, want validation_world", cfg.Worlds[0].ID)
 	}
 	assertBalanceEqual(t, &cfg.Balance, validBalance())
 }

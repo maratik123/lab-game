@@ -13,21 +13,9 @@ import (
 // balance file named by LAB_GAME_BALANCE_PATH, or Load fails naming the
 // missing key.
 type Balance struct {
-	World   WorldBalance
 	Raid    RaidBalance
 	Combat  CombatBalance
 	Economy EconomyBalance
-}
-
-// WorldBalance holds world-generation constants.
-type WorldBalance struct {
-	Chunk ChunkBalance
-}
-
-// ChunkBalance is the hex-chunk radius: how many cells out from a
-// chunk's centre its own cells reach.
-type ChunkBalance struct {
-	Radius int
 }
 
 // RaidBalance holds every raid-mechanic constant.

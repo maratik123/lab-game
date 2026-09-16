@@ -39,6 +39,17 @@ func TestResolveWorldPath_ParentIsRegularFile(t *testing.T) {
 	assertKeyError(t, err, ErrUnreadable, envWorldPath)
 }
 
+func TestResolveWorldPath_TargetIsRegularFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	regular := filepath.Join(dir, "world-set")
+	if err := os.WriteFile(regular, nil, 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	_, err := resolveWorldPath(mapLookup(map[string]string{envWorldPath: regular}))
+	assertKeyError(t, err, ErrInvalidValue, envWorldPath)
+}
+
 func TestResolveWorldPath_ExistingDirectory(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -48,21 +59,5 @@ func TestResolveWorldPath_ExistingDirectory(t *testing.T) {
 	}
 	if got != dir {
 		t.Errorf("resolveWorldPath = %q, want %q", got, dir)
-	}
-}
-
-func TestResolveWorldPath_ExistingRegularFile(t *testing.T) {
-	t.Parallel()
-	dir := t.TempDir()
-	regular := filepath.Join(dir, "world-set")
-	if err := os.WriteFile(regular, nil, 0o600); err != nil {
-		t.Fatalf("fixture: %v", err)
-	}
-	got, err := resolveWorldPath(mapLookup(map[string]string{envWorldPath: regular}))
-	if err != nil {
-		t.Fatalf("resolveWorldPath: unexpected error: %v", err)
-	}
-	if got != regular {
-		t.Errorf("resolveWorldPath = %q, want %q", got, regular)
 	}
 }

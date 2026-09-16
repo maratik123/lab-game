@@ -15,10 +15,7 @@ import (
 // validBalanceYAML is the known-good baseline every negative test case
 // mutates: one documented change per case, rather than a hand-typed
 // near-miss with no relation to the others.
-const validBalanceYAML = `world:
-  chunk:
-    radius: 9
-raid:
+const validBalanceYAML = `raid:
   stamina:
     cap: 100
     step_cost: 1
@@ -70,7 +67,6 @@ func validBalance() *Balance {
 		return d
 	}
 	return &Balance{
-		World: WorldBalance{Chunk: ChunkBalance{Radius: 9}},
 		Raid: RaidBalance{
 			Stamina: StaminaBalance{Cap: dec("100"), StepCost: dec("1")},
 			Standing: StandingBalance{
@@ -216,65 +212,25 @@ func TestLoadBalance_NullValue_ZeroAdmittingKeys(t *testing.T) {
 	}
 }
 
-// TestLoadBalance_Radius checks the world.chunk.radius key end to end:
-// MinRadius itself and a larger radius both load, a radius below
-// MinRadius is refused naming the key and stating the bound rather than
-// "positive" (a radius of 5 is itself positive), and a leftover cols:
-// key from the rhombic schema is refused as unknown.
-func TestLoadBalance_Radius(t *testing.T) {
+// TestLoadBalance_LeftoverWorldBlockIsUnknown covers the deploy story for
+// the chunk radius's move out of the balance file: a balance file still
+// carrying the world: block the radius used to live in (an old file
+// against a new schema) is refused as an unrecognised balance key,
+// naming it, rather than silently ignored.
+func TestLoadBalance_LeftoverWorldBlockIsUnknown(t *testing.T) {
 	t.Parallel()
-	t.Run("at_min_radius", func(t *testing.T) {
-		t.Parallel()
-		yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 6\n", 1)
-		path := writeBalanceFile(t, yaml)
-		got, err := loadBalance(path)
-		if err != nil {
-			t.Fatalf("loadBalance: unexpected error: %v", err)
-		}
-		if got.World.Chunk.Radius != 6 {
-			t.Errorf("World.Chunk.Radius = %d, want 6", got.World.Chunk.Radius)
-		}
-	})
-	t.Run("larger_radius", func(t *testing.T) {
-		t.Parallel()
-		yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 40\n", 1)
-		path := writeBalanceFile(t, yaml)
-		got, err := loadBalance(path)
-		if err != nil {
-			t.Fatalf("loadBalance: unexpected error: %v", err)
-		}
-		if got.World.Chunk.Radius != 40 {
-			t.Errorf("World.Chunk.Radius = %d, want 40", got.World.Chunk.Radius)
-		}
-	})
-	t.Run("below_min_radius_states_the_bound", func(t *testing.T) {
-		t.Parallel()
-		yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 5\n", 1)
-		path := writeBalanceFile(t, yaml)
-		_, err := loadBalance(path)
-		assertKeyError(t, err, ErrInvalidValue, "world.chunk.radius")
-		if strings.Contains(err.Error(), "positive") {
-			t.Errorf("error %q says \"positive\", which is false for radius 5 — it must state the actual bound", err)
-		}
-		if !strings.Contains(err.Error(), "6") {
-			t.Errorf("error %q does not state the bound 6", err)
-		}
-	})
-	t.Run("cols_key_is_unknown", func(t *testing.T) {
-		t.Parallel()
-		yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    cols: 16\n    radius: 9\n", 1)
-		path := writeBalanceFile(t, yaml)
-		_, err := loadBalance(path)
-		assertKeyError(t, err, ErrUnknownKey, "world.chunk.cols")
-	})
+	yaml := "world:\n  chunk:\n    radius: 9\n" + validBalanceYAML
+	path := writeBalanceFile(t, yaml)
+	_, err := loadBalance(path)
+	assertKeyError(t, err, ErrUnknownKey, "world")
 }
 
 func TestLoadBalance_IntGivenFloat(t *testing.T) {
 	t.Parallel()
-	yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 9.5\n", 1)
+	yaml := strings.Replace(validBalanceYAML, "  hit_die_sides: 20\n", "  hit_die_sides: 20.5\n", 1)
 	path := writeBalanceFile(t, yaml)
 	_, err := loadBalance(path)
-	assertKeyError(t, err, ErrInvalidValue, "world.chunk.radius")
+	assertKeyError(t, err, ErrInvalidValue, "combat.hit_die_sides")
 }
 
 func TestLoadBalance_DecimalGivenQuotedNumber(t *testing.T) {
@@ -300,8 +256,7 @@ func TestLoadBalance_PredicateFailures(t *testing.T) {
 		old, new string
 		key      string
 	}{
-		{"below_min_radius", "    radius: 9\n", "    radius: 5\n", "world.chunk.radius"},
-		{"negative", "    radius: 9\n", "    radius: -1\n", "world.chunk.radius"},
+		{"below_min_positive_int", "  hit_die_sides: 20\n", "  hit_die_sides: -1\n", "combat.hit_die_sides"},
 		{"above_upper_bound", "    cruelty: 0.5\n", "    cruelty: 1.5\n", "raid.afk.cruelty"},
 		{"at_excluded_bound", "    sell_rate: 0.25\n", "    sell_rate: 1\n", "economy.shop.sell_rate"},
 	}
@@ -368,7 +323,7 @@ func TestLoadBalance_MergeKey(t *testing.T) {
 
 func TestLoadBalance_DuplicateKey(t *testing.T) {
 	t.Parallel()
-	yaml := strings.Replace(validBalanceYAML, "    radius: 9\n", "    radius: 9\n    radius: 10\n", 1)
+	yaml := strings.Replace(validBalanceYAML, "    cap: 100\n", "    cap: 100\n    cap: 200\n", 1)
 	path := writeBalanceFile(t, yaml)
 	_, err := loadBalance(path)
 	if err == nil {

@@ -1,0 +1,96 @@
+# The MVP world: cotton-candy meadows under a blue sky, pink clouds spun
+# from sugar — an absurdist-comedy tone whose whole joke is inverting cute
+# and threatening. Authored content (names, phrases) is Russian, per the
+# sketch it is drawn from; every key, and this comment, stays English.
+
+# id: this world's canonical identifier — the identity a maze row and
+# every telemetry event carry.
+id: cotton_candy
+# seed: this world's own generation seed.
+seed: 20260916
+# k: gate placement's own spacing parameter. Zero means concentric rings
+# from the centre — the simplest packing, and a genuinely authored value,
+# not an absent key that happened to decode to zero.
+k: 0
+
+generation:
+  # radius: how many cells out from a chunk's own centre its cells reach.
+  radius: 9
+  # island_share/extra_passage_share/growing_tree_bias/portal_share_lower/
+  # portal_share_upper: the same generation inputs the reference balance
+  # file used to carry, now authored per world instead of globally.
+  island_share: 0.2
+  extra_passage_share: 0.1
+  growing_tree_bias: 0.5
+  portal_share_lower: 0.2
+  portal_share_upper: 0.4
+  # weights: the five spanning-structure algorithms' draw weights, keyed
+  # by each algorithm's own rendered name. Equal weights — no algorithm
+  # is this world's signature.
+  weights:
+    backtracker: 1
+    kruskal: 1
+    prim: 1
+    growing_tree: 1
+    wilson_walk: 1
+
+# resource_profile: this biome's resource kinds and their draw weights —
+# spun sugar from the clouds (common), pastel fleece from the fluffy
+# fauna (less common), glitter dust from the dangerous encounters (rare).
+resource_profile:
+  - kind: spun_sugar
+    weight: 3
+  - kind: pastel_fleece
+    weight: 2
+  - kind: glitter_dust
+    weight: 1
+
+# naming_style: location-name templates plus the slot vocabulary they
+# draw from. Every template's {slot} is defined in parts, and every parts
+# slot is named by at least one template.
+naming_style:
+  templates:
+    - "{adjective} {landscape}"
+    - "{landscape} {epithet}"
+  parts:
+    adjective:
+      - Пастельная
+      - Сахарная
+      - Пушистая
+    landscape:
+      - опушка
+      - облачная поляна
+      - луговина
+    epithet:
+      - у сахарной ваты
+      - под розовым небом
+      - без единого шва
+
+# lexicon: an open map of slot name to phrase list — the narrator's own
+# tone vocabulary, distinct from naming_style's location templates.
+lexicon:
+  ambient:
+    - воздух пахнет сахарной ватой
+    - розовые облака цепляются за траву
+  danger:
+    - что-то милое смотрит на тебя слишком долго
+
+# bestiary: this world's monster roster. common and dangerous are field
+# encounters; boss entries are raid bosses. The inversion of cute and
+# threatening is the tone's own joke: the fluffiest things bite hardest.
+bestiary:
+  - id: cute_wolves
+    name: Милые волки с поджатыми хвостами
+    role: common
+  - id: fearsome_unicorn
+    name: Грозный единорог
+    role: dangerous
+  - id: bloodthirsty_rabbits
+    name: Кровожадные кролики
+    role: boss
+  - id: hamster_minion_horde
+    name: Толпа хомячков-миньонов
+    role: boss
+  - id: diving_hummingbird_bombers
+    name: Пикирующие колибри-бомбардировщики
+    role: boss

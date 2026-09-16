@@ -1146,3 +1146,128 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** A step whose success gates the next one — above all a `git pull` before a destructive `git branch -d` — is never piped into `tail` or `head`: capture it to a file under `tmp/`, read its own exit code, then print the log.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — process — recited the surface-language rule and broke it in the same message
+**What happened:** Invoked as `/task 28`, I opened the session with the required CLAUDE.md summary —
+which itself states "Russian for two surfaces only: conversation with the product owner" — and then
+wrote that summary, and every status turn after it, in English, until reading the owner's memory file
+prompted the check. Third instance of the same slip: 2026-09-06 (escalated to `AGENTS.md`) and
+2026-09-12 (unescalated), and the second sharing the trigger 2026-09-12 already named — a bare
+slash-command carries no natural-language cue, so the English issue body, Go sources and instruction
+files chose the reply language instead of the rule choosing it. What is new here is that the rule was
+not merely available: it was quoted, by me, in the offending message. Availability was never the
+failing, so a fix shaped as "remember the rule" would address nothing.
+**Rule:** Reciting a rule is not applying it. When a turn's own text states a rule about the surface
+being written, check that turn against it before sending — the recitation and the reply carrying it
+are the same surface, and a summary of the language rule written in the wrong language is the clearest
+possible evidence that recall and application are separate acts.
+**at:** 52fdb4a
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-16 — testing — placed three successive controls where the instrument does not look
+**What happened:** Checking the spec-anchor gate's green verdict, I built a control by copying the
+spec into `tmp/` — which orphaned it from its sibling state file and disabled the very resolution
+under test. The gate said so on stderr (`no interview state file on disk; anchors checked for
+presence only`) and I still read the resulting PASS as a result. I then read that PASS as "the gate
+is blind", one step from recording a false accusation against both the gate and the delegate that
+had reported it green. The third attempt appended the forged row to the end of the file, which is
+`## Open questions` — a section the gate's parser assigns `sec = ""` and never judges, so the probe
+was invisible by construction. Only reading the script showed all three probes had landed outside
+the judged region. Placed inside the Acceptance Criteria table, the gate then failed a non-existent
+answer id, a real id carrying substituted text, and a non-existent task fragment, and passed a
+genuine anchor — the resolution the delegate claimed was real all along.
+**Rule:** Before reading a mutant-based control, confirm the mutant landed where the instrument
+actually looks: for a section-scoped checker that means reading its section parser, not appending to
+the end of the file. A control that changes the artefact's location or shape tests the harness, not
+the subject — and a degradation notice on stderr voids the probe rather than decorating it. An
+instrument's silence becomes evidence only after one probe has been seen to FAIL and one genuine
+case has been seen to PASS; the second half is what separates a working check from one that reddens
+at everything, and it is the half most easily skipped once the first probe finally fails.
+**at:** f5a5963
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-16 — search — read a grep's silence as "no residue" when the grep had never run
+
+**What happened:** Running the propagation sweep for a task whose acceptance criterion is exactly
+"no live document states something these changes falsify", I wrote the residue check as one
+`grep -rniE` alternation carrying several `{0,30}` quantifiers, with `2>/dev/null` on the subject
+invocation. It printed nothing, and I reported "(empty above = clean)" in the same message. It had
+never run: `ugrep` exited with `error: exceeds complexity limits`, and the stderr redirect swallowed
+that. A control had been placed beside it, so the positive-control rule looked satisfied — but the
+control was void, because the must-match string I chose was a phrase my own edit had just removed
+from the file under test, so its empty output was equally consistent with a working instrument and I
+read past it. The failure surfaced only when a later control ran the same pattern against a
+constructed string and errored in plain sight. Re-run as six simple patterns, each with its own
+control and stderr left visible, the sweep returned real verdicts — including two hits the first
+"clean" run had reported as absent.
+
+**Rule:** A control string must be one the subject cannot have removed: construct it, never borrow
+it from the artefact under test, and least of all from a line this change edits — a borrowed control
+fails silently in exactly the runs where the edit worked. Never put `2>/dev/null` on a grep whose
+emptiness is the verdict, because a tool refusing to run and a genuine absence produce the same
+empty stdout and the redirect is what makes them indistinguishable. Prefer several simple patterns
+over one long alternation: a regex engine has complexity limits, and its failure mode is an error
+you have arranged not to see.
+**at:** 7425736
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-16 — search — wrote one phrasing of an enumeration into a pattern and reported the other's absence
+**What happened:** Re-measuring a delegate's report that a restart-enumeration doc comment appears at
+two sites, I searched the literal `a changed balance file or environment variable`. It matched one
+file, so I recorded "measurement found one, with no such sentence in `doc.go`" in the progress
+journal, told the owner the delegate's report "was half wrong", and a self-review round accepted the
+claim. The second site was there all along, at `doc.go:20`, phrased with the enumeration's members
+swapped — `a changed environment variable or balance file`. A positive control had run and passed
+against the file that did match, which is exactly why the result looked earned: the instrument was
+working, and was written against one of two orders prose is free to choose between.
+**Rule:** An enumeration in prose has no canonical order, so a literal phrase carrying one is a
+pattern for one variant, not for the claim. Search the stable part (`reload path`, `restarts`) or the
+members separately and read the hits, and never let a positive control on a matching file stand in
+for coverage of the phrasings that did not match — the control proves the pattern runs, never that
+the pattern spans the variants. Hardest where the measurement contradicts a delegate: overturning
+someone else's report is the case that most deserves a second encoding before it is written down.
+**at:** a1c07c0
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-16 — testing — repeated the misplaced-probe failure in the same run that recorded it
+**What happened:** Verifying four review findings by mutation, two of the four probes did not land
+where they aimed, hours after I had appended an entry about exactly that class. The first named the
+wrong variable in its anchor (`MatchString(s)` for `MatchString(v)`), so the mutation never applied
+— and because the probe was chained behind it with `&&`, the skip was silent and the finding was
+simply unverified. The second disabled the wrong `if` inside the right function: the mapping-kind
+guard instead of the unrecognised-key refusal, which changes nothing for an input that is already a
+mapping. Its green would have been recorded as "the test does not catch it" — a second false
+accusation of a delegate in one run, the first having been the doc-comment enumeration earlier the
+same day. Both were re-staged after reading the source region rather than recalling it, and both then
+went red on the intended tests.
+**Rule:** Read the region before writing the mutant, never after. A mutation is a claim about a
+specific line, so the probe must assert that the line changed — print the mutated line, or diff it —
+before the test result is read; and never chain a probe behind its own mutation with `&&`, which
+converts a failed mutation into a skipped verification that looks like nothing happened. Where a
+function contains more than one refusal, name the one under test by its condition, not by its
+position.
+**at:** 1246bb4
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-16 — process — read four lines of a PR body and reported on the whole of it
+**What happened:** After the push that followed PR creation, the unconditional rule is to read the
+PR body. I ran `gh pr view --json body | head -4`, saw the opening paragraph, and wrote "the body
+does not contradict the new commits — no edit needed" into my own report. Four lines of roughly
+forty. The conclusion happened to be right, which is the least useful kind of right: the single new
+commit was a locator substitution the body never mentions, so any reading would have reached it. The
+`pr-sync` hook caught the gap and named the command with both fields. Reading the body in full then
+took one call. This is the fourth time in one run that I converted a partial look into a statement
+about the whole — after three entries already recording that shape in controls, in a search pattern,
+and in a mutant's placement.
+**Rule:** `head` is a preview, never a read. When a rule says read an artefact, the artefact ends
+where the file ends, and a truncating filter in the command is the tell that the claim will outrun
+the evidence. Where the conclusion is probably right anyway, the cost of doing it properly is one
+call, and paying it is what keeps "I checked" distinguishable from "I expected".
+**at:** 10a6c41
+**Kind:** correction
+**Escalated?** no

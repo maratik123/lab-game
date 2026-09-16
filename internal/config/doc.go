@@ -11,11 +11,12 @@
 //   - the balance YAML file (LAB_GAME_BALANCE_PATH) supplies every game
 //     constant — stamina, combat dice, door and monster-budget curves,
 //     shop rates — with no compiled-in fallback for any of them;
-//   - the world-set path (LAB_GAME_WORLD_PATH) is validated for existence
-//     and readability only; its content is a separate concern this
-//     package does not decode.
+//   - the world-set directory (LAB_GAME_WORLD_PATH) supplies every
+//     world: identity, generation inputs, resource profile, naming
+//     style, lexicon and bestiary, one YAML file per world, each
+//     decoded and validated the same way the balance file is.
 //
 // Configuration is read once, at process start-up, through Load. There is
-// no reload path: a changed environment variable or balance file has no
-// effect until the process restarts.
+// no reload path: a changed environment variable, balance file, or world
+// set has no effect until the process restarts.
 package config

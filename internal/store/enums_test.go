@@ -37,6 +37,19 @@ func TestEnums_mirror_database(t *testing.T) {
 	}
 }
 
+func TestKinds_ReturnsIndependentCopy(t *testing.T) {
+	t.Parallel()
+
+	got := Kinds()
+	if !slices.Equal(got, kinds) {
+		t.Fatalf("Kinds() = %v, want %v", got, kinds)
+	}
+	got[0] = "mutated"
+	if kinds[0] == "mutated" {
+		t.Fatal("Kinds() leaked the backing array — mutating the result changed the package's own slice")
+	}
+}
+
 func stringsOf[T ~string](vs []T) []string {
 	out := make([]string, len(vs))
 	for i, v := range vs {

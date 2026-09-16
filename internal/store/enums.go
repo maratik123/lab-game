@@ -32,9 +32,28 @@ const (
 	KindExperience Kind = "experience"
 	KindSlots      Kind = "slots"
 	KindWeight     Kind = "weight"
+
+	// KindSpunSugar, KindPastelFleece and KindGlitterDust are the MVP
+	// biome's resource kinds (cotton-candy clouds, its fluffy fauna, and
+	// its dangerous encounters). No account_definition row posts them
+	// yet — they exist so a world's authored resource profile can name
+	// them.
+	KindSpunSugar    Kind = "spun_sugar"
+	KindPastelFleece Kind = "pastel_fleece"
+	KindGlitterDust  Kind = "glitter_dust"
 )
 
-var kinds = []Kind{KindMoney, KindExperience, KindSlots, KindWeight}
+var kinds = []Kind{
+	KindMoney, KindExperience, KindSlots, KindWeight,
+	KindSpunSugar, KindPastelFleece, KindGlitterDust,
+}
+
+// Kinds returns every Kind member, in the database's declaration order. It
+// is how a package outside store — the world-set loader's agreement test —
+// reads the ledger's kind set without duplicating it.
+func Kinds() []Kind {
+	return append([]Kind(nil), kinds...)
+}
 
 // CapacityRole mirrors the database enum capacity_role: which half of a
 // capacity kind's free/used pair an account_definition row represents.
