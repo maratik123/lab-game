@@ -46,12 +46,20 @@ type schemaNode struct {
 	order    []string
 }
 
+// tagInt and tagFloat are the YAML scalar tags every integer/decimal
+// binder in this package checks against, named once so goconst has one
+// declaration to point repeated uses at rather than a literal per binder.
+const (
+	tagInt   = "!!int"
+	tagFloat = "!!float"
+)
+
 // bindInt returns a binder that accepts only a "!!int" node (rejecting a
 // "!!null" node and a truncating "!!float" node alike), decodes it into
 // dst, and checks predicate.
 func bindInt(dst *int, predicate func(int) bool, want string) func(*yaml.Node) error {
 	return func(n *yaml.Node) error {
-		if n.Tag != "!!int" {
+		if n.Tag != tagInt {
 			return fmt.Errorf("must be an integer, got %s", n.Tag)
 		}
 		var v int
@@ -91,7 +99,7 @@ func bindDuration(dst *time.Duration, predicate func(time.Duration) bool, want s
 // and checks predicate on the decoded value.
 func bindDecimal(dst *decimal.Decimal, predicate func(decimal.Decimal) bool, want string) func(*yaml.Node) error {
 	return func(n *yaml.Node) error {
-		if n.Tag != "!!int" && n.Tag != "!!float" {
+		if n.Tag != tagInt && n.Tag != tagFloat {
 			return fmt.Errorf("must be a number, got %s", n.Tag)
 		}
 		var v decimal.Decimal

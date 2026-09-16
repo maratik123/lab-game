@@ -10,7 +10,7 @@ _Updated: 2026-09-16 04:30_
 **Issue:** #28
 **Spec:** ai-docs/plans/2026-09-16-world-biome-config.spec.md
 
-**current_step:** Step 8 — subtask 2 of 8 complete
+**current_step:** Step 8 — subtask 3 of 8 complete
 **last_passed_gate:** go test ./internal/config/... ; golangci-lint run ; golangci-lint fmt -d ; go vet ./... ; make comment-refs ; make file-limits | 2026-09-16 | (pending commit)
 **entry_args:** 28
 
@@ -22,8 +22,8 @@ _Updated: 2026-09-16 04:30_
 
 - [x] 1. Biome resource kinds in the ledger — migration 00008, Go mirror, member accessor
 - [x] 2. Lift the YAML schema walker into its own file; add the non-scalar leaf kind
-- [ ] 3. World value types + scalar half of the world schema (id, seed, generation inputs, k)  ← CURRENT
-- [ ] 4. Content half of the world schema (resource profile, naming style, lexicon, bestiary)
+- [x] 3. World value types + scalar half of the world schema (id, seed, generation inputs, k)
+- [ ] 4. Content half of the world schema (resource profile, naming style, lexicon, bestiary)  ← CURRENT
 - [ ] 5. Author the MVP world; delete the placeholder; re-word both falsified `.env.example` clauses
 - [ ] 6. World-set loader and wiring; `resolveWorldPath` to directory-only; `Config.WorldPath` removed
 - [ ] 7. Remove the chunk radius from the balance side
@@ -39,6 +39,10 @@ _Updated: 2026-09-16 04:30_
 - **Step 7**: the orchestrator's fourth `design-writer` pass carried the owner's decisions rather than review findings, and was not counted against the design-review round cap; the cap is attached to design-review cycles. Surfaced to the owner as an interpretation open to correction.
 - **Subtask 1**: `migrate_test.go` and `migrate_process_test.go` hard-code the migration count (`want 8`) and `migrate_test.go` hard-codes the `ledger_kind` member set as an exact list — both needed updating for migration 00008 (count 9, three new members). Not called out by the design's decomposition table; found by running the store package's tests after adding the migration and fixed in the same commit, since it is a mechanical consequence of D8/D9, not a design deviation.
 - **Subtask 1**: named the exported member-list accessor `store.Kinds()` (design leaves the name open — decomposition subtask 1 says only "the exported member-list accessor"). Returns a fresh copy each call, matching the existing `stringsOf`/copy-out convention already used for the DB comparison in `enums_test.go`.
+- **Subtask 3**: decoded every integer destination (int32 radius, int64 seed, uint64 weights) via `n.Decode(dst)` directly into the typed pointer rather than decoding into a wider int and narrowing — this is what makes go.yaml.in/yaml/v3 itself refuse an out-of-range value (D4's own point) and avoids a gosec G115 conversion entirely, so no `//nolint:gosec` is needed anywhere in `world_schema.go`.
+- **Subtask 3**: adding `bindInt32`/`bindInt64`/`bindUint64` pushed the repo-wide count of the `"!!int"` string literal to 5, tripping `goconst`. Fixed by naming `tagInt`/`tagFloat` constants in `schema.go` and using them from both files — a minimal, non-behavioural touch to the subtask-2 lift, not a design deviation.
+- **Subtask 3**: `World`'s doc comment on the `Generation maze.Params` field states that a later file adds further fields on this same struct — flagging ahead of time that subtask 4 necessarily also touches `world_schema.go` (to add those fields to `World`), even though the design's subtask-4 file list names only `world_content.go`/`world_content_test.go`. `World` is a single struct declaration; Go does not allow splitting a struct's field list across files.
+- **Subtask 3**: `make comment-refs` (run before staging, per the per-subtask gate list) initially failed on `world_schema.go`/`world_schema_test.go`: several doc comments named package-qualified symbols of this module's own other packages (`maze.New`, `maze.Params`, `maze.Algorithm`, `gate.Next`) and one comment carried a decision anchor (`D3`) and a repo path (`world_content.go`) — all banned by D12/DOC-4. Reworded every comment to describe the contract in prose with no qualified symbol, anchor, or path; re-ran `make comment-refs` clean before committing.
 
 ## GO notes
 
@@ -83,3 +87,4 @@ _Updated: 2026-09-16 04:30_
 
 - Subtask 1: `internal/store/migrations/00008_biome_resource_kinds.sql` (new), `internal/store/enums.go`, `internal/store/enums_test.go`, `internal/store/migrate_test.go`, `internal/store/migrate_process_test.go`
 - Subtask 2: `internal/config/schema.go` (new, lifted), `internal/config/balance_load.go` (trimmed to `balanceSchema`/`loadBalance`), `internal/config/schema_test.go` (new)
+- Subtask 3: `internal/config/world_schema.go` (new: `World` struct, `bindInt32`/`bindInt64`/`bindUint64`/`bindLowerSnakeCaseString`, `worldScalarSchema`), `internal/config/world_schema_test.go` (new); `internal/config/schema.go` touched to add the shared `tagInt`/`tagFloat` constants (goconst, five `"!!int"` literals across the two files)
