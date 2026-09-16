@@ -1271,3 +1271,50 @@ call, and paying it is what keeps "I checked" distinguishable from "I expected".
 **at:** 10a6c41
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — process — asserted a corpus count in a delegate prompt before running the command that measures it
+**What happened:** Opening an `/improve` run, I wrote into the `self-improve` spawn prompt that "the
+five entries dated 2026-09-16 (lines 1150–1273) are from a single `/task` run". The figure was
+recalled from a heading listing I had read minutes earlier, never measured:
+`grep -c '^### 2026-09-16' ai-docs/learnings.md` returns **6**, at lines 1150, 1168, 1191, 1217, 1236
+and 1257 — the listing itself was complete and correct, and I miscounted it by eye. The count reached
+the delegate as a premise about the very corpus whose recurrence counts drive Step 2a routing, so a
+low figure would have argued a pattern down. It surfaced only because I had attached the expected
+value to an unrelated grep as a positive control and read the control's output against my own written
+prediction; the mismatch is what caught it, not any review. Corrected to the delegate by
+`SendMessage` in the same turn the measurement returned.
+**Rule:** A count placed in a delegate's prompt is a load-bearing claim, and the delegation rules
+already execute every such claim before the spawn — so the measuring command runs BEFORE the prompt
+is written, not after it is sent. Reading a figure off a listing is not measuring it: the listing
+answers *which*, `grep -c` answers *how many*, and an eye count of the first is a third thing that
+resembles both while being neither. Where a prediction and a command's output can be placed side by
+side, commit the prediction in writing first — a control whose expected value you have already
+written down is the only kind that can contradict you.
+**at:** 6ef235a
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-16 — process — audited the surface-language rule across three entries while breaking it in every turn of the same session
+**What happened:** Invoked as a bare `/improve`, I wrote every owner-facing turn of the session in
+English — the opening status, the provenance findings, the two correction notices — and I also never
+produced the CLAUDE.md rules summary the SessionStart hook requires, so the one scheduled moment that
+exists to settle the surfaces before the first sentence was skipped outright rather than merely
+written in the wrong language. Meanwhile the run's subject matter *was* this rule: I resolved entry
+1150 (the third instance), read both entries it cites at lines 212 and 705, measured their
+`Escalated?` fields, and sent a delegate two messages about how to route the pattern — all in
+English, without once applying it. Fourth instance. The trigger is the one all three prior entries
+name: a bare slash-command carries no natural-language cue, and every artefact in reach — AGENTS.md,
+the contract pages, the charter, the Go sources, the log itself — is correctly English, so the
+material chose the reply language while the rule was being handled as material.
+**Rule:** Entry 1150 established that reciting a rule is not applying it; working ON a rule is not
+applying it either, and it is the more deceptive case, because handling the rule as task material
+feels like compliance and supplies a whole session of correctly-English durable artefacts to imitate.
+Two procedures, not one intention. Produce the required session-start summary before the first
+owner-facing sentence and write it on the surface the summary itself names — skipping it removes the
+checkpoint, which is worse than writing it in the wrong language, because nothing then flags the
+surface at all. And when a flow's own subject is a surface rule, re-read the turn against that rule
+before sending it: the sessions most saturated with a rule's text are the ones where proximity is
+mistaken for application.
+**at:** 6ef235a
+**Kind:** correction
+**Escalated?** no
