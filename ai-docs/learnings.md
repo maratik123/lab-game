@@ -536,7 +536,7 @@ wrong-surface text by message twelve.
 **Rule:** A gate's clean scan is a claim about the scan's VOCABULARY, not about the run: a guard can only report the one failure mode it was taught to name, so "scan clean" plus a red result is the shape that most invites fixing the wrong thing. Before believing either a bug report's stated mechanism or a gate's own verdict, put a sampler on the instrument while it runs and read what it says — one 0.5 s loop over the container's mount replaced the entire hypothesis space here, and it cost two minutes.
 **at:** 02735e75fcb66222e1e817a719c36791e65c9b0e
 **Kind:** validation
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-12 — process — recording a string comparison as a fact without running the comparison
 
@@ -893,7 +893,7 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** The "a green instrument is a claim about the instrument" pattern is written for clean results, but it is really about any result the apparatus could have produced regardless of the subject — a RED whose text describes the apparatus qualifies just as much as an empty set does. Both directions have the same cheap discharge: read a cardinality the filter must find non-zero, or re-run the same command against the pre-change artefact and compare. Neither costs more than one command, and the empty-filter case is the dangerous one precisely because its false answer is the reassuring one.
 **at:** 7d8be59a9a5b2aa7451b67775ef69d2af11e12f0
 **Kind:** validation
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-13 — testing — a maximum over a partial window is a floor, not a peak
 **What happened:** Sizing the PGDATA mount for issue #110 needed the measured peak mount usage of a two-client contention run, and the issue explicitly asked for a measurement rather than a doubling on paper. My first sampler shelled out three `podman exec` calls per tick, so its real interval was ~3.7 s and it collected 10 samples spanning ~37 s of a run that took ~45 s; it reported 416 MB. A second sampler holding the loop inside ONE `podman exec` at 0.5 s collected 85 samples over the whole run and reported 697 MB on the same workload, confirmed by a second draw at 678 MB. Nothing in the first sample's own shape said it was short — I noticed only by comparing the sampler's window against the run's duration, which the race log gave away independently (`cmd/bot` alone reported 41.9 s, longer than my entire sampling window). Had I sized the mount on 416 MB, the fix would have shipped ~280 MB short, and this mount's failure mode is a server PANIC into crash recovery, not a slow test — i.e. it would have re-created the very bug under a larger number.
@@ -914,7 +914,7 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** When a claim is refuted, the same turn fixes EVERY surface already carrying it — and enumerate those surfaces by grepping for the claim, never from memory of where it was written. The copy most likely to be missed is the one you wrote yourself, because attention follows the correction you are sending outward: issuing a correction feels like discharging it. Concretely, before sending a delegate a factual correction, grep the tree for the claim first and fix your own surfaces in that same turn — the relevant substring here (`strictly increasing`) would have found it in one command. AGENTS.md § Patterns already says a design's stated consequence must be re-run before being copied onto a second or third surface and that the fix then goes to every surface carrying it; this is that rule failing in the authoring direction rather than the copying one.
 **at:** 2ee4e28
 **Kind:** correction
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-13 — documentation — asserted a count over this log from reading it instead of counting it
 **What happened:** The entry appended earlier in this session about a background command's exit status described itself as "the fifth instance in this file of the family whose four predecessors are pipe-shaped". That count was produced by scanning, not by a command, and it is wrong under every boundary I can defend: counting entries whose HEADING is about piping a gate or reading `$?` from a pipeline gives **five** predecessors (2026-09-11 ×1, 2026-09-12 ×4), making mine the sixth; counting entries whose body mentions a pipe at all gives **twelve**. `self-review` raised it as a `minor`. Boundary rule 1 makes this log append-only, so the wrong count stands in that entry and this entry is its correction — which is exactly why the count should have been produced before the entry was written, not after.
@@ -928,7 +928,7 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** Write the propagation grep as a COMMAND, run it, and fix from its output — the act that discharges the obligation is reading a match list, never recalling where the claim was written. Two specifics this pair earned. Re-grep the file you just edited, whole: a long paragraph edited for one claim is the likeliest place a second instance of the same class survives, because attention narrows to the sentence being changed. And a precision fix propagates exactly like a correctness fix: I treated "make the ratio exact" as a local wording tidy rather than as a claim-class change, which is why I swept the two surfaces I happened to have open and not the tree. The cheap discharge for both is one `grep -rn` on the literal phrase before declaring the fix done, and re-running it after — its empty output is the evidence, and it is also what the register row should record.
 **at:** 3c5905c
 **Kind:** correction
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-13 — process — ran my own gates while a delegate was mutation-probing, so the gate measured a tree that was never a candidate
 **What happened:** Twice in one task I started `make verify` / `make test-contention` while a `code-writer` delegate was still working in the same checkout. The first time the delegate merely edited a file mid-run and I noticed from an mtime, discarded the green and re-ran. The second time was worse in kind: I had explicitly asked the delegate to verify its guards **by mutation** — deliberately breaking production code, running the suite, then restoring — and launched my own whole-module gates in the same window, even limiting the delegate to two cheap commands as if the problem were load. It is not load. A mutation probe makes the tree transiently, intentionally wrong, so a concurrent gate measures a tree that was never a candidate for shipping. `make test-contention` came back exit 2 with three failures, and the thing that identified the cause was a value in its log that could only have come from the mutant — `sized for 10 client(s)`, where 10 was the literal the delegate had substituted for `sizedFor`. Without that fingerprint the red looked like a real regression in the change I was about to push, and the cheapest wrong move — re-running until green — would have "resolved" it while teaching me nothing.
@@ -949,7 +949,7 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **Rule:** Bind the propagation check to the COMMIT, not to the fix. Before `git add`, ask one mechanical question of the staged set: *does this diff change a behaviour some durable document states, and is that document in this staged set?* A code change whose commit message explains a new rule — mine literally did — is a change whose rule is written down somewhere, so the message itself is the tell. Two supports that would have caught all four instances, and cost one command each: grep the doc set for the key term of the behaviour being changed (`vouch`, `record`, `sized for`) and read the matches, rather than recalling where the claim lives; and run `git show --stat` on the commit before considering it done, checking that every surface the message describes is actually in the file list. The failure is never disagreement about the rule; it is that gates cannot see doc staleness, so only a reviewer can, and a reviewer is a slower and more expensive instrument than a grep.
 **at:** b567a7a
 **Kind:** correction
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-13 — testing — a guard went tautological without being edited, because the code it guards changed shape
 **What happened:** The failing test I wrote before the fix asserted `walCheckpointFactor*walSize + clients*clusterPeakMB <= mountCapMB(...)`. Against the pre-fix FIXED mount it was genuinely red at two clients — 768 MB needed of 512 — and that red is what licensed the fix. The fix then made the mount scale per client, and the same inequality became `128 + 320c <= 512c`, i.e. `128 <= 192c`: true for every count, the `clients` term cancelling. So the guard could no longer fail on the axis its own name and my *Expected behaviour* text advertised, and nothing edited the test to make that happen. Confirmed both ways in round 7 — symbolically, and by raising the build file's only literal to 9 and watching it still pass. It was still load-bearing on a different axis (removing per-client sizing from the mount fails it), which is exactly why four rounds of reviewers, and I, kept reading it as sound.
@@ -1021,7 +1021,7 @@ tool, treat that as a claim about the command before it is a claim about the tre
 ### 2026-09-14 — process — recorded a superseding decision on the row that prompted it and left an older row stating the premise it replaced
 **What happened:** In `docs/world-topology-redesign-plan.md` the § 3 row for #36 said a chat's first raid activates the chat "в той же транзакции". Later the owner decided D24: every chunk creation, activation included, runs under a per-world lock in a short transaction of its own. I wrote D24 into § 0 and updated the #29 row that prompted it, and did not search the rest of the plan for the wording D24 contradicts. The stale #36 row was merged in #116 and then copied into tracking issue #117's checklist. I found it only while drafting #36's issue body, one step before the contradiction would have reached a third surface.
 **Rule:** When a decision supersedes a premise, the edit that records it also greps the whole document, and every surface already copied from it (checklist rows, issue bodies), for the premise's wording, case-insensitively, and fixes each hit in the same change. The row that prompted the decision is where the contradiction is least likely to remain.
-**Escalated?** no
+**Escalated?** AGENTS.md
 
 ### 2026-09-14 — process — wrote a plan row saying more than the owner's decision it cited
 **What happened:** The plan's § 1 row for DESIGN §10 said "Чаты в новом сезоне добавляются по мере активации (D10)". D10 quotes the owner: "добавляем чаты по мере активации в начале сезона. как это будет в дальнейших сезонах - пока вне скоупа мвп". My row dropped the out-of-scope half and turned the first season's rule into a rule for every season. The design amendment for #118 copied it into §10 as «спираль строится заново». Self-review round 3 flagged the inconsistency with §2.2.3, and only then was the text brought back to D10, in the design, the plan, #117 and #118.
@@ -1064,32 +1064,32 @@ tool, treat that as a claim about the command before it is a claim about the tre
 **What happened:** In the #120 run, Group A's `code-writer` shipped two false doc comments in `internal/gate`, both green on every gate. `Set.Depth`'s comment said the search "never looks at a chunk farther than the nearest gate's own ring", but its stop rule continues while the best distance exceeds the next ring's lower bound, so with radius 6 and the only gate in the cell's own chunk, a cell 6 from that centre makes the search visit ring 1 (bound 4). `Next`'s comment said the fallback "is never actually reached by an input the scan cannot already satisfy", while its own table test has a row that returns the fallback. Group B's documentation delegate found both while checking KD-41's claims against the code; the orchestrator reproduced both and routed a comment-only fix.
 **Rule:** A doc comment that describes a function's behaviour — a bound, a reachability, a "never" — is a claim about the code and is checked against the code or its tests before commit, the same as a design claim. A comment that paraphrases the design's proof in stronger words than the proof establishes is the likeliest false one.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** doc-convention, agent:self-review, agent:review-findings, skill:project-review
 
 ### 2026-09-14 — documentation — more false and narrating doc comments in the same package, after the first two were fixed
 **What happened:** Self-review round 1 of the #120 run found further doc-comment defects in `internal/gate`, written by the same Group A delegate that wrote the two false comments recorded earlier today. False claims: `delta`'s comment said `Next`'s fallback uses it and `ringChunk`'s said `SpiralIndex` and `Next` share it — neither calls it — and `ringChunk`'s pointed at an int32 "disclaimer" in `Next`'s comment that does not exist. `lowerBound`'s comment called a lower bound "the least possible" distance and placed its attainment at the ring walk's start; measured at radius 6, ring 1's bound is 4 against a true least of 7, and the attaining chunk at ring 13 is walk position 1, not 0. Narration (DOC-4): `Next`'s comment retold its bounded scan, fallback and proof, and three more comments described how their function works rather than what a caller may rely on.
 **Rule:** A doc comment states what the item is and what a caller may rely on — never which other functions use it, never how it computes its result, and never a pointer to another comment. Every behavioural word in it ("least", "attained", "shared", "never") is checked against the code before commit.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** doc-convention, agent:self-review, agent:review-findings, skill:project-review
 
 ### 2026-09-14 — process — fixed only the two doc comments a delegate reported, without checking their neighbours
 **What happened:** When Group B reported two false doc comments in Group A's `internal/gate` code, the orchestrator reproduced both and routed a fix for exactly those two sentences. It did not re-read the package's other doc comments, although both defects were of one class from one author in one package. Self-review round 1 then found four more false or narrating comments in the same files, costing a review round.
 **Rule:** A defect report scoped to one line is evidence about that line only (`AGENTS.md` § Patterns 1). When a delegate reports a defect of a class — a false doc comment, a wrong bound — sweep every instance of that class the same author wrote in the same change before routing the fix, and put the sweep into the fix's scope.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** doc-convention, agent:self-review, agent:review-findings, skill:project-review
 
 ### 2026-09-14 — documentation — a learnings entry said a function was not shared, from direct call sites alone
 **What happened:** The 2026-09-14 entry "more false and narrating doc comments in the same package" says `ringChunk`'s comment claimed `SpiralIndex` and `Next` share it, and that "neither calls it". `Next` ranges over `Spiral()`, which calls `ringChunk`, so `Next` does share the ring walk; only the `SpiralIndex` half was false, and that half was all self-review round 1 had raised. The orchestrator widened the reviewer's finding into the log without following the call chain. Self-review round 2 raised it (SR2-3).
 **Rule:** A claim that X does not use Y, written into any durable surface, is checked through the call chain — every caller, not only direct call sites — and a log entry restates a reviewer's finding at the finding's own scope, never wider.
 **Kind:** correction
-**Escalated?** no
+**Escalated?** doc-convention, agent:self-review, agent:review-findings, skill:project-review
 
 ### 2026-09-14 — process — accepted a delegate's "no further false claims" sweep without re-running it
 **What happened:** The round-1 fix delegate in the #120 run was told to re-read every doc comment in `internal/gate` and reported that the others "describe contracts/complexity guarantees, not implementation retelling". The orchestrator accepted that negative result. `Set`'s comment said repeated `Depth` queries "cost no more than the distance to the nearest gate", while the chunk lookups grow with the square of that distance in rings — with one gate at the centre chunk, radius 0, and a cell 100 chunks out, a query makes 30301 lookups. Self-review round 2 raised it (SR2-1).
 **Rule:** A delegate's negative sweep result ("no further instances") is a claim like any other: re-run the sweep over the claim class yourself — here, every cost or complexity word in the package's comments, each checked against the code — before sending the fix back to review.
 **at:** e7835b8
 **Kind:** correction
-**Escalated?** no
+**Escalated?** doc-convention, agent:self-review, agent:review-findings, skill:project-review
 
 ### 2026-09-14 — tooling — documented a make target's exit statuses without running make
 **What happened:** In the `/bugfix 125` run, the new `test-contention-stop-probe` target's Makefile comment and `ai-docs/go-test-conventions.md` said the target exits 1 on RED and 2 when inconclusive. GNU make exits 2 for every failing recipe, so a RED reaches the caller as 2 as well. The evidence was already in the trace's own red-check record — `make: *** [...] Error 1` followed by `probe exit=2`, annotated there as make's own status — yet the documentation was written from the script's exit codes. Self-review round 1 caught it with a two-recipe control makefile; the same false contract had been standing in the pre-existing `make test-contention` text.
@@ -1186,7 +1186,7 @@ case has been seen to PASS; the second half is what separates a working check fr
 at everything, and it is the half most easily skipped once the first probe finally fails.
 **at:** f5a5963
 **Kind:** correction
-**Escalated?** no
+**Escalated?** rules:ast-index
 
 ### 2026-09-16 — search — read a grep's silence as "no residue" when the grep had never run
 
@@ -1212,7 +1212,7 @@ over one long alternation: a regex engine has complexity limits, and its failure
 you have arranged not to see.
 **at:** 7425736
 **Kind:** correction
-**Escalated?** no
+**Escalated?** rules:ast-index
 
 ### 2026-09-16 — search — wrote one phrasing of an enumeration into a pattern and reported the other's absence
 **What happened:** Re-measuring a delegate's report that a restart-enumeration doc comment appears at
@@ -1231,7 +1231,7 @@ the pattern spans the variants. Hardest where the measurement contradicts a dele
 someone else's report is the case that most deserves a second encoding before it is written down.
 **at:** a1c07c0
 **Kind:** correction
-**Escalated?** no
+**Escalated?** rules:ast-index
 
 ### 2026-09-16 — testing — repeated the misplaced-probe failure in the same run that recorded it
 **What happened:** Verifying four review findings by mutation, two of the four probes did not land
@@ -1252,7 +1252,7 @@ function contains more than one refusal, name the one under test by its conditio
 position.
 **at:** 1246bb4
 **Kind:** correction
-**Escalated?** no
+**Escalated?** rules:ast-index
 
 ### 2026-09-16 — process — read four lines of a PR body and reported on the whole of it
 **What happened:** After the push that followed PR creation, the unconditional rule is to read the
@@ -1270,7 +1270,7 @@ the evidence. Where the conclusion is probably right anyway, the cost of doing i
 call, and paying it is what keeps "I checked" distinguishable from "I expected".
 **at:** 10a6c41
 **Kind:** correction
-**Escalated?** no
+**Escalated?** rules:ast-index
 
 ### 2026-09-16 — process — asserted a corpus count in a delegate prompt before running the command that measures it
 **What happened:** Opening an `/improve` run, I wrote into the `self-improve` spawn prompt that "the
