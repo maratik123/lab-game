@@ -517,7 +517,7 @@ Entry shape:
   - `AnyBalanced` exists only on the manual correction, enforced at registry construction.
   - Raising `ceilingMax` again needs the same at-capacity measurement on the host meant to carry it.
 
-## World and biome config — the world set decodes like the balance file, and the MVP world is authored (#TBD-at-Step-12, 2026-09-16)
+## World and biome config — the world set decodes like the balance file, and the MVP world is authored (#133, 2026-09-16)
 
 - **What landed:**
   - `internal/config` gains the world set: `LAB_GAME_WORLD_PATH` names a **directory**, each `*.yaml` in it is one world, and the loader sorts the file names itself so a joined error's order is a property of this code rather than of the directory read. A subdirectory and any non-`.yaml` entry are ignored; an empty directory and a duplicate `id` are refusals that name what they refuse.
