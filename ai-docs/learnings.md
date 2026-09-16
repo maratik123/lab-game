@@ -1164,3 +1164,26 @@ possible evidence that recall and application are separate acts.
 **at:** 52fdb4a
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-16 — testing — placed three successive controls where the instrument does not look
+**What happened:** Checking the spec-anchor gate's green verdict, I built a control by copying the
+spec into `tmp/` — which orphaned it from its sibling state file and disabled the very resolution
+under test. The gate said so on stderr (`no interview state file on disk; anchors checked for
+presence only`) and I still read the resulting PASS as a result. I then read that PASS as "the gate
+is blind", one step from recording a false accusation against both the gate and the delegate that
+had reported it green. The third attempt appended the forged row to the end of the file, which is
+`## Open questions` — a section the gate's parser assigns `sec = ""` and never judges, so the probe
+was invisible by construction. Only reading the script showed all three probes had landed outside
+the judged region. Placed inside the Acceptance Criteria table, the gate then failed a non-existent
+answer id, a real id carrying substituted text, and a non-existent task fragment, and passed a
+genuine anchor — the resolution the delegate claimed was real all along.
+**Rule:** Before reading a mutant-based control, confirm the mutant landed where the instrument
+actually looks: for a section-scoped checker that means reading its section parser, not appending to
+the end of the file. A control that changes the artefact's location or shape tests the harness, not
+the subject — and a degradation notice on stderr voids the probe rather than decorating it. An
+instrument's silence becomes evidence only after one probe has been seen to FAIL and one genuine
+case has been seen to PASS; the second half is what separates a working check from one that reddens
+at everything, and it is the half most easily skipped once the first probe finally fails.
+**at:** f5a5963
+**Kind:** correction
+**Escalated?** no
