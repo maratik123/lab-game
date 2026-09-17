@@ -1,5 +1,5 @@
 # Progress: Maze persistence — ACTIVE
-_Updated: 2026-09-17T09:48:07Z_
+_Updated: 2026-09-17T09:56:36Z_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,8 +8,8 @@ _Updated: 2026-09-17T09:48:07Z_
 **Last build:** PASS
 **Issue:** #29
 **Spec:** ai-docs/plans/2026-09-17-maze-persistence.spec.md
-**current_step:** Step 8 — Group A and Group B both complete; every subtask shipped
-**last_passed_gate:** make comment-refs | 2026-09-17T09:48:07Z | e46826abac3d731709615e163f387cedb069ebd9
+**current_step:** Step 9 — Verify (ALL PASS)
+**last_passed_gate:** golangci-lint run | 2026-09-17T09:56:36Z | 635b72b7b78833abeb541c77c3d7d920aa0dc28e
 **entry_args:** 29
 
 ## Next action
@@ -47,6 +47,8 @@ Group A = 1–7 (code, `code-writer`). Group B = 8–9 (instructions/harness, `g
 - **Step 8 subtask 9 (Group B complete):** the lock-ordering rule went into a **new `## 9`** of `ai-docs/domain-invariants.md` rather than into § 4, with a one-bullet statement of the rule left in § 4 where a raid-mechanic author meets it — appending rather than inserting also leaves every existing `domain-invariants.md § N` cross-reference (§ 1, § 5, § 6 are the ones that exist) pointing where it did. The chunk-created event went into § 5, beside the posting-signature mechanics, because the fact a reader needs is that a mechanic moving **no** balance owes its events and no signature — the `major` rating there is scoped to a balance-moving mechanic, and `chunk_created` is the first shipped case that is not one. **The sweep named two residues outside the decomposition's file list, both in `ai-docs/key-decisions.md` and both repaired here:** KD-37's "storing the maps is #29's", which read as pending, and KD-43's "*Rejected:* a new `internal/world` package" — which rejected that name for the **world format** and now reads at a glance as contradicting KD-46, so the rejection is scoped and the distinction stated. **Sweep method and its controls:** `grep -rniF` over `.claude/`, `AGENTS.md`, `CLAUDE.md` and the live `ai-docs/` pages (the history surfaces `learnings.md`, `harness-gaps.md`, `context-status.md` and `plans/done|ignored/**` deliberately excluded — `context-status.md` is append-only and gets this task's entry at Step 9.5), for each of the four claims the design enumerates, then re-run after the edits; each pattern was first run against a **constructed** string it must match, and each control matched. One encoding variation earned its keep: `world loader` missed KD-38's `the **world** loader`, so the re-run used `world[^a-z]{0,6}loader`. The markdown link gate was run as CI runs it — the workflow's own relative-link checker over every `*.md`, reporting 255 links checked in this run (a non-zero cardinality, so the instrument reached the corpus rather than an empty set) and failing only on `tmp/**` scratch files, which `git check-ignore` confirms are ignored and which `git ls-files tmp/` confirms are untracked, so a clean checkout never sees them. `~/lab-private/DESIGN.md` was read directly for the two corpus facts § 9 states: §2.2.2 line 69 carries the short-separate-transaction-under-the-world-lock rule, and §3.5 line 162 carries the create-before-the-transition order. **Not done, and named rather than silently skipped:** no AXIOM was added to `AGENTS.md` § Domain Rules for the lock-ordering rule — the design routes it to `ai-docs/domain-invariants.md` specifically, and promoting it would be unapproved scope plus a fan-out grep across `.claude/`.
 - **Step 8, after subtask 9:** one claim-discipline fix on top (e46826a) — KD-46's closing clause said `cmd/bot` would wire `internal/world`, which is a forward prediction this delegate originated and no source in the task establishes; replaced with the spec's own out-of-scope wording, that the activation, `move` and look edges calling into it are #36's. `make comment-refs` and the link check were re-run green after it.
 
+- **Step 9**: no panic-index row owed — the touched packages carry no production `panic`/`log.Fatal`, and the index table stays empty. No posting signature owed either: the world package calls neither `store.Post` nor `store.Move`, so it opens no basis document; its `chunk_created` registration is the whole telemetry debt and it ships in this change. Per-AC sweep re-run verbosely after a negative control showed a non-matching `-run` pattern exits 0 with `[no tests to run]`: 24 named world tests and 2 store tests passed, no skip at any level.
+
 ## GO notes
 
 | # | round | note | kind | route | resolution |
@@ -77,22 +79,22 @@ Every row was confirmed present in the design by reading the region, not by a pa
 
 | AC | Status |
 |----|--------|
-| AC1 | NOT_TESTED |
-| AC2 | NOT_TESTED |
-| AC3 | NOT_TESTED |
-| AC4 | NOT_TESTED |
-| AC5 | NOT_TESTED |
-| AC6 | NOT_TESTED |
-| AC7 | NOT_TESTED |
-| AC8 | NOT_TESTED |
-| AC9 | NOT_TESTED |
-| AC10 | NOT_TESTED |
-| AC11 | NOT_TESTED |
-| AC12 | NOT_TESTED |
-| AC13 | NOT_TESTED |
-| AC14 | NOT_TESTED |
-| AC15 | NOT_TESTED |
-| AC16 | NOT_TESTED |
+| AC1 | PASS |
+| AC2 | PASS |
+| AC3 | PASS |
+| AC4 | PASS |
+| AC5 | PASS |
+| AC6 | PASS |
+| AC7 | PASS |
+| AC8 | PASS |
+| AC9 | PASS |
+| AC10 | PASS |
+| AC11 | PASS |
+| AC12 | PASS |
+| AC13 | PASS |
+| AC14 | PASS |
+| AC15 | PASS |
+| AC16 | PASS |
 
 ## Review register
 
