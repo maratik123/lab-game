@@ -71,7 +71,37 @@ gh_issue:
   linked_prs: []
 round_cap: 4
 questions_per_round_cap: 3
-round: 1
+round: 2
 agent_id: a2e0d6b2d037e20ed
-prior_qa: []
+prior_qa:
+  - round: 1
+    question: |
+      Cell state is in this issue's scope, but every mechanic that stores any is elsewhere: doors are out of the MVP, #40 carries its own corpse record with position, owner, chat and TTL, and #34 has not yet settled whether monster instances are materialised at all. What does this task deliver for cell state?
+    answer: |
+      what answer is best suited for current issues split?
+  - round: 1
+    question: |
+      Chat knowledge is the union across members, but player-to-chat membership belongs to #30, which is open and lists this issue among its own dependencies, so there is no membership record for a view to union over. What does this task deliver?
+    answer: |
+      what answer is best suited for current issues split for mvp?
+  - round: 1
+    question: |
+      Beyond the chunk type and the creation cause, what must the chunk-creation event carry? Its payload is persisted data, so widening it later is a migration.
+    answer: |
+      what answer is best suited for current issues split for mvp?
+  - round: 1
+    question: |
+      Cell state is in this issue's scope, but every mechanic that stores any is elsewhere: doors are out of the MVP, #40 carries its own corpse record with position, owner, chat and TTL, and #34 has not yet settled whether monster instances are materialised at all. What does this task deliver for cell state? [re-asked with the orchestrator's recommendation attached to one option label]
+    answer: |
+      Defer it (Recommended)
+  - round: 1
+    question: |
+      Chat knowledge is the union across members, but player-to-chat membership belongs to #30, which is open and lists this issue among its own dependencies, so there is no membership record for a view to union over. What does this task deliver? [re-asked with the orchestrator's recommendation attached to one option label]
+    answer: |
+      Defer view (Recommended)
+  - round: 1
+    question: |
+      Beyond the chunk type and the creation cause, what must the chunk-creation event carry? Its payload is persisted data, so widening it later is a migration. [re-asked with the orchestrator's recommendation attached to one option label]
+    answer: |
+      Plus placement (Recommended)
 ```
