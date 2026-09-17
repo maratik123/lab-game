@@ -38,15 +38,17 @@ INSERT INTO event_type_definition (id, code, volume_class) VALUES
 -- event is the append-only product-analytics log: the
 -- dimensions that are universal across types — player, chat, maze,
 -- depth — are columns; everything else is payload. maze_id carries no
--- foreign key because no maze table exists yet. No UPDATE/DELETE is ever
--- issued against this table outside a test (the ledger's append-only
--- posture, enforced in code, never by a database privilege).
+-- foreign key deliberately: this is an open question, not a schema gap,
+-- left this way so an event naming a maze that is later deleted still
+-- reads back. No UPDATE/DELETE is ever issued against this table outside
+-- a test (the ledger's append-only posture, enforced in code, never by a
+-- database privilege).
 CREATE TABLE event (
     id        bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     type      text        NOT NULL,
     player_id bigint      REFERENCES owner (id),
     chat_id   bigint      REFERENCES owner (id),
-    maze_id   bigint,                                    -- no FK yet: no maze table
+    maze_id   bigint,                                    -- no FK: an open question, not a missing table
     depth     integer,
     payload   jsonb       NOT NULL DEFAULT '{}'::jsonb,
     ts        timestamptz NOT NULL DEFAULT now(),

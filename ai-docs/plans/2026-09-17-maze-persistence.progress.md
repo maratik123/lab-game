@@ -8,8 +8,8 @@ _Updated: 2026-09-17 04:21_
 **Last build:** PASS
 **Issue:** #29
 **Spec:** ai-docs/plans/2026-09-17-maze-persistence.spec.md
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** go build ./... | 2026-09-17T04:21Z | bbf761705064b277625c3e9efae4b03d31816872
+**current_step:** Step 8 — subtask 1 of 9 complete
+**last_passed_gate:** go run ./cmd/testpg -- go test ./internal/store/... (+ golangci-lint run, golangci-lint fmt -d, make comment-refs, make file-limits) | 2026-09-17 | feat/2026-09-17-maze-persistence
 **entry_args:** 29
 
 ## Next action
@@ -18,8 +18,8 @@ _Updated: 2026-09-17 04:21_
 
 ## Subtasks
 
-- [ ] 1. The forward migration and the event-type registration  ← CURRENT
-- [ ] 2. Package skeleton and the stored-map codec
+- [x] 1. The forward migration and the event-type registration
+- [ ] 2. Package skeleton and the stored-map codec  ← CURRENT
 - [ ] 3. The maze handle — `Spec`, `Maze`, `Open`, `Lattice()`
 - [ ] 4. Chunk creation — `EnsureChunkAt`
 - [ ] 5. Gate allocation — `ActivateChat`
@@ -33,6 +33,7 @@ Group A = 1–7 (code, `code-writer`). Group B = 8–9 (instructions/harness, `g
 ## Decisions log
 
 - **Step 8**: created at the Step 7 GO (design-review round 2); Group A opens with subtask 1 per the design's `## Handoff plan`, which the orchestrator does not re-derive.
+- **Step 8 subtask 1:** the migration filename is `00009_world_persistence.sql` (next free number in `internal/store/migrations`). `event_type_definition` row for `chunk_created` uses id 17 (next after `bot_kicked`'s 16). The first draft of the migration's own doc comment on the two new enums used the phrase "ALTER TYPE … ADD VALUE", which tripped `TestMigrate_hygiene`'s `ADD\s+VALUE` regex against the whole file text (comments included, not just executable DDL) alongside this migration's own `CREATE TABLE`/`INSERT` — reworded to avoid the literal adjacency rather than weakening the migration or the test. The gate coverage the design listed as owed for `go mod tidy`/`git diff go.mod go.sum` does not apply — subtask 1 added no dependency.
 
 ## GO notes
 
@@ -84,4 +85,8 @@ Every row was confirmed present in the design by reading the region, not by a pa
 
 ## Files touched
 
-_None yet — Group A has not started._
+- `internal/store/migrations/00009_world_persistence.sql` (new)
+- `internal/store/migrations/00003_event_log.sql` (comments only)
+- `internal/store/catalog.go`
+- `internal/store/migrate_test.go`
+- `internal/store/migrate_process_test.go`
