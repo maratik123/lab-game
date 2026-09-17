@@ -65,16 +65,32 @@ func (m *Maze) readChunk(ctx context.Context, q rowQueryer, ch hexgrid.Chunk) (m
 	return mp, true, nil
 }
 
+// readNeighbors reads every already-created neighbour of ch, through
+// tx, in canonical direction order.
+func (m *Maze) readNeighbors(ctx context.Context, tx pgx.Tx, ch hexgrid.Chunk) ([]maze.Map, error) {
+	var neighbors []maze.Map
+	for d := hexgrid.DirE; d <= hexgrid.DirSE; d++ {
+		nm, ok, err := m.readChunk(ctx, tx, ch.Neighbor(d))
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			neighbors = append(neighbors, nm)
+		}
+	}
+	return neighbors, nil
+}
+
 // EnsureChunkAt returns the map of the chunk holding cell, creating it
-// whole under a short, per-maze locked transaction on a genuine
-// miss. Its creation cause is always explorer — there is no cause
-// parameter to get wrong. The whole call, unlocked read included, runs
-// under Spec.CreateBudget: a caller that already holds its own
-// transaction and calls this from inside it holds two pool connections
-// at once for the call's own duration, so the composition root must
-// size the pool at least two connections per such concurrent nesting
-// caller, and either an exhausted pool or a long-held maze row lock
-// surfaces as ErrCreateBudget rather than a hang.
+// whole under a short, per-maze locked transaction on a genuine miss.
+// Its creation cause is always explorer — there is no cause parameter
+// to get wrong. The whole call, unlocked read included, runs under
+// Spec.CreateBudget: a caller that already holds its own transaction
+// and calls this from inside it holds two pool connections at once for
+// the call's own duration, so the composition root must size the pool
+// at least two connections per such concurrent nesting caller, and
+// either an exhausted pool or a long-held maze row lock surfaces as
+// ErrCreateBudget rather than a hang.
 func (m *Maze) EnsureChunkAt(ctx context.Context, cell hexgrid.Coord, by Actor) (maze.Map, error) {
 	bctx, cancel := context.WithTimeout(ctx, m.createBudget)
 	defer cancel()
@@ -101,14 +117,88 @@ func wrapBudget(ctx context.Context, err error) error {
 	return err
 }
 
-// createLocked runs the locked creation transaction body, shared by EnsureChunkAt's
-// explorer cause and ActivateChat's chat_activation cause: lock the
-// maze row, re-check for an existing chunk (the loser of a creation
-// race finds the winner's row here and returns it, writing nothing),
-// read the existing neighbours' stored maps, generate, insert, append
-// the chunk_created event, commit. gateChatID and spiralIndex/ring are
-// nil for typ = ChunkTypeFabric and non-nil for ChunkTypeGate. bctx is
-// the caller's own already-budgeted context (see EnsureChunkAt).
+// lockedTxBody runs body on a fresh, READ-COMMITTED transaction over
+// m's pool, taking the per-maze row lock first (ErrMazeMissing on a
+// miss) and committing body's result on success, rolling back
+// otherwise. It is the one place either a chunk creation or a gate
+// allocation opens a transaction, so both run under the same lock and
+// the same shape.
+func lockedTxBody[T any](ctx context.Context, m *Maze, body func(tx pgx.Tx) (T, error)) (T, error) {
+	var zero T
+	tx, err := m.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return zero, wrapBudget(ctx, fmt.Errorf("world: begin transaction: %w", err))
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	var exists int
+	if err := tx.QueryRow(ctx, lockMazeSQL, m.id).Scan(&exists); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return zero, ErrMazeMissing
+		}
+		return zero, wrapBudget(ctx, fmt.Errorf("world: lock maze row: %w", err))
+	}
+
+	v, err := body(tx)
+	if err != nil {
+		return zero, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return zero, wrapBudget(ctx, fmt.Errorf("world: commit transaction: %w", err))
+	}
+	committed = true
+	return v, nil
+}
+
+// generateInsertAndAppend generates ch's map under typ against
+// neighbors, inserts its chunk row and appends its chunk_created event,
+// all on tx. gateChatID and spiralIndex/ring are nil for a fabric chunk
+// and non-nil for a gate one.
+func (m *Maze) generateInsertAndAppend(
+	ctx context.Context,
+	tx pgx.Tx,
+	ch hexgrid.Chunk,
+	typ ChunkType,
+	cause CreationCause,
+	by Actor,
+	gateChatID *store.OwnerID,
+	spiralIndex, ring *int64,
+	neighbors []maze.Map,
+) (maze.Map, error) {
+	mazeType, err := typ.toMaze()
+	if err != nil {
+		return maze.Map{}, err
+	}
+	generated, err := m.gen.Generate(ch, mazeType, neighbors...)
+	if err != nil {
+		return maze.Map{}, wrapBudget(ctx, fmt.Errorf("world: generate chunk %v: %w", ch, err))
+	}
+
+	if _, err := tx.Exec(ctx, insertChunkSQL,
+		m.id, ch.Q, ch.R, typ, cause, gateChatID, spiralIndex, encode(generated), generated.Version(),
+	); err != nil {
+		return maze.Map{}, wrapBudget(ctx, fmt.Errorf("world: insert chunk %v: %w", ch, err))
+	}
+
+	if err := appendChunkCreated(ctx, tx, m.id, by, ch, typ, cause, generated.Version(), spiralIndex, ring); err != nil {
+		return maze.Map{}, wrapBudget(ctx, err)
+	}
+
+	return generated, nil
+}
+
+// createLocked runs the locked creation transaction body, shared by
+// EnsureChunkAt's explorer cause and ActivateChat's chat_activation
+// cause: re-check for an existing chunk under the lock (the loser of a
+// creation race finds the winner's row here and returns it, writing
+// nothing), read the existing neighbours' stored maps, generate,
+// insert, append the chunk_created event.
 func (m *Maze) createLocked(
 	bctx context.Context,
 	ch hexgrid.Chunk,
@@ -118,66 +208,18 @@ func (m *Maze) createLocked(
 	gateChatID *store.OwnerID,
 	spiralIndex, ring *int64,
 ) (maze.Map, error) {
-	tx, err := m.pool.BeginTx(bctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
-	if err != nil {
-		return maze.Map{}, wrapBudget(bctx, fmt.Errorf("world: begin creation transaction: %w", err))
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback(bctx)
+	return lockedTxBody(bctx, m, func(tx pgx.Tx) (maze.Map, error) {
+		if mp, ok, err := m.readChunk(bctx, tx, ch); err != nil {
+			return maze.Map{}, wrapBudget(bctx, err)
+		} else if ok {
+			return mp, nil
 		}
-	}()
 
-	var exists int
-	if err := tx.QueryRow(bctx, lockMazeSQL, m.id).Scan(&exists); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return maze.Map{}, ErrMazeMissing
-		}
-		return maze.Map{}, wrapBudget(bctx, fmt.Errorf("world: lock maze row: %w", err))
-	}
-
-	if mp, ok, err := m.readChunk(bctx, tx, ch); err != nil {
-		return maze.Map{}, wrapBudget(bctx, err)
-	} else if ok {
-		return mp, nil
-	}
-
-	var neighbors []maze.Map
-	for d := hexgrid.DirE; d <= hexgrid.DirSE; d++ {
-		nc := ch.Neighbor(d)
-		nm, ok, err := m.readChunk(bctx, tx, nc)
+		neighbors, err := m.readNeighbors(bctx, tx, ch)
 		if err != nil {
 			return maze.Map{}, wrapBudget(bctx, err)
 		}
-		if ok {
-			neighbors = append(neighbors, nm)
-		}
-	}
 
-	mazeType, err := typ.toMaze()
-	if err != nil {
-		return maze.Map{}, err
-	}
-	generated, err := m.gen.Generate(ch, mazeType, neighbors...)
-	if err != nil {
-		return maze.Map{}, wrapBudget(bctx, fmt.Errorf("world: generate chunk %v: %w", ch, err))
-	}
-
-	if _, err := tx.Exec(bctx, insertChunkSQL,
-		m.id, ch.Q, ch.R, typ, cause, gateChatID, spiralIndex, encode(generated), generated.Version(),
-	); err != nil {
-		return maze.Map{}, wrapBudget(bctx, fmt.Errorf("world: insert chunk %v: %w", ch, err))
-	}
-
-	if err := appendChunkCreated(bctx, tx, m.id, by, ch, typ, cause, generated.Version(), spiralIndex, ring); err != nil {
-		return maze.Map{}, wrapBudget(bctx, err)
-	}
-
-	if err := tx.Commit(bctx); err != nil {
-		return maze.Map{}, wrapBudget(bctx, fmt.Errorf("world: commit creation transaction: %w", err))
-	}
-	committed = true
-
-	return generated, nil
+		return m.generateInsertAndAppend(bctx, tx, ch, typ, cause, by, gateChatID, spiralIndex, ring, neighbors)
+	})
 }

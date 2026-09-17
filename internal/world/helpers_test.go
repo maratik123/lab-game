@@ -71,28 +71,39 @@ func mapsEqual(t *testing.T, a, b maze.Map) {
 	}
 }
 
-// borderAgrees walks the shared border between chunks a and b (b in
-// direction d from a) and asserts every face pair the two maps report
-// agrees, from both sides.
+// borderAgrees walks a's own local cells whose direction-d neighbour
+// crosses into b (b must be a's neighbour in direction d) and asserts
+// every such face pair the two maps report agrees, from both sides —
+// the same crossing test the generator's own border pass uses, so it
+// needs no assumption about which chunk's local frame Lattice.Border
+// itself expresses a given direction's cells in.
 func borderAgrees(t *testing.T, lattice hexgrid.Lattice, a, b maze.Map, d hexgrid.Direction) {
 	t.Helper()
 	if b.Chunk() != a.Chunk().Neighbor(d) {
 		t.Fatalf("b.Chunk() = %v, want %v's neighbour in direction %v", b.Chunk(), a.Chunk(), d)
 	}
-	for _, face := range lattice.Border(d) {
-		aFaces, ok := a.Faces(face.Cell)
-		if !ok {
-			t.Fatalf("a.Faces(%v): not ok", face.Cell)
+	checked := 0
+	for _, local := range lattice.LocalCells() {
+		globalNeighbor := lattice.At(a.Chunk(), local).Neighbor(d)
+		neighborChunk, bLocal := lattice.Locate(globalNeighbor)
+		if neighborChunk != b.Chunk() {
+			continue
 		}
-		globalNeighbor := lattice.At(a.Chunk(), face.Cell).Neighbor(d)
-		_, bLocal := lattice.Locate(globalNeighbor)
+		aFaces, ok := a.Faces(local)
+		if !ok {
+			t.Fatalf("a.Faces(%v): not ok", local)
+		}
 		bFaces, ok := b.Faces(bLocal)
 		if !ok {
 			t.Fatalf("b.Faces(%v): not ok", bLocal)
 		}
 		if aFaces[d] != bFaces[d.Opposite()] {
-			t.Fatalf("border disagreement at %v/%v: %v vs %v", face.Cell, bLocal, aFaces[d], bFaces[d.Opposite()])
+			t.Fatalf("border disagreement at %v/%v: %v vs %v", local, bLocal, aFaces[d], bFaces[d.Opposite()])
 		}
+		checked++
+	}
+	if checked == 0 {
+		t.Fatalf("no shared border cells found between %v and %v in direction %v", a.Chunk(), b.Chunk(), d)
 	}
 }
 
