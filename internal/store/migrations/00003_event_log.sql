@@ -38,11 +38,9 @@ INSERT INTO event_type_definition (id, code, volume_class) VALUES
 -- event is the append-only product-analytics log: the
 -- dimensions that are universal across types — player, chat, maze,
 -- depth — are columns; everything else is payload. maze_id carries no
--- foreign key deliberately: this is an open question, not a schema gap,
--- left this way so an event naming a maze that is later deleted still
--- reads back. No UPDATE/DELETE is ever issued against this table outside
--- a test (the ledger's append-only posture, enforced in code, never by a
--- database privilege).
+-- foreign key: this is an open question, not a schema gap. No UPDATE/DELETE
+-- is ever issued against this table outside a test (the ledger's
+-- append-only posture, enforced in code, never by a database privilege).
 CREATE TABLE event (
     id        bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     type      text        NOT NULL,
