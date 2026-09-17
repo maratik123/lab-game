@@ -28,7 +28,7 @@ var ErrNotAChat = errors.New("world: owner is not a chat")
 var ErrNotAPlayer = errors.New("world: owner is not a player")
 
 // ErrCreateBudget is returned, wrapping the context deadline error,
-// when a chunk-creation transaction does not finish within Spec's
-// CreateBudget — an exhausted connection pool or a long-held maze row
-// lock surfacing as a bounded error instead of a hang.
-var ErrCreateBudget = errors.New("world: chunk creation did not finish within its budget")
+// when a budgeted call does not finish within Spec's CreateBudget — an
+// exhausted connection pool or a long-held maze row lock surfacing as
+// a bounded error instead of a hang.
+var ErrCreateBudget = errors.New("world: budgeted call did not finish within its budget")

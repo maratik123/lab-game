@@ -29,11 +29,12 @@ type Spec struct {
 	// GateSpacing is the minimum hex distance ActivateChat keeps
 	// between one chat's gate and any other's.
 	GateSpacing int
-	// CreateBudget bounds a chunk-creation transaction's own context:
-	// the acquisition-and-work budget EnsureChunkAt and ActivateChat
-	// apply so an exhausted connection pool or a long-held maze row
-	// lock surfaces as ErrCreateBudget instead of a hang. Must be
-	// strictly positive — there is no default to fall back to.
+	// CreateBudget bounds the whole call EnsureChunkAt and ActivateChat
+	// each make: the unlocked fast-path read and, on a miss, the
+	// acquisition-and-work of the locked transaction, together, so an
+	// exhausted connection pool or a long-held maze row lock surfaces as
+	// ErrCreateBudget instead of a hang. Must be strictly positive —
+	// there is no default to fall back to.
 	CreateBudget time.Duration
 }
 
