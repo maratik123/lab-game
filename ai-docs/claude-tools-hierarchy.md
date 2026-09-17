@@ -42,7 +42,7 @@ The two advisory bodies changed on **2026-09-01** — panic-gate and PR-body syn
 
 | File | Loaded when | Contract |
 |---|---|---|
-| [`ast-index.md`](../.claude/rules/ast-index.md) | Any code-search task | ast-index first; grep only for regex / string literals / comments / non-Go files. Negative results are not evidence. |
+| [`ast-index.md`](../.claude/rules/ast-index.md) | Any code-search task | ast-index first; grep only for regular expressions, string literals, comment text, and the surfaces the index does not cover — measured as `.yml`, `.md` and `go.mod`, while `.go`, `.sql` and `.sh` are indexed. Negative results are not evidence, and neither is `implementations` on a Go interface. |
 
 ## Subagents — `.claude/agents/`
 

@@ -81,16 +81,19 @@ Agent(subagent_type="Explore", prompt="
     ast-index search \"query\"           — universal search
     ast-index file \"Name\"              — find a file by name fragment
     ast-index symbol \"Name\"            — find a symbol definition
-    ast-index class \"Name\"             — find a class / trait / struct / enum
+    ast-index class \"Name\"             — find a struct or an interface
     ast-index usages \"Name\"            — every usage of a symbol
     ast-index callers \"func\"           — functions that call this one
-    ast-index implementations \"Trait\"  — concrete implementors of a trait
     ast-index refs \"Name\"              — cross-references (defs + imports + usages)
   Use Grep ONLY if ast-index returned empty.
+  There is NO command that finds an interface's implementors here: Go satisfies
+  an interface implicitly and the index does not infer it, so read the method
+  set and search the method names instead.
 
   Before Read-ing any file over 500 lines, FIRST run
-    ast-index outline <file>
+    ast-index outline <path as the index holds it, e.g. internal/store/post.go>
   to get its structure, then Read only the targeted slice via offset/limit.
+  A bare base name answers File not found; ast-index file \"post.go\" resolves it.
   Never bulk-read large files.
 ")
 ```

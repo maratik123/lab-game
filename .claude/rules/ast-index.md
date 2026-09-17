@@ -10,7 +10,7 @@
    - Searching for regex patterns (ast-index uses literal match)
    - Searching for string literals inside code (`"some text"`)
    - Searching in comments content
-   - Searching non-Go files (SQL migrations, YAML workflows, Markdown)
+   - Searching a surface the index does not cover. **Measured on this tree with the installed binary: `.go`, `.sql` and `.sh` are indexed; `.yml`, `.md` and `go.mod` are not** — so the workflows, the instruction corpus and the module files are grep's, while migrations and the harness's own scripts are not. Re-measure the same way after a toolchain upgrade rather than trusting this line.
 
 ## Negative results are NOT evidence
 
@@ -22,9 +22,10 @@ exist" from a miss — re-run with a different method, or read the region.
 |---|---|
 | Multi-line construct (a `gofmt`-split signature, a struct literal with tags, a chained builder call) | `rg -U` (multiline), or read the region |
 | Hand-rolled identifier class — `[a-z_]*` excludes digits and capitals, and Go identifiers are `camelCase`/`PascalCase` with digits (`chatID`, `phase2Node`, `qR`) | `[A-Za-z0-9_]+`, or `ast-index symbol` / `ast-index outline`, which need no hand-written pattern |
-| The symbol lives behind a build tag, in generated code, or in a file your pattern's path filter excluded | Read the file list first (`ast-index file`), then the source |
+| The symbol lives in generated code, or in a file your pattern's path filter excluded | Read the file list first (`ast-index file`), then the source |
+| **The opposite, and it is the one that misleads:** a file behind a build tag **is** indexed. Measured: a symbol in a `//go:build integration` file answers `ast-index symbol` while `go build ./...` never compiles it | Before concluding a symbol is live, check the tag at the top of its file — the index says it exists, not that the default build sees it |
 | Case-sensitive pattern over **prose** — instruction text, comments and headings capitalise mid-sentence words freely, so the emphatic occurrence is the one that escapes | `grep -rni` / `rg -i`; a clean sweep is evidence about your *pattern* until you have varied its case |
-| An interface method searched as a declaration — Go interfaces are satisfied implicitly, so there is no `implements` keyword to find | `ast-index implementations "<Interface>"`, or search for the method name across types |
+| An implementor searched through `implementations` — Go satisfies an interface implicitly, and **the index does not infer it**. Measured twice: on a clean probe where one type carried the whole method set, `implementations` returned **nothing**; on this tree it returned two *functions* from a same-named file rather than the implementing types | Read the interface's method set and search the method names (`ast-index symbol`), or read the type. Treat `implementations` on a Go interface as a hint to follow, never as the answer |
 
 **MUST — a claim that an API, symbol, flag, or precedent does NOT exist requires a
 raw read of the source (or `go doc <pkg>.<Symbol>`), never a search tool's silence.**
@@ -84,28 +85,47 @@ ast-index is 17–69× faster than grep (1–10 ms vs 200 ms–3 s) and returns 
 
 ## Command Reference
 
-| Task | Command | Time |
-|------|---------|------|
-| Universal search | `ast-index search "query"` | ~10 ms |
-| Find type/interface | `ast-index class "SessionStore"` | ~1 ms |
-| Find symbol | `ast-index symbol "SymbolName"` | ~1 ms |
-| Find usages | `ast-index usages "SymbolName"` | ~8 ms |
-| Find implementations | `ast-index implementations "Poster"` | ~5 ms |
-| Call hierarchy | `ast-index call-tree "function" --depth 3` | ~1 s |
-| Find callers | `ast-index callers "functionName"` | ~1 s |
-| Package deps | `ast-index deps "package-name"` | ~10 ms |
-| File outline | `ast-index outline "store.go"` | ~1 ms |
+**`ast-index --help` is the authoritative list, and it grows between releases — this table is the subset the flows lean on, not a picture of the tool.** Every row below was run against this tree.
+
+| Task | Command |
+|------|---------|
+| Open an unfamiliar area | `ast-index explore "<question or bag of names>"` — ranked symbols with their source and tests, in one shot |
+| Universal search | `ast-index search "query"` |
+| Find type/interface | `ast-index class "Session"` |
+| Find symbol | `ast-index symbol "SymbolName"` |
+| Resolve a file's indexed path | `ast-index file "post.go"` |
+| File outline | `ast-index outline "internal/store/post.go"` — **the indexed path, not the base name**: a bare `post.go` answers `File not found`, which is why the row above exists |
+| Definitions, imports and usages at once | `ast-index refs "SymbolName"` |
+| Find usages | `ast-index usages "SymbolName"` |
+| Call hierarchy | `ast-index call-tree "function" --depth 3` |
+| Find callers | `ast-index callers "functionName"` |
+| Where things live | `ast-index map` — one line per directory with its symbol kinds |
+| What this branch touched | `ast-index changed` — **read the branch it names**: it prints the base it diffed against, and that base is not always the one you had in mind |
+| Open markers | `ast-index todo` |
+| Candidates for deletion | `ast-index unused-symbols` — **a question, never an answer**: a symbol nothing in the index calls shows up here, and the index does not see a SQL table reached from a string-built query, a shell function a hook or CI calls, or a symbol reached only through an interface value |
+
+**The module commands do not apply here.** `deps`, `dependents`, `module-route`, `unused-deps` and `api` read a module graph this project has none of: a rebuild over the whole tree reports `0 modules, 0 deps`, and `deps` answers *"Module dependencies not indexed"*. Go package dependencies are `go list` / `go mod why`'s to answer (`AGENTS.md` § *Dependency Versions*).
 
 ## Go-Specific Commands
 
 | Task | Command |
 |------|---------|
 | Find a struct | `ast-index class "Session"` |
-| Find an interface | `ast-index class "Notifier"` |
-| Find implementors of an interface | `ast-index implementations "Notifier"` |
-| Find methods on a type | `ast-index symbol "(*Session)"` or `ast-index outline "<file>.go"` |
+| Find an interface | `ast-index class "Gate"` — an interface and a same-named struct both answer, each with its kind |
+| Find implementors of an interface | **No command does this.** See the false-negative table: read the method set and search the method names |
+| Find methods on a type | `ast-index outline "<indexed path>.go"` — a method is indexed as a bare function, so `symbol "(*Session)"` returns nothing (measured) |
 | Find tests | `ast-index search "func Test"` |
 | Find struct tags (db/json) | `rg -U 'db:"' --type go` — literal-with-quotes is a grep job |
+
+## SQL migrations are indexed too
+
+The goose migrations under `internal/store/migrations/` are in the index, so a schema question does not start with grep. Measured on this tree's own shapes: a `CREATE TABLE` is a class, a `CREATE INDEX` a property, a `CREATE FUNCTION` a function — and a **commented-out** statement produces a content match and no symbol, so a symbol hit here is a live definition.
+
+| Task | Command |
+|------|---------|
+| Find a table | `ast-index class "posting"` |
+| Find an index | `ast-index symbol "idx_posting_account"` |
+| Find where a table is touched | `ast-index usages "posting"` — then read the call sites, because a query built as a string reaches no index |
 
 ## Index Management
 
