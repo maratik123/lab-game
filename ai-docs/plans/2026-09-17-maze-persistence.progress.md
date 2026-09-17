@@ -1,5 +1,5 @@
 # Progress: Maze persistence — ACTIVE
-_Updated: 2026-09-17 04:21_
+_Updated: 2026-09-17T09:30:11Z_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,8 +8,8 @@ _Updated: 2026-09-17 04:21_
 **Last build:** PASS
 **Issue:** #29
 **Spec:** ai-docs/plans/2026-09-17-maze-persistence.spec.md
-**current_step:** Step 8 — Group A complete (subtasks 1–7 of 9)
-**last_passed_gate:** go run ./cmd/testpg -- go test -race ./internal/world/... (+ go test ./internal/world/..., golangci-lint run, golangci-lint fmt -d, go vet, make comment-refs, make file-limits) | 2026-09-17 | feat/2026-09-17-maze-persistence
+**current_step:** Step 8 — Group A complete, design amended and GO notes folded; Group B next
+**last_passed_gate:** go build ./... | 2026-09-17T09:30:11Z | fc62a866d88ee474ba16e75d3eb6eb14326c1fe6
 **entry_args:** 29
 
 ## Next action
@@ -41,6 +41,9 @@ Group A = 1–7 (code, `code-writer`). Group B = 8–9 (instructions/harness, `g
 - **Step 8 subtask 6:** `RecordDiscovery`'s single `INSERT … SELECT … WHERE kind = 'player' … ON CONFLICT DO NOTHING` cannot by itself distinguish "not a player" from "already discovered" — both leave `RowsAffected() == 0`. Resolved with a second read (owner kind) only on that zero-rows branch, so the common paths (first discovery, a genuine duplicate never disambiguated) stay one statement and only the ambiguous case pays a second round trip; `ErrNotAPlayer` is returned from that second read's own result, never guessed from rows-affected alone. `TestDepth_LaterGateLowersEarlierDepth` avoids the AC13 case being a coin flip on the spiral's actual geometry: since the first activation of a fresh maze always takes the centre chunk (subtask 5's own first case), the second chat's gate is a deterministic function of that alone, computed here via the placement package's own scan directly (not hard-coded), and the probe cell is that predicted chunk's own centre — so "before" is provably positive and "after" is provably zero, with no `t.Skip` needed (unlike the draft in subtask 5's border case, which does skip on ungoverned geometry).
 - **Step 8 subtask 7 (Group A complete):** the concurrency suite (`race_test.go`) fans out through `errgroup.Group` per the design's own instruction; loop-variable capture in each `g.Go` closure needs no `i := i` shadow — the module is `go 1.26.0`, past Go 1.22's per-iteration loop-variable scoping. AC7's case reuses `RecordDiscovery` as the caller's own "write something" step (rolled back), which also gives it a second, free assertion (the discovery row is gone) beyond the chunk/event survival AC7 itself asks for. `go run ./cmd/testpg -- go test -race ./internal/world/...` is green with no races reported, run in addition to (not instead of) the plain suite, per the design's own per-subtask gate list for subtask 7. Group A (subtasks 1–7, all code/`*.sql`) is now complete; Group B (subtasks 8–9, instructions/harness) is the orchestrator's per the `## Handoff plan`, and this delegate touches nothing under `ai-docs/**` beyond this progress file.
 
+- **Step 8**: design amended twice after Group A shipped — the first pass corrected the budget's scope, the test-case placement, the forced `internal/testdb` pair and the contract-silence case; the second corrected D8's and D10's account of the shipped mechanisms. The owner raised the design-review cap to 4 (was 3).
+- **Step 8**: three code fixes outside the subtask list, each a defect review found rather than a design change — the `CreateBudget` comment pair and the `ErrCreateBudget` message (5b2cda7), and the invented rationale in the event table comment (6c2c2be).
+
 ## GO notes
 
 | # | round | note | kind | route | resolution |
@@ -53,6 +56,10 @@ Group A = 1–7 (code, `code-writer`). Group B = 8–9 (instructions/harness, `g
 | G6 | 2 | D2 does not state `NOT NULL` on `chunk_type` / `creation_cause` | design-internal | folded | design § D2 @ bbf7617 — both columns `NOT NULL`, with the CHECK's NULL semantics as the reason |
 | G7 | 2 | Subtask 5 has no border-agreement case of its own | design-internal | folded | design § Test Design subtask 5 @ bbf7617 — a gate chunk beside an existing fabric neighbour, walking the shared border |
 | G8 | 2 | D9's `ring` is carried separately from `spiral_index` — worth one clause saying why | design-internal | folded | design § D9 @ bbf7617 — the KD-41 no-inverse reason quoted |
+| G9 | 4 | The shipped `00003_event_log.sql` comment repair and the design give different reasons for the same absent foreign key | design-internal | folded | comment fixed @ 6c2c2be (the invented dangling-read purpose dropped); design § Open questions records the consideration as examined and not carried @ fc62a86 |
+| G10 | 4 | D6's "a `chunk` row is never updated after insert" carries no claim tag | design-internal | folded | design § D6 @ fc62a86 — given a **measurement**, not the reviewer's suggested `[derived → the read-does-not-regenerate case]`: that case mutates the blob from the test and would stay green if production code began issuing `UPDATE chunk`, so it cannot verify the invariant |
+| G11 | 4 | D5's "every explicit row lock in non-test Go source is `internal/scheduler`'s" is pinned at a commit predating `internal/world` | design-internal | folded | design § D5 @ fc62a86 — re-pinned and names this design's own `lockMazeSQL`; the load-bearing half (none on `owner`) re-measured and sharpened to say which row it protects |
+| G12 | 4 | Keep the self-controlled tag shape for every future `grep → no match` tag | design-internal | folded | design @ fc62a86 — all three tags added this round carry their control inside the tag; the existing negative-shaped tags were swept and already carried theirs |
 
 Every row was confirmed present in the design by reading the region, not by a pattern match: three of the eight were false negatives of the orchestrator's own greps.
 
