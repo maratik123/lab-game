@@ -1,5 +1,5 @@
 # Progress: Maze persistence — ACTIVE
-_Updated: 2026-09-17T09:30:11Z_
+_Updated: 2026-09-17T09:38:25Z_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,13 +8,13 @@ _Updated: 2026-09-17T09:30:11Z_
 **Last build:** PASS
 **Issue:** #29
 **Spec:** ai-docs/plans/2026-09-17-maze-persistence.spec.md
-**current_step:** Step 8 — Group A complete, design amended and GO notes folded; Group B next
-**last_passed_gate:** go build ./... | 2026-09-17T09:30:11Z | fc62a866d88ee474ba16e75d3eb6eb14326c1fe6
+**current_step:** Step 8 — Group B subtask 8 done (key decisions); subtask 9 next
+**last_passed_gate:** make comment-refs | 2026-09-17T09:38:25Z | 1aeba3d0ff4747df65a3d38c5320a7298b32a578
 **entry_args:** 29
 
 ## Next action
 
-**Do this immediately:** Group A (subtasks 1–7) is complete — all gates green, all commits made. The orchestrator now runs the `/context-reset` handoff per the design's `## Handoff plan`, then spawns Group B (`general-purpose`, subtasks 8–9: key decisions and the invariant/architecture/Propagation-Rule sweep).
+**Do this immediately:** Group B is in flight. Subtask 8 (key decisions) is committed; subtask 9 — the lock-ordering rule and the chunk-created event in `ai-docs/domain-invariants.md`, `internal/world` in `ai-docs/context.md`'s architecture layout and status paragraph, then the case-insensitive Propagation-Rule sweep over `.claude/`, `AGENTS.md`, `ai-docs/` and the repository-root docs — is next.
 
 ## Subtasks
 
@@ -25,8 +25,8 @@ _Updated: 2026-09-17T09:30:11Z_
 - [x] 5. Gate allocation — `ActivateChat`
 - [x] 6. Depth and discovery
 - [x] 7. The concurrency suite
-- [ ] 8. Key decisions, including the KD-41 amendment  ← CURRENT (Group B)
-- [ ] 9. The invariant, the architecture prose and the Propagation Rule sweep
+- [x] 8. Key decisions, including the KD-41 amendment
+- [ ] 9. The invariant, the architecture prose and the Propagation Rule sweep  ← CURRENT (Group B)
 
 Group A = 1–7 (code, `code-writer`). Group B = 8–9 (instructions/harness, `general-purpose`).
 
@@ -43,6 +43,7 @@ Group A = 1–7 (code, `code-writer`). Group B = 8–9 (instructions/harness, `g
 
 - **Step 8**: design amended twice after Group A shipped — the first pass corrected the budget's scope, the test-case placement, the forced `internal/testdb` pair and the contract-silence case; the second corrected D8's and D10's account of the shipped mechanisms. The owner raised the design-review cap to 4 (was 3).
 - **Step 8**: three code fixes outside the subtask list, each a defect review found rather than a design change — the `CreateBudget` comment pair and the `ErrCreateBudget` message (5b2cda7), and the invented rationale in the event table comment (6c2c2be).
+- **Step 8 subtask 8:** the decomposition names four new entries, and four landed — KD-46 (schema, codec, generation version, enum vocabulary), KD-47 (the maze row lock, its ordering rule, the isolation pin, the unlocked fast path and the call budget), KD-48 (depth on read), KD-49 (the chunk-created event) — under a new `## Maze persistence (2026-09-17)` section. **Two placement calls worth recording.** The discovery decision (design D10) is named in no subtask-8 bullet, and rather than mint an unplanned fifth entry it rides KD-46, whose subject is the schema `node_discovery` belongs to and whose rejected-alternatives list is where the rejected composite kind-pinned foreign key has to sit beside KD-17's scoping; the season and seed rulings (D11) ride KD-46 for the same reason — they are refusals about columns that entry describes. **One claim measured in this invocation rather than carried over from the design:** `grep -rn "AppendEvent(\|store.Post(\|store.Move(" --include=*.go internal/ cmd/` returns 52 hits, of which exactly two are outside `_test.go` — the declaration in `internal/store/event.go` and the call in `internal/world/event.go` — and no non-test `store.Post`/`store.Move` caller exists, which is what KD-49's "first event type any production code in this module emits" rests on; the pattern's own `store.Post(`/`store.Move(` hits in test source are the control that it matches. The explicit-row-lock inventory KD-47 states was likewise re-measured at HEAD, not copied: eleven non-test hits, all `internal/scheduler`'s or `internal/world`'s `lockMazeSQL`, none naming `owner`. KD-41 was amended in two places — its data-contract paragraph, whose conditional antecedent now holds, and its closing sentence, which handed exactly the two questions KD-48 answers.
 
 ## GO notes
 
@@ -110,3 +111,4 @@ Every row was confirmed present in the design by reading the region, not by a pa
 - `internal/world/activate.go`, `internal/world/activate_test.go`, `internal/world/chunk.go` (refactored: shared `lockedTxBody`), `internal/world/helpers_test.go` (`borderAgrees` rewritten)
 - `internal/world/depth.go`, `internal/world/depth_test.go`, `internal/world/discovery.go`, `internal/world/discovery_test.go`
 - `internal/world/race_test.go`
+- `ai-docs/key-decisions.md` (KD-46 to KD-49 added; KD-41 amended)
