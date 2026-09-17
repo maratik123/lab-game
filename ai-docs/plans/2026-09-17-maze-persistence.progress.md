@@ -1,5 +1,5 @@
 # Progress: Maze persistence — ACTIVE
-_Updated: 2026-09-17T09:38:25Z_
+_Updated: 2026-09-17T09:46:20Z_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,13 +8,13 @@ _Updated: 2026-09-17T09:38:25Z_
 **Last build:** PASS
 **Issue:** #29
 **Spec:** ai-docs/plans/2026-09-17-maze-persistence.spec.md
-**current_step:** Step 8 — Group B subtask 8 done (key decisions); subtask 9 next
-**last_passed_gate:** make comment-refs | 2026-09-17T09:38:25Z | 1aeba3d0ff4747df65a3d38c5320a7298b32a578
+**current_step:** Step 8 — Group A and Group B both complete; every subtask shipped
+**last_passed_gate:** make comment-refs | 2026-09-17T09:46:20Z | cfa7854dce64e2beb024863c6fe092114bd54835
 **entry_args:** 29
 
 ## Next action
 
-**Do this immediately:** Group B is in flight. Subtask 8 (key decisions) is committed; subtask 9 — the lock-ordering rule and the chunk-created event in `ai-docs/domain-invariants.md`, `internal/world` in `ai-docs/context.md`'s architecture layout and status paragraph, then the case-insensitive Propagation-Rule sweep over `.claude/`, `AGENTS.md`, `ai-docs/` and the repository-root docs — is next.
+**Do this immediately:** every subtask is done and committed; nothing is pushed and no self-review has run — both are the orchestrator's. Step 8 is complete, so the orchestrator resumes at Step 9 (per-AC verification) with `## AC Status` still all `NOT_TESTED`, then Step 10's self-review and Step 12.
 
 ## Subtasks
 
@@ -26,7 +26,7 @@ _Updated: 2026-09-17T09:38:25Z_
 - [x] 6. Depth and discovery
 - [x] 7. The concurrency suite
 - [x] 8. Key decisions, including the KD-41 amendment
-- [ ] 9. The invariant, the architecture prose and the Propagation Rule sweep  ← CURRENT (Group B)
+- [x] 9. The invariant, the architecture prose and the Propagation Rule sweep
 
 Group A = 1–7 (code, `code-writer`). Group B = 8–9 (instructions/harness, `general-purpose`).
 
@@ -44,6 +44,7 @@ Group A = 1–7 (code, `code-writer`). Group B = 8–9 (instructions/harness, `g
 - **Step 8**: design amended twice after Group A shipped — the first pass corrected the budget's scope, the test-case placement, the forced `internal/testdb` pair and the contract-silence case; the second corrected D8's and D10's account of the shipped mechanisms. The owner raised the design-review cap to 4 (was 3).
 - **Step 8**: three code fixes outside the subtask list, each a defect review found rather than a design change — the `CreateBudget` comment pair and the `ErrCreateBudget` message (5b2cda7), and the invented rationale in the event table comment (6c2c2be).
 - **Step 8 subtask 8:** the decomposition names four new entries, and four landed — KD-46 (schema, codec, generation version, enum vocabulary), KD-47 (the maze row lock, its ordering rule, the isolation pin, the unlocked fast path and the call budget), KD-48 (depth on read), KD-49 (the chunk-created event) — under a new `## Maze persistence (2026-09-17)` section. **Two placement calls worth recording.** The discovery decision (design D10) is named in no subtask-8 bullet, and rather than mint an unplanned fifth entry it rides KD-46, whose subject is the schema `node_discovery` belongs to and whose rejected-alternatives list is where the rejected composite kind-pinned foreign key has to sit beside KD-17's scoping; the season and seed rulings (D11) ride KD-46 for the same reason — they are refusals about columns that entry describes. **One claim measured in this invocation rather than carried over from the design:** `grep -rn "AppendEvent(\|store.Post(\|store.Move(" --include=*.go internal/ cmd/` returns 52 hits, of which exactly two are outside `_test.go` — the declaration in `internal/store/event.go` and the call in `internal/world/event.go` — and no non-test `store.Post`/`store.Move` caller exists, which is what KD-49's "first event type any production code in this module emits" rests on; the pattern's own `store.Post(`/`store.Move(` hits in test source are the control that it matches. The explicit-row-lock inventory KD-47 states was likewise re-measured at HEAD, not copied: eleven non-test hits, all `internal/scheduler`'s or `internal/world`'s `lockMazeSQL`, none naming `owner`. KD-41 was amended in two places — its data-contract paragraph, whose conditional antecedent now holds, and its closing sentence, which handed exactly the two questions KD-48 answers.
+- **Step 8 subtask 9 (Group B complete):** the lock-ordering rule went into a **new `## 9`** of `ai-docs/domain-invariants.md` rather than into § 4, with a one-bullet statement of the rule left in § 4 where a raid-mechanic author meets it — appending rather than inserting also leaves every existing `domain-invariants.md § N` cross-reference (§ 1, § 5, § 6 are the ones that exist) pointing where it did. The chunk-created event went into § 5, beside the posting-signature mechanics, because the fact a reader needs is that a mechanic moving **no** balance owes its events and no signature — the `major` rating there is scoped to a balance-moving mechanic, and `chunk_created` is the first shipped case that is not one. **The sweep named two residues outside the decomposition's file list, both in `ai-docs/key-decisions.md` and both repaired here:** KD-37's "storing the maps is #29's", which read as pending, and KD-43's "*Rejected:* a new `internal/world` package" — which rejected that name for the **world format** and now reads at a glance as contradicting KD-46, so the rejection is scoped and the distinction stated. **Sweep method and its controls:** `grep -rniF` over `.claude/`, `AGENTS.md`, `CLAUDE.md` and the live `ai-docs/` pages (the history surfaces `learnings.md`, `harness-gaps.md`, `context-status.md` and `plans/done|ignored/**` deliberately excluded — `context-status.md` is append-only and gets this task's entry at Step 9.5), for each of the four claims the design enumerates, then re-run after the edits; each pattern was first run against a **constructed** string it must match, and each control matched. One encoding variation earned its keep: `world loader` missed KD-38's `the **world** loader`, so the re-run used `world[^a-z]{0,6}loader`. The markdown link gate was run as CI runs it — the workflow's own relative-link checker over every `*.md`, reporting 255 links checked in this run (a non-zero cardinality, so the instrument reached the corpus rather than an empty set) and failing only on `tmp/**` scratch files, which `git check-ignore` confirms are ignored and which `git ls-files tmp/` confirms are untracked, so a clean checkout never sees them. `~/lab-private/DESIGN.md` was read directly for the two corpus facts § 9 states: §2.2.2 line 69 carries the short-separate-transaction-under-the-world-lock rule, and §3.5 line 162 carries the create-before-the-transition order. **Not done, and named rather than silently skipped:** no AXIOM was added to `AGENTS.md` § Domain Rules for the lock-ordering rule — the design routes it to `ai-docs/domain-invariants.md` specifically, and promoting it would be unapproved scope plus a fan-out grep across `.claude/`.
 
 ## GO notes
 
@@ -111,4 +112,5 @@ Every row was confirmed present in the design by reading the region, not by a pa
 - `internal/world/activate.go`, `internal/world/activate_test.go`, `internal/world/chunk.go` (refactored: shared `lockedTxBody`), `internal/world/helpers_test.go` (`borderAgrees` rewritten)
 - `internal/world/depth.go`, `internal/world/depth_test.go`, `internal/world/discovery.go`, `internal/world/discovery_test.go`
 - `internal/world/race_test.go`
-- `ai-docs/key-decisions.md` (KD-46 to KD-49 added; KD-41 amended)
+- `ai-docs/key-decisions.md` (KD-46 to KD-49 added; KD-41 amended; KD-37 and KD-43 clauses corrected by the subtask-9 sweep)
+- `ai-docs/domain-invariants.md` (§ 4 gains the no-shared-lock bullet, § 5 the no-balance-mechanic paragraph, new § 9), `ai-docs/context.md` (architecture layout, status paragraph, status date)
