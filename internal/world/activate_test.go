@@ -252,10 +252,10 @@ func TestActivateChat_BorderAgreementOnGatePath(t *testing.T) {
 		t.Fatalf("ActivateChat: %v", err)
 	}
 
-	// Only exercise the border when the spiral placed the gate adjacent
-	// to the fabric chunk in this fixture; otherwise there is no shared
-	// border to walk, and the case is silently satisfied by construction
-	// elsewhere (subtask 4's own border-agreement cases).
+	// No gate chunk exists yet, so the placement rule yields the centre.
+	// fabricCh is on ring 1, which is chunk distance 1 from the centre,
+	// so the two are neighbours and the shared border exists. The loop
+	// below is required to find that border, not merely opportunistic.
 	for d := hexgrid.DirE; d <= hexgrid.DirSE; d++ {
 		if fabricCh.Neighbor(d) == gateCh {
 			gateMap, ok, err := m.readChunk(ctx, pool, gateCh)
@@ -266,7 +266,7 @@ func TestActivateChat_BorderAgreementOnGatePath(t *testing.T) {
 			return
 		}
 	}
-	t.Skip("fixture's gate did not land adjacent to the fabric chunk; no border to walk")
+	t.Fatalf("fixture's gate %v did not land adjacent to the pre-created chunk %v; the fixture no longer forces adjacency, so this case has nothing to walk", gateCh, fabricCh)
 }
 
 func TestActivateChat_Event(t *testing.T) {
