@@ -16,6 +16,14 @@ import (
 // case but the budget refusal case itself, which builds its own.
 const testCreateBudget = 5 * time.Second
 
+// testBudgetGraceLimit discriminates a call that returned once its own
+// short Spec.CreateBudget elapsed from one that instead ran until an
+// outer safety-net context ended: it sits well above a short budget's
+// elapsed time and well below the safety net's own duration, so a call
+// that took this long or longer proves the short budget was never
+// applied.
+const testBudgetGraceLimit = 2 * time.Second
+
 // testParams returns a small, valid generation Params: the generator's
 // own minimum radius, so a chunk is small enough to compare cell by
 // cell, and every share well inside the bounds New accepts.

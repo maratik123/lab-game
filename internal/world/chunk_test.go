@@ -375,6 +375,14 @@ func TestEnsureChunkAt_MazeMissing(t *testing.T) {
 // the budget rather than blocking — the outer 5s bound is this test's
 // own safety net, not the property under test, so a budget that was
 // never applied fails loudly here instead of hanging the suite.
+//
+// wrapBudget wraps whatever context ended the call, including the
+// outer safety net itself, so the error identity alone cannot tell a
+// budget that fired from one that never applied — both produce
+// ErrCreateBudget wrapping context.DeadlineExceeded. The elapsed wall
+// time is what tells them apart: this test also asserts the call
+// returned well before testBudgetGraceLimit, which sits above the
+// short budget's own duration and below the outer safety net's.
 func TestEnsureChunkAt_BudgetIsABound(t *testing.T) {
 	t.Parallel()
 
@@ -408,11 +416,16 @@ func TestEnsureChunkAt_BudgetIsABound(t *testing.T) {
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
+	start := time.Now()
 	_, err = m.EnsureChunkAt(callCtx, hexgrid.Coord{}, Actor{})
+	elapsed := time.Since(start)
 	if !errors.Is(err, ErrCreateBudget) {
 		t.Fatalf("err = %v, want ErrCreateBudget", err)
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+	if elapsed >= testBudgetGraceLimit {
+		t.Fatalf("elapsed = %v, want under %v — Spec.CreateBudget's 200ms must bound this call, not the 5s outer safety net", elapsed, testBudgetGraceLimit)
 	}
 }

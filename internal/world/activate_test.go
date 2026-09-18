@@ -90,6 +90,48 @@ func TestActivateChat_MatchesGateNext(t *testing.T) {
 	if got != want {
 		t.Fatalf("gate chunk = %v, want gate.Next's own answer %v", got, want)
 	}
+
+	// The fixture's three prior EnsureChunkAt calls occupy the centre
+	// chunk, so the placement rule's own independently computed answer
+	// here is off-centre: unlike a fresh maze's first activation, want's
+	// spiral index and ring are not both zero, so a stored or emitted
+	// value that was pinned to zero would be caught here instead of
+	// coinciding with the true answer by construction. wantSpiral and
+	// wantRing are computed from want, not from got.
+	wantSpiral := gate.SpiralIndex(want)
+	wantRing := hexgrid.ChunkDistance(hexgrid.Chunk{}, want)
+	if wantSpiral == 0 || wantRing == 0 {
+		t.Fatalf("fixture's gate chunk %v is at the centre (spiral=%d, ring=%d); this test needs an off-centre gate to discriminate a pinned zero from the true value", want, wantSpiral, wantRing)
+	}
+
+	var storedSpiral *int64
+	if err := pool.QueryRow(ctx,
+		`SELECT spiral_index FROM chunk WHERE maze_id = $1 AND q = $2 AND r = $3`,
+		m.id, got.Q, got.R,
+	).Scan(&storedSpiral); err != nil {
+		t.Fatalf("read stored spiral_index: %v", err)
+	}
+	if storedSpiral == nil || *storedSpiral != wantSpiral {
+		t.Fatalf("stored spiral_index = %v, want %d", storedSpiral, wantSpiral)
+	}
+
+	var payload []byte
+	if err := pool.QueryRow(ctx, `SELECT payload FROM event WHERE type = $1 AND chat_id = $2`, store.EventChunkCreated, chat).Scan(&payload); err != nil {
+		t.Fatalf("read payload: %v", err)
+	}
+	var decoded struct {
+		SpiralIndex *int64 `json:"spiral_index"`
+		Ring        *int64 `json:"ring"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if decoded.SpiralIndex == nil || *decoded.SpiralIndex != wantSpiral {
+		t.Fatalf("payload spiral_index = %v, want %d", decoded.SpiralIndex, wantSpiral)
+	}
+	if decoded.Ring == nil || *decoded.Ring != wantRing {
+		t.Fatalf("payload ring = %v, want %d", decoded.Ring, wantRing)
+	}
 }
 
 func TestActivateChat_Reactivation(t *testing.T) {

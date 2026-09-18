@@ -26,10 +26,9 @@ type Queryer interface {
 const readGatesSQL = `SELECT q, r FROM chunk WHERE maze_id = $1 AND gate_chat_id IS NOT NULL`
 
 // Depth returns the hex-cell distance from cell to the nearest gate
-// chunk's centre cell in m, and true — or (0, false) when the maze
-// holds no gate, matching the placement package's own Set.Depth
-// contract. It is built fresh from the maze's gate rows on every call:
-// no stored column, no invalidation.
+// chunk's centre cell in m, and true — or (0, false), never an error,
+// when the maze holds no gate at all. It is built fresh from the
+// maze's gate rows on every call: no stored column, no invalidation.
 func (m *Maze) Depth(ctx context.Context, q Queryer, cell hexgrid.Coord) (depth int64, found bool, err error) {
 	rows, err := q.Query(ctx, readGatesSQL, m.id)
 	if err != nil {

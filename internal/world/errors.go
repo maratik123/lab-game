@@ -27,8 +27,10 @@ var ErrNotAChat = errors.New("world: owner is not a chat")
 // does not name a player.
 var ErrNotAPlayer = errors.New("world: owner is not a player")
 
-// ErrCreateBudget is returned, wrapping the context deadline error,
-// when a budgeted call does not finish within Spec's CreateBudget — an
-// exhausted connection pool or a long-held maze row lock surfacing as
-// a bounded error instead of a hang.
+// ErrCreateBudget is returned, wrapping the budgeted call's own
+// context error, when that context ends before the call finishes —
+// Spec's CreateBudget elapsing, an exhausted connection pool or a
+// long-held maze row lock surfacing as a bounded error instead of a
+// hang, but equally a caller's own cancellation of the context it
+// passed in, which surfaces the same way.
 var ErrCreateBudget = errors.New("world: budgeted call did not finish within its budget")

@@ -107,9 +107,9 @@ func (m *Maze) EnsureChunkAt(ctx context.Context, cell hexgrid.Coord, by Actor) 
 }
 
 // wrapBudget names a failure inside a budgeted operation as
-// ErrCreateBudget wrapping the context's own error when the budget's
-// context is what ended the operation, and returns err unchanged
-// otherwise.
+// ErrCreateBudget wrapping ctx's own error — a deadline as well as a
+// cancellation — when ctx is what ended the operation, and returns err
+// unchanged otherwise.
 func wrapBudget(ctx context.Context, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return fmt.Errorf("%w: %w", ErrCreateBudget, ctxErr)
