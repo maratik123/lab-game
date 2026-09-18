@@ -1,5 +1,5 @@
 # Progress: Maze persistence — ACTIVE
-_Updated: 2026-09-17T09:56:36Z_
+_Updated: 2026-09-18T22:02:06Z_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -8,7 +8,7 @@ _Updated: 2026-09-17T09:56:36Z_
 **Last build:** PASS
 **Issue:** #29
 **Spec:** ai-docs/plans/2026-09-17-maze-persistence.spec.md
-**current_step:** Step 9 — Verify (ALL PASS)
+**current_step:** Step 9.5 — docs updated
 **last_passed_gate:** golangci-lint run | 2026-09-17T09:56:36Z | 635b72b7b78833abeb541c77c3d7d920aa0dc28e
 **entry_args:** 29
 
@@ -48,6 +48,8 @@ Group A = 1–7 (code, `code-writer`). Group B = 8–9 (instructions/harness, `g
 - **Step 8, after subtask 9:** one claim-discipline fix on top (e46826a) — KD-46's closing clause said `cmd/bot` would wire `internal/world`, which is a forward prediction this delegate originated and no source in the task establishes; replaced with the spec's own out-of-scope wording, that the activation, `move` and look edges calling into it are #36's. `make comment-refs` and the link check were re-run green after it.
 
 - **Step 9**: no panic-index row owed — the touched packages carry no production `panic`/`log.Fatal`, and the index table stays empty. No posting signature owed either: the world package calls neither `store.Post` nor `store.Move`, so it opens no basis document; its `chunk_created` registration is the whole telemetry debt and it ships in this change. Per-AC sweep re-run verbosely after a negative control showed a non-matching `-run` pattern exits 0 with `[no tests to run]`: 24 named world tests and 2 store tests passed, no skip at any level.
+
+- **Step 9.5**: `context.md` needed nothing — subtask 9 had already placed `internal/world` in the layout and the status paragraph. No repo-root user-facing doc exists to contradict. Removal sweep over the whole PR range: nothing deleted or renamed, and the one changed value (`testdb.Binaries`) is stated in no live doc — KD-20 deliberately declines to name it, and the control confirmed the pattern matches where the count does appear.
 
 ## GO notes
 
