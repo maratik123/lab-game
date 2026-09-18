@@ -159,50 +159,70 @@ func TestEnsureChunkAt_ReadDoesNotRegenerate(t *testing.T) {
 	mapsEqual(t, got, want)
 }
 
+// TestEnsureChunkAt_BorderAgreement creates two adjacent chunks through
+// EnsureChunkAt, in both creation orders, and checks their shared
+// border agrees face for face. Repeated over every direction so the
+// case does not rest on one.
 func TestEnsureChunkAt_BorderAgreement(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name         string
-		createAFirst bool
+	for _, dc := range []struct {
+		name string
+		d    hexgrid.Direction
 	}{
-		{"a_then_b", true},
-		{"b_then_a", false},
+		{"E", hexgrid.DirE},
+		{"NE", hexgrid.DirNE},
+		{"NW", hexgrid.DirNW},
+		{"W", hexgrid.DirW},
+		{"SW", hexgrid.DirSW},
+		{"SE", hexgrid.DirSE},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(dc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := t.Context()
-			pool := storetest.Pool(t)
-			m := openTestMaze(t, pool, 10)
+			for i, tc := range []struct {
+				name         string
+				createAFirst bool
+			}{
+				{"a_then_b", true},
+				{"b_then_a", false},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
 
-			chA := hexgrid.Chunk{Q: 0, R: 0}
-			chB := chA.Neighbor(hexgrid.DirNE)
-			cellA := m.Lattice().Center(chA)
-			cellB := m.Lattice().Center(chB)
+					ctx := t.Context()
+					pool := storetest.Pool(t)
+					m := openTestMaze(t, pool, 1000+int64(dc.d)*10+int64(i))
 
-			var mapA, mapB maze.Map
-			var err error
-			if tc.createAFirst {
-				mapA, err = m.EnsureChunkAt(ctx, cellA, Actor{})
-				if err != nil {
-					t.Fatalf("EnsureChunkAt(A): %v", err)
-				}
-				mapB, err = m.EnsureChunkAt(ctx, cellB, Actor{})
-				if err != nil {
-					t.Fatalf("EnsureChunkAt(B): %v", err)
-				}
-			} else {
-				mapB, err = m.EnsureChunkAt(ctx, cellB, Actor{})
-				if err != nil {
-					t.Fatalf("EnsureChunkAt(B): %v", err)
-				}
-				mapA, err = m.EnsureChunkAt(ctx, cellA, Actor{})
-				if err != nil {
-					t.Fatalf("EnsureChunkAt(A): %v", err)
-				}
+					chA := hexgrid.Chunk{Q: 0, R: 0}
+					chB := chA.Neighbor(dc.d)
+					cellA := m.Lattice().Center(chA)
+					cellB := m.Lattice().Center(chB)
+
+					var mapA, mapB maze.Map
+					var err error
+					if tc.createAFirst {
+						mapA, err = m.EnsureChunkAt(ctx, cellA, Actor{})
+						if err != nil {
+							t.Fatalf("EnsureChunkAt(A): %v", err)
+						}
+						mapB, err = m.EnsureChunkAt(ctx, cellB, Actor{})
+						if err != nil {
+							t.Fatalf("EnsureChunkAt(B): %v", err)
+						}
+					} else {
+						mapB, err = m.EnsureChunkAt(ctx, cellB, Actor{})
+						if err != nil {
+							t.Fatalf("EnsureChunkAt(B): %v", err)
+						}
+						mapA, err = m.EnsureChunkAt(ctx, cellA, Actor{})
+						if err != nil {
+							t.Fatalf("EnsureChunkAt(A): %v", err)
+						}
+					}
+					borderAgrees(t, m.Lattice(), mapA, mapB, dc.d)
+				})
 			}
-			borderAgrees(t, m.Lattice(), mapA, mapB, hexgrid.DirNE)
 		})
 	}
 }
