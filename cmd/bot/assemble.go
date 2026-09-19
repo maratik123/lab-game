@@ -17,6 +17,7 @@ import (
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/health"
 	"github.com/maratik123/lab-game/internal/ingest"
+	"github.com/maratik123/lab-game/internal/onboard"
 	"github.com/maratik123/lab-game/internal/scheduler"
 	"github.com/maratik123/lab-game/internal/store"
 	"github.com/maratik123/lab-game/internal/tg"
@@ -338,9 +339,12 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 	}
 	a.client = client
 
-	// Step 12: ingest loop — the router is wired empty; this task
-	// declares that legal and adds no placeholder route.
-	router, err := ingest.NewRouter()
+	// Step 12: ingest loop — the two front-door routes: a chat's own
+	// arrival and departure, and a player's own.
+	router, err := ingest.NewRouter(
+		ingest.Route{Kind: ingest.KindMyChatMember, Handler: onboard.NewPresenceHandler()},
+		ingest.Route{Kind: ingest.KindMessage, Handler: onboard.NewStartHandler()},
+	)
 	if err != nil {
 		return unwind(ctx, a, opts.Stderr, "ingest loop", err)
 	}

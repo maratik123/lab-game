@@ -10,8 +10,8 @@ _Updated: 2026-09-19 12:54_
 **Issue:** #30
 **Spec:** ai-docs/plans/2026-09-19-chat-location-onboarding-membership.spec.md
 
-**current_step:** Step 8 — subtask 9 of 11 complete
-**last_passed_gate:** go test ./... + golangci-lint run ./internal/onboard/... + make comment-refs + go test -race ./internal/onboard/... | subtask 9
+**current_step:** Step 8 — subtask 10 of 11 complete (Group A done)
+**last_passed_gate:** go test ./... + golangci-lint run ./... + go vet ./... + make comment-refs + make import-guard + go test -race ./internal/onboard/... ./cmd/bot/... | subtask 10
 **entry_args:** 30
 
 ## Next action
@@ -29,7 +29,7 @@ _Updated: 2026-09-19 12:54_
 - [x] 7. `internal/onboard`: the `start` payload codec and the link builder
 - [x] 8. The `my_chat_member` handler + `testdb.Binaries`
 - [x] 9. The `/start` handler
-- [ ] 10. Composition root: both routes, the outbound test, the funnel test
+- [x] 10. Composition root: both routes, the outbound test, the funnel test
 - [ ] 11. Documentation and the propagation sweep
 
 ## Decisions log
