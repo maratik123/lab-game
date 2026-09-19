@@ -23,6 +23,7 @@ var viewNames = []string{
 	"item_holder",
 	"item_chain_break",
 	"item_capacity_divergence",
+	"chat_knowledge",
 }
 
 func TestViews_exactViewSet(t *testing.T) {
@@ -124,6 +125,12 @@ func TestViews_columnContract(t *testing.T) {
 			{"item_count", "bigint"},
 			{"slots_used_balance", "numeric"},
 			{"reason", "text"},
+		}},
+		{"chat_knowledge", []col{
+			{"chat_id", "bigint"},
+			{"maze_id", "bigint"},
+			{"q", "integer"},
+			{"r", "integer"},
 		}},
 	}
 

@@ -129,7 +129,7 @@ func TestCreateOwner_second_world(t *testing.T) {
 	}
 }
 
-func TestCreateOwner_chat_has_no_scope_or_accounts(t *testing.T) {
+func TestCreateOwner_chat_has_home_scope_and_no_accounts(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -149,14 +149,25 @@ func TestCreateOwner_chat_has_no_scope_or_accounts(t *testing.T) {
 		t.Fatalf("chat accounts = %d, want 0", len(owner.Accounts))
 	}
 
-	var scopeCount int
-	if err := tx.QueryRow(ctx,
-		`SELECT count(*) FROM scope WHERE owner_id = $1`, owner.ID,
-	).Scan(&scopeCount); err != nil {
-		t.Fatalf("count scope: %v", err)
+	rows, err := tx.Query(ctx,
+		`SELECT scope_definition_id FROM scope WHERE owner_id = $1`, owner.ID,
+	)
+	if err != nil {
+		t.Fatalf("query scope: %v", err)
 	}
-	if scopeCount != 0 {
-		t.Fatalf("chat scope count = %d, want 0", scopeCount)
+	var scopeDefIDs []int16
+	for rows.Next() {
+		var id int16
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan scope: %v", err)
+		}
+		scopeDefIDs = append(scopeDefIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if len(scopeDefIDs) != 1 || scopeDefIDs[0] != 4 {
+		t.Fatalf("chat scope_definition ids = %v, want exactly [4] (the home scope)", scopeDefIDs)
 	}
 }
 
