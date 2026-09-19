@@ -16,7 +16,7 @@ _Updated: 2026-09-19 12:54_
 
 ## Next action
 
-**Do this immediately:** spawn Group A (subtasks 1–10) through `/context-reset` with `code-writer`, starting at subtask 1 — the forward migration `internal/store/migrations/00010_chat_home_presence_membership.sql` and every schema manifest it moves.
+**Do this immediately:** spawn Group B (subtask 11) through `/context-reset` with `general-purpose` — documentation and the `grep -rni` propagation sweep.
 
 ## Subtasks
 
@@ -93,4 +93,14 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 ## Files touched
 
-_None yet — Step 8 has not begun._
+- `internal/store/migrations/00010_chat_home_presence_membership.sql` — the `home` scope definition and its backfill, `chat_presence`, `chat_membership`, the `chat_knowledge` view
+- `internal/store/catalog.go`, `views_test.go`, `migrate_test.go`, `migrate_process_test.go` — the hard-coded schema manifests the migration moves
+- `internal/store/owner.go`, `owner_test.go` — `EnsureOwner`; the chat-scope test renamed and re-pointed
+- `internal/store/move_test.go` — the comment the seeded row falsified
+- `internal/store/chat_knowledge_test.go`, `peaceful_home_test.go` — the view's behaviour and the AC2 instrument
+- `internal/chat/**` — presence, membership and the pool-backed `DestinationLookup`
+- `internal/ingest/gate.go`, `errors.go`, `doc.go`, `loop.go`, `gate_test.go`, `guards_test.go` — the rename, the new branch order, and the prose that still called the allowlist sufficient
+- `internal/onboard/**` — the payload codec, the link builder, both handlers, the outbound and funnel tests
+- `internal/testdb/server.go`, `server_test.go` — `Binaries` raised once per new database-backed binary
+- `cmd/bot/assemble.go`, `assemble_test.go`, `smoke_test.go` — both routes registered
+- `ai-docs/coverage-ratchet.txt` — lowered 91.95 → 91.34 in the subtask-8 commit, justified there
