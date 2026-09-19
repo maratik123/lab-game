@@ -526,3 +526,83 @@ func TestEnsureChunkAt_BudgetIsABound(t *testing.T) {
 		t.Fatalf("elapsed = %v, want under %v — Spec.CreateBudget's 200ms must bound this call, not the 5s outer safety net", elapsed, testBudgetGraceLimit)
 	}
 }
+
+// TestEnsureChunkAt_ReadUsesStoredRowNotConstants pins the whole
+// property behind readChunk, not one symptom of it: what a read
+// returns comes from the stored row, not from today's constants. A
+// gate chunk is created through ActivateChat, then its stored type,
+// generation version and faces are each pushed away from the value a
+// fresh read of today's constants (or a fresh generation) would give,
+// and a subsequent read must still return exactly the stored triple.
+// The maze may legitimately hold chunks created at different
+// generation versions and, once ever, of either chunk type at the
+// same coordinate across seasons — a read that relabelled one as
+// current would defeat exactly that.
+func TestEnsureChunkAt_ReadUsesStoredRowNotConstants(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	pool := storetest.Pool(t)
+	m := openTestMaze(t, pool, 1700)
+	chat := createOwner(t, pool, store.OwnerChat, -2002)
+
+	// ActivateChat's own contract stores chunk_type = 'gate' — the
+	// only way, short of a hand-rolled INSERT, to get a stored type
+	// other than the literal EnsureChunkAt always creates
+	// (ChunkTypeFabric), so a mutant hard-coding that literal into
+	// readChunk's decode call is caught without violating the
+	// chunk_gate_fields_together CHECK by hand.
+	gateCh, err := m.ActivateChat(ctx, chat, nil)
+	if err != nil {
+		t.Fatalf("ActivateChat: %v", err)
+	}
+	cell := m.Lattice().Center(gateCh)
+
+	var typ ChunkType
+	var faces []byte
+	var version int32
+	if err := pool.QueryRow(ctx, readChunkSQL, m.id, gateCh.Q, gateCh.R).Scan(&typ, &faces, &version); err != nil {
+		t.Fatalf("read chunk row: %v", err)
+	}
+	if typ != ChunkTypeGate {
+		t.Fatalf("stored type = %v, want gate", typ)
+	}
+	if version != maze.Version {
+		t.Fatalf("stored version = %d, want the generator's own current version (%d) as this test's baseline", version, maze.Version)
+	}
+
+	// Forced away from the generator's current version: a mutant
+	// substituting that constant for the row's own value would now
+	// decode a different map.
+	mutatedVersion := maze.Version + 1
+	// Forced away from what a fresh Generate of this chunk would
+	// produce: XOR always changes the bit, and generation is
+	// deterministic in this seed, so the untouched bytes would decode
+	// differently from the mutated ones. Both sides of one interior
+	// edge are flipped together — the map constructor itself refuses a
+	// stored blob whose two faces of one edge disagree.
+	lattice := m.Lattice()
+	cells := lattice.LocalCells()
+	centreIdx := indexOfCell(cells, hexgrid.Coord{})
+	neighborIdx := indexOfCell(cells, hexgrid.Coord{}.Neighbor(hexgrid.DirE))
+	faces[centreIdx] ^= 1 << uint(hexgrid.DirE)
+	faces[neighborIdx] ^= 1 << uint(hexgrid.DirW)
+
+	if _, err := pool.Exec(ctx,
+		`UPDATE chunk SET faces = $1, generation_version = $2 WHERE maze_id = $3 AND q = $4 AND r = $5`,
+		faces, mutatedVersion, m.id, gateCh.Q, gateCh.R,
+	); err != nil {
+		t.Fatalf("mutate stored row: %v", err)
+	}
+
+	want, err := decode(gateCh, typ, mutatedVersion, faces, lattice)
+	if err != nil {
+		t.Fatalf("decode mutated row: %v", err)
+	}
+
+	got, err := m.EnsureChunkAt(ctx, cell, Actor{})
+	if err != nil {
+		t.Fatalf("EnsureChunkAt: %v", err)
+	}
+	mapsEqual(t, got, want)
+}
