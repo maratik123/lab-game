@@ -546,7 +546,7 @@ Entry shape:
   - The balance configuration carries no world value, and no world's generation input or `k` is read from it.
   - A later content layer (prefabs, the entrance prefab, boss areas, ruins, NPC outposts) adds its own section and redefines nothing this format already states.
 
-## Maze persistence — the world becomes rows: lazy whole-chunk creation, gates, discoveries, and a depth computed on read (#TBD-at-Step-12, 2026-09-19)
+## Maze persistence — the world becomes rows: lazy whole-chunk creation, gates, discoveries, and a depth computed on read (#140, 2026-09-19)
 
 - **What landed:**
   - `internal/world`, the persisted world over `internal/hexgrid`, `internal/maze` and `internal/gate`: `Open` with its seed refusal, `EnsureChunkAt` reading unlocked and creating whole, `ActivateChat` allocating a chat's gate, `Depth`, `RecordDiscovery` on the caller's own transaction, and the stored-map byte codec with its golden. Nothing imports it yet — the activation, `move` and look edges that call it are #36's.
