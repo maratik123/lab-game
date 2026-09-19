@@ -10,8 +10,8 @@ _Updated: 2026-09-19 12:54_
 **Issue:** #30
 **Spec:** ai-docs/plans/2026-09-19-chat-location-onboarding-membership.spec.md
 
-**current_step:** Step 8 — subtask 1 of 11 complete
-**last_passed_gate:** golangci-lint run ./internal/store/... + make comment-refs | c75b2b2
+**current_step:** Step 8 — subtask 2 of 11 complete
+**last_passed_gate:** golangci-lint run ./internal/store/... | subtask 2
 **entry_args:** 30
 
 ## Next action
@@ -21,7 +21,7 @@ _Updated: 2026-09-19 12:54_
 ## Subtasks
 
 - [x] 1. Forward migration: `home` scope definition + backfill, `chat_presence`, `chat_membership`, the `chat_knowledge` view, and every hard-coded manifest it moves  (c75b2b2)
-- [ ] 2. Behaviour tests for `chat_knowledge`
+- [x] 2. Behaviour tests for `chat_knowledge`
 - [ ] 3. The peaceful-home instrument
 - [ ] 4. `store.EnsureOwner`
 - [ ] 5. `internal/chat` (presence, membership, `DestinationLookup`) + `testdb.Binaries`
