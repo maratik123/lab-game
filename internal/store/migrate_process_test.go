@@ -191,7 +191,7 @@ func TestMigrate_ConcurrentApplyUnderSameLockIDAppliesOnce(t *testing.T) {
 	if err := pool1.QueryRow(ctx, `SELECT count(*) FROM goose_db_version`).Scan(&count); err != nil {
 		t.Fatalf("count goose_db_version: %v", err)
 	}
-	if count != 9 {
-		t.Fatalf("goose_db_version rows = %d, want 9 (the migration set applied exactly once)", count)
+	if count != 10 {
+		t.Fatalf("goose_db_version rows = %d, want 10 (the migration set applied exactly once)", count)
 	}
 }

@@ -1416,3 +1416,10 @@ contradiction here was manufactured by reading "14 lines, of which 13" as two co
 **at:** d745061
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-17 — process — an unverified premise the orchestrator authored reached a committed design
+**What happened:** Directing a Design Amendment, the `/task` orchestrator wrote into the `design-writer` prompt that "a `Check` over an empty range passes trivially and that is a weaker assertion than the one the case is for", as the reason to restate a Test Design case. The claim was never run. `(*Registry).Check` returns `ErrNoSignature` immediately when the wanted document type has no declared signature, and `chunk_created` has none — the module declares one signature, `ManualCorrection` — so `Check` refuses the call outright rather than passing; for a declared type over an empty range it returns `ErrNoDocument`. The delegate adopted the premise, wrote it into the design, and it shipped in commit `9468fa1`. Design-review round 3 refuted it by running it, costing the round that exhausted the cap.
+**Rule:** A premise the orchestrator originates is executed before it enters a delegate prompt, exactly as a claim relayed from elsewhere is — the inbound-verification habit does not fire on one's own words, which is what makes them the dangerous ones. The tell is a justifying clause written in the prompt's own voice ("because X passes trivially", "since Y cannot express Z") with no command behind it: either run it, or state the outcome and let the delegate establish the reason.
+**at:** 9468fa1
+**Kind:** correction
+**Escalated?** no

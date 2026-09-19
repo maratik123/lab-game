@@ -75,6 +75,7 @@ const (
 	EventNotificationSent      EventType = "notification_sent"
 	EventButtonClicked         EventType = "button_clicked"
 	EventBotKicked             EventType = "bot_kicked"
+	EventChunkCreated          EventType = "chunk_created"
 )
 
 // EventTypeDefinition mirrors a row of the seeded event_type_definition
@@ -107,4 +108,5 @@ var eventTypeDefinitions = []EventTypeDefinition{
 	{ID: 14, Code: EventNotificationSent, VolumeClass: VolumeHigh},
 	{ID: 15, Code: EventButtonClicked, VolumeClass: VolumeHigh},
 	{ID: 16, Code: EventBotKicked, VolumeClass: VolumeLow},
+	{ID: 17, Code: EventChunkCreated, VolumeClass: VolumeLow},
 }

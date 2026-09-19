@@ -545,3 +545,34 @@ Entry shape:
   - A world that loads is a world a generator can be built from — stronger than "the file parses".
   - The balance configuration carries no world value, and no world's generation input or `k` is read from it.
   - A later content layer (prefabs, the entrance prefab, boss areas, ruins, NPC outposts) adds its own section and redefines nothing this format already states.
+
+## Maze persistence — the world becomes rows: lazy whole-chunk creation, gates, discoveries, and a depth computed on read (#140, 2026-09-19)
+
+- **What landed:**
+  - `internal/world`, the persisted world over `internal/hexgrid`, `internal/maze` and `internal/gate`: `Open` with its seed refusal, `EnsureChunkAt` reading unlocked and creating whole, `ActivateChat` allocating a chat's gate, `Depth`, `RecordDiscovery` on the caller's own transaction, and the stored-map byte codec with its golden. Nothing imports it yet — the activation, `move` and look edges that call it are #36's.
+  - One forward migration creating `maze`, `chunk` and `node_discovery`, with the chunk type and the creation cause as enums of this package's own, a `CHECK` pairing the gate type with a non-null gate chat, the partial unique index that gives a chat one gate per maze, and a **separate** partial index covering the gate-chat foreign key.
+  - The `chunk_created` event, registered by the migration in the type table and mirrored in the ledger package's catalog in the same change: the chunk type and the creation cause in separate fields, the generation version, the dictionary's dimensions, and for a gate chunk its spiral index and its ring.
+  - The chunk map is stored rather than regenerated — one byte per cell in the lattice's own local-cell order, one bit per face, with the generation version on the row.
+  - `ai-docs/domain-invariants.md` gains the world's section: the lock-ordering rule, its *explicit*-lock carve-out, the pinned isolation level, the never-updated-chunk invariant an unlocked read rests on, and the two-connection cost with its mitigations.
+  - Per-cell state and the union-by-chat knowledge view were deferred on the owner's ruling, each with its reason; the personal discovery record they build on ships here.
+
+- **Decisions worth keeping:**
+  - **Depth is computed on read, never stored.** A later gate lowering an earlier cell's depth then holds by construction rather than resting on an invalidation sweep, and "a crafted door can never reach the metric" becomes a property of the input *type*: the metric takes gate chunks, and a door is bound to a cell and can never be one. There is no filter for anyone to forget.
+  - **A row lock on the maze row, in its own short transaction, at an explicitly pinned READ COMMITTED.** The ordering against a raid session's own row lock is settled by a rule instead of an order: a chunk-creating transaction takes the maze row lock and no other *explicit* lock, and a session transaction never takes the maze row lock — one lock on one side, none on the other, so there is no cycle to order. The isolation level is pinned because the border argument rests on READ COMMITTED's per-command snapshot; under REPEATABLE READ the same wait ends in a serialization error instead.
+  - **The create budget covers the whole call, not only the locked transaction.** The unlocked fast-path read takes a connection of its own, so a caller already holding one is blocked before the creation transaction is ever reached — a transaction-scoped budget would let exactly the stall it exists to prevent happen, with a bare context error and no named one to read.
+  - **The season is a parameter whoever creates the maze supplies**, with no configuration key, on the owner's ruling: a season key lands with whatever task ships rotation, which is out of the MVP.
+  - **The event log's maze dimension keeps no foreign key.** It stays an open question rather than becoming a design: no acceptance criterion asked for it, and tightening an already-shipped table was not this task's scope.
+
+- **Traps found:**
+  - **An exact-set schema assertion is extended, never loosened.** The base-table test compares against a literal list; relaxing it to a subset check turns the gate green while quietly deleting the guard it exists to be.
+  - **A foreign key is not covered by an index that merely contains its column.** The cover test compares the key's columns against the index's *leading* columns, so the partial unique index leading with the maze does not cover the gate-chat key — that needs a partial index of its own.
+  - **`go test -run` with a pattern that matches nothing exits 0.** A per-criterion sweep reading only exit codes reports every criterion green whether or not a single test ran. The discriminator is the `[no tests to run]` suffix on the `ok` line, and the control is a deliberately non-existent test name.
+  - **A test that mutates stored bytes from inside the test cannot verify "production never updates this row".** It stays green the day production starts issuing that update, so the invariant is carried by a measurement over source and by review — not by a gate, and the design says so rather than implying coverage.
+  - **A conditional test case can reach green by skipping.** The border-agreement case on the gate path was written to skip when the spiral did not put the gate adjacent — and its fixture forces adjacency, so that branch was unreachable and would have fired only once a later edit stopped forcing it, silently. It asserts adjacency instead and fails naming the fixture. The world seed holds nothing honest here either: gate placement reads the created set, the existing gates and the spacing parameter, and takes no seed at all.
+  - **The lattice's border helper returns a non-canonical direction's cells in the neighbour's frame.** It is documented, and it still produced a border walk that read correctly and was not.
+
+- **Invariants this now relies on:**
+  - A `chunk` row is never updated after insert. Nothing in the tree enforces it; the unlocked fast path is safe only while it holds, and the package owes it.
+  - An owner's kind never changes — no production code updates it — which is what makes the activation's unlocked kind check safe to act on.
+  - The stored map's byte layout is live data: a golden that involves no seed and no generator pins it, and a diff there means every stored chunk is now misread, not that a test needs updating.
+  - A new chunk's shared border comes from its neighbour's **stored** map, never from a fresh generation of that neighbour.
