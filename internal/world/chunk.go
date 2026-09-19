@@ -193,12 +193,17 @@ func (m *Maze) generateInsertAndAppend(
 	return generated, nil
 }
 
-// createLocked runs the locked creation transaction body, shared by
-// EnsureChunkAt's explorer cause and ActivateChat's chat_activation
-// cause: re-check for an existing chunk under the lock (the loser of a
-// creation race finds the winner's row here and returns it, writing
-// nothing), read the existing neighbours' stored maps, generate,
-// insert, append the chunk_created event.
+// createLocked runs the locked creation transaction body for
+// EnsureChunkAt's explorer cause only: re-check for an existing chunk
+// under the lock (the loser of a creation race finds the winner's row
+// here and returns it, writing nothing), read the existing neighbours'
+// stored maps, generate, insert, append the chunk_created event. The
+// chat_activation cause does not call this function — it discovers its
+// chunk under the same lock, from the spiral rule evaluated over that
+// transaction's own snapshot, so folding it into this body would mean
+// opening a second transaction and re-taking the lock, splitting the
+// choice of chunk from its insert. It keeps its own copy of this
+// read-then-generate sequence instead.
 func (m *Maze) createLocked(
 	bctx context.Context,
 	ch hexgrid.Chunk,
