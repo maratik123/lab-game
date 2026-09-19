@@ -1423,3 +1423,9 @@ contradiction here was manufactured by reading "14 lines, of which 13" as two co
 **at:** 9468fa1
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-19 — process — the session-start rules summary was written in English
+**What happened:** The `SessionStart` hook asked for a summary of the CLAUDE.md rules and I wrote it in English. `AGENTS.md` § Project names exactly two Russian surfaces, and "conversation with the product owner" is one of them — a transcript reply to the owner is conversation, not a durable artefact, so the English/Russian split put it on the Russian side.
+**Rule:** Every reply addressed to the product owner is Russian, including the ones a hook asks for and the ones that quote English rule text. The English half of the split covers files this repository tracks — code, comments, commits, PR bodies, specs, designs, `learnings.md` — never the conversation carrying them.
+**Kind:** correction
+**Escalated?** no
