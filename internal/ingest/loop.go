@@ -40,8 +40,9 @@ func (e *OptionError) Error() string {
 type Options struct {
 	// Client is the Telegram client this Loop polls getUpdates through and
 	// hands to no other purpose. Its Options.Gate — installed at
-	// construction, per this module's wiring order — is this task's chat
-	// allowlist. Must not be nil.
+	// construction, per this module's wiring order — is the chat
+	// allowlist conditioned on the bot's own current presence, plus the
+	// player carve-out. Must not be nil.
 	Client *tg.Client
 	// Pool is the connection pool the loop begins each attempt's
 	// transaction on. Must not be nil.

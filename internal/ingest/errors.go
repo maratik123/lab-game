@@ -24,8 +24,8 @@ var (
 	ErrEmptyID = errors.New("ingest: empty id")
 
 	// ErrChatRefused is Gate.AllowCall's sentinel: the destination is
-	// unverifiable (ChatUnknown), not an integer chat id, or neither
-	// allowlisted nor a known player.
+	// unverifiable (ChatUnknown), not an integer chat id, or neither a
+	// present allowlisted chat nor a known player.
 	ErrChatRefused = errors.New("ingest: chat refused")
 
 	// ErrPollDiscarded is PollOnce's sentinel for a getUpdates call

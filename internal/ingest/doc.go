@@ -2,7 +2,8 @@
 // the long-poll loop, the kind-based
 // router, the per-update transaction with its bounded retry, the
 // persisted offset, the give-up record, the observation seam and the
-// Gate implementation the chat allowlist rides on. Its structural
+// Gate implementation the chat allowlist and the bot's own presence ride
+// on. Its structural
 // model is this module's task scheduler — a Postgres-backed loop with an
 // immutable registry, one transaction per attempt handed to a
 // consumer-declared handler, a terminal give-up state, and an observer

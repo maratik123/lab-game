@@ -285,7 +285,6 @@ var ctxFirstExemptions = map[string]string{
 	"(*OptionError).Error": "pure rendering, no I/O",
 	"New":                  "a constructor: its parameter is Options, not ctx — no I/O until PollOnce/Run",
 	"NewGate":              "a constructor — no I/O",
-	"NewPoolGate":          "a constructor — no I/O",
 	"NewRouter":            "a constructor — no I/O",
 	"NewUpdate":            "pure in-memory derivation from a raw telego.Update — no I/O",
 	"Derive":               "pure in-memory derivation — no I/O",

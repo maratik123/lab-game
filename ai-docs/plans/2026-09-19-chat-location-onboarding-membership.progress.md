@@ -10,8 +10,8 @@ _Updated: 2026-09-19 12:54_
 **Issue:** #30
 **Spec:** ai-docs/plans/2026-09-19-chat-location-onboarding-membership.spec.md
 
-**current_step:** Step 8 — subtask 5 of 11 complete
-**last_passed_gate:** go test ./... + golangci-lint run ./... + make comment-refs + make import-guard + go test -race ./internal/chat/... ./internal/testdb/... | subtask 5
+**current_step:** Step 8 — subtask 6 of 11 complete
+**last_passed_gate:** go test ./... + golangci-lint run ./... + make comment-refs + make import-guard + go test -race ./internal/ingest/... | subtask 6
 **entry_args:** 30
 
 ## Next action
@@ -25,7 +25,7 @@ _Updated: 2026-09-19 12:54_
 - [x] 3. The peaceful-home instrument
 - [x] 4. `store.EnsureOwner`
 - [x] 5. `internal/chat` (presence, membership, `DestinationLookup`) + `testdb.Binaries`
-- [ ] 6. Outbound gate: rename and rewire in one subtask
+- [x] 6. Outbound gate: rename and rewire in one subtask
 - [ ] 7. `internal/onboard`: the `start` payload codec and the link builder
 - [ ] 8. The `my_chat_member` handler + `testdb.Binaries`
 - [ ] 9. The `/start` handler

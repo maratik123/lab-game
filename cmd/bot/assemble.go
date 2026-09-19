@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/maratik123/lab-game/internal/chat"
 	"github.com/maratik123/lab-game/internal/config"
 	"github.com/maratik123/lab-game/internal/health"
 	"github.com/maratik123/lab-game/internal/ingest"
@@ -323,7 +324,7 @@ func assemble(ctx context.Context, opts assembleOptions) (*app, error) {
 		},
 	})
 
-	gate := ingest.NewPoolGate(cfg.AllowedChatIDs, pool)
+	gate := ingest.NewGate(cfg.AllowedChatIDs, chat.NewPoolLookup(pool))
 	client, err := tg.New(tg.Options{
 		BaseURL:    cfg.BotAPIBaseURL.String(),
 		Token:      cfg.BotToken.Reveal(),
