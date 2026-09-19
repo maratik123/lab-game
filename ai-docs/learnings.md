@@ -1429,3 +1429,9 @@ contradiction here was manufactured by reading "14 lines, of which 13" as two co
 **Rule:** Every reply addressed to the product owner is Russian, including the ones a hook asks for and the ones that quote English rule text. The English half of the split covers files this repository tracks — code, comments, commits, PR bodies, specs, designs, `learnings.md` — never the conversation carrying them.
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-19 — tooling — a dead `|| echo` after a pipeline in my own gate-reading command
+**What happened:** Reading the whole-module race log I wrote `grep -E '^(FAIL|--- FAIL|DATA RACE)' tmp/race.log | head -20 || echo "(no FAIL lines)"`. `||` reads the pipeline's status, which is `head`'s and is always 0, so the fallback branch could never run. The verdict itself was safe — the gate's own status was captured as `RACE-EXIT=$?` before any pipe, and I confirmed the result afterwards by counting `^ok` against `go list ./... | wc -l` — but the reassurance the `||` was there to print was decoration that could not fire.
+**Rule:** The piped-exit-status ban covers the reporting command too, not only the gate. When a branch is meant to distinguish "no matches" from "the filter did not run", read the grep's own status (`grep -c`, or the grep unpiped) rather than appending `||` to a pipeline whose last stage always succeeds. A fallback that cannot execute reads, to a later reviewer, exactly like one that executed and found nothing.
+**Kind:** correction
+**Escalated?** no
