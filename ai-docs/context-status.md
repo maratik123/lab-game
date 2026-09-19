@@ -577,7 +577,7 @@ Entry shape:
   - The stored map's byte layout is live data: a golden that involves no seed and no generator pins it, and a diff there means every stored chunk is now misread, not that a test needs updating.
   - A new chunk's shared border comes from its neighbour's **stored** map, never from a fresh generation of that neighbour.
 
-## Chat location, deep-link onboarding, and player-to-chat membership — the game's front door: a chat becomes a settlement, a player arrives through its link (#TBD-at-Step-12, 2026-09-19)
+## Chat location, deep-link onboarding, and player-to-chat membership — the game's front door: a chat becomes a settlement, a player arrives through its link (#141, 2026-09-19)
 
 - **What landed:**
   - One forward migration: the `home` `scope_definition` row (owner kind `chat`, **no** `account_definition` row) with its scope backfill, `chat_presence`, `chat_membership` with its player index, and the `chat_knowledge` view — plus every hard-coded schema manifest it moves (the Go catalog mirror, the exact view set, the view column contract, the base-table set, the applied-migration count).
