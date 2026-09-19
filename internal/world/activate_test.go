@@ -269,6 +269,91 @@ func TestActivateChat_BorderAgreementOnGatePath(t *testing.T) {
 	t.Fatalf("fixture's gate %v did not land adjacent to the pre-created chunk %v; the fixture no longer forces adjacency, so this case has nothing to walk", gateCh, fabricCh)
 }
 
+// TestActivateChat_NeighborReadFeedsGeneration mutates a pre-created
+// fabric chunk's stored border so it disagrees with what a fresh
+// derivation would produce, then activates a chat whose gate lands
+// adjacent to it (the fixture's first activation lands on the centre,
+// which TestActivateChat_BorderAgreementOnGatePath already forces
+// into adjacency with a ring-1 chunk). The gate chunk's shared border
+// must agree with the fabric chunk's mutated stored map, which is
+// only possible if this creation path actually read the stored
+// neighbour rather than deriving the border fresh.
+func TestActivateChat_NeighborReadFeedsGeneration(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	pool := storetest.Pool(t)
+	m := openTestMaze(t, pool, 1601)
+	lattice := m.Lattice()
+
+	fabricCh := hexgrid.Chunk{Q: 1, R: 0}
+	if _, err := m.EnsureChunkAt(ctx, lattice.Center(fabricCh), Actor{}); err != nil {
+		t.Fatalf("EnsureChunkAt: %v", err)
+	}
+
+	// No gate chunk exists yet, so the placement rule yields the
+	// centre for the first activation. fabricCh is on ring 1, chunk
+	// distance 1 from the centre, so the two are neighbours and share
+	// a border in exactly one direction.
+	gateCh := hexgrid.Chunk{}
+	var borderDir hexgrid.Direction
+	found := false
+	for d := hexgrid.DirE; d <= hexgrid.DirSE; d++ {
+		if fabricCh.Neighbor(d) == gateCh {
+			borderDir = d
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("fixture's fabric chunk %v did not land adjacent to the centre gate %v; the fixture no longer forces adjacency, so this case has nothing to walk", fabricCh, gateCh)
+	}
+
+	cells := lattice.LocalCells()
+	borderLocal, ok := findBorderLocal(lattice, fabricCh, gateCh, borderDir)
+	if !ok {
+		t.Fatalf("no local cell of %v borders %v in direction %v", fabricCh, gateCh, borderDir)
+	}
+	borderIdx := indexOfCell(cells, borderLocal)
+	if borderIdx < 0 {
+		t.Fatalf("borderLocal %v not found in LocalCells", borderLocal)
+	}
+
+	var typ ChunkType
+	var faces []byte
+	var version int32
+	if err := pool.QueryRow(ctx, readChunkSQL, m.id, fabricCh.Q, fabricCh.R).Scan(&typ, &faces, &version); err != nil {
+		t.Fatalf("read fabric chunk row: %v", err)
+	}
+	faces[borderIdx] ^= 1 << uint(borderDir)
+
+	if _, err := pool.Exec(ctx, `UPDATE chunk SET faces = $1 WHERE maze_id = $2 AND q = $3 AND r = $4`,
+		faces, m.id, fabricCh.Q, fabricCh.R); err != nil {
+		t.Fatalf("mutate stored blob: %v", err)
+	}
+
+	mutatedFabric, err := decode(fabricCh, typ, version, faces, lattice)
+	if err != nil {
+		t.Fatalf("decode mutated blob: %v", err)
+	}
+
+	chat := createOwner(t, pool, store.OwnerChat, -2006)
+	gotGateCh, err := m.ActivateChat(ctx, chat, nil)
+	if err != nil {
+		t.Fatalf("ActivateChat: %v", err)
+	}
+	if gotGateCh != gateCh {
+		t.Fatalf("gate chunk = %v, want the centre %v", gotGateCh, gateCh)
+	}
+
+	gateMap, ok, err := m.readChunk(ctx, pool, gateCh)
+	if err != nil || !ok {
+		t.Fatalf("readChunk(gate): ok=%v err=%v", ok, err)
+	}
+
+	borderAgrees(t, lattice, mutatedFabric, gateMap, borderDir)
+}
+
 func TestActivateChat_Event(t *testing.T) {
 	t.Parallel()
 
