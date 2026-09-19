@@ -40,6 +40,7 @@ func TestMigrate_shape_and_seeds(t *testing.T) {
 	sort.Strings(tables)
 	want := []string{
 		"account", "account_balance", "account_definition",
+		"chat_membership", "chat_presence",
 		"chunk",
 		"deferred_task", "event", "event_type_definition", "goose_db_version",
 		"ingest_dead_update", "ingest_offset",
@@ -142,8 +143,8 @@ func TestMigrate_noop_reapply(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM goose_db_version`).Scan(&count); err != nil {
 		t.Fatalf("count goose_db_version: %v", err)
 	}
-	if count != 10 {
-		t.Fatalf("goose_db_version rows = %d, want 10", count)
+	if count != 11 {
+		t.Fatalf("goose_db_version rows = %d, want 11", count)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -116,12 +117,13 @@ func TestAssemble_HappyPath(t *testing.T) {
 		t.Errorf("SendMessage to a disallowed chat: err = %v, want ingest.ErrChatRefused in its chain", sendErr)
 	}
 
-	// The assembled loop's router carries no route, and the assembled
-	// worker's registry no declaration — observed through what each
-	// was constructed from, not by re-asserting what New was called
-	// with.
-	if kinds := a.router.Kinds(); len(kinds) != 0 {
-		t.Errorf("router.Kinds() = %v, want none", kinds)
+	// The assembled loop's router carries exactly the two front-door
+	// routes, and the assembled worker's registry no declaration —
+	// observed through what each was constructed from, not by
+	// re-asserting what New was called with.
+	wantKinds := []ingest.Kind{ingest.KindMessage, ingest.KindMyChatMember}
+	if kinds := a.router.Kinds(); !slices.Equal(kinds, wantKinds) {
+		t.Errorf("router.Kinds() = %v, want %v", kinds, wantKinds)
 	}
 	emptyRegistry, err := scheduler.NewRegistry()
 	if err != nil {

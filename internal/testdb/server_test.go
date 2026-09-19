@@ -30,16 +30,16 @@ func TestCeiling_formula(t *testing.T) {
 	}{
 		{
 			name: "small parallelism floors at the image default",
-			// 1 * Binaries(8) * 1 * (schemaMaxConns(4)+1) + ceilingSlack(32) = 72,
+			// 1 * Binaries(10) * 1 * (schemaMaxConns(4)+1) + ceilingSlack(32) = 82,
 			// below imageDefaultCeiling(100).
 			clients: 1, parallel: 1,
 			want: imageDefaultCeiling,
 		},
 		{
 			name: "mid-sized parallelism matches the formula exactly",
-			// 2 * 8 * 3 * 5 + 32 = 272, above the floor.
+			// 2 * 10 * 3 * 5 + 32 = 332, above the floor.
 			clients: 2, parallel: 3,
-			want: 272,
+			want: 332,
 		},
 		{
 			name:    "clients and parallel below one are treated as one",
@@ -48,14 +48,14 @@ func TestCeiling_formula(t *testing.T) {
 		},
 		{
 			name: "two clients at this host's core count matches the formula exactly",
-			// 2 * 8 * 16 * 5 + 32 = 1312, above the floor and below the raised
+			// 2 * 10 * 16 * 5 + 32 = 1632, above the floor and below the raised
 			// ceilingMax(2000). 16 is this host's core count.
 			clients: 2, parallel: 16,
-			want: 1312,
+			want: 1632,
 		},
 		{
 			name: "above ceilingMax the wrapper refuses rather than clamps",
-			// 10 * 8 * 10 * 5 + 32 = 4032, above ceilingMax(2000).
+			// 10 * 10 * 10 * 5 + 32 = 5032, above ceilingMax(2000).
 			clients: 10, parallel: 10,
 			wantErr: true,
 		},

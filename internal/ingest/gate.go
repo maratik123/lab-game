@@ -6,61 +6,49 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/maratik123/lab-game/internal/store"
 	"github.com/maratik123/lab-game/internal/tg"
 )
 
-// PlayerLookup reports whether a kind='player' owner row exists for a
-// telegram id — the single method Gate needs from a read,
-// declared here by the consumer so a test may substitute a stub carrying
-// a call counter instead of a mock of the ledger package's own
-// row-scanning semantics.
-type PlayerLookup interface {
+// DestinationLookup answers the two questions Gate needs from a read: is
+// a telegram id a known player, and is the bot currently present in a
+// telegram id's chat — declared here by the consumer so a test may
+// substitute a stub carrying a call counter per question instead of a
+// mock of another package's own row-scanning semantics.
+type DestinationLookup interface {
 	// PlayerExists reports whether a player owner row exists for
 	// telegramID.
 	PlayerExists(ctx context.Context, telegramID int64) (bool, error)
-}
-
-// poolPlayerLookup implements PlayerLookup over a *pgxpool.Pool — the
-// gate's own connection, taken at wiring time rather than borrowed from
-// any in-flight transaction: a row a handler's own uncommitted
-// transaction wrote is not visible here, by design.
-type poolPlayerLookup struct {
-	pool *pgxpool.Pool
-}
-
-// PlayerExists implements PlayerLookup.
-func (p poolPlayerLookup) PlayerExists(ctx context.Context, telegramID int64) (bool, error) {
-	return store.PlayerExists(ctx, p.pool, telegramID)
+	// BotPresentInChat reports whether the bot is currently present in
+	// the chat named by telegramID.
+	BotPresentInChat(ctx context.Context, telegramID int64) (bool, error)
 }
 
 // Gate implements the Telegram client's outbound Gate interface: the
-// ALLOWED_CHAT_IDS allowlist plus the
-// player carve-out. ChatNone is always allowed; ChatUnknown
-// is always refused — an unverifiable destination is exactly what an
-// allowlist exists to stop; a ChatKnown destination is allowed when its
-// Key parses as an int64 present in the allowlist, or when a
-// PlayerLookup reports a player owner row for it. The cache holds
-// positive results only, for the Gate's lifetime — nothing negative is
-// remembered, so a player who presses Start after a refusal is allowed
-// on the next attempt with no restart.
+// ALLOWED_CHAT_IDS allowlist, now conditioned on the bot's own current
+// presence, plus the player carve-out. ChatNone is always allowed;
+// ChatUnknown is always refused — an unverifiable destination is exactly
+// what an allowlist exists to stop; a ChatKnown destination is allowed
+// when its Key parses as an int64 present in the allowlist AND the bot
+// is currently present there, or when a DestinationLookup reports a
+// player owner row for it. The cache holds positive PLAYER results
+// only, for the Gate's lifetime — nothing negative is remembered, and
+// the presence answer is never cached, since a removal must take effect
+// at once.
 type Gate struct {
 	allowed map[int64]struct{}
-	lookup  PlayerLookup
+	lookup  DestinationLookup
 
 	// mu guards cache: AllowCall sits on the outbound path, which is
 	// concurrent by construction. The critical section is a
-	// map lookup and, on a confirmed miss, one insert; the PlayerLookup
-	// call itself happens outside the lock, so a slow lookup never
-	// serialises other destinations.
+	// map lookup and, on a confirmed miss, one insert; the
+	// DestinationLookup call itself happens outside the lock, so a slow
+	// lookup never serialises other destinations.
 	mu    sync.Mutex
 	cache map[int64]struct{}
 }
 
 // NewGate builds a Gate over allowedChatIDs and lookup.
-func NewGate(allowedChatIDs []int64, lookup PlayerLookup) *Gate {
+func NewGate(allowedChatIDs []int64, lookup DestinationLookup) *Gate {
 	allowed := make(map[int64]struct{}, len(allowedChatIDs))
 	for _, id := range allowedChatIDs {
 		allowed[id] = struct{}{}
@@ -70,12 +58,6 @@ func NewGate(allowedChatIDs []int64, lookup PlayerLookup) *Gate {
 		lookup:  lookup,
 		cache:   make(map[int64]struct{}),
 	}
-}
-
-// NewPoolGate builds a Gate whose PlayerLookup reads pool directly — the
-// wiring shape this package uses: gate, then client, then loop.
-func NewPoolGate(allowedChatIDs []int64, pool *pgxpool.Pool) *Gate {
-	return NewGate(allowedChatIDs, poolPlayerLookup{pool: pool})
 }
 
 // This pins Gate to the Telegram client's outbound Gate interface at
@@ -97,16 +79,15 @@ func (g *Gate) AllowCall(ctx context.Context, call tg.Call) error {
 }
 
 // allowKnown implements the ChatKnown branch of AllowCall: parse key as
-// an int64, allow it outright when it is in the allowlist, then consult
-// the cache and finally PlayerLookup.
+// an int64; consult the positive player cache first; then, when id is
+// allowlisted, consult the bot's own current presence there — allowed
+// when present, a fall-through (not a refusal) when not, so an
+// allowlisted player's own DM still reaches the player lookup below;
+// finally the player lookup itself.
 func (g *Gate) allowKnown(ctx context.Context, key string) error {
 	id, err := strconv.ParseInt(key, 10, 64)
 	if err != nil {
 		return fmt.Errorf("%w: chat id %q is not an integer", ErrChatRefused, key)
-	}
-
-	if _, ok := g.allowed[id]; ok {
-		return nil
 	}
 
 	g.mu.Lock()
@@ -116,12 +97,22 @@ func (g *Gate) allowKnown(ctx context.Context, key string) error {
 		return nil
 	}
 
+	if _, ok := g.allowed[id]; ok {
+		present, presenceErr := g.lookup.BotPresentInChat(ctx, id)
+		if presenceErr != nil {
+			return fmt.Errorf("%w: presence lookup: %w", ErrChatRefused, presenceErr)
+		}
+		if present {
+			return nil
+		}
+	}
+
 	exists, err := g.lookup.PlayerExists(ctx, id)
 	if err != nil {
 		return fmt.Errorf("%w: player lookup: %w", ErrChatRefused, err)
 	}
 	if !exists {
-		return fmt.Errorf("%w: chat %d is neither allowlisted nor a known player", ErrChatRefused, id)
+		return fmt.Errorf("%w: chat %d is neither a present allowlisted chat nor a known player", ErrChatRefused, id)
 	}
 
 	g.mu.Lock()

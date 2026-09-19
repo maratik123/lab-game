@@ -29,6 +29,7 @@ Every spec/design pair, with its status and dependency order. Maintained by `/ta
 | [2026-09-15 — posting-signature contract tests: declare a basis-document type's postings and movements, and check a real transaction against them](done/2026-09-15-posting-signature-contract-tests.spec.md) | ✅ implemented | #26 | #25 |
 | [2026-09-16 — world and biome config: generation inputs, lexicon, bestiary](done/2026-09-16-world-biome-config.spec.md) | ✅ implemented | #28 | #18 · #118 · #119 |
 | [2026-09-17 — maze persistence: mazes, lazy chunk creation, gates, discoveries, depth](done/2026-09-17-maze-persistence.spec.md) | ✅ implemented | #29 | #28 · #118 · #119 · #120 |
+| [2026-09-19 — chat location, deep-link onboarding, and player-to-chat membership](done/2026-09-19-chat-location-onboarding-membership.spec.md) | ✅ implemented | #30 | #21 · #22 · #28 · #29 |
 
 **Statuses:** 🟡 spec only · 🔵 designed · 🟢 in progress · ✅ done (moved to `done/`) · 🔴 blocked · ⏸️ deferred (moved to `deferred/`).
 

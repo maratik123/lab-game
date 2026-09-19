@@ -541,7 +541,10 @@ func TestMove_sentinels(t *testing.T) {
 		}
 		defer rollback(t, ctx, tx)
 
-		// A chat owner has no scopes at all, hence no slots accounts.
+		// A chat owner's only scope is home, which has no slots accounts —
+		// so a manually-inserted attributes scope (scope_definition_id 2,
+		// never one a chat gets on its own) is what this test needs to
+		// reach a holder with no capacity account.
 		tg := nextTelegramID.Add(1)
 		chat, err := CreateOwner(ctx, tx, OwnerChat, &tg)
 		if err != nil {

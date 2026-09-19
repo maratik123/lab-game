@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -116,15 +117,16 @@ func TestSmoke_AssembledProcessServesReadyzMetricsAndDrainsOnSIGTERM(t *testing.
 		}
 	}
 
-	// The assembled loop's getUpdates request carries the reserved
-	// sentinel substituted for an empty route set.
+	// The assembled loop's getUpdates request carries the two
+	// registered front-door routes' own kinds.
 	waitForCapture(t, capture, smokePatience)
 	reqs := capture.all()
 	if len(reqs) == 0 {
 		t.Fatal("no getUpdates request observed")
 	}
-	if len(reqs[0].AllowedUpdates) != 1 || reqs[0].AllowedUpdates[0] != string(telego.ShippingQueryUpdates) {
-		t.Errorf("AllowedUpdates = %v, want the empty-route-set sentinel [%q]", reqs[0].AllowedUpdates, telego.ShippingQueryUpdates)
+	wantAllowedUpdates := []string{string(telego.MessageUpdates), string(telego.MyChatMemberUpdates)}
+	if !slices.Equal(reqs[0].AllowedUpdates, wantAllowedUpdates) {
+		t.Errorf("AllowedUpdates = %v, want %v", reqs[0].AllowedUpdates, wantAllowedUpdates)
 	}
 
 	start := time.Now()

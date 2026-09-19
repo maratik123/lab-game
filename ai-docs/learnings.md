@@ -1423,3 +1423,21 @@ contradiction here was manufactured by reading "14 lines, of which 13" as two co
 **at:** 9468fa1
 **Kind:** correction
 **Escalated?** no
+
+### 2026-09-19 — process — the session-start rules summary was written in English
+**What happened:** The `SessionStart` hook asked for a summary of the CLAUDE.md rules and I wrote it in English. `AGENTS.md` § Project names exactly two Russian surfaces, and "conversation with the product owner" is one of them — a transcript reply to the owner is conversation, not a durable artefact, so the English/Russian split put it on the Russian side.
+**Rule:** Every reply addressed to the product owner is Russian, including the ones a hook asks for and the ones that quote English rule text. The English half of the split covers files this repository tracks — code, comments, commits, PR bodies, specs, designs, `learnings.md` — never the conversation carrying them.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-19 — tooling — a dead `|| echo` after a pipeline in my own gate-reading command
+**What happened:** Reading the whole-module race log I wrote `grep -E '^(FAIL|--- FAIL|DATA RACE)' tmp/race.log | head -20 || echo "(no FAIL lines)"`. `||` reads the pipeline's status, which is `head`'s and is always 0, so the fallback branch could never run. The verdict itself was safe — the gate's own status was captured as `RACE-EXIT=$?` before any pipe, and I confirmed the result afterwards by counting `^ok` against `go list ./... | wc -l` — but the reassurance the `||` was there to print was decoration that could not fire.
+**Rule:** The piped-exit-status ban covers the reporting command too, not only the gate. When a branch is meant to distinguish "no matches" from "the filter did not run", read the grep's own status (`grep -c`, or the grep unpiped) rather than appending `||` to a pipeline whose last stage always succeeds. A fallback that cannot execute reads, to a later reviewer, exactly like one that executed and found nothing.
+**Kind:** correction
+**Escalated?** no
+
+### 2026-09-19 — tooling — reached for a piped Go gate a second time in the same session
+**What happened:** Verifying a mutation, I put a `go build` and a `head -3` in one pipeline, with the status taken from `PIPESTATUS`, in the same command as the test run. The `PreToolUse` hook refused the whole call before anything executed, so the mutation was never applied and nothing was misread. Same class as the earlier entry today about a dead fallback after a pipeline: there the verdict happened to be captured before the pipe, here the `PIPESTATUS` spelling would have been correct. Neither outcome is the point. Writing this entry was itself refused once, because the draft quoted the offending form verbatim and the hook matches command text rather than shell semantics.
+**Rule:** Do not put a Go gate and a pipe in one command, including in the spellings that would be correct. Redirect to a file under `tmp/` and grep the file. The shape is what the rule and the hook are about, and a habit that needs the right incantation every time will eventually be spelled wrong. Two reaches in one session is the signal, not the two harmless outcomes. When a log entry must describe the form, describe it in words — the hook reads the text, so quoting it verbatim blocks the write.
+**Kind:** correction
+**Escalated?** no

@@ -31,6 +31,7 @@ var scopeDefinitions = []ScopeDefinition{
 	{ID: 1, Code: "world", OwnerKind: OwnerWorld},
 	{ID: 2, Code: "attributes", OwnerKind: OwnerPlayer},
 	{ID: 3, Code: "backpack", OwnerKind: OwnerPlayer},
+	{ID: 4, Code: "home", OwnerKind: OwnerChat},
 }
 
 // accountDefinitions mirrors the ledger-core and item-machine migrations'
