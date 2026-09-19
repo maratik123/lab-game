@@ -3,6 +3,7 @@ package onboard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
@@ -121,7 +122,7 @@ func TestOutbound_deepLinkThroughTheRealGateAndClient(t *testing.T) {
 		t.Fatalf("commit: %v", err)
 	}
 
-	if err := sendWithLink(); err == nil {
-		t.Fatal("SendMessage to the same chat after a removal: want an error, got nil")
+	if err := sendWithLink(); !errors.Is(err, ingest.ErrChatRefused) {
+		t.Fatalf("SendMessage to the same chat after a removal: err = %v, want ingest.ErrChatRefused in its chain", err)
 	}
 }

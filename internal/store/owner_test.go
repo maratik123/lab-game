@@ -355,6 +355,92 @@ func TestPlayerExists_txAndPoolAgree(t *testing.T) {
 	}
 }
 
+// TestChatOwnerID_kindPairIsThePredicate mirrors
+// TestPlayerExists_kindPairIsThePredicate: the (kind, telegram_id) PAIR is
+// what ChatOwnerID checks, not the telegram_id column alone — a player
+// sharing the same telegram_id as a chat must not be returned as the chat
+// owner.
+func TestChatOwnerID_kindPairIsThePredicate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer rollback(t, ctx, tx)
+
+	const telegramID = int64(778)
+	if _, err := tx.Exec(ctx, `INSERT INTO owner (kind, telegram_id) VALUES ('player', $1)`, telegramID); err != nil {
+		t.Fatalf("insert player owner: %v", err)
+	}
+
+	_, found, err := ChatOwnerID(ctx, tx, telegramID)
+	if err != nil {
+		t.Fatalf("ChatOwnerID: %v", err)
+	}
+	if found {
+		t.Fatalf("ChatOwnerID(%d) found = true for a player owner sharing the id, want false", telegramID)
+	}
+
+	var chatOwnerID int64
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO owner (kind, telegram_id) VALUES ('chat', $1) RETURNING id`, telegramID,
+	).Scan(&chatOwnerID); err != nil {
+		t.Fatalf("insert chat owner: %v", err)
+	}
+
+	gotID, found, err := ChatOwnerID(ctx, tx, telegramID)
+	if err != nil {
+		t.Fatalf("ChatOwnerID: %v", err)
+	}
+	if !found {
+		t.Fatalf("ChatOwnerID(%d) found = false after a chat owner was created, want true", telegramID)
+	}
+	if int64(gotID) != chatOwnerID {
+		t.Fatalf("ChatOwnerID(%d) = %d, want %d", telegramID, gotID, chatOwnerID)
+	}
+}
+
+// TestChatOwnerID_noOwnerReportsFalse pins the miss case: an id with no
+// owner row at all reports found = false, not an error.
+func TestChatOwnerID_noOwnerReportsFalse(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+
+	gotID, found, err := ChatOwnerID(ctx, pool, 999998)
+	if err != nil {
+		t.Fatalf("ChatOwnerID: %v", err)
+	}
+	if found {
+		t.Fatalf("ChatOwnerID(999998) found = true for an id with no owner row, want false")
+	}
+	if gotID != 0 {
+		t.Fatalf("ChatOwnerID(999998) id = %d, want 0 on a miss", gotID)
+	}
+}
+
+// TestChatOwnerID_closedPoolSurfacesError asserts a closed pool's error is
+// returned rather than papered over as a miss.
+func TestChatOwnerID_closedPoolSurfacesError(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	cfg := testdb.Schema(t)
+	pool, err := NewPool(ctx, cfg)
+	if err != nil {
+		t.Fatalf("new pool: %v", err)
+	}
+	pool.Close()
+
+	if _, _, err := ChatOwnerID(ctx, pool, 1); err == nil {
+		t.Fatal("ChatOwnerID over a closed pool: want an error, got nil")
+	}
+}
+
 func TestEnsureOwner_createsOnMiss(t *testing.T) {
 	t.Parallel()
 

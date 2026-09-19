@@ -29,7 +29,8 @@ type stubLookup struct {
 
 	players       map[int64]bool
 	present       map[int64]bool
-	err           error
+	playerErr     error
+	presenceErr   error
 	playerCalls   map[int64]int
 	presenceCalls map[int64]int
 }
@@ -47,8 +48,8 @@ func (s *stubLookup) PlayerExists(_ context.Context, telegramID int64) (bool, er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.playerCalls[telegramID]++
-	if s.err != nil {
-		return false, s.err
+	if s.playerErr != nil {
+		return false, s.playerErr
 	}
 	return s.players[telegramID], nil
 }
@@ -57,8 +58,8 @@ func (s *stubLookup) BotPresentInChat(_ context.Context, telegramID int64) (bool
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.presenceCalls[telegramID]++
-	if s.err != nil {
-		return false, s.err
+	if s.presenceErr != nil {
+		return false, s.presenceErr
 	}
 	return s.present[telegramID], nil
 }
@@ -208,7 +209,7 @@ func TestGate_nonIntegerTokenRefused(t *testing.T) {
 func TestGate_presenceLookupErrorRefuses(t *testing.T) {
 	t.Parallel()
 	lookup := newStubLookup(nil)
-	lookup.err = errors.New("boom")
+	lookup.presenceErr = errors.New("boom")
 	g := NewGate([]int64{42}, lookup)
 	err := g.AllowCall(context.Background(), tg.Call{Chat: tg.ChatRef{Key: "42", Target: tg.ChatKnown}})
 	if !errors.Is(err, ErrChatRefused) {
@@ -216,10 +217,30 @@ func TestGate_presenceLookupErrorRefuses(t *testing.T) {
 	}
 }
 
+// TestGate_presenceLookupErrorRefusesEvenForAKnownPlayer pins the
+// fail-closed presence clause independently of the player lookup: an id
+// that is both allowlisted AND a known player — so the player lookup
+// alone would allow it — is still refused when the presence lookup
+// errors, because AllowCall must never reach the player lookup on this
+// path. The stub's two error fields are independent so this scenario
+// cannot pass by the presence error accidentally also failing the player
+// lookup: presenceErr is set, playerErr is not, and the player lookup
+// would answer true if it were ever consulted.
+func TestGate_presenceLookupErrorRefusesEvenForAKnownPlayer(t *testing.T) {
+	t.Parallel()
+	lookup := newStubLookup(map[int64]bool{42: true})
+	lookup.presenceErr = errors.New("boom")
+	g := NewGate([]int64{42}, lookup)
+	err := g.AllowCall(context.Background(), tg.Call{Chat: tg.ChatRef{Key: "42", Target: tg.ChatKnown}})
+	if !errors.Is(err, ErrChatRefused) {
+		t.Errorf("AllowCall(presence lookup error, known player) = %v, want it to wrap ErrChatRefused", err)
+	}
+}
+
 func TestGate_playerLookupErrorRefuses(t *testing.T) {
 	t.Parallel()
 	lookup := newStubLookup(nil)
-	lookup.err = errors.New("boom")
+	lookup.playerErr = errors.New("boom")
 	g := NewGate(nil, lookup)
 	err := g.AllowCall(context.Background(), tg.Call{Chat: tg.ChatRef{Key: "42", Target: tg.ChatKnown}})
 	if !errors.Is(err, ErrChatRefused) {

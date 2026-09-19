@@ -4,7 +4,7 @@
 // player's membership of the chat named by the link, when one was
 // followed.
 //
-// The deep-link codec and builder in this file are pure: no database, no
+// The package's deep-link codec and builder are pure: no database, no
 // Telegram call. ChatStartLink takes the bot's own username as an
 // argument rather than resolving it itself — the Telegram client
 // library's own username accessor resolves through a fresh network call
