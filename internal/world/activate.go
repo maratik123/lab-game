@@ -119,11 +119,7 @@ func (m *Maze) ActivateChat(ctx context.Context, chatID store.OwnerID, playerID 
 		spiralIndex := gate.SpiralIndex(chosen)
 		ring := hexgrid.ChunkDistance(hexgrid.Chunk{}, chosen)
 
-		neighbors, err := m.readNeighbors(bctx, tx, chosen)
-		if err != nil {
-			return hexgrid.Chunk{}, wrapBudget(bctx, err)
-		}
-		if _, err := m.generateInsertAndAppend(bctx, tx, chosen, ChunkTypeGate, CreationCauseChatActivation, by, &chatID, &spiralIndex, &ring, neighbors); err != nil {
+		if _, err := m.generateInsertAndAppend(bctx, tx, chosen, ChunkTypeGate, CreationCauseChatActivation, by, &chatID, &spiralIndex, &ring); err != nil {
 			return hexgrid.Chunk{}, err
 		}
 		return chosen, nil

@@ -156,10 +156,13 @@ func lockedTxBody[T any](ctx context.Context, m *Maze, body func(tx pgx.Tx) (T, 
 	return v, nil
 }
 
-// generateInsertAndAppend generates ch's map under typ against
-// neighbors, inserts its chunk row and appends its chunk_created event,
-// all on tx. gateChatID and spiralIndex/ring are nil for a fabric chunk
-// and non-nil for a gate one.
+// generateInsertAndAppend reads ch's already-created neighbours,
+// generates ch's map under typ against them, inserts its chunk row and
+// appends its chunk_created event, all on tx. gateChatID and
+// spiralIndex/ring are nil for a fabric chunk and non-nil for a gate
+// one. Both creation paths route their neighbour read through here, so
+// omitting it would take a change to this function rather than to a
+// call site.
 func (m *Maze) generateInsertAndAppend(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -169,8 +172,12 @@ func (m *Maze) generateInsertAndAppend(
 	by Actor,
 	gateChatID *store.OwnerID,
 	spiralIndex, ring *int64,
-	neighbors []maze.Map,
 ) (maze.Map, error) {
+	neighbors, err := m.readNeighbors(ctx, tx, ch)
+	if err != nil {
+		return maze.Map{}, wrapBudget(ctx, err)
+	}
+
 	mazeType, err := typ.toMaze()
 	if err != nil {
 		return maze.Map{}, err
@@ -196,14 +203,16 @@ func (m *Maze) generateInsertAndAppend(
 // createLocked runs the locked creation transaction body for
 // EnsureChunkAt's explorer cause only: re-check for an existing chunk
 // under the lock (the loser of a creation race finds the winner's row
-// here and returns it, writing nothing), read the existing neighbours'
-// stored maps, generate, insert, append the chunk_created event. The
+// here and returns it, writing nothing), then generate, insert and
+// append the chunk_created event through generateInsertAndAppend, which
+// reads the existing neighbours' stored maps itself. The
 // chat_activation cause does not call this function — it discovers its
 // chunk under the same lock, from the spiral rule evaluated over that
 // transaction's own snapshot, so folding it into this body would mean
 // opening a second transaction and re-taking the lock, splitting the
-// choice of chunk from its insert. It keeps its own copy of this
-// read-then-generate sequence instead.
+// choice of chunk from its insert. It calls generateInsertAndAppend
+// directly instead, sharing this function's read-then-generate tail
+// without sharing the chunk-choice step above it.
 func (m *Maze) createLocked(
 	bctx context.Context,
 	ch hexgrid.Chunk,
@@ -220,11 +229,6 @@ func (m *Maze) createLocked(
 			return mp, nil
 		}
 
-		neighbors, err := m.readNeighbors(bctx, tx, ch)
-		if err != nil {
-			return maze.Map{}, wrapBudget(bctx, err)
-		}
-
-		return m.generateInsertAndAppend(bctx, tx, ch, typ, cause, by, gateChatID, spiralIndex, ring, neighbors)
+		return m.generateInsertAndAppend(bctx, tx, ch, typ, cause, by, gateChatID, spiralIndex, ring)
 	})
 }
