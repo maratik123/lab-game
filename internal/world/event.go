@@ -27,8 +27,8 @@ type chunkCreatedPayload struct {
 
 // appendChunkCreated appends one chunk_created event on tx for a chunk
 // just created at ch: maze_id always, chat_id and player_id from by,
-// depth null. It moves no balance, so it is AppendEvent's no-posting
-// path, never Post's.
+// depth null. It moves no balance, so it appends the bare event with
+// no accompanying posting.
 func appendChunkCreated(ctx context.Context, tx pgx.Tx, mazeID int64, by Actor, ch hexgrid.Chunk, typ ChunkType, cause CreationCause, version int32, spiralIndex, ring *int64) error {
 	payload, err := json.Marshal(chunkCreatedPayload{
 		ChunkType:         typ,

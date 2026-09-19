@@ -159,6 +159,83 @@ func TestEnsureChunkAt_ReadDoesNotRegenerate(t *testing.T) {
 	mapsEqual(t, got, want)
 }
 
+// TestEnsureChunkAt_NeighborReadFeedsGeneration creates chunk A, then
+// mutates A's stored blob so its border facing B disagrees with what a
+// fresh derivation would produce (a designed state: the stored map is
+// allowed to differ from what today's generator would derive, which is
+// what the per-chunk generation-version column exists for), then
+// creates the adjacent chunk B through the normal path. B's shared
+// border must agree with A's stored map, not with the value a
+// canonical derivation would give a symmetric pair — which is only
+// possible if B's creation actually read A's stored map rather than
+// deriving the border fresh.
+func TestEnsureChunkAt_NeighborReadFeedsGeneration(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	pool := storetest.Pool(t)
+	m := openTestMaze(t, pool, 1600)
+	lattice := m.Lattice()
+
+	chA := hexgrid.Chunk{Q: 0, R: 0}
+	chB := chA.Neighbor(hexgrid.DirE)
+	cellA := lattice.Center(chA)
+	cellB := lattice.Center(chB)
+
+	if _, err := m.EnsureChunkAt(ctx, cellA, Actor{}); err != nil {
+		t.Fatalf("EnsureChunkAt(A): %v", err)
+	}
+
+	cells := lattice.LocalCells()
+	borderLocal, ok := findBorderLocal(lattice, chA, chB, hexgrid.DirE)
+	if !ok {
+		t.Fatalf("no local cell of %v borders %v in direction E", chA, chB)
+	}
+	borderIdx := indexOfCell(cells, borderLocal)
+	if borderIdx < 0 {
+		t.Fatalf("borderLocal %v not found in LocalCells", borderLocal)
+	}
+
+	var typ ChunkType
+	var faces []byte
+	var version int32
+	if err := pool.QueryRow(ctx, readChunkSQL, m.id, chA.Q, chA.R).Scan(&typ, &faces, &version); err != nil {
+		t.Fatalf("read chunk A row: %v", err)
+	}
+	faces[borderIdx] ^= 1 << uint(hexgrid.DirE)
+
+	if _, err := pool.Exec(ctx, `UPDATE chunk SET faces = $1 WHERE maze_id = $2 AND q = $3 AND r = $4`,
+		faces, m.id, chA.Q, chA.R); err != nil {
+		t.Fatalf("mutate stored blob: %v", err)
+	}
+
+	mutatedA, err := decode(chA, typ, version, faces, lattice)
+	if err != nil {
+		t.Fatalf("decode mutated blob: %v", err)
+	}
+
+	mapB, err := m.EnsureChunkAt(ctx, cellB, Actor{})
+	if err != nil {
+		t.Fatalf("EnsureChunkAt(B): %v", err)
+	}
+
+	borderAgrees(t, lattice, mutatedA, mapB, hexgrid.DirE)
+}
+
+// findBorderLocal returns a's own local cell whose direction-d
+// neighbour crosses into b, and ok=false when a and b share no such
+// cell for d.
+func findBorderLocal(lattice hexgrid.Lattice, a, b hexgrid.Chunk, d hexgrid.Direction) (hexgrid.Coord, bool) {
+	for _, local := range lattice.LocalCells() {
+		globalNeighbor := lattice.At(a, local).Neighbor(d)
+		neighborChunk, _ := lattice.Locate(globalNeighbor)
+		if neighborChunk == b {
+			return local, true
+		}
+	}
+	return hexgrid.Coord{}, false
+}
+
 // TestEnsureChunkAt_BorderAgreement creates two adjacent chunks through
 // EnsureChunkAt, in both creation orders, and checks their shared
 // border agrees face for face. Repeated over every direction so the
