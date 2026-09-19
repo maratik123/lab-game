@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/mymmrac/telego"
@@ -75,6 +76,22 @@ func eventsOfType(t *testing.T, ctx context.Context, tx pgx.Tx, typ store.EventT
 	return got
 }
 
+// parsePayloadDate parses a payload's "date" field, decoded by
+// encoding/json as a string, back into the time.Time it was marshalled
+// from, so a test can compare instants rather than RFC3339 spellings.
+func parsePayloadDate(t *testing.T, raw any) time.Time {
+	t.Helper()
+	s, ok := raw.(string)
+	if !ok {
+		t.Fatalf("payload date = %v (%T), want a string", raw, raw)
+	}
+	got, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		t.Fatalf("parse payload date %q: %v", s, err)
+	}
+	return got
+}
+
 func ownerScopeDefIDs(t *testing.T, ctx context.Context, tx pgx.Tx, ownerID store.OwnerID) []int16 {
 	t.Helper()
 	rows, err := tx.Query(ctx, `SELECT scope_definition_id FROM scope WHERE owner_id = $1`, ownerID)
@@ -139,6 +156,15 @@ func TestPresenceHandler_add(t *testing.T) {
 	}
 	if events[0].chatID != ownerID {
 		t.Fatalf("event chat_id = %d, want %d", events[0].chatID, ownerID)
+	}
+	if got := events[0].payload["chat_type"]; got != telego.ChatTypeGroup {
+		t.Errorf("bot_added_to_chat payload chat_type = %v, want %q", got, telego.ChatTypeGroup)
+	}
+	if got := events[0].payload["chat_title"]; got != "Settlement" {
+		t.Errorf("bot_added_to_chat payload chat_title = %v, want %q", got, "Settlement")
+	}
+	if got := parsePayloadDate(t, events[0].payload["date"]); !got.Equal(time.Unix(1000, 0).UTC()) {
+		t.Errorf("bot_added_to_chat payload date = %v, want %v", got, time.Unix(1000, 0).UTC())
 	}
 }
 
@@ -267,6 +293,15 @@ func TestPresenceHandler_removalAndReAdd(t *testing.T) {
 	}
 	if got := kicked[0].payload["chat_telegram_id"]; got != float64(chatTelegramID) {
 		t.Errorf("bot_kicked payload chat_telegram_id = %v, want %v", got, chatTelegramID)
+	}
+	if got := kicked[0].payload["chat_type"]; got != telego.ChatTypeGroup {
+		t.Errorf("bot_kicked payload chat_type = %v, want %q", got, telego.ChatTypeGroup)
+	}
+	if got := kicked[0].payload["chat_title"]; got != "Settlement" {
+		t.Errorf("bot_kicked payload chat_title = %v, want %q", got, "Settlement")
+	}
+	if got := parsePayloadDate(t, kicked[0].payload["date"]); !got.Equal(time.Unix(2000, 0).UTC()) {
+		t.Errorf("bot_kicked payload date = %v, want %v", got, time.Unix(2000, 0).UTC())
 	}
 	if got := kicked[0].payload["actor_telegram_id"]; got != float64(501) {
 		t.Errorf("bot_kicked payload actor_telegram_id = %v, want 501", got)

@@ -409,6 +409,9 @@ func TestEnsureOwner_returnsExistingOnHit(t *testing.T) {
 	if second.ID != first.ID {
 		t.Fatalf("second EnsureOwner returned id %d, want the same id %d", second.ID, first.ID)
 	}
+	if second.Accounts != nil {
+		t.Fatalf("second EnsureOwner (a hit) Accounts = %v, want nil", second.Accounts)
+	}
 }
 
 // TestEnsureOwner_chatGetsHomeScope pins the created-chat scope shape

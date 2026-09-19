@@ -3,7 +3,6 @@ package onboard
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -89,21 +88,20 @@ func (h *StartHandler) Handle(ctx context.Context, tx pgx.Tx, u ingest.Update) e
 	var chatOwnerID store.OwnerID
 	var chatResolved, membershipCreated bool
 	if chatTelegramID != nil {
-		lookupErr := tx.QueryRow(ctx,
-			`SELECT id FROM owner WHERE kind = 'chat' AND telegram_id = $1`, *chatTelegramID,
-		).Scan(&chatOwnerID)
+		id, found, lookupErr := store.ChatOwnerID(ctx, tx, *chatTelegramID)
 		switch {
-		case lookupErr == nil:
+		case lookupErr != nil:
+			return fmt.Errorf("onboard: read chat owner: %w", lookupErr)
+		case found:
+			chatOwnerID = id
 			chatResolved = true
 			created, addErr := chat.AddMembership(ctx, tx, chatOwnerID, player.ID)
 			if addErr != nil {
 				return fmt.Errorf("onboard: add membership: %w", addErr)
 			}
 			membershipCreated = created
-		case errors.Is(lookupErr, pgx.ErrNoRows):
-			// The link names a chat the bot was never added to.
 		default:
-			return fmt.Errorf("onboard: read chat owner: %w", lookupErr)
+			// The link names a chat the bot was never added to.
 		}
 	}
 

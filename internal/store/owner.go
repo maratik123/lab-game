@@ -35,6 +35,26 @@ func PlayerExists(ctx context.Context, q Queryer, telegramID int64) (bool, error
 	return exists, nil
 }
 
+// ChatOwnerID finds the owner id of the chat with kind = 'chat' and the
+// given telegramID, reporting false on a miss. It finds only and never
+// creates: a deep-link Start naming a chat the bot was never added to
+// must record no membership, rather than conjuring an owner row for it.
+func ChatOwnerID(ctx context.Context, q Queryer, telegramID int64) (OwnerID, bool, error) {
+	var ownerID int64
+	err := q.QueryRow(ctx,
+		`SELECT id FROM owner WHERE kind = $1 AND telegram_id = $2`,
+		OwnerChat, telegramID,
+	).Scan(&ownerID)
+	switch {
+	case err == nil:
+		return OwnerID(ownerID), true, nil
+	case errors.Is(err, pgx.ErrNoRows):
+		return 0, false, nil
+	default:
+		return 0, false, fmt.Errorf("chat owner id: %w", err)
+	}
+}
+
 // Account is one instance of a catalog AccountDefinition, created for a
 // specific owner's scope. Kind and Controlled are copied from the
 // definition at creation time for convenient access; the database remains
@@ -182,6 +202,11 @@ func CreateOwner(ctx context.Context, tx pgx.Tx, kind OwnerKind, telegramID *int
 // OwnerPlayer/OwnerChat with a nil telegramID — are unchanged and happen
 // before any statement is issued, on this call exactly as they do on a
 // direct CreateOwner call.
+//
+// The returned Owner's Accounts field carries the row's scopes and
+// accounts only when this call created them: on a hit it is nil, since a
+// find does not re-read what an earlier CreateOwner already returned; on
+// a miss it is whatever CreateOwner populated.
 //
 // On a concurrent creator racing this call, the read finds no row, the
 // insert loses the race against the partial unique index on (kind,

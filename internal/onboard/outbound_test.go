@@ -3,6 +3,7 @@ package onboard
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -48,8 +49,7 @@ func TestOutbound_deepLinkThroughTheRealGateAndClient(t *testing.T) {
 
 	var lastBody []byte
 	srv := tgtest.New(t, func(w http.ResponseWriter, r *http.Request) {
-		body := make([]byte, r.ContentLength)
-		_, _ = r.Body.Read(body)
+		body, _ := io.ReadAll(r.Body)
 		lastBody = body
 		tgtest.Success(json.RawMessage(`{"message_id":1,"date":0,"chat":{"id":1,"type":"private"}}`))(w, r)
 	})
