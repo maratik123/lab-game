@@ -1,5 +1,5 @@
 # Progress: Chat location, deep-link onboarding, and player-to-chat membership — ACTIVE
-_Updated: 2026-09-19 12:54_
+_Updated: 2026-09-19 17:20_
 
 > Read THIS FIRST → ready to continue. No need to re-read the codebase.
 
@@ -10,13 +10,13 @@ _Updated: 2026-09-19 12:54_
 **Issue:** #30
 **Spec:** ai-docs/plans/2026-09-19-chat-location-onboarding-membership.spec.md
 
-**current_step:** Step 8 — subtask 10 of 11 complete (Group A done)
-**last_passed_gate:** go test ./... + golangci-lint run ./... + go vet ./... + make comment-refs + make import-guard + go test -race ./internal/onboard/... ./cmd/bot/... | subtask 10
+**current_step:** Step 8 — subtask 11 of 11 complete (Group A and Group B done)
+**last_passed_gate:** make comment-refs + make shellcheck + the citation guard + the relative-link check (259 links) | subtask 11
 **entry_args:** 30
 
 ## Next action
 
-**Do this immediately:** spawn Group B (subtask 11) through `/context-reset` with `general-purpose` — documentation and the `grep -rni` propagation sweep.
+**Do this immediately:** every subtask is complete. Proceed to Step 9 (verify + the per-AC sweep that fills the AC Status table), then Step 10 (self-review) and Step 12.
 
 ## Subtasks
 
@@ -30,7 +30,7 @@ _Updated: 2026-09-19 12:54_
 - [x] 8. The `my_chat_member` handler + `testdb.Binaries`
 - [x] 9. The `/start` handler
 - [x] 10. Composition root: both routes, the outbound test, the funnel test
-- [ ] 11. Documentation and the propagation sweep
+- [x] 11. Documentation and the propagation sweep  (c5b1546)
 
 ## Decisions log
 
@@ -39,6 +39,8 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - **Step 7**: design-review ran five rounds; the owner raised the cap twice by explicit decision (3 → 4 after round 3's ITERATE, 4 → 5 after round 4's), each time choosing another round with review over accepting the design as it stood.
 - **Step 7**: round 5 returned GO with five `minor` notes and four recommendation bullets; every one is `design-internal`, so `design-writer` folded them in and design-review did not run again.
 - **Step 8, subtask 1**: also fixed a second hard-coded `goose_db_version` count in `internal/store/migrate_process_test.go` (`TestMigrate_ConcurrentApplyUnderSameLockIDAppliesOnce`) that the design's file list for subtask 1 did not name — caught by the full `go test ./internal/store/...` gate.
+- **Step 8, subtask 11**: the propagation sweep reached two files the design's file list did not name — `.claude/agents/self-review.md` and `.claude/agents/review-findings.md`, whose Chat-safety rows restated the allowlist as the whole gate. `ai-docs/propagation-groups.md` makes that mandatory rather than optional: its domain-invariant row names chat safety and both reviewers as siblings of `ai-docs/domain-invariants.md`.
+- **Step 8, subtask 11**: `~/lab-private/DESIGN.md` §16.7 (player↔chat membership) was **not** edited. The owner's answers in this task's spec settle its MVP half — what makes a member, and which chat a raid starts from — but the corpus is outside subtask 11's file list, and editing it is the owner's call to make explicitly. Surfaced rather than absorbed.
 
 ## GO notes
 
@@ -104,3 +106,10 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 - `internal/testdb/server.go`, `server_test.go` — `Binaries` raised once per new database-backed binary
 - `cmd/bot/assemble.go`, `assemble_test.go`, `smoke_test.go` — both routes registered
 - `ai-docs/coverage-ratchet.txt` — lowered 91.95 → 91.34 in the subtask-8 commit, justified there
+- `ai-docs/key-decisions.md` — KD-50 to KD-55 under a new *Chat front door* section, plus KD-30's amendment clause
+- `ai-docs/domain-invariants.md` — new § 10; § 5's no-balance-mechanic paragraph, the shipped-view obligations and the funnel-attribution paragraph; § 6's two gate bullets
+- `ai-docs/process-lifecycle.md` — start-up steps 11 and 12
+- `ai-docs/context.md` — the layout paragraph (both new packages, the gate, the store clause), the status date and the Code bullet
+- `ai-docs/context-status.md` — the per-task entry, its PR locator still `#TBD-at-Step-12`
+- `AGENTS.md` — § Domain Rules' chat-safety clause
+- `.claude/agents/self-review.md`, `.claude/agents/review-findings.md` — the Chat-safety row (Review group + the domain-invariant propagation row)
