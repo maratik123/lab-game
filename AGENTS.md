@@ -198,7 +198,7 @@ Project invariants that outrank convenience. Full detail: [`ai-docs/domain-invar
 > | Adds or changes a mechanic | That mechanic's events, in the event dictionary |
 > | Moves any balance | The basis document's **posting signature**, plus the contract test that checks actual postings against it |
 
-Three more, each with its mechanics on that page: **never write to a chat that is not the intended one** (`ALLOWED_CHAT_IDS`, plus snapshot sanitisation as part of restore — §12.5); **respect Telegram limits by construction** (honour `retry_after`, back off exponentially, never a tight retry loop — a flood ban attaches to the bot id and survives token reissue); **scheduler tasks are idempotent and guard-checked** on `state`/`seq`, because a stale task firing late is normal operation, not an error (§3.5).
+Three more, each with its mechanics on that page: **never write to a chat that is not the intended one** (`ALLOWED_CHAT_IDS` **and** the bot's own current presence in that chat — the allowlist alone is necessary, not sufficient — plus snapshot sanitisation as part of restore — §12.5); **respect Telegram limits by construction** (honour `retry_after`, back off exponentially, never a tight retry loop — a flood ban attaches to the bot id and survives token reissue); **scheduler tasks are idempotent and guard-checked** on `state`/`seq`, because a stale task firing late is normal operation, not an error (§3.5).
 
 ## Dependency Versions
 

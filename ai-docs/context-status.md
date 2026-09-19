@@ -576,3 +576,38 @@ Entry shape:
   - An owner's kind never changes — no production code updates it — which is what makes the activation's unlocked kind check safe to act on.
   - The stored map's byte layout is live data: a golden that involves no seed and no generator pins it, and a diff there means every stored chunk is now misread, not that a test needs updating.
   - A new chunk's shared border comes from its neighbour's **stored** map, never from a fresh generation of that neighbour.
+
+## Chat location, deep-link onboarding, and player-to-chat membership — the game's front door: a chat becomes a settlement, a player arrives through its link (#TBD-at-Step-12, 2026-09-19)
+
+- **What landed:**
+  - One forward migration: the `home` `scope_definition` row (owner kind `chat`, **no** `account_definition` row) with its scope backfill, `chat_presence`, `chat_membership` with its player index, and the `chat_knowledge` view — plus every hard-coded schema manifest it moves (the Go catalog mirror, the exact view set, the view column contract, the base-table set, the applied-migration count).
+  - `internal/chat` — presence (the current answer, with `changed_at` written explicitly on a flip and left alone on a repeat), membership (accruing only, idempotent on a repeat), and the pool-backed `DestinationLookup` the outbound gate reads.
+  - `internal/onboard` — the namespaced `start` payload codec with its three refusals (empty payload, unknown prefix, malformed remainder), the deep-link builder that takes the bot's username as an argument and refuses an empty one, the `my_chat_member` handler and the private-`/start` handler. These are the first production `ingest.Handler` implementations in the tree, and `cmd/bot` registers both routes, so the assembled process's router is no longer empty.
+  - `store.EnsureOwner` — find-or-create keyed on `(kind, telegram_id)`, lifted into the ledger package because both handlers create an owner and #36 will be the third site.
+  - The outbound gate's chat branch now requires **allowlisted AND present**; `ingest.PlayerLookup` became `ingest.DestinationLookup` and `ingest.NewPoolGate` was deleted with no shim, the composition root injecting `internal/chat`'s implementation through the already-exported `ingest.NewGate`.
+  - The peaceful-home instrument: a schema scan over the Postgres catalogs, in two halves, each with a constructed positive control plus a width control for the surrogate-key and no-foreign-key shapes.
+  - `ai-docs/domain-invariants.md` gains § 10 (the home as an address space, membership's single observation, the gate's presence condition and the pre-existing-chat bootstrap), and § 6's gate bullets carry the new predicate and branch order.
+
+- **Decisions worth keeping:**
+  - **The peaceful rule is the address space, not a flag.** A home is a `scope` row with no maze or cell key, and no maze-touching relation carries a `scope` reference — so a mechanic that fights or loots *without asking* cannot reach a home, because there is no home for its position argument to name. A `peaceful boolean` column would only have helped a mechanic that asks, and a mechanic that asks was never the risk.
+  - **The guard's subject is deliberately wider than either narrow reading.** Any ordinary base table that declares a `maze (id)` reference **or** a column named `maze_id`, whatever its primary key. A primary-key-shaped definition would miss the surrogate-key shape a PvP or corpse table takes; an FK-only definition would miss `event`, which is the in-tree precedent a later relation is most likely to copy.
+  - **What a chat knows is a view, and that is what makes the joiner case free.** A membership recorded today brings every discovery that player already had into the chat's knowledge, with nothing to back-fill. The projection is minimal on purpose so a later `first_discovered_at` is an append; the discoverer is left out because adding it would *multiply* the row set, which `CREATE OR REPLACE VIEW` cannot express.
+  - **`player_started` fires on the player's creation OR on a new membership.** The funnel attributes by the earliest **chat-bearing** event, so emitting only on player creation would leave a player who starts bare and later takes a chat's link attributable to no chat forever. The cost — more than one event per player — is already absorbed by both shipped views.
+  - **The presence row is written on every handled update; only the event is conditional.** That separation is what keeps the funnel's promotion-first gap from also being an outbound-traffic gap.
+  - **The Start handler looks the link's chat up and never creates it.** The payload is guessable, so find-or-create there would let a guessed id conjure a chat and its home scope.
+  - **A link naming a chat the bot was removed from still records the membership.** Presence governs what the bot may *send*; the player's own arrival is real either way, and a re-add then finds the membership already there.
+
+- **Traps found:**
+  - **Seeding a scope for a kind that has none reverses a shipped test's own name.** `TestCreateOwner_chat_has_no_scope_or_accounts` encodes the invariant this task inverts; it is renamed and re-pointed in the same commit, keeping the zero-accounts half, because dropping that half would silently widen what the migration is allowed to do. A now-false comment in the move suite moved with it — `make comment-refs` is lexical and cannot see that class.
+  - **An unfiltered `information_schema` scan picks up views.** `chat_knowledge` projects `maze_id`, so the peaceful-home guard would be red on output its own dependency produces. Scoping to `relkind = 'r'` is the same decision the base-table assertion made when the first views landed.
+  - **A deleted constructor with an out-of-package caller cannot be split across subtasks.** `cmd/bot` built the gate through `ingest.NewPoolGate`, so the rename and the rewire are one subtask — otherwise `go build ./...` is red across every intervening one, and the coverage ratchet refuses a commit whose suite is not green.
+  - **The Bot API's own username accessor reports the empty string on failure.** Resolving it inside the link builder would turn an outage into silently dead links, so the username is a parameter and the sender supplies it.
+  - **An allowlisted id that is not a present chat must FALL THROUGH, not refuse.** An operator may legitimately allowlist a player's DM, and that id lives in the same `telegram_id` column as a chat's. Refusing at the presence branch would break DMs the gate allows today.
+  - **A new database-backed test binary is a term of the connection ceiling.** `testdb.Binaries` rises once per such binary, in the same commit as the binary, and it lowers the `clients × parallel` product at which the suite refuses to provision.
+
+- **Invariants this now relies on:**
+  - No relation that touches a maze carries a `scope` reference, and `scope` carries no maze or cell column. A new maze-touching relation with an `owner` reference turns the guard red until its allow-list row states which owner kind the column holds.
+  - `chat_knowledge`'s column names, order and types are a permanent contract from merge — `CREATE OR REPLACE VIEW` can only append.
+  - A membership is never removed, and nothing in this module ends one.
+  - Presence is read, never cached, on every outbound chat call; a chat with no presence row is refused, which is why a pre-existing chat must be removed and re-added once.
+  - `event` is append-only, so `bot_kicked`'s `chat_id` is set rather than null, and a chat missing from the activation funnel because its first update was a promotion is missing permanently.

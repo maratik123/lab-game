@@ -128,7 +128,7 @@ Read [`ai-docs/domain-invariants.md`](../../ai-docs/domain-invariants.md) before
 | **Telemetry lag** (`~/lab-private/DESIGN.md` §13.4) | A new mechanic in this diff that declares no event; a balance-moving mechanic that declares no posting signature, or ships without the contract test | `major` |
 | **Balance constant in code** (`~/lab-private/DESIGN.md` §16.5) | A tuning value (stamina cap, step cost, timer, shop rate, price curve, dice) as a Go literal **or** a named Go constant instead of configuration | `major` |
 | **Schema break** | A renamed/re-purposed column, a re-numbered enum, or a changed persisted state string without a forward migration that keeps old rows parsable | `major` |
-| **Chat-safety** | An outbound send path that bypasses the `ALLOWED_CHAT_IDS` allowlist, or a retry loop that ignores `retry_after` / has no backoff | `major` |
+| **Chat-safety** | An outbound send path that bypasses the outbound gate (`ALLOWED_CHAT_IDS` **and**, for a chat destination, the bot's own current presence — the allowlist alone is not sufficient), a change that lets a chat destination through without the presence read or caches that read, or a retry loop that ignores `retry_after` / has no backoff | `major` |
 | **Non-determinism on a pure path** | `time.Now()`, unseeded `math/rand`, or map-iteration order inside generation, combat, or replay | `major` |
 | **Secret in a tracked file** | A token, DSN, `api_id`/`api_hash` in any file the diff adds — including a fixture or a comment | `major`, and say it must be rotated, not edited out |
 
