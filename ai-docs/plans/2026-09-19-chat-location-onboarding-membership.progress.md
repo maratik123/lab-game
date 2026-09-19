@@ -10,8 +10,8 @@ _Updated: 2026-09-19 12:54_
 **Issue:** #30
 **Spec:** ai-docs/plans/2026-09-19-chat-location-onboarding-membership.spec.md
 
-**current_step:** Step 8 — Implementation start
-**last_passed_gate:** go build ./... | 2026-09-19T12:54:36Z | b48ce14
+**current_step:** Step 8 — subtask 1 of 11 complete
+**last_passed_gate:** golangci-lint run ./internal/store/... + make comment-refs | c75b2b2
 **entry_args:** 30
 
 ## Next action
@@ -20,7 +20,7 @@ _Updated: 2026-09-19 12:54_
 
 ## Subtasks
 
-- [ ] 1. Forward migration: `home` scope definition + backfill, `chat_presence`, `chat_membership`, the `chat_knowledge` view, and every hard-coded manifest it moves  ← CURRENT
+- [x] 1. Forward migration: `home` scope definition + backfill, `chat_presence`, `chat_membership`, the `chat_knowledge` view, and every hard-coded manifest it moves  (c75b2b2)
 - [ ] 2. Behaviour tests for `chat_knowledge`
 - [ ] 3. The peaceful-home instrument
 - [ ] 4. `store.EnsureOwner`
@@ -38,6 +38,7 @@ Append-only, one line per non-trivial decision. Each line is prefixed with the s
 
 - **Step 7**: design-review ran five rounds; the owner raised the cap twice by explicit decision (3 → 4 after round 3's ITERATE, 4 → 5 after round 4's), each time choosing another round with review over accepting the design as it stood.
 - **Step 7**: round 5 returned GO with five `minor` notes and four recommendation bullets; every one is `design-internal`, so `design-writer` folded them in and design-review did not run again.
+- **Step 8, subtask 1**: also fixed a second hard-coded `goose_db_version` count in `internal/store/migrate_process_test.go` (`TestMigrate_ConcurrentApplyUnderSameLockIDAppliesOnce`) that the design's file list for subtask 1 did not name — caught by the full `go test ./internal/store/...` gate.
 
 ## GO notes
 
