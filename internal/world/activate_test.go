@@ -272,12 +272,10 @@ func TestActivateChat_BorderAgreementOnGatePath(t *testing.T) {
 // TestActivateChat_NeighborReadFeedsGeneration mutates a pre-created
 // fabric chunk's stored border so it disagrees with what a fresh
 // derivation would produce, then activates a chat whose gate lands
-// adjacent to it (the fixture's first activation lands on the centre,
-// which TestActivateChat_BorderAgreementOnGatePath already forces
-// into adjacency with a ring-1 chunk). The gate chunk's shared border
-// must agree with the fabric chunk's mutated stored map, which is
-// only possible if this creation path actually read the stored
-// neighbour rather than deriving the border fresh.
+// adjacent to it. The gate chunk's shared border must agree with the
+// fabric chunk's mutated stored map, which is only possible if this
+// creation path actually read the stored neighbour rather than
+// deriving the border fresh.
 func TestActivateChat_NeighborReadFeedsGeneration(t *testing.T) {
 	t.Parallel()
 
