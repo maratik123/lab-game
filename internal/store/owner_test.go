@@ -354,3 +354,248 @@ func TestPlayerExists_txAndPoolAgree(t *testing.T) {
 		t.Fatalf("PlayerExists via tx = %v, via pool = %v, want both false (telegram_id=%d was never inserted)", gotTxMissing, gotPoolMissing, missingTelegramID)
 	}
 }
+
+func TestEnsureOwner_createsOnMiss(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer rollback(t, ctx, tx)
+
+	tg := nextTelegramID.Add(1)
+	owner, created, err := EnsureOwner(ctx, tx, OwnerChat, &tg)
+	if err != nil {
+		t.Fatalf("EnsureOwner: %v", err)
+	}
+	if !created {
+		t.Fatalf("created = %v, want true (no owner existed yet)", created)
+	}
+	if owner.ID == 0 {
+		t.Fatalf("owner.ID is zero, want a created row's id")
+	}
+}
+
+func TestEnsureOwner_returnsExistingOnHit(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer rollback(t, ctx, tx)
+
+	tg := nextTelegramID.Add(1)
+	first, created, err := EnsureOwner(ctx, tx, OwnerPlayer, &tg)
+	if err != nil {
+		t.Fatalf("first EnsureOwner: %v", err)
+	}
+	if !created {
+		t.Fatalf("first call created = %v, want true", created)
+	}
+
+	second, created, err := EnsureOwner(ctx, tx, OwnerPlayer, &tg)
+	if err != nil {
+		t.Fatalf("second EnsureOwner: %v", err)
+	}
+	if created {
+		t.Fatalf("second call created = %v, want false (the owner already existed)", created)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("second EnsureOwner returned id %d, want the same id %d", second.ID, first.ID)
+	}
+}
+
+// TestEnsureOwner_chatGetsHomeScope pins the created-chat scope shape
+// exactly as CreateOwner's own test does — proof this is read from the
+// scope row, never off the returned value.
+func TestEnsureOwner_chatGetsHomeScope(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer rollback(t, ctx, tx)
+
+	tg := nextTelegramID.Add(1)
+	owner, _, err := EnsureOwner(ctx, tx, OwnerChat, &tg)
+	if err != nil {
+		t.Fatalf("EnsureOwner: %v", err)
+	}
+
+	rows, err := tx.Query(ctx, `SELECT scope_definition_id FROM scope WHERE owner_id = $1`, owner.ID)
+	if err != nil {
+		t.Fatalf("query scope: %v", err)
+	}
+	var scopeDefIDs []int16
+	for rows.Next() {
+		var id int16
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan scope: %v", err)
+		}
+		scopeDefIDs = append(scopeDefIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if len(scopeDefIDs) != 1 || scopeDefIDs[0] != 4 {
+		t.Fatalf("chat scope_definition ids = %v, want exactly [4] (the home scope)", scopeDefIDs)
+	}
+}
+
+// TestEnsureOwner_playerScopeUnchanged asserts a created player's account
+// set is unaffected by this migration — still the six accounts
+// TestCreateOwner_player pins.
+func TestEnsureOwner_playerScopeUnchanged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer rollback(t, ctx, tx)
+
+	tg := nextTelegramID.Add(1)
+	owner, _, err := EnsureOwner(ctx, tx, OwnerPlayer, &tg)
+	if err != nil {
+		t.Fatalf("EnsureOwner: %v", err)
+	}
+	if len(owner.Accounts) != 6 {
+		t.Fatalf("player accounts = %d, want 6", len(owner.Accounts))
+	}
+}
+
+// TestEnsureOwner_concurrentCreatorViolationPropagates reproduces a
+// concurrent creator deterministically: tx2 reads first — exactly
+// EnsureOwner's own opening SELECT — and correctly finds no row, since
+// tx1 has not committed yet. tx1 then wins the race, via EnsureOwner,
+// and commits. tx2 then does what EnsureOwner would do next on its own
+// (now stale) miss: call CreateOwner. That insert loses the race against
+// the unique index tx1's commit just populated, and the violation is
+// returned wrapped, not swallowed. A fresh call afterwards, in a fresh
+// transaction, finds the winner's row.
+func TestEnsureOwner_concurrentCreatorViolationPropagates(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+	tg := nextTelegramID.Add(1)
+
+	tx1, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin tx1: %v", err)
+	}
+	tx2, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin tx2: %v", err)
+	}
+	defer rollback(t, ctx, tx2)
+
+	var preExisting int64
+	err = tx2.QueryRow(ctx,
+		`SELECT id FROM owner WHERE kind = $1 AND telegram_id = $2`, OwnerPlayer, tg,
+	).Scan(&preExisting)
+	if !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("tx2 pre-check = %v, want pgx.ErrNoRows (tx1 has not committed yet)", err)
+	}
+
+	winner, created, err := EnsureOwner(ctx, tx1, OwnerPlayer, &tg)
+	if err != nil {
+		t.Fatalf("tx1 EnsureOwner: %v", err)
+	}
+	if !created {
+		t.Fatalf("tx1 created = %v, want true", created)
+	}
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatalf("commit tx1: %v", err)
+	}
+
+	if _, err := CreateOwner(ctx, tx2, OwnerPlayer, &tg); err == nil {
+		t.Fatalf("tx2 CreateOwner after tx1 committed: want the unique violation, got nil")
+	} else {
+		sqlstate(t, err, "23505", "owner_kind_telegram_id_key")
+	}
+	if err := tx2.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		t.Fatalf("rollback tx2: %v", err)
+	}
+
+	// A fresh attempt, in a fresh transaction, now finds the winner's row.
+	tx3, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin tx3: %v", err)
+	}
+	defer rollback(t, ctx, tx3)
+	retried, created, err := EnsureOwner(ctx, tx3, OwnerPlayer, &tg)
+	if err != nil {
+		t.Fatalf("tx3 EnsureOwner: %v", err)
+	}
+	if created {
+		t.Fatalf("tx3 created = %v, want false (the row already exists)", created)
+	}
+	if retried.ID != winner.ID {
+		t.Fatalf("tx3 EnsureOwner id = %d, want %d", retried.ID, winner.ID)
+	}
+}
+
+// TestEnsureOwner_rejectionsUnchanged pins CreateOwner's own refusal
+// table unchanged on this call, issuing no statement before the refusal.
+func TestEnsureOwner_rejectionsUnchanged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	pool := newStore(t)
+
+	tg := nextTelegramID.Add(1)
+
+	for _, tc := range []struct {
+		name       string
+		kind       OwnerKind
+		telegramID *int64
+	}{
+		{"player_nil_telegram_id", OwnerPlayer, nil},
+		{"chat_nil_telegram_id", OwnerChat, nil},
+		{"world_with_telegram_id", OwnerWorld, &tg},
+		{"unknown_kind", OwnerKind("corpse"), &tg},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tx, err := pool.Begin(ctx)
+			if err != nil {
+				t.Fatalf("begin: %v", err)
+			}
+			defer rollback(t, ctx, tx)
+
+			var before int
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM owner`).Scan(&before); err != nil {
+				t.Fatalf("count owner before: %v", err)
+			}
+
+			_, created, err := EnsureOwner(ctx, tx, tc.kind, tc.telegramID)
+			if !errors.Is(err, ErrInvalidOwner) {
+				t.Fatalf("EnsureOwner(%s) = %v, want ErrInvalidOwner", tc.kind, err)
+			}
+			if created {
+				t.Fatalf("EnsureOwner(%s) created = %v, want false", tc.kind, created)
+			}
+
+			var after int
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM owner`).Scan(&after); err != nil {
+				t.Fatalf("count owner after: %v", err)
+			}
+			if after != before {
+				t.Fatalf("owner count changed from %d to %d — a statement was issued", before, after)
+			}
+		})
+	}
+}

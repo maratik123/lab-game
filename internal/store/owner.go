@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -173,4 +174,46 @@ func CreateOwner(ctx context.Context, tx pgx.Tx, kind OwnerKind, telegramID *int
 	}
 
 	return owner, nil
+}
+
+// EnsureOwner finds an owner row keyed on (kind, telegramID), creating one
+// through CreateOwner on a miss, and reports whether it created the row.
+// CreateOwner's own refusals — an unknown kind, OwnerWorld, or
+// OwnerPlayer/OwnerChat with a nil telegramID — are unchanged and happen
+// before any statement is issued, on this call exactly as they do on a
+// direct CreateOwner call.
+//
+// On a concurrent creator racing this call, the read finds no row, the
+// insert loses the race against the partial unique index on (kind,
+// telegram_id), and that unique violation is returned wrapped rather
+// than swallowed: this call takes no ON CONFLICT. The caller's own retry,
+// in a fresh transaction, is what turns the next attempt's read into a
+// hit.
+func EnsureOwner(ctx context.Context, tx pgx.Tx, kind OwnerKind, telegramID *int64) (Owner, bool, error) {
+	switch {
+	case !kind.known():
+		return Owner{}, false, fmt.Errorf("%w: unknown owner kind %q", ErrInvalidOwner, kind)
+	case kind == OwnerWorld:
+		return Owner{}, false, fmt.Errorf("%w: the World owner is seeded by migration, never created", ErrInvalidOwner)
+	case (kind == OwnerPlayer || kind == OwnerChat) && telegramID == nil:
+		return Owner{}, false, fmt.Errorf("%w: kind %q requires a telegram_id", ErrInvalidOwner, kind)
+	}
+
+	var ownerID int64
+	err := tx.QueryRow(ctx,
+		`SELECT id FROM owner WHERE kind = $1 AND telegram_id = $2`,
+		kind, telegramID,
+	).Scan(&ownerID)
+	switch {
+	case err == nil:
+		return Owner{ID: OwnerID(ownerID), Kind: kind, TelegramID: telegramID}, false, nil
+	case errors.Is(err, pgx.ErrNoRows):
+		owner, createErr := CreateOwner(ctx, tx, kind, telegramID)
+		if createErr != nil {
+			return Owner{}, false, createErr
+		}
+		return owner, true, nil
+	default:
+		return Owner{}, false, fmt.Errorf("ensure owner: find: %w", err)
+	}
 }
