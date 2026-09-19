@@ -14,9 +14,9 @@ and the activation funnel.
 
 Nothing here moves a balance. No `journal_entry`, no posting, no basis document, and so no
 row in the posting-signature declared set — the same shape `chunk_created` already ships
-`[measured a01fe4e:ai-docs/key-decisions.md:189 · grep -n "Chunk creation moves no balance[^.]*\." → "Chunk creation moves no balance, so it declares no posting signature and adds no row to the declared set internal/contract holds (KD-42)."]`. Creating an owner writes zero-balance `account_balance`
+`[measured dd3778c:ai-docs/key-decisions.md:189 · grep -n "Chunk creation moves no balance[^.]*\." → "Chunk creation moves no balance, so it declares no posting signature and adds no row to the declared set internal/contract holds (KD-42)."]`. Creating an owner writes zero-balance `account_balance`
 rows, which is account creation, not a balance move
-`[measured a01fe4e:internal/store/owner.go:166-169 · read → the only balance-table write in CreateOwner is INSERT INTO account_balance (account_id) VALUES ($1), guarded by the definition's controlled flag]`.
+`[measured dd3778c:internal/store/owner.go:166-169 · read → the only balance-table write in CreateOwner is INSERT INTO account_balance (account_id) VALUES ($1), guarded by the definition's controlled flag]`.
 No tuning value is needed either, so this task adds no balance key and no configuration key
 at all.
 
@@ -25,15 +25,15 @@ at all.
 `scope_definition` already carries the `(code, owner_kind)` catalog `store.CreateOwner`
 walks: it creates every scope whose `owner_kind` matches the owner being created, then every
 account of those scopes
-`[measured a01fe4e:internal/store/owner.go:87-96 · read → the CTE inserts scope rows for every scope_definition of the kind, then accounts joined from account_definition]`.
+`[measured dd3778c:internal/store/owner.go:87-96 · read → the CTE inserts scope rows for every scope_definition of the kind, then accounts joined from account_definition]`.
 Chats have no scope row today — the seeded definitions are `world`/`world`,
 `attributes`/`player` and `backpack`/`player`
-`[measured a01fe4e:internal/store/migrations/00001_ledger_core.sql:88 and 00007_item_machine.sql:21 · grep -n "INSERT INTO scope_definition" → ids 1 and 2, then id 3]`.
+`[measured dd3778c:internal/store/migrations/00001_ledger_core.sql:88 and 00007_item_machine.sql:21 · grep -n "INSERT INTO scope_definition" → ids 1 and 2, then id 3]`.
 Seeding one more row — `home`, owner kind `chat`, at the next free id — is therefore the
 whole of "adding the bot to a chat creates that chat's location": `CreateOwner` needs no
 edit, the `scope_singleton_key` unique constraint makes the home singular per chat by
 construction
-`[measured a01fe4e:internal/store/migrations/00001_ledger_core.sql:34 · grep -n "scope_singleton_key" → "CONSTRAINT scope_singleton_key UNIQUE (owner_id, scope_definition_id)   -- singleton + covers owner FK"]`,
+`[measured dd3778c:internal/store/migrations/00001_ledger_core.sql:34 · grep -n "scope_singleton_key" → "CONSTRAINT scope_singleton_key UNIQUE (owner_id, scope_definition_id)   -- singleton + covers owner FK"]`,
 and the home is already an address in the holder space the item machine uses,
 which is where buildings and contributions attach later (`~/lab-private/DESIGN.md` §6.2).
 The home carries no `account_definition` row: nothing posts against a home yet, which is the
@@ -42,7 +42,7 @@ same shape the biome resource kinds shipped in (KD-45).
 **The seeded row reverses an invariant the ledger suite currently asserts, so that assertion
 moves in the same commit.** `TestCreateOwner_chat_has_no_scope_or_accounts` reads the scope
 count for a freshly created chat owner and requires zero
-`[measured a01fe4e:internal/store/owner_test.go:132-158 · read → CreateOwner(ctx, tx, OwnerChat, &tg) then "chat accounts = %d, want 0" and a SELECT count(*) FROM scope WHERE owner_id = $1 asserted against 0]`,
+`[measured dd3778c:internal/store/owner_test.go:132-158 · read → CreateOwner(ctx, tx, OwnerChat, &tg) then "chat accounts = %d, want 0" and a SELECT count(*) FROM scope WHERE owner_id = $1 asserted against 0]`,
 and a chat now has exactly one scope. It becomes
 `TestCreateOwner_chat_has_home_scope_and_no_accounts`: **exactly one `scope` row, and it is
 the `home` definition; still zero accounts.** Both halves matter — the account assertion is
@@ -60,13 +60,13 @@ gates, and it is a fully peaceful zone
 `[measured ~/lab-private@4200ebc:DESIGN.md §2.1 · grep -o "Дом чата. Полностью мирная зона ([^)]*)" → "Дом чата. Полностью мирная зона (PvP и мародерство невозможны)"]`.
 PvP and looting are acts at a position in a maze, and a position in a maze is the
 `(maze_id, q, r)` key `chunk` and `node_discovery` are built on
-`[measured a01fe4e:internal/store/migrations/00009_world_persistence.sql:38,61 · grep -n "PRIMARY KEY (maze_id" → chunk PRIMARY KEY (maze_id, q, r); node_discovery PRIMARY KEY (maze_id, q, r, player_id)]`.
+`[measured dd3778c:internal/store/migrations/00009_world_persistence.sql:38,61 · grep -n "PRIMARY KEY (maze_id" → chunk PRIMARY KEY (maze_id, q, r); node_discovery PRIMARY KEY (maze_id, q, r, player_id)]`.
 A home is a `scope` row, and the claim that carries the AC is therefore about `scope`:
 **no relation that names a maze carries a `scope` reference, and `scope` itself carries no
 maze or cell column.** `scope` is referenced by `account.scope_id` and by the item
 machine's two holder columns, and none of those three declares a maze reference or a column
 named `maze_id` — none of them *touches a maze*, which is the property the guard is built on
-`[measured a01fe4e:internal/store/migrations/00001_ledger_core.sql:40 and 00007_item_machine.sql:111-112 · grep -n "REFERENCES scope (id)" → account.scope_id, item_movement.from_holder_id, item_movement.to_holder_id]`.
+`[measured dd3778c:internal/store/migrations/00001_ledger_core.sql:40 and 00007_item_machine.sql:111-112 · grep -n "REFERENCES scope (id)" → account.scope_id, item_movement.from_holder_id, item_movement.to_holder_id]`.
 So a mechanic that fights or loots **without asking** cannot reach a home: there is no home
 for its position argument to name.
 
@@ -74,7 +74,7 @@ for its position argument to name.
 non-home owner by the schema.** `chunk.gate_chat_id` is a chat's, and is a **gate** rather
 than a home — AC3 leaves this task placing no gate at all. `node_discovery.player_id` is an
 unconstrained `owner (id)` foreign key
-`[measured a01fe4e:internal/store/migrations/00009_world_persistence.sql:33,59 · grep -n "REFERENCES owner (id)" → chunk.gate_chat_id bigint REFERENCES owner (id); node_discovery.player_id bigint NOT NULL REFERENCES owner (id)]`;
+`[measured dd3778c:internal/store/migrations/00009_world_persistence.sql:33,59 · grep -n "REFERENCES owner (id)" → chunk.gate_chat_id bigint REFERENCES owner (id); node_discovery.player_id bigint NOT NULL REFERENCES owner (id)]`;
 what keeps a chat owner id out of it is the discovery writer's own `WHERE id = $4 AND
 kind = 'player'`, which is application code, not a constraint. That hole is why the
 instrument in § Test Design is a **reviewed allow list** with a reason per exempt column —
@@ -88,8 +88,19 @@ list does not exempt, and a new maze-touching relation with an `owner` reference
 guard red until someone states which owner it is.
 
 **"Maze-touching" is deliberately wide in two directions, and both narrow readings would have
-been holes.** The guard's subject is any relation that **either** declares a column
+been holes.** The guard's subject is any **ordinary table** that **either** declares a column
 referencing `maze (id)` **or** declares a column named `maze_id` — whatever its primary key.
+
+*Ordinary tables, and that clause is load-bearing rather than tidy.* In Postgres a view is a
+relation and `information_schema` lists it, so an unfiltered scan would pick up
+`chat_knowledge` — whose own projection carries `maze_id` — and the guard would be red on
+output its own dependency produces. A view is the right thing to exclude on the merits, not
+merely the convenient one: it declares no foreign key and is no address anything occupies, so
+nothing can be smuggled through it that is not already in the tables it reads. The module's
+own base-table assertion made exactly this scoping decision when the first views landed
+`[measured dd3778c:internal/store/migrate_test.go:19-25 · read → "Base tables only (plus goose's own version table) — information_schema.tables with no table_type filter also lists views, and the migration set now creates some, so this assertion is scoped to base tables", over "WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'"]`.
+So the maze-touching set stays `chunk`, `node_discovery` and `event` after `chat_knowledge`
+lands.
 
 - *Not only a maze-keyed relation.* `chunk` and `node_discovery` both happen to key on
   `(maze_id, q, r)`, but the relations this rule exists to catch are the ones not yet written:
@@ -99,7 +110,7 @@ referencing `maze (id)` **or** declares a column named `maze_id` — whatever it
 - *Not only a foreign key, because the tree already contains the counterexample.* `event`
   declares `maze_id bigint` with **no** foreign key, deliberately and permanently as far as
   this schema goes, and carries two `owner (id)` references beside it
-  `[measured a01fe4e:internal/store/migrations/00003_event_log.sql:44-53 · grep -n "maze_id" and grep -rn "ALTER TABLE event" migrations → "maze_id   bigint,                                    -- no FK: an open question, not a missing table", with player_id and chat_id both REFERENCES owner (id), and no later ALTER adding the maze FK]`.
+  `[measured dd3778c:internal/store/migrations/00003_event_log.sql:44-53 · grep -n "maze_id" and grep -rn "ALTER TABLE event" migrations → "maze_id   bigint,                                    -- no FK: an open question, not a missing table", with player_id and chat_id both REFERENCES owner (id), and no later ALTER adding the maze FK]`.
   An FK-only definition would make `event` invisible to both halves — and `event` is the live
   in-tree precedent a later gameplay relation is most likely to copy. The name-based arm is
   what closes that.
@@ -116,9 +127,12 @@ and expensive to write falsely.
 that is always true only helps a mechanic that asks, and a mechanic that asks was never the
 risk; it also invents a schema shape for PvP and looting tables that are out of the MVP and
 not designed, which the data-contract carve-out makes expensive to undo.
-*Rejected: a source-level guard forbidding a home in a combat signature.* There is no combat
-and no looting code in the tree, so such a guard would scan an empty corpus and report clean
-for every possible tree — the failure mode `AGENTS.md` § Patterns 2 names.
+*Rejected: a source-level guard forbidding a home in a combat signature.* No combat or
+looting **function** exists in the tree — only the combat balance keys the configuration
+package decodes
+`[measured dd3778c:internal/config/balance.go:78-82 · grep -rniE "func .*(combat|loot)" over non-test Go → no match; grep -rn "CombatBalance" → "CombatBalance holds the combat dice and multipliers." and its struct]`
+— so such a guard would scan an empty corpus of signatures and report clean for every possible
+tree, which is the failure mode `AGENTS.md` § Patterns 2 names.
 
 ### D2 — What a chat knows is a view, `chat_knowledge`, over membership and personal discoveries
 
@@ -135,7 +149,7 @@ and nothing to keep in step. `SELECT DISTINCT` over `chat_membership ⋈ node_di
 The view ships with **no Go reader**. The radar and the Mini App that render it are out of
 scope, and the module's other read-only views — the `metric_*` family a Grafana datasource
 reads — have no Go reader either
-`[measured a01fe4e:non-test Go sources · grep -rln "metric_" --include=*.go . | grep -v "^./tmp" → internal/store/views_test.go alone; the same pattern matches a constructed control line and matches that test file, so the empty non-test result is the tree's and not the pattern's]`,
+`[measured dd3778c:non-test Go sources · grep -rln "metric_" --include=*.go . | grep -v "^./tmp" → internal/store/views_test.go alone; the same pattern matches a constructed control line and matches that test file, so the empty non-test result is the tree's and not the pattern's]`,
 so a reader invented here would have no caller.
 
 **The projection is a decision, not an implementor's choice**, because a view's column names,
@@ -145,9 +159,21 @@ order and types are what `CREATE OR REPLACE VIEW` can never loosen afterwards
 then the cell in the same `(q, r)` order the world's own tables use. It is chosen minimal so
 a later `first_discovered_at` is an **append**, which that statement allows: computed as
 `min(discovered_at)` under a `GROUP BY` of these same columns it leaves the row set exactly
-where `SELECT DISTINCT` puts it today. The pin is `TestViews_columnContract`, whose per-view
+where `SELECT DISTINCT` puts it today.
+
+**`player_id` is deliberately out, and the append argument does not cover it.** The design
+corpus's radar renders «кто что где нашел» and reads this view (`~/lab-private/DESIGN.md`
+§2.4), so "who" is a real future column — but adding it would **multiply the row set**, one
+row per discoverer per cell, which is not an append and which the module's own view convention
+forbids outright
+`[measured dd3778c:internal/store/migrations/00003_event_log.sql:89-90 · read → "Their column names, order and types are a permanent contract: CREATE OR REPLACE VIEW can only append a column, never drop, rename, reorder or retype one."]`.
+The radar is out of scope, and "who" is reachable today by joining `node_discovery` directly,
+which is where the per-player grain already lives. A view that answers *what a chat knows* is
+one row per cell; a view that answers *who found it* is a different view, and it can be
+created beside this one rather than by widening it. This one is `chat_knowledge` because
+AC10's "what a chat knows" is a set of cells. The pin is `TestViews_columnContract`, whose per-view
 `cases` slice is hard-coded — a view absent from it is silently unpinned
-`[measured a01fe4e:internal/store/views_test.go:59-74 · read → "TestViews_columnContract pins each view's column names, order and types — the one thing CREATE OR REPLACE VIEW can never loosen later", over a cases slice of {view, cols}]`,
+`[measured dd3778c:internal/store/views_test.go:59-74 · read → "TestViews_columnContract pins each view's column names, order and types — the one thing CREATE OR REPLACE VIEW can never loosen later", over a cases slice of {view, cols}]`,
 so subtask 1 adds the case alongside the `viewNames` entry.
 
 ### D3 — Two packages: `internal/chat` for the facts, `internal/onboard` for the front door
@@ -161,7 +187,7 @@ other's files.
 
 Not `internal/store`: that package is the ledger's write path and the item machine, and the
 persisted world was refused a home there for exactly that reason
-`[measured a01fe4e:ai-docs/key-decisions.md:149 · grep -n "KD-46 —" → "not internal/store, whose package comment scopes it to the ledger, the item machine and the event log. The migration takes the next free number in internal/store/migrations, the only directory Migrate embeds."]`. The one function that
+`[measured dd3778c:ai-docs/key-decisions.md:149 · grep -n "KD-46 —" → "not internal/store, whose package comment scopes it to the ledger, the item machine and the event log. The migration takes the next free number in internal/store/migrations, the only directory Migrate embeds."]`. The one function that
 does belong in `store` is `EnsureOwner` — find-or-create keyed on `(kind, telegram_id)`,
 delegating to `CreateOwner` on a miss — because it is `owner`'s own concern and both handlers
 create an owner: the `my_chat_member` handler creates the **chat**, the Start handler creates
@@ -173,18 +199,18 @@ which is the shape the ≥3-site rule says to lift rather than copy. **The Start
 caller's retry is what turns it into a hit** — it takes no `ON CONFLICT`. The read-then-create
 race is lost at `CreateOwner`'s own `INSERT INTO owner`, against the partial unique index on
 `(kind, telegram_id)`
-`[measured a01fe4e:internal/store/migrations/00001_ledger_core.sql:12 · read → "CREATE UNIQUE INDEX owner_kind_telegram_id_key ON owner (kind, telegram_id) WHERE telegram_id IS NOT NULL"]`,
+`[measured dd3778c:internal/store/migrations/00001_ledger_core.sql:12 · read → "CREATE UNIQUE INDEX owner_kind_telegram_id_key ON owner (kind, telegram_id) WHERE telegram_id IS NOT NULL"]`,
 which aborts the transaction; the ingest loop rolls that attempt back and the next attempt's
 read finds the row. *Rejected: `ON CONFLICT … DO NOTHING` on that insert.* It would leave
 `CreateOwner` continuing into a scope-and-account CTE for an owner that already has both, and
 `scope_singleton_key` would then raise the very same class of violation one statement later —
 so the conflict clause buys nothing and hides where the race was lost. Today the race is
 unreachable, because the loop settles updates one at a time
-`[measured a01fe4e:internal/ingest/loop.go:207-209 · read → "for _, raw := range updates { if err := l.processUpdate(ctx, raw); err != nil {" — a sequential range, no fan-out]`,
+`[measured dd3778c:internal/ingest/loop.go:207-209 · read → "for _, raw := range updates { if err := l.processUpdate(ctx, raw); err != nil {" — a sequential range, no fan-out]`,
 but the function is being lifted for callers that are not the loop, and both of them already
 retry a failed attempt in a **fresh** transaction — the ingest loop by beginning one per
 attempt under its retry bound, the scheduler worker by beginning its own per claimed task
-`[measured a01fe4e:internal/ingest/attempt.go:69-71 and internal/scheduler/execute.go:91,103 · read → attemptOnce opens with "tx, err := l.pool.Begin(ctx)" and is called once per attempt by runAttempts; executeOne opens with "tx, err := conn.Begin(ctx)"]`.
+`[measured dd3778c:internal/ingest/attempt.go:69-71 and internal/scheduler/execute.go:91,103 · read → attemptOnce opens with "tx, err := l.pool.Begin(ctx)" and is called once per attempt by runAttempts; executeOne opens with "tx, err := conn.Begin(ctx)"]`.
 
 Import edges: `chat → store`; `onboard → ingest, chat, store, telego`; `cmd/bot → onboard,
 chat`. `internal/ingest` gains no new import (see D4); Go refuses an import cycle at compile
@@ -196,13 +222,13 @@ time, so the whole-module build is the gate that judges this edge set — `[deri
 AC13 says that after the bot is removed the bot sends that chat **nothing**. The seam where
 that cannot be bypassed is the outbound gate: today a destination chat id is allowed outright
 when it is in `ALLOWED_CHAT_IDS`, and otherwise allowed when a player owner row exists for it
-`[measured a01fe4e:internal/ingest/gate.go:102-128 · read → allowKnown: allowlist hit returns nil, then the cache, then PlayerLookup]`.
+`[measured dd3778c:internal/ingest/gate.go:102-128 · read → allowKnown: allowlist hit returns nil, then the cache, then PlayerLookup]`.
 An allowlisted chat the bot was removed from would still be written to. So the gate's chat
 branch gains a presence requirement: **allowlisted AND the bot is currently present**.
 
 **The branch order is part of the decision**, because the allowlist and the player carve-out
 read the same `telegram_id` column and an operator may legitimately allowlist a player's DM
-`[measured a01fe4e:ai-docs/domain-invariants.md:143 · read → "A destination is allowed when its chat_id token parses as an int64 present in ALLOWED_CHAT_IDS, or when an owner row exists with kind = 'player' and that telegram_id … because a chat's own id lives in that same telegram_id column"]`.
+`[measured dd3778c:ai-docs/domain-invariants.md:143 · read → "A destination is allowed when its chat_id token parses as an int64 present in ALLOWED_CHAT_IDS, or when an owner row exists with kind = 'player' and that telegram_id … because a chat's own id lives in that same telegram_id column"]`.
 `allowKnown` therefore composes as: **the positive player cache first** (in memory, so a
 repeat DM costs nothing and the hot path does not move); then **allowlisted and present**,
 which allows; then, on a **fall-through**, the player lookup, which allows and caches. An
@@ -220,7 +246,7 @@ destination is allowed again.
 
 The presence answer is **not cached**. The gate's existing cache is positive and lives as long
 as the gate
-`[measured a01fe4e:internal/ingest/gate.go:44-48,58-59 · read → "The cache holds positive results only, for the Gate's lifetime — nothing negative is remembered", over an unexported cache map[int64]struct{} guarded by the gate's own mutex]`,
+`[measured dd3778c:internal/ingest/gate.go:44-48,58-59 · read → "The cache holds positive results only, for the Gate's lifetime — nothing negative is remembered", over an unexported cache map[int64]struct{} guarded by the gate's own mutex]`,
 which is correct for "this telegram id is a player" (a player never stops existing) and wrong
 for presence (a removal must take effect at once). Chat traffic is rare by design — the
 notification budget is a standing design obligation (`~/lab-private/DESIGN.md` §1) — and the
@@ -233,7 +259,7 @@ and `internal/chat` supplies the implementation the composition root injects thr
 already-exported `ingest.NewGate`. What that buys is narrow and worth stating precisely:
 `internal/ingest` keeps its `internal/store` import either way — `attempt.go` and `offset.go`
 both need it and are untouched here
-`[measured a01fe4e:internal/ingest/attempt.go:14 and internal/ingest/offset.go:9 · grep -n "internal/store" → both import github.com/maratik123/lab-game/internal/store]`
+`[measured dd3778c:internal/ingest/attempt.go:14 and internal/ingest/offset.go:9 · grep -n "internal/store" → both import github.com/maratik123/lab-game/internal/store]`
 — so the claim is **not** that the package sheds a domain dependency. It is that `ingest`
 gains no import of `internal/chat`, and that the gate's two facts are assembled where every
 other subsystem is assembled rather than inside the package that consumes them. No compat
@@ -248,7 +274,7 @@ production caller after subtask 6 removes its current one.
 
 **The deletion and the rewire are one subtask, because the deleted constructor has a caller
 outside its own package.** `cmd/bot`'s start-up builds the gate through it
-`[measured a01fe4e:cmd/bot/assemble.go:326 · grep -n "NewPoolGate" → "gate := ingest.NewPoolGate(cfg.AllowedChatIDs, pool)"]`,
+`[measured dd3778c:cmd/bot/assemble.go:326 · grep -n "NewPoolGate" → "gate := ingest.NewPoolGate(cfg.AllowedChatIDs, pool)"]`,
 so splitting the rename from the rewire would leave `go build ./...` red across every
 intervening subtask — and that is the first gate `/task` Step 8 runs after each one, with the
 coverage ratchet refusing a commit whose suite is not green. `internal/ingest`'s own
@@ -280,7 +306,7 @@ chooses and wires the source. AC4 is still proved end to end: § Test Design pus
 
 **No welcome message is sent from the handler.** A handler must not issue an outbound call
 whose permission rests on a row its own uncommitted transaction created
-`[measured a01fe4e:internal/ingest/router.go:70-80 · read → "A Handler MUST NOT issue an outbound Bot API call whose permission rests on a row its own uncommitted transaction created"]`,
+`[measured dd3778c:internal/ingest/router.go:70-80 · read → "A Handler MUST NOT issue an outbound Bot API call whose permission rests on a row its own uncommitted transaction created"]`,
 and the presence row the gate would read is created by that very transaction. The designed
 route is the outbound queue, which is another issue's.
 
@@ -289,10 +315,10 @@ route is the outbound queue, which is another issue's.
 The ingest loop settles an update by advancing the offset inside the handler's own
 transaction; a crash between handling and commit means the same update is delivered again, and
 the loop imposes no per-update idempotency of its own
-`[measured a01fe4e:internal/ingest/attempt.go:66-110 · read → attemptOnce begins a tx, calls Handle, advances the offset and commits; the only dedupe branch is store.ErrAlreadyPosted, which a handler raises by posting]`.
+`[measured dd3778c:internal/ingest/attempt.go:66-110 · read → attemptOnce begins a tx, calls Handle, advances the offset and commits; the only dedupe branch is store.ErrAlreadyPosted, which a handler raises by posting]`.
 `store.AppendEvent` is not idempotent by construction — two equal `Event` values write two
 rows
-`[measured a01fe4e:internal/store/event.go:34-37 · read → "Event carries no occurrence-time field … and no idempotency key: unlike PlayerOperation, two Post or AppendEvent calls built from equal Event values write two distinct event rows"]`.
+`[measured dd3778c:internal/store/event.go:34-37 · read → "Event carries no occurrence-time field … and no idempotency key: unlike PlayerOperation, two Post or AppendEvent calls built from equal Event values write two distinct event rows"]`.
 The handlers therefore emit **only** where committed state actually changes:
 
 - `bot_added_to_chat` / `bot_kicked` — emitted iff the bot's presence in the chat changes.
@@ -301,6 +327,21 @@ The handlers therefore emit **only** where committed state actually changes:
   judged against what Telegram says the prior state was rather than against an absence. A
   promotion (`member` → `administrator`) is not a change and emits nothing; a redelivery finds
   the stored row already agreeing and emits nothing.
+
+  **Only the event is conditional. The chat owner, its home and the presence row are written
+  on every handled update**, change or no change, so the gate has its row from the first
+  `my_chat_member` the bot ever sees for that chat whatever kind of transition it reports.
+  That separation is what keeps the funnel's gap (below) from also being an outbound-traffic
+  gap.
+
+  *The path this rule loses, named rather than left to be found:* if the **first** update the
+  bot ever sees for a chat is a promotion, the prior value read from `old_chat_member` is
+  already "present", so no `bot_added_to_chat` is ever emitted for it. The presence row is
+  written and the gate works, but the funnel's chat stage keys on that event and `event` is
+  append-only, so the chat is missing from the headline number permanently. It is reachable
+  only in the pre-existing-chat window — a chat the bot joins after this ships always reports
+  the join as its own status change first — and it carries the same remedy, which § Risks
+  states once for both.
 - `player_started` — emitted iff **this transaction creates the player owner row or inserts a
   membership row**. Either is an arrival: the first is the player arriving in the game, the
   second is the player arriving *from a chat*. A Start that changes neither — a repeat Start
@@ -312,7 +353,7 @@ The handlers therefore emit **only** where committed state actually changes:
   earliest **chat-bearing** one — the predicate filters `chat_id IS NOT NULL` before
   `DISTINCT ON` picks a row, and the view's own comment says "the chat of their earliest such
   event", which is a view written in the expectation that a player may have several
-  `[measured a01fe4e:internal/store/migrations/00003_event_log.sql:96-110 · read → "each player with a player_started naming a chat belongs to the chat of their earliest such event, ties broken by the lower chat id" over "SELECT DISTINCT ON (e.player_id) … WHERE e.type = 'player_started' AND e.player_id IS NOT NULL AND e.chat_id IS NOT NULL ORDER BY e.player_id, e.ts, e.chat_id"]`.
+  `[measured dd3778c:internal/store/migrations/00003_event_log.sql:96-110 · read → "each player with a player_started naming a chat belongs to the chat of their earliest such event, ties broken by the lower chat id" over "SELECT DISTINCT ON (e.player_id) … WHERE e.type = 'player_started' AND e.player_id IS NOT NULL AND e.chat_id IS NOT NULL ORDER BY e.player_id, e.ts, e.chat_id"]`.
   Emitting only on player creation would therefore drop a real onboarding path out of the
   MVP's headline number: a player who takes AC9's route (a bare Start, chat dimension null)
   and **later** arrives through chat X's link would record the membership, emit nothing, and
@@ -320,7 +361,7 @@ The handlers therefore emit **only** where committed state actually changes:
   the cost of `player_started` firing more than once per player — which the two shipped views
   already absorb, because the funnel takes the earliest chat-bearing row and
   `metric_retention_daily` takes each player's `min` day
-  `[measured a01fe4e:internal/store/migrations/00003_event_log.sql:168-173 · read → "new_players AS (SELECT e.player_id, min((e.ts AT TIME ZONE 'UTC')::date) AS day FROM event e WHERE e.type = 'player_started' AND e.player_id IS NOT NULL GROUP BY e.player_id)"]`.
+  `[measured dd3778c:internal/store/migrations/00003_event_log.sql:168-173 · read → "new_players AS (SELECT e.player_id, min((e.ts AT TIME ZONE 'UTC')::date) AS day FROM event e WHERE e.type = 'player_started' AND e.player_id IS NOT NULL GROUP BY e.player_id)"]`.
   AC6's second chat therefore gets its own event, and the funnel still attributes the player
   to the first chat, because that row is the earlier one.
 
@@ -332,13 +373,13 @@ The handler uses it rather than hand-rolling a status table (`AGENTS.md` § Depe
 Versions), and keeps `MemberStatus()` for the event payload. A `nil` chat member on a
 malformed update is an error return, never a panic — the panic index is empty and this task
 keeps it so
-`[measured a01fe4e:ai-docs/panic-index.md · tail -3 → the table body is the placeholder row "| — | — | — |", with no entry above it]`.
+`[measured dd3778c:ai-docs/panic-index.md · tail -3 → the table body is the placeholder row "| — | — | — |", with no entry above it]`.
 
 ### D7 — What each event carries
 
 Each is already registered in the `event_type_definition` catalog, so no dictionary
 migration is owed
-`[measured a01fe4e:internal/store/migrations/00003_event_log.sql:21,22,36 · grep -n → (1, 'bot_added_to_chat', 'low_volume'), (2, 'player_started', 'low_volume'), (16, 'bot_kicked', 'low_volume')]`.
+`[measured dd3778c:internal/store/migrations/00003_event_log.sql:21,22,36 · grep -n → (1, 'bot_added_to_chat', 'low_volume'), (2, 'player_started', 'low_volume'), (16, 'bot_kicked', 'low_volume')]`.
 
 - `bot_added_to_chat` — dimension `chat_id` (the chat owner's id); no player dimension,
   because the actor of the add need not be a player in the game and the column is an `owner`
@@ -363,7 +404,7 @@ migration is owed
 **Which side of the column/payload line each field falls on is not this design's choice.**
 The four §13.4 dimensions are columns and everything else is JSONB, uniformly across types,
 and the reason that bites here is referential integrity
-`[measured a01fe4e:ai-docs/domain-invariants.md:84,88 · read → "The §13.4 dimensions — player, chat, maze, depth — are columns on event; everything else about an event is payload JSONB. The rule is uniform across types" and "player_id and chat_id carry foreign keys to owner. JSONB cannot express referential integrity"]`.
+`[measured dd3778c:ai-docs/domain-invariants.md:84,88 · read → "The §13.4 dimensions — player, chat, maze, depth — are columns on event; everything else about an event is payload JSONB. The rule is uniform across types" and "player_id and chat_id carry foreign keys to owner. JSONB cannot express referential integrity"]`.
 So every event above carries its owner references as **columns**. The chat's **telegram** id
 is not one of the four dimensions, so it stays in the payload beside the column, deliberately
 and in all three events: the column is the join key, the payload value is what a post-mortem
@@ -391,7 +432,7 @@ set — the types excluded by default are `chat_member`, `message_reaction` and
 — but this loop never leaves `allowed_updates` unset: it transmits its own route set on every
 call, carrying a reserved sentinel while that set is empty, so today the bot is asking for an
 id space it can never receive
-`[measured a01fe4e:internal/ingest/loop.go:136-146 · read → allowedUpdates is built from Router.Kinds(), with a reserved sentinel only while the route set is empty]`.
+`[measured dd3778c:internal/ingest/loop.go:136-146 · read → allowedUpdates is built from Router.Kinds(), with a reserved sentinel only while the route set is empty]`.
 
 **The Start handler LOOKS the link's chat UP and never creates one.** `EnsureOwner` is the
 **player** side of that handler and nothing else: a chat exists in the game because the bot
@@ -414,7 +455,7 @@ there.
 Both handlers write through inserts that select the owner row by **kind**, the shape
 `world.RecordDiscovery` already uses, so a membership whose chat is not a chat or whose player
 is not a player is unwritable rather than merely unwritten
-`[measured a01fe4e:internal/world/discovery.go:14-22 · read → "INSERT INTO node_discovery … SELECT $1, $2, $3, $4 FROM owner WHERE id = $4 AND kind = 'player' ON CONFLICT … DO NOTHING"]`,
+`[measured dd3778c:internal/world/discovery.go:14-22 · read → "INSERT INTO node_discovery … SELECT $1, $2, $3, $4 FROM owner WHERE id = $4 AND kind = 'player' ON CONFLICT … DO NOTHING"]`,
 and the ambiguous zero-rows case is disambiguated by reading the owner's kind exactly as that
 function does.
 
@@ -455,7 +496,7 @@ it carries only one of the three statements. A `scope_definition` seeded by a mi
 creates scopes for owners created *after* it, because `CreateOwner` runs at owner-creation
 time and not as a migration-time sweep, so the item-machine migration wrote a backfill and
 bound every later one to the same obligation
-`[measured a01fe4e:internal/store/migrations/00007_item_machine.sql:48-56 · read → "Backfill: a scope_definition seeded here creates scopes only for owners created after it … Every later scope-definition migration owes the same three statements."]`.
+`[measured dd3778c:internal/store/migrations/00007_item_machine.sql:48-56 · read → "Backfill: a scope_definition seeded here creates scopes only for owners created after it … Every later scope-definition migration owes the same three statements."]`.
 Here the scope statement is written —
 `INSERT INTO scope (owner_id, scope_definition_id) SELECT o.id, <home id> FROM owner o WHERE
 o.kind = 'chat' ON CONFLICT (owner_id, scope_definition_id) DO NOTHING` — and the account and
@@ -470,7 +511,7 @@ The migration rewrites nothing and renames nothing, so rows written before it ar
 and there is no deploy window in which two shapes are read.
 
 **Rollback** is the forward-only posture KD-46 already states
-`[measured a01fe4e:ai-docs/key-decisions.md:155 · grep -n "The migration is forward-only[^.]*\." → "The migration is forward-only, so rolling the binary back leaves the tables in place and unread, and rolling forward again finds them."]`:
+`[measured dd3778c:ai-docs/key-decisions.md:155 · grep -n "The migration is forward-only[^.]*\." → "The migration is forward-only, so rolling the binary back leaves the tables in place and unread, and rolling forward again finds them."]`:
 rolling the binary back leaves the tables and the seeded row in place and unread — the older
 binary neither creates chats nor reads presence — and rolling forward again finds them. The one reader an older binary shares
 is `store.CreateOwner`, which walks `scope_definition` generically and would create the home
@@ -478,7 +519,7 @@ scope for any chat it created; it creates none.
 
 `chat_membership.player_id` gets an index of its own: it trails the primary key, so the
 module's foreign-key coverage test would otherwise fail it
-`[measured a01fe4e:internal/store/fkcover_test.go:26-33 · read → uncoveredFKs returns every FK whose referencing columns are not covered by the leading columns of some index on the same relation]`.
+`[measured dd3778c:internal/store/fkcover_test.go:26-33 · read → uncoveredFKs returns every FK whose referencing columns are not covered by the leading columns of some index on the same relation]`.
 
 ## Decomposition
 
@@ -524,7 +565,7 @@ needed.
 - **The Postgres data-modifying CTE must create a scope that has no account definitions.**
   `CreateOwner` builds scopes and accounts in one statement and returns early when the account
   set comes back empty
-  `[measured a01fe4e:internal/store/owner.go:80-120 · read → the WITH s AS (INSERT INTO scope … RETURNING) INSERT INTO account … pattern, then "if len(createdAccounts) == 0 { return owner, nil }"]`,
+  `[measured dd3778c:internal/store/owner.go:80-120 · read → the WITH s AS (INSERT INTO scope … RETURNING) INSERT INTO account … pattern, then "if len(createdAccounts) == 0 { return owner, nil }"]`,
   which is exactly the path a chat now takes. If the CTE did not execute to completion the
   home would silently not exist. Mitigation: AC1's test asserts the home scope row directly,
   so the premise is executed rather than assumed — `[derived → the AC1 test in subtask 8]`.
@@ -542,11 +583,16 @@ needed.
   `[measured core.telegram.org/bots/api#update, fetched 2026-09-19 · WebFetch → "Optional. The bot's chat member status was updated in a chat."]`,
   so for a chat the bot joined before the handler existed no update ever arrives, the row is
   never written, and the gate's chat branch falls through to the player lookup, which refuses
-  a group id. There is no migration route to repair it: the set of chats the bot is in is not
-  a table, and `ALLOWED_CHAT_IDS` is configuration, not a record of membership. **The remedy
-  is operational and stated here rather than discovered by the first sender task: the bot is
-  removed from and re-added to each pre-existing chat once, which produces the
-  `my_chat_member` the handler needs** — and, correctly, also produces the
+  a group id. **Its neighbour costs the headline metric instead of the traffic:** if the first
+  update that chat ever produces is a *promotion* rather than a join, the presence row is
+  written and the gate works, but the prior value D6 reads from `old_chat_member` is already
+  "present", so no `bot_added_to_chat` is emitted — and the activation funnel's chat stage
+  keys on that event, on an append-only table, so the chat is absent from the MVP's headline
+  number for good. There is no migration route to repair either: the set of chats the bot is
+  in is not a table, and `ALLOWED_CHAT_IDS` is configuration, not a record of membership.
+  **One remedy covers both, operational and stated here rather than discovered by the first
+  sender task: the bot is removed from and re-added to each pre-existing chat once, which
+  produces the `my_chat_member` the handler needs** — and, correctly, also produces the
   `bot_added_to_chat` that puts the chat into the funnel. Blast radius today is nil because no
   production sender exists; the cost of not writing it down is that the first one meets it
   against the MVP's single friendly chat. Subtask 11 carries the sentence into the gate
@@ -564,14 +610,13 @@ needed.
   and the contention gate is the route that reaches it first.** `testdb.Binaries` is a term of
   `ceiling = clients × Binaries × parallel × (schemaMaxConns + 1) + ceilingSlack`, refused
   above `ceilingMax`
-  `[measured a01fe4e:internal/testdb/server.go:252-280 and internal/testdb/testdb.go:74 · read → the formula as quoted, ceilingMax 2000, ceilingSlack 32, schemaMaxConns 4]`.
+  `[measured dd3778c:internal/testdb/server.go:252-280 and internal/testdb/testdb.go:74 · read → the formula as quoted, ceilingMax 2000, ceilingSlack 32, schemaMaxConns 4]`.
   The threshold is therefore a **bound on the product `clients × parallel`**, and this task
   moves it from above 49 to above 39. The parallelism term defaults to the host's
   `runtime.GOMAXPROCS(0)`, and the contention gate passes two clients
-  `[measured a01fe4e:cmd/testpg/run.go:88 and Makefile:37,158 · grep -n → fs.Int("parallel", runtime.GOMAXPROCS(0), …); CONTENTION_PARALLEL ?= $(shell nproc 2>/dev/null || echo 4); testpg --clients 2 --parallel $(CONTENTION_PARALLEL)]`,
+  `[measured dd3778c:cmd/testpg/run.go:88 and Makefile:37,158 · grep -n → fs.Int("parallel", runtime.GOMAXPROCS(0), …); CONTENTION_PARALLEL ?= $(shell nproc 2>/dev/null || echo 4); testpg --clients 2 --parallel $(CONTENTION_PARALLEL)]`,
   so `make test` newly refuses on a host of forty cores or more and `make test-contention` on
-  one of twenty or more — neither of which the development host reaches, being below twenty
-  cores. Mitigation: the refusal is loud, names
+  one of twenty or more. Mitigation: the refusal is loud, names
   every term and names the flags that lower it, and both `--clients` and `--parallel` are
   caller-supplied; and the constant is raised **by each subtask that adds a database-backed
   binary, in that subtask's own commit** (5 for `internal/chat`, 8 for `internal/onboard`),
@@ -595,7 +640,7 @@ Every claim below is about a test that does not exist yet.
 exist; what this subtask owes is the **hard-coded manifest inside each of them**, because a
 migration that adds a relation or a view moves a literal in four places and every one of them
 is a `slices.Equal` against a compiled-in list
-`[measured a01fe4e:internal/store/migrate_test.go:41-54,142-146 and internal/store/views_test.go:17-26,71-74 · read → the base-table want list compared with slices.Equal; a count over goose_db_version asserted against a literal; the viewNames list; the per-view cases slice of TestViews_columnContract]`.
+`[measured dd3778c:internal/store/migrate_test.go:41-54,142-146 and internal/store/views_test.go:17-26,71-74 · read → the base-table want list compared with slices.Equal; a count over goose_db_version asserted against a literal; the viewNames list; the per-view cases slice of TestViews_columnContract]`.
 Entry points: the catalog mirror comparison, the base-table set, the applied-migration count,
 the exact-view-set list, the view column contract, and the foreign-key coverage test. Scenarios:
 the catalog mirror fails on either side seeding a scope definition the other does not know; the
@@ -609,8 +654,11 @@ point: the view, queried directly, since it has no Go reader. Scenarios: (a) two
 chat each discover a distinct cell and the chat knows both, and a cell discovered by both
 appears once — AC10; (b) a player who is a member of a second chat discovers a cell, and the
 first chat does not know it — AC11; (c) discoveries recorded *before* the membership are in the
-chat's knowledge as soon as the membership row exists — AC12; (d) a chat with no members knows
-nothing. Fixtures: owners of both kinds, a maze row and `node_discovery` rows written as plain
+chat's knowledge as soon as the membership row exists — AC12's first clause; **(c′) one player
+who is a member of chats A and B discovers one cell, and that cell is in A's knowledge and in
+B's — AC12's second clause**, the knowledge counterpart of AC6's multi-chat player, which no
+other scenario reaches (b has the player in some *other* chat, not in both); (d) a chat with
+no members knows nothing. Fixtures: owners of both kinds, a maze row and `node_discovery` rows written as plain
 SQL — the suite cannot import `internal/world`, which imports `internal/store`.
 `[derived → AC10, AC11, AC12]`
 
@@ -618,10 +666,13 @@ SQL — the suite cannot import `internal/world`, which imports `internal/store`
 has **two halves**, because the shipped schema answers them differently (D1), and a single
 blanket rule would be red on the tree it is meant to certify.
 
-A *maze-touching relation* is any relation that **either** declares a column referencing
-`maze (id)` **or** declares a column named `maze_id`, **whatever its primary key** — read from
-the catalogs, never from a hard-coded table list, so a relation added later is in scope
-without an edit. Both arms are load-bearing, for the reasons D1 gives: a hostile mechanic's
+A *maze-touching relation* is any **ordinary table** (`table_type = 'BASE TABLE'`, i.e.
+`relkind = 'r'`) that **either** declares a column referencing `maze (id)` **or** declares a
+column named `maze_id`, **whatever its primary key** — read from the catalogs, never from a
+hard-coded table list, so a table added later is in scope without an edit. The base-table
+filter is not optional: without it the scan finds `chat_knowledge`, which subtask 1 creates
+and whose projection carries `maze_id`, and the asserted set below would be red on this
+design's own output (D1 gives the reason a view is the right thing to exclude). Both arms are load-bearing, for the reasons D1 gives: a hostile mechanic's
 table is as likely to carry a surrogate `id` primary key as to key on the cell, and `event`
 is the shipped precedent for a `maze_id` with no foreign key at all. The shipped set the scan
 must find is therefore `chunk`, `node_discovery` **and `event`**, and the test asserts that
@@ -647,7 +698,7 @@ a claim about its own extractor.
   where anything is. A pair with no row is a failure naming it. This is the shape
   `internal/gateguard` already uses for bare `go` statements — an allow-list row per site,
   answering fixed questions
-  `[measured a01fe4e:internal/gateguard/guard_test.go:60,283,287 · grep -n → "launchTable is the reviewed allow list for every bare go statement", failures reported as "makes %d launch(es) with no allow-list row" and "allow-list row answers %d"]`.
+  `[measured dd3778c:internal/gateguard/guard_test.go:60,283,287 · grep -n → "launchTable is the reviewed allow list for every bare go statement", failures reported as "makes %d launch(es) with no allow-list row" and "allow-list row answers %d"]`.
   Scenarios: (c) the shipped schema passes with exactly those rows and no others — an allow-list
   row matching no pair is **also** a failure, so the list cannot rot into a blanket exemption;
   (d) **the control** — a relation created inside the test carrying an `owner (id)` reference
@@ -671,7 +722,7 @@ found before judging, so an extractor that matched nothing cannot report clean. 
 **Subtask 4 — `store.EnsureOwner`.** Location: `internal/store/owner_test.go`. Entry point:
 `EnsureOwner`. **`store.Owner` does not change shape**: it is `{ID, Kind, TelegramID,
 Accounts}` and carries no scope field
-`[measured a01fe4e:internal/store/owner.go:49-56 · read → "Owner is the result of CreateOwner: the created owner row plus every account created for its scopes." over a struct of ID, Kind, TelegramID, Accounts]`,
+`[measured dd3778c:internal/store/owner.go:49-56 · read → "Owner is the result of CreateOwner: the created owner row plus every account created for its scopes." over a struct of ID, Kind, TelegramID, Accounts]`,
 and since the home scope carries no `account_definition` row (D1) a chat's `Accounts` is empty
 before and after this migration. The home is therefore asserted **by reading the `scope` row**
 for the created owner, never off the returned value — the same read § Risks names as AC1's
@@ -688,7 +739,7 @@ binary standing on `internal/storetest`'s migrated pool, whose `TestMain` is
 `os.Exit(leaktest.Main(m, testdb.Main))` — the module's shape for a package that provisions a
 database — and which therefore raises `testdb.Binaries` in this same commit, because the
 manifest test fails by name in both directions the moment the tree and the constant disagree
-`[measured a01fe4e:internal/testdb/server.go:219-226 and internal/testdb/server_test.go:531-553 · read → "A new database-backed package must update this constant" and "a package added or removed from the set of testdb.Main callers must change the constant in the same commit, and this test fails by name in both directions when it does not"]`.
+`[measured dd3778c:internal/testdb/server.go:219-226 and internal/testdb/server_test.go:531-553 · read → "A new database-backed package must update this constant" and "a package added or removed from the set of testdb.Main callers must change the constant in the same commit, and this test fails by name in both directions when it does not"]`.
 Entry points: the presence write, the presence read, and the membership write.
 Scenarios: presence written for a chat and read back; a repeat write of the same value reports
 no change **and leaves `changed_at` where it was**; a flip reports a change **and moves
@@ -744,7 +795,11 @@ by whom and by what status transition, read back from the row alone — AC16 —
 `chat_id` column is non-null and equals the chat owner's id**, joined back to `owner` in the
 assertion rather than read out of the payload, which is the half a payload-only reading would
 have let through (D7); (g) a promotion
-from member to administrator changes nothing and appends nothing; (h) the same update handled
+from member to administrator leaves presence true and appends nothing; **(g′) a promotion as
+the FIRST update the chat ever produces still writes the chat owner, its home and a present
+row — so the gate works — and still appends no `bot_added_to_chat`**, which is the funnel gap
+§ Risks names: the scenario exists to pin the consequence as chosen rather than to let a green
+(g) read as an endorsement of it; (h) the same update handled
 twice appends nothing the second time — D6; (i) a `my_chat_member` for a private chat and one
 for a channel are no-ops; (j) a malformed update with no new chat member returns an error and
 does not panic. Fixtures: `telego.Update` values built in the test, the migrated pool, and a
