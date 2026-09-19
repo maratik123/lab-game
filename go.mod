@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/jackc/pgx-shopspring-decimal v0.0.0-20220624020537-1d36b5a1853e
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/joho/godotenv v1.5.1
 	github.com/moby/moby/client v0.5.1
 	github.com/mymmrac/telego v1.11.2
