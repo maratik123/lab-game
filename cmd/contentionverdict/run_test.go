@@ -116,6 +116,38 @@ func TestRun_classifiesTheInstrumentBeforeTheGateStatus(t *testing.T) {
 			want:      exitInstrument,
 			wantClass: "crash recovery",
 		},
+		{
+			name:      "reports_instrument_failure_when_the_race_log_is_empty_and_the_gate_passed",
+			race:      "",
+			load:      cleanLog,
+			status:    0,
+			want:      exitInstrument,
+			wantClass: "is empty",
+		},
+		{
+			name:      "reports_instrument_failure_when_the_race_log_is_empty_and_the_gate_failed",
+			race:      "",
+			load:      cleanLog,
+			status:    1,
+			want:      exitInstrument,
+			wantClass: "is empty",
+		},
+		{
+			name:      "reports_instrument_failure_when_the_load_log_is_empty_and_the_gate_passed",
+			race:      cleanLog,
+			load:      "",
+			status:    0,
+			want:      exitInstrument,
+			wantClass: "is empty",
+		},
+		{
+			name:      "reports_instrument_failure_when_the_load_log_is_empty_and_the_gate_failed",
+			race:      cleanLog,
+			load:      "",
+			status:    1,
+			want:      exitInstrument,
+			wantClass: "is empty",
+		},
 	}
 
 	for _, tc := range tests {
@@ -149,6 +181,49 @@ func TestRun_unreadableLog_isAnInstrumentFailure(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", race, missing}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
 		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
+	}
+}
+
+// TestRun_emptyLog_namesThePathThatWasNeverWritten keeps the report
+// useful: a run stopped because a log holds nothing has to say which log,
+// or the reader is left with two candidates and no way to tell them apart.
+func TestRun_emptyLog_namesThePathThatWasNeverWritten(t *testing.T) {
+	t.Parallel()
+
+	race := writeLog(t, "race.log", cleanLog)
+	load := writeLog(t, "load.log", "")
+
+	var stdout, stderr bytes.Buffer
+	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", race, load}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
+		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), load) {
+		t.Errorf("report = %q, want it to name %s — otherwise the reader cannot tell which of the two logs was never written", stdout.String(), load)
+	}
+}
+
+// TestRun_emptyLog_isDecidedBeforeTheServerIsProbed locks the order: a log
+// that was never written is evidence that does not exist, and a server
+// answering afterwards cannot supply it. Reaching the probe at all would
+// mean a live server could turn absent evidence into a pass.
+func TestRun_emptyLog_isDecidedBeforeTheServerIsProbed(t *testing.T) {
+	t.Parallel()
+
+	race := writeLog(t, "race.log", "")
+	load := writeLog(t, "load.log", cleanLog)
+
+	probed := false
+	spy := func(context.Context, string) error {
+		probed = true
+		return nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", race, load}, spy, &stdout, &stderr); got != exitInstrument {
+		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
+	}
+	if probed {
+		t.Error("the server was probed although a child log was never written; evidence that does not exist cannot be rehabilitated by a live server")
 	}
 }
 

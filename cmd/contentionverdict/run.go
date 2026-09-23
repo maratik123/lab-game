@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -59,15 +60,24 @@ var signatures = []signature{
 // prober reports whether the shared server named by dsn is answering.
 type prober func(ctx context.Context, dsn string) error
 
+// errEmptyLog is the sentinel scanLogs wraps with the offending path when
+// a child log holds zero bytes: a log the children never wrote carries
+// exactly as little evidence as one that could not be read.
+var errEmptyLog = errors.New("is empty — the children never wrote it")
+
 // scanLogs returns the first signature that any of paths contains. A
-// path it cannot read is an error rather than a clean result: a
-// classification made over a log that was never read is a claim about
-// the read.
+// path it cannot read, or one that was successfully opened but holds
+// zero bytes, is an error rather than a clean result: a classification
+// made over a log that was never read — or never written — is a claim
+// about the read.
 func scanLogs(paths []string) (signature, bool, error) {
 	for _, p := range paths {
 		b, err := os.ReadFile(p) //nolint:gosec // paths are this command's own argument vector, the child logs it was invoked to classify, never external input
 		if err != nil {
 			return signature{}, false, fmt.Errorf("read %s: %w", p, err)
+		}
+		if len(b) == 0 {
+			return signature{}, false, fmt.Errorf("%s %w", p, errEmptyLog)
 		}
 		text := string(b)
 		for _, s := range signatures {
@@ -124,6 +134,10 @@ func run(args []string, probe prober, stdout, stderr io.Writer) int {
 	}
 
 	sig, found, err := scanLogs(logs)
+	if errors.Is(err, errEmptyLog) {
+		logf(stdout, "test-contention: INSTRUMENT FAILURE — %v, so this run says nothing about contention either way\n", err)
+		return exitInstrument
+	}
 	if err != nil {
 		logf(stdout, "test-contention: INSTRUMENT FAILURE — the classification itself failed (%v), so a clean result would be a claim about the classification\n", err)
 		return exitInstrument
