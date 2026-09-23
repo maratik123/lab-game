@@ -13,12 +13,28 @@ import (
 	"time"
 )
 
-// alwaysAlive is a prober that always reports the server alive.
-func alwaysAlive(context.Context, string) error { return nil }
+// testRunStart is the instant these tests use as the moment the classified
+// run began. It is what they pass as -since.
+var testRunStart = time.Unix(1_700_000_000, 0)
+
+// sinceArg is testRunStart in the wire form the -since flag takes.
+var sinceArg = strconv.FormatInt(testRunStart.UnixNano(), 10)
+
+// alwaysAlive is a prober reporting a server that started long before the
+// run these tests describe — one that answered throughout and never
+// restarted under them.
+func alwaysAlive(context.Context, string) (time.Time, error) {
+	return testRunStart.Add(-time.Hour), nil
+}
+
+// startedAt is a prober reporting a server whose last start was t.
+func startedAt(t time.Time) prober {
+	return func(context.Context, string) (time.Time, error) { return t, nil }
+}
 
 // alwaysDead is a prober that always reports the same probe error.
 func alwaysDead(err error) prober {
-	return func(context.Context, string) error { return err }
+	return func(context.Context, string) (time.Time, error) { return time.Time{}, err }
 }
 
 // writeLog writes body to a file named name under the test's own
@@ -158,7 +174,7 @@ func TestRun_classifiesTheInstrumentBeforeTheGateStatus(t *testing.T) {
 			load := writeLog(t, "load.log", tc.load)
 
 			var stdout, stderr bytes.Buffer
-			got := run([]string{"-status", strconv.Itoa(tc.status), "-dsn", "postgres://irrelevant", race, load}, alwaysAlive, &stdout, &stderr)
+			got := run([]string{"-status", strconv.Itoa(tc.status), "-dsn", "postgres://irrelevant", "-since", sinceArg, race, load}, alwaysAlive, &stdout, &stderr)
 
 			if got != tc.want {
 				t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, tc.want, stdout.String(), stderr.String())
@@ -179,7 +195,7 @@ func TestRun_unreadableLog_isAnInstrumentFailure(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "load.log")
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", race, missing}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
+	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", "-since", sinceArg, race, missing}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
 		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
 	}
 }
@@ -194,7 +210,7 @@ func TestRun_emptyLog_namesThePathThatWasNeverWritten(t *testing.T) {
 	load := writeLog(t, "load.log", "")
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", race, load}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
+	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", "-since", sinceArg, race, load}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
 		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), load) {
@@ -213,13 +229,13 @@ func TestRun_emptyLog_isDecidedBeforeTheServerIsProbed(t *testing.T) {
 	load := writeLog(t, "load.log", cleanLog)
 
 	probed := false
-	spy := func(context.Context, string) error {
+	spy := func(context.Context, string) (time.Time, error) {
 		probed = true
-		return nil
+		return testRunStart.Add(-time.Hour), nil
 	}
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", race, load}, spy, &stdout, &stderr); got != exitInstrument {
+	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", "-since", sinceArg, race, load}, spy, &stdout, &stderr); got != exitInstrument {
 		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
 	}
 	if probed {
@@ -235,7 +251,7 @@ func TestRun_missingStatus_isAnInstrumentFailure(t *testing.T) {
 	race := writeLog(t, "race.log", cleanLog)
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"-dsn", "postgres://irrelevant", race}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
+	if got := run([]string{"-dsn", "postgres://irrelevant", "-since", sinceArg, race}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
 		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
 	}
 }
@@ -251,7 +267,7 @@ func TestRun_missingDSN_isAnInstrumentFailure(t *testing.T) {
 	load := writeLog(t, "load.log", cleanLog)
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"-status", "0", race, load}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
+	if got := run([]string{"-status", "0", "-since", sinceArg, race, load}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
 		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
 	}
 }
@@ -273,7 +289,7 @@ func TestRun_deadServer_isAnInstrumentFailure_regardlessOfGateStatus(t *testing.
 			load := writeLog(t, "load.log", cleanLog)
 
 			var stdout, stderr bytes.Buffer
-			got := run([]string{"-status", strconv.Itoa(status), "-dsn", "postgres://irrelevant", race, load}, alwaysDead(probeErr), &stdout, &stderr)
+			got := run([]string{"-status", strconv.Itoa(status), "-dsn", "postgres://irrelevant", "-since", sinceArg, race, load}, alwaysDead(probeErr), &stdout, &stderr)
 
 			if got != exitInstrument {
 				t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
@@ -294,8 +310,11 @@ func TestRun_liveServer_passesTheGateStatusThrough(t *testing.T) {
 	load := writeLog(t, "load.log", cleanLog)
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"-status", "1", "-dsn", "postgres://irrelevant", race, load}, alwaysAlive, &stdout, &stderr); got != 1 {
+	if got := run([]string{"-status", "1", "-dsn", "postgres://irrelevant", "-since", sinceArg, race, load}, alwaysAlive, &stdout, &stderr); got != 1 {
 		t.Errorf("run = %d, want 1; stdout: %s stderr: %s", got, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "not restarted") {
+		t.Errorf("report = %q, want the sound verdict to name every check it passed, continuity included", stdout.String())
 	}
 }
 
@@ -305,15 +324,15 @@ func TestWithRetry_retriesUntilSuccess(t *testing.T) {
 	t.Parallel()
 
 	var calls int
-	probe := func(context.Context, string) error {
+	probe := func(context.Context, string) (time.Time, error) {
 		calls++
 		if calls < 3 {
-			return errors.New("not yet")
+			return time.Time{}, errors.New("not yet")
 		}
-		return nil
+		return testRunStart.Add(-time.Hour), nil
 	}
 
-	if err := withRetry(probe, 3, time.Microsecond)(context.Background(), "postgres://irrelevant"); err != nil {
+	if _, err := withRetry(probe, 3, time.Microsecond)(context.Background(), "postgres://irrelevant"); err != nil {
 		t.Errorf("withRetry()() = %v, want nil", err)
 	}
 	if calls != 3 {
@@ -329,16 +348,109 @@ func TestWithRetry_returnsTheLastErrorWhenEveryAttemptFails(t *testing.T) {
 
 	var calls int
 	wantErr := errors.New("attempt failure")
-	probe := func(context.Context, string) error {
+	probe := func(context.Context, string) (time.Time, error) {
 		calls++
-		return fmt.Errorf("call %d: %w", calls, wantErr)
+		return time.Time{}, fmt.Errorf("call %d: %w", calls, wantErr)
 	}
 
-	err := withRetry(probe, 3, time.Microsecond)(context.Background(), "postgres://irrelevant")
+	_, err := withRetry(probe, 3, time.Microsecond)(context.Background(), "postgres://irrelevant")
 	if !errors.Is(err, wantErr) {
 		t.Errorf("withRetry()() = %v, want it to wrap %v", err, wantErr)
 	}
 	if calls != 3 {
 		t.Errorf("calls = %d, want 3", calls)
+	}
+}
+
+// TestRun_serverRestartedDuringTheRun_isAnInstrumentFailure_regardlessOfGateStatus
+// locks the property the start instant exists for: a server that died and
+// came back answers a bare liveness question exactly as one that never
+// left, so the classification has to compare its last start against the
+// moment the run began. A restarted server means the run's later half ran
+// against a different instrument, which is neither a pass nor a finding.
+func TestRun_serverRestartedDuringTheRun_isAnInstrumentFailure_regardlessOfGateStatus(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []int{0, 1} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			t.Parallel()
+
+			race := writeLog(t, "race.log", cleanLog)
+			load := writeLog(t, "load.log", cleanLog)
+
+			var stdout, stderr bytes.Buffer
+			got := run([]string{"-status", strconv.Itoa(status), "-dsn", "postgres://irrelevant", "-since", sinceArg, race, load}, startedAt(testRunStart.Add(3*time.Second)), &stdout, &stderr)
+
+			if got != exitInstrument {
+				t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
+			}
+			if !strings.Contains(stdout.String(), "restarted") {
+				t.Errorf("report = %q, want it to say the server restarted — a restart reported as a contention verdict names innocent code", stdout.String())
+			}
+		})
+	}
+}
+
+// TestRun_serverStartedExactlyWhenTheRunBegan_isAnInstrumentFailure pins the
+// boundary. A server whose last start is the run's own first instant cannot
+// have been up for the run, so the comparison excludes the boundary rather
+// than admitting it.
+func TestRun_serverStartedExactlyWhenTheRunBegan_isAnInstrumentFailure(t *testing.T) {
+	t.Parallel()
+
+	race := writeLog(t, "race.log", cleanLog)
+	load := writeLog(t, "load.log", cleanLog)
+
+	var stdout, stderr bytes.Buffer
+	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", "-since", sinceArg, race, load}, startedAt(testRunStart), &stdout, &stderr); got != exitInstrument {
+		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
+	}
+}
+
+// TestRun_missingSince_isAnInstrumentFailure refuses a run whose start
+// instant was never passed in: continuity cannot be established without it,
+// and returning the gate status would publish a verdict the instrument
+// never earned — the same reasoning that makes a missing DSN a failure.
+func TestRun_missingSince_isAnInstrumentFailure(t *testing.T) {
+	t.Parallel()
+
+	race := writeLog(t, "race.log", cleanLog)
+	load := writeLog(t, "load.log", cleanLog)
+
+	var stdout, stderr bytes.Buffer
+	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", race, load}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
+		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
+	}
+}
+
+// TestWithRetry_reportsTheStartInstantOfTheSuccessfulAttempt confirms the
+// retry carries the answer of the attempt that succeeded, not of the ones
+// that failed. This is what stops the retry laundering a restart: a server
+// still coming back up refuses the first attempt and answers a later one
+// with its NEW start instant, which is exactly the value the comparison
+// needs to see.
+func TestWithRetry_reportsTheStartInstantOfTheSuccessfulAttempt(t *testing.T) {
+	t.Parallel()
+
+	want := testRunStart.Add(5 * time.Second)
+
+	var calls int
+	probe := func(context.Context, string) (time.Time, error) {
+		calls++
+		if calls < 2 {
+			return time.Time{}, errors.New("still coming back up")
+		}
+		return want, nil
+	}
+
+	got, err := withRetry(probe, 2, time.Microsecond)(context.Background(), "postgres://irrelevant")
+	if err != nil {
+		t.Fatalf("withRetry()() error = %v, want nil", err)
+	}
+	if calls != 2 {
+		t.Errorf("calls = %d, want 2 — the budget passed in is the budget spent", calls)
+	}
+	if !got.Equal(want) {
+		t.Errorf("withRetry()() = %v, want %v — the retry must report the successful attempt's own reading", got, want)
 	}
 }

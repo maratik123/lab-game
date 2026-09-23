@@ -22,6 +22,13 @@ const exitInstrument = 2
 // 0 would report a pass for it.
 const noStatus = -1
 
+// noSince is the -since default. The flag is required and carries the
+// instant the classified run began, as Unix nanoseconds: without it the
+// classifier cannot tell a server that stayed up across the run from one
+// that died and came back, and reporting the gate status for such a run
+// would publish a verdict the instrument never earned.
+const noSince = 0
+
 // probeAttempts is how many times a failing liveness probe is retried. The
 // probe runs after the load loop has already been killed, so a merely
 // saturated server has had a moment to start shedding load; a bounded
@@ -57,8 +64,11 @@ var signatures = []signature{
 	{literal: "the database system is in recovery mode", class: "the server was in crash recovery or shutting down"},
 }
 
-// prober reports whether the shared server named by dsn is answering.
-type prober func(ctx context.Context, dsn string) error
+// prober reports the instant the shared server named by dsn last started,
+// so one round trip answers both whether the server is answering at all
+// and whether it is still the server that was answering when the run
+// began. An error means it is not answering.
+type prober func(ctx context.Context, dsn string) (time.Time, error)
 
 // errEmptyLog is the sentinel scanLogs wraps with the offending path when
 // a child log holds zero bytes: a log the children never wrote carries
@@ -96,17 +106,20 @@ func scanLogs(paths []string) (signature, bool, error) {
 // a caller injecting its own probe pays no wall clock for a budget it is
 // not exercising.
 func withRetry(probe prober, attempts int, delay time.Duration) prober {
-	return func(ctx context.Context, dsn string) error {
-		var err error
+	return func(ctx context.Context, dsn string) (time.Time, error) {
+		var (
+			started time.Time
+			err     error
+		)
 		for attempt := 0; attempt < attempts; attempt++ {
 			if attempt > 0 {
 				time.Sleep(delay)
 			}
-			if err = probe(ctx, dsn); err == nil {
-				return nil
+			if started, err = probe(ctx, dsn); err == nil {
+				return started, nil
 			}
 		}
-		return err
+		return time.Time{}, err
 	}
 }
 
@@ -118,6 +131,7 @@ func run(args []string, probe prober, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	status := fs.Int("status", noStatus, "the classified gate's own exit status, returned unaltered when the instrument is sound")
 	dsn := fs.String("dsn", "", "the shared server's DSN, probed for liveness after the run")
+	since := fs.Int64("since", noSince, "the instant the classified run began, as Unix nanoseconds, compared with the server's own last start")
 	if err := fs.Parse(args); err != nil {
 		return exitInstrument
 	}
@@ -130,6 +144,11 @@ func run(args []string, probe prober, stdout, stderr io.Writer) int {
 
 	if *dsn == "" {
 		logf(stdout, "test-contention: INSTRUMENT FAILURE — no server DSN was passed, so this run's instrument cannot be shown to have survived it\n")
+		return exitInstrument
+	}
+
+	if *since == noSince {
+		logf(stdout, "test-contention: INSTRUMENT FAILURE — the run's start instant was not passed in, so the server answering now cannot be shown to be the one the run started with\n")
 		return exitInstrument
 	}
 
@@ -147,12 +166,19 @@ func run(args []string, probe prober, stdout, stderr io.Writer) int {
 		return exitInstrument
 	}
 
-	if err := probe(context.Background(), *dsn); err != nil {
+	started, err := probe(context.Background(), *dsn)
+	if err != nil {
 		logf(stdout, "test-contention: INSTRUMENT FAILURE — the server was not answering after the run (%v), so this run says nothing about contention either way\n", err)
 		return exitInstrument
 	}
 
-	logf(stdout, "test-contention: instrument sound — logs clean, server answering\n")
+	runStart := time.Unix(0, *since)
+	if !started.Before(runStart) {
+		logf(stdout, "test-contention: INSTRUMENT FAILURE — the server restarted during the run (it last started %s, the run began %s), so this run says nothing about contention either way\n", started, runStart)
+		return exitInstrument
+	}
+
+	logf(stdout, "test-contention: instrument sound — logs clean, server answering and not restarted since the run began\n")
 	return *status
 }
 

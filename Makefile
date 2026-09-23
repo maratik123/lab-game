@@ -158,6 +158,7 @@ test-contention:
 	tmp/testpg --clients 2 --parallel $(CONTENTION_PARALLEL) -- bash -c '\
 	  set -eu -o pipefail; \
 	  set -m; \
+	  run_start=$$(date +%s%N); \
 	  rm -f tmp/test-contention-load.stop; \
 	  ( while [ ! -e tmp/test-contention-load.stop ]; do go test -count=1 -parallel $(CONTENTION_PARALLEL) ./internal/ingest/... ./internal/scheduler/... ./internal/store/... ./internal/testdb/... || true; done ) >tmp/test-contention-load.log 2>&1 & \
 	  load_pid=$$!; \
@@ -173,7 +174,7 @@ test-contention:
 	  wait "$$load_pid" 2>/dev/null || true; \
 	  echo "test-contention: clients=2 parallel=$(CONTENTION_PARALLEL)"; \
 	  cls=0; \
-	  tmp/contentionverdict -status "$$fg_status" -dsn "$${LAB_GAME_TEST_DSN:-}" tmp/test-contention-race.log tmp/test-contention-load.log || cls=$$?; \
+	  tmp/contentionverdict -status "$$fg_status" -dsn "$${LAB_GAME_TEST_DSN:-}" -since "$$run_start" tmp/test-contention-race.log tmp/test-contention-load.log || cls=$$?; \
 	  exit "$$cls" \
 	' > tmp/test-contention.log 2>&1 || status=$$?; \
 	cat tmp/test-contention.log; \
