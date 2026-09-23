@@ -124,13 +124,15 @@ func withRetry(probe prober, attempts int, delay time.Duration) prober {
 }
 
 // run classifies one contention run. args is the argument vector without
-// the command name: the flags, then the child logs to scan. probe is the
-// liveness check run against the shared server named by -dsn.
+// the command name: the flags, then the child logs to scan. probe reads the
+// last start instant of the shared server named by -dsn, which answers both
+// whether it is answering at all and whether it is the server the run began
+// against.
 func run(args []string, probe prober, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("contentionverdict", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	status := fs.Int("status", noStatus, "the classified gate's own exit status, returned unaltered when the instrument is sound")
-	dsn := fs.String("dsn", "", "the shared server's DSN, probed for liveness after the run")
+	dsn := fs.String("dsn", "", "the shared server's DSN, read after the run for both its liveness and its last start")
 	since := fs.Int64("since", noSince, "the instant the classified run began, as Unix nanoseconds, compared with the server's own last start")
 	if err := fs.Parse(args); err != nil {
 		return exitInstrument

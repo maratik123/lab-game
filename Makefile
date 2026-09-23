@@ -126,12 +126,16 @@ test-fallback:
 # very condition being probed. The loop is a load source, not an assertion.
 #
 # The classification runs here rather than in whoever reads the logs, and it
-# does two things: it scans both child logs for the shared server's own
-# failure signatures (exhausted connections, exhausted disk, crash recovery
-# or shutdown), and — once the children have exited — it probes the shared
-# server directly for liveness, because a way the server dies without
-# leaving any of those signatures behind is still a way the run says nothing
-# about contention. Either kind of finding is neither a pass nor a finding:
+# refuses the run on four grounds: a child log that exists but holds
+# nothing, because an empty file matches no signature and scanning it would
+# report clean for every possible subject; either child log carrying the
+# shared server's own failure signatures (exhausted connections, exhausted
+# disk, crash recovery or shutdown); the server not answering once the
+# children have exited, because a way the server dies without leaving any of
+# those signatures behind is still a way the run says nothing about
+# contention; and the server answering while reporting a last start at or
+# after the instant the run began, which means its later half met a
+# different instrument. None of the four is a pass or a finding:
 # the recipe names it and exits 2, distinct from the foreground gate's own
 # status, which a clean run passes through. Those are the recipe's statuses:
 # make itself exits 2 for any failing recipe, so a caller tells the two apart
