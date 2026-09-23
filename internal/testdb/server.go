@@ -217,6 +217,28 @@ func Probe(ctx context.Context, dsn string) (int, error) {
 	return maxConns, nil
 }
 
+// PostmasterStartTime opens a connection the same way Probe does and reads
+// the server's own last start instant. The value is the server's own, not
+// the caller's: a caller holding an instant read before a run can tell a
+// server that stayed up throughout from one that died and came back,
+// because the reading only moves forward when the server itself restarts.
+// A syntactically invalid dsn returns an error without dialling.
+func PostmasterStartTime(ctx context.Context, dsn string) (time.Time, error) {
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("testdb: postmaster start time connect: %w", err)
+	}
+	defer func() {
+		_ = conn.Close(ctx)
+	}()
+
+	var started time.Time
+	if err := conn.QueryRow(ctx, "SELECT pg_postmaster_start_time()").Scan(&started); err != nil {
+		return time.Time{}, fmt.Errorf("testdb: postmaster start time query: %w", err)
+	}
+	return started, nil
+}
+
 // Binaries is the number of test binaries in this module that provision a
 // database through Main, and therefore can run concurrently against a
 // shared server under go test ./...'s default binary parallelism (`go help

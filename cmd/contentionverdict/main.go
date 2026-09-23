@@ -8,11 +8,10 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/maratik123/lab-game/internal/testdb"
 )
 
 // realProbe reads the shared server's own last start instant under
@@ -25,19 +24,7 @@ func realProbe(ctx context.Context, dsn string) (time.Time, error) {
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 
-	conn, err := pgx.Connect(ctx, dsn)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("probe connect: %w", err)
-	}
-	defer func() {
-		_ = conn.Close(ctx)
-	}()
-
-	var started time.Time
-	if err := conn.QueryRow(ctx, "SELECT pg_postmaster_start_time()").Scan(&started); err != nil {
-		return time.Time{}, fmt.Errorf("probe postmaster start time: %w", err)
-	}
-	return started, nil
+	return testdb.PostmasterStartTime(ctx, dsn)
 }
 
 func main() {
