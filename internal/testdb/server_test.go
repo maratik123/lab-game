@@ -454,10 +454,12 @@ func TestProbe_invalidDSN(t *testing.T) {
 	}
 }
 
-// TestPostmasterStartTime_matchesOrdinaryQuery asserts the returned instant
-// lies in the window this test run itself bounds: after some clearly-earlier
-// mark and before now, which holds without flakiness because the server was
-// started by this very test run.
+// TestPostmasterStartTime_matchesOrdinaryQuery asserts the reading against
+// the same instant fetched through an ordinary pool query, so the helper is
+// not a second, divergent source of truth. The comparison is what gives the
+// test its discriminating power: an implementation returning any other
+// instant the server can produce disagrees with the control and fails here,
+// where a mere plausibility window would have admitted it.
 func TestPostmasterStartTime_matchesOrdinaryQuery(t *testing.T) {
 	t.Parallel()
 
@@ -471,15 +473,23 @@ func TestPostmasterStartTime_matchesOrdinaryQuery(t *testing.T) {
 		t.Fatalf("PostmasterStartTime(baseDSN): unexpected error: %v", err)
 	}
 
-	if got.IsZero() {
-		t.Fatalf("PostmasterStartTime(baseDSN): got zero instant")
+	cfg, err := pgxpool.ParseConfig(baseDSN)
+	if err != nil {
+		t.Fatalf("parse base DSN: %v", err)
 	}
-	earliestPlausible := time.Now().Add(-time.Hour)
-	if got.Before(earliestPlausible) {
-		t.Errorf("PostmasterStartTime(baseDSN) = %v, want after %v", got, earliestPlausible)
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
 	}
-	if got.After(time.Now()) {
-		t.Errorf("PostmasterStartTime(baseDSN) = %v, want before now", got)
+	defer pool.Close()
+
+	var want time.Time
+	if err := pool.QueryRow(ctx, "SELECT pg_postmaster_start_time()").Scan(&want); err != nil {
+		t.Fatalf("read postmaster start time: %v", err)
+	}
+
+	if !got.Equal(want) {
+		t.Errorf("PostmasterStartTime returned %v, ordinary query returned %v", got, want)
 	}
 }
 

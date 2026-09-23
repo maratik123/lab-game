@@ -138,7 +138,7 @@ func run(args []string, probe prober, stdout, stderr io.Writer) int {
 
 	logs := fs.Args()
 	if *status == noStatus || len(logs) == 0 {
-		logf(stderr, "contentionverdict: usage: contentionverdict -status N -dsn DSN <log> [log...]\n")
+		logf(stderr, "contentionverdict: usage: contentionverdict -status N -dsn DSN -since NANOS <log> [log...]\n")
 		return exitInstrument
 	}
 

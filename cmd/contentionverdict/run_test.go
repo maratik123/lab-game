@@ -421,6 +421,12 @@ func TestRun_missingSince_isAnInstrumentFailure(t *testing.T) {
 	if got := run([]string{"-status", "0", "-dsn", "postgres://irrelevant", race, load}, alwaysAlive, &stdout, &stderr); got != exitInstrument {
 		t.Errorf("run = %d, want %d; stdout: %s stderr: %s", got, exitInstrument, stdout.String(), stderr.String())
 	}
+	if !strings.Contains(stdout.String(), "start instant was not passed in") {
+		t.Errorf("report = %q, want it to name the argument that is missing", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "restarted") {
+		t.Errorf("report = %q, want it NOT to blame a restart: the exit status alone is reached by the continuity comparison too, and a death reported as the wrong class sends the reader at innocent code", stdout.String())
+	}
 }
 
 // TestWithRetry_reportsTheStartInstantOfTheSuccessfulAttempt confirms the
