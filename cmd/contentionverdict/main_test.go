@@ -22,7 +22,7 @@ func TestRealProbe_unreachableServer_reportsAnError(t *testing.T) {
 
 	// Port 1 is reserved and nothing listens on it, so the dial is refused
 	// at once rather than waiting out probeTimeout.
-	if err := realProbe(context.Background(), "postgres://nobody:nobody@127.0.0.1:1/postgres?sslmode=disable"); err == nil {
+	if _, err := realProbe(context.Background(), "postgres://nobody:nobody@127.0.0.1:1/postgres?sslmode=disable"); err == nil {
 		t.Error("realProbe() = nil, want an error for a server that is not listening")
 	}
 }

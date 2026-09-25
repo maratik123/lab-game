@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -450,6 +451,68 @@ func TestProbe_invalidDSN(t *testing.T) {
 	ctx := context.Background()
 	if _, err := Probe(ctx, "not a dsn at all://\x00"); err == nil {
 		t.Fatalf("Probe against a syntactically invalid DSN: want an error, got nil")
+	}
+}
+
+// TestPostmasterStartTime_matchesOrdinaryQuery asserts the reading against
+// the same instant fetched through an ordinary pool query, so the helper is
+// not a second, divergent source of truth. The comparison is what gives the
+// test its discriminating power: an implementation returning any other
+// instant the server can produce disagrees with the control and fails here,
+// where a mere plausibility window would have admitted it.
+func TestPostmasterStartTime_matchesOrdinaryQuery(t *testing.T) {
+	t.Parallel()
+
+	if baseDSN == "" {
+		t.Fatalf("testdb: PostmasterStartTime test needs Main to have provisioned a database first")
+	}
+
+	ctx := context.Background()
+	got, err := PostmasterStartTime(ctx, baseDSN)
+	if err != nil {
+		t.Fatalf("PostmasterStartTime(baseDSN): unexpected error: %v", err)
+	}
+
+	cfg, err := pgxpool.ParseConfig(baseDSN)
+	if err != nil {
+		t.Fatalf("parse base DSN: %v", err)
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+
+	var want time.Time
+	if err := pool.QueryRow(ctx, "SELECT pg_postmaster_start_time()").Scan(&want); err != nil {
+		t.Fatalf("read postmaster start time: %v", err)
+	}
+
+	if !got.Equal(want) {
+		t.Errorf("PostmasterStartTime returned %v, ordinary query returned %v", got, want)
+	}
+}
+
+// TestPostmasterStartTime_unreachablePort asserts an unreachable port
+// returns an error.
+func TestPostmasterStartTime_unreachablePort(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	if _, err := PostmasterStartTime(ctx, "postgres://labgame:labgame@127.0.0.1:1/nosuchdb?sslmode=disable"); err == nil {
+		t.Fatalf("PostmasterStartTime against an unreachable port: want an error, got nil")
+	}
+}
+
+// TestPostmasterStartTime_invalidDSN asserts a syntactically invalid DSN
+// returns an error without ever dialling — parsing fails before any
+// connection attempt.
+func TestPostmasterStartTime_invalidDSN(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	if _, err := PostmasterStartTime(ctx, "not a dsn at all://\x00"); err == nil {
+		t.Fatalf("PostmasterStartTime against a syntactically invalid DSN: want an error, got nil")
 	}
 }
 

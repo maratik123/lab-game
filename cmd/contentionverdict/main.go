@@ -9,18 +9,22 @@ package main
 import (
 	"context"
 	"os"
+	"time"
 
 	"github.com/maratik123/lab-game/internal/testdb"
 )
 
-// realProbe checks the shared server named by dsn under probeTimeout,
-// discarding the connection count the underlying probe also returns:
-// this classifier only needs to know the server is answering.
-func realProbe(ctx context.Context, dsn string) error {
+// realProbe reads the shared server's own last start instant under
+// probeTimeout. The connection answers liveness and the value answers
+// continuity: a server that died and came back reports a start instant
+// inside the run it was supposed to have survived. The reading is the
+// postmaster's, so a crash recovery the postmaster itself outlived leaves
+// it unchanged — that failure announces itself in the child logs instead.
+func realProbe(ctx context.Context, dsn string) (time.Time, error) {
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
-	_, err := testdb.Probe(ctx, dsn)
-	return err
+
+	return testdb.PostmasterStartTime(ctx, dsn)
 }
 
 func main() {
